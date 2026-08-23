@@ -49,6 +49,16 @@ describe('POST rubric-draft/fill', () => {
     const routePath = "'/:courseId/writing-feedback/assignments/:assignmentId/rubric-draft/fill'";
     const approvePath = "'/:courseId/writing-feedback/assignments/:assignmentId/rubric-draft/approve'";
 
+    // Captures everything between the fill route's `router.post(` call and the next
+    // `router.` declaration — the route's full body, including its argument list and
+    // handler. Reused by every test below that needs to inspect that body, so a
+    // deleted or renamed route fails every one of them (`match` is `null`) instead of
+    // leaving some green.
+    function fillRouteBody(): string | null {
+        const pattern = /router\.post\(\s*'\/:courseId\/writing-feedback\/assignments\/:assignmentId\/rubric-draft\/fill',([\s\S]*?)\nrouter\./;
+        return source.match(pattern)?.[1].trim() ?? null;
+    }
+
     it('declares the auto-fill route', () => {
         expect(source).toContain(routePath);
         expect(source).toMatch(/router\.post\(\s*'\/:courseId\/writing-feedback\/assignments\/:assignmentId\/rubric-draft\/fill'/);
@@ -65,15 +75,28 @@ describe('POST rubric-draft/fill', () => {
     });
 
     it('declares no middleware for the fill route beyond the shared async-auth wrapper', () => {
-        // Captures everything between the fill route's `router.post(` call and the
-        // next `router.` declaration; the only thing that may appear right after the
-        // path argument is `asyncHandlerWithAuth(` — no per-route guard, no upload
-        // middleware, nothing else. Fails outright (match is null) if the route is
-        // ever removed, unlike a check that only reads a locally declared constant.
-        const pattern = /router\.post\(\s*'\/:courseId\/writing-feedback\/assignments\/:assignmentId\/rubric-draft\/fill',([\s\S]*?)\nrouter\./;
-        const match = source.match(pattern);
-        expect(match).not.toBeNull();
-        expect(match?.[1].trimStart().startsWith('asyncHandlerWithAuth(')).toBe(true);
+        // The captured body must be exactly one wrapped call — `asyncHandlerWithAuth(...)`
+        // as the sole remaining argument to `router.post`, immediately closed by the
+        // route registration's own `);`. Checking only the start (as an earlier version
+        // of this test did) misses a middleware appended as a trailing third argument,
+        // e.g. `router.post(path, asyncHandlerWithAuth(...), someMiddleware)` — that
+        // shape still starts with `asyncHandlerWithAuth(` but does not end with the
+        // wrapper's own close immediately followed by the route's close, so the
+        // `endsWith` check below is what catches it.
+        const body = fillRouteBody();
+        expect(body).not.toBeNull();
+        expect(body?.startsWith('asyncHandlerWithAuth(')).toBe(true);
+        expect(body?.endsWith('})\n);')).toBe(true);
+    });
+
+    it('validates the merged rubric with the shared draft schema before saving', () => {
+        // Pins that the route still gates the save on `writingRubricDraftInputSchema`
+        // (added in fix round 1 for the "verbose model response" / "bad band" findings).
+        // Scoped to the fill route's own body, not just anywhere in the file, so this
+        // stays meaningful even though the PUT handler above also references the schema.
+        const body = fillRouteBody();
+        expect(body).not.toBeNull();
+        expect(body).toContain('writingRubricDraftInputSchema');
     });
 
     it('is declared before the approve route so it is not shadowed by a capturing sibling', () => {

@@ -231,4 +231,20 @@ describe('proposeRubricFromInstructions', () => {
         );
         expect(result.criteria.map((c) => c.id)).toEqual(['organization']);
     });
+
+    it('clips an over-long field to the draft limit instead of refusing the proposal', async () => {
+        // Longer than the proposal schema's own max(2000) is refused elsewhere; this is
+        // the gap the proposal schema allows but the draft validator (max 1200) does not.
+        const longTask = 'word '.repeat(300).trim();
+        expect(longTask.length).toBeGreaterThan(1200);
+        const verboseBody = { ...validResponseBody, task: longTask };
+
+        const result = await proposeRubricFromInstructions(
+            'i', draft(knownCriteria), fakeLlm(JSON.stringify(verboseBody))
+        );
+
+        expect(result.task.length).toBeLessThanOrEqual(1200);
+        // Clipped at a word boundary: the shortened text is a clean prefix of the original.
+        expect(longTask.startsWith(result.task)).toBe(true);
+    });
 });

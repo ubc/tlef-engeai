@@ -166,6 +166,8 @@ export function buildAutofillPrompt(instructions: string, draft: WritingRubricDe
         '- Each descriptor says what work at that level looks like for that criterion,',
         '  in one sentence, specific to this assignment.',
         '- Do not add, remove, or rename criteria or levels. Use exactly the ids given.',
+        '- Keep each of task, audience, purpose, and grading intent under 1000 characters.',
+        '- Keep each criterion description and each descriptor to one or two sentences.',
         '',
         'Criteria:',
         criteria,
@@ -199,6 +201,31 @@ const autofillProposalSchema = z.object({
         })).optional()
     })).max(10)
 });
+
+// Matches `compactText`'s cap in rubric-schema.ts (task/audience/purpose/gradingIntent/
+// criterion description). `autofillProposalSchema` deliberately allows more headroom
+// than this so a good-faith model response is not refused outright for length; see
+// `clipToDraftLimit`, which reconciles the gap after validation instead.
+const DRAFT_TEXT_LIMIT = 1200;
+
+/**
+ * clipToDraftLimit - trims text to the draft validator's character cap on a word boundary.
+ *
+ * The auto-fill schema accepts longer text than the draft validator (`writingRubricDraftInputSchema`,
+ * `rubric-schema.ts`) allows, so a verbose but otherwise good model response would
+ * otherwise pass proposal validation and then fail draft validation outright. These
+ * are draft fields a staff member reviews and edits before approval, so a clipped
+ * proposal beats a refused one.
+ *
+ * @param text - Validated proposal text, already within the proposal schema's own cap
+ * @returns Text at or under the draft limit, cut at the last whole word when clipped
+ */
+function clipToDraftLimit(text: string): string {
+    if (text.length <= DRAFT_TEXT_LIMIT) return text;
+    const clipped = text.slice(0, DRAFT_TEXT_LIMIT);
+    const lastSpace = clipped.lastIndexOf(' ');
+    return (lastSpace > 0 ? clipped.slice(0, lastSpace) : clipped).trim();
+}
 
 /**
  * deterministicAutofillProposal - mock-mode substitute for a real model call.
@@ -292,6 +319,15 @@ export async function proposeRubricFromInstructions(
     const known = new Set(draft.criteria.map((criterion) => criterion.id));
     return {
         ...validated.data,
-        criteria: validated.data.criteria.filter((criterion) => known.has(criterion.id))
+        // The proposal schema allows more length than the draft validator does (see
+        // `clipToDraftLimit`); clip here so a verbose response degrades to a slightly
+        // shortened draft instead of being refused outright by the route's later check.
+        task: clipToDraftLimit(validated.data.task),
+        audience: clipToDraftLimit(validated.data.audience),
+        purpose: clipToDraftLimit(validated.data.purpose),
+        gradingIntent: clipToDraftLimit(validated.data.gradingIntent),
+        criteria: validated.data.criteria
+            .filter((criterion) => known.has(criterion.id))
+            .map((criterion) => ({ ...criterion, description: clipToDraftLimit(criterion.description) }))
     };
 }
