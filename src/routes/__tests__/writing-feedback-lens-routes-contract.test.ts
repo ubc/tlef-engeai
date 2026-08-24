@@ -116,13 +116,53 @@ describe('POST rubric-draft/approve completeness gates', () => {
         return source.match(pattern)?.[1].trim() ?? null;
     }
 
+    // Extracts the full statement governed by `marker` (an `if (...)` header),
+    // regardless of whether the author wrote a single unbraced statement or a
+    // braced block. Brace style is exactly the axis a future edit could change
+    // without anyone intending to move code into or out of the branch, so a
+    // regex anchored to one specific unbraced text shape (as an earlier version
+    // of this test used) would miss a re-nesting that adds braces. This walks
+    // the text instead: past a `{` it counts nested braces to the matching
+    // close; otherwise it scans to the first statement-ending `;` outside any
+    // parens.
+    function ifStatementBody(text: string, marker: string): string {
+        const start = text.indexOf(marker);
+        if (start === -1) throw new Error(`marker not found: ${marker}`);
+        let i = start + marker.length;
+        while (/\s/.test(text[i])) i++;
+        if (text[i] === '{') {
+            let depth = 0;
+            let j = i;
+            for (; j < text.length; j++) {
+                if (text[j] === '{') depth++;
+                else if (text[j] === '}') {
+                    depth--;
+                    if (depth === 0) { j++; break; }
+                }
+            }
+            return text.slice(i, j);
+        }
+        let parenDepth = 0;
+        let j = i;
+        for (; j < text.length; j++) {
+            const ch = text[j];
+            if (ch === '(') parenDepth++;
+            else if (ch === ')') parenDepth--;
+            else if (ch === ';' && parenDepth === 0) { j++; break; }
+        }
+        return text.slice(i, j);
+    }
+
     it('runs the rubric-cell completeness gate for both lenses, unlike the linguistic-only SFL gate', () => {
         const body = approveRouteBody();
         expect(body).not.toBeNull();
         expect(body).toMatch(/requireCompleteRubricCells\(selected\.draft\);/);
-        // The SFL gate stays linguistic-only; the cell-completeness gate must not be
-        // nested inside that same `if (lens === 'linguistic')` branch.
-        expect(body).not.toMatch(/if \(lens === 'linguistic'\) requireCompleteRubricCells/);
+        // The SFL gate stays linguistic-only; the cell-completeness gate must not
+        // appear anywhere inside that `if (lens === 'linguistic')` statement's
+        // body — braced or not, so grouping the two checks under one brace in a
+        // future edit is caught, not just the single-line unbraced form.
+        const linguisticBranch = ifStatementBody(body!, "if (lens === 'linguistic')");
+        expect(linguisticBranch).not.toContain('requireCompleteRubricCells');
     });
 
     it('keeps the new gate inside the same try/catch that returns HTTP 400 with a safe error', () => {
