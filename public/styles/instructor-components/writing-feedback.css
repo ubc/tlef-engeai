@@ -1261,6 +1261,13 @@
     line-height: 1.35;
 }
 
+.wf-grid-cell-hint {
+    margin: 4px 0 0;
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-style: italic;
+}
+
 .wf-grid-total-label {
     text-align: right;
     color: var(--text-primary);

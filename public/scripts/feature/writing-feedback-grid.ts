@@ -668,13 +668,24 @@ export function renderRubricGrid(
             descriptor.className = 'wf-grid-text';
             descriptor.addEventListener('input', onChange);
 
+            const hint = createText('p', '', 'wf-grid-cell-hint');
+
             // A descriptor is stored inside its band, so a cell with no range has
             // nowhere to keep one. The control stays visible and reads as unavailable
-            // rather than accepting text that could not be saved.
+            // rather than accepting text that could not be saved. The hint tells staff
+            // exactly what is missing; approval (not draft save) is what actually blocks
+            // on this, enforced separately by requireCompleteRubricCells on the server.
             const syncCellState = (): void => {
-                const filled = Boolean(parseBand(bandInput.value));
-                descriptor.readOnly = !canEdit || !filled;
-                cell.classList.toggle('wf-grid-cell--empty', !filled);
+                const bandFilled = Boolean(parseBand(bandInput.value));
+                descriptor.readOnly = !canEdit || !bandFilled;
+                cell.classList.toggle('wf-grid-cell--empty', !bandFilled);
+                if (!bandFilled) {
+                    hint.textContent = 'Enter a points range';
+                } else if (!descriptor.value.trim()) {
+                    hint.textContent = 'Enter a description';
+                } else {
+                    hint.textContent = '';
+                }
             };
 
             let lastValid = bandInput.value;
@@ -691,8 +702,9 @@ export function renderRubricGrid(
                 syncCellState();
             });
             syncCellState();
+            descriptor.addEventListener('input', syncCellState);
 
-            cell.append(bandInput, descriptor);
+            cell.append(bandInput, descriptor, hint);
             row.append(cell);
         });
 
