@@ -43,7 +43,18 @@ function approvedAssignment(version = 1): WritingAssignment {
             ...assignment.rubric,
             version,
             sflContext: assignment.rubric.sflContext
-                ? { ...assignment.rubric.sflContext, genreState: 'custom' }
+                ? {
+                    ...assignment.rubric.sflContext,
+                    genreLabel: 'Local writing assignment genre',
+                    genreState: 'custom',
+                    task: 'Write a short response to the assignment prompt.',
+                    purpose: 'Explain the requested finding to the reader.',
+                    audience: 'A course instructor familiar with the assignment.',
+                    field: 'Undergraduate coursework for this assignment.',
+                    tenor: 'Student reporting findings to an evaluating instructor.',
+                    mode: 'A written take-home response submitted after the assignment period.',
+                    productionConditions: 'Take-home, individually written, open resources.'
+                }
                 : assignment.rubric.sflContext
         },
         'instructor-1',

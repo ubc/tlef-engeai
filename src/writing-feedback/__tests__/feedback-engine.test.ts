@@ -69,7 +69,11 @@ function dynamicAssignment(): WritingAssignment {
                 genreState: 'custom',
                 task: 'Write a concise lab report grounded in the recorded observations.',
                 purpose: 'Explain what happened, why it matters, and what limits the conclusion.',
-                audience: 'A technical reader who did not attend the lab.'
+                audience: 'A technical reader who did not attend the lab.',
+                field: 'Undergraduate heat exchanger lab measurements.',
+                tenor: 'Student reporting findings to an evaluating instructor.',
+                mode: 'A written take-home report submitted after the lab session.',
+                productionConditions: 'Take-home, individually written, open resources.'
             }
             : assignment.rubric.sflContext,
         criteria: dynamicCriteria.map((criterion) => ({ ...criterion })),

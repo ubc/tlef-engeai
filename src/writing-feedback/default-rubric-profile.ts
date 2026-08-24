@@ -101,6 +101,18 @@ function withDefaultDescriptors(
     return withText;
 }
 
+/** Placeholder text shipped in the starter SFL profile; approval must reject these verbatim. */
+export const SFL_PROFILE_PLACEHOLDERS = {
+    genreLabel: 'Instructor-confirmed assignment genre',
+    task: 'Describe what students are expected to write.',
+    purpose: 'Describe what the writing should accomplish for its reader.',
+    audience: 'Describe the intended reader or audience.',
+    field: 'Describe the disciplinary subject matter and activity.',
+    tenor: 'Describe the writer-reader relationship and expected stance.',
+    mode: 'Describe the format, length, medium, and preparation conditions.',
+    productionConditions: 'Describe whether this is timed, take-home, collaborative, or resource-supported.'
+} as const;
+
 /**
  * buildDefaultSflContextProfile - creates an editable starter profile for V2.
  *
@@ -112,16 +124,16 @@ function withDefaultDescriptors(
 export function buildDefaultSflContextProfile(): WritingSflContextProfile {
     return {
         genreId: 'custom',
-        genreLabel: 'Instructor-confirmed assignment genre',
+        genreLabel: SFL_PROFILE_PLACEHOLDERS.genreLabel,
         genreState: 'needs_staff_input',
-        task: 'Describe what students are expected to write.',
-        purpose: 'Describe what the writing should accomplish for its reader.',
-        audience: 'Describe the intended reader or audience.',
-        field: 'Describe the disciplinary subject matter and activity.',
-        tenor: 'Describe the writer-reader relationship and expected stance.',
-        mode: 'Describe the format, length, medium, and preparation conditions.',
+        task: SFL_PROFILE_PLACEHOLDERS.task,
+        purpose: SFL_PROFILE_PLACEHOLDERS.purpose,
+        audience: SFL_PROFILE_PLACEHOLDERS.audience,
+        field: SFL_PROFILE_PLACEHOLDERS.field,
+        tenor: SFL_PROFILE_PLACEHOLDERS.tenor,
+        mode: SFL_PROFILE_PLACEHOLDERS.mode,
         actualEvaluator: 'Instructor or teaching assistant.',
-        productionConditions: 'Describe whether this is timed, take-home, collaborative, or resource-supported.',
+        productionConditions: SFL_PROFILE_PLACEHOLDERS.productionConditions,
         stages: [{
             id: 'main_response',
             label: 'Main response',

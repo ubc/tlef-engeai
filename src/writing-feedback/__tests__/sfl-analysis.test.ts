@@ -13,6 +13,7 @@
 import type { SflAnalysis, WritingSflContextProfile } from '../contracts';
 import { SFL_FERREIRA_RULES } from '../sfl-foundation';
 import { requireCompleteSflProfile, validateSflAnalysis } from '../sfl-analysis';
+import { buildDefaultSflContextProfile } from '../default-rubric-profile';
 
 const profile: WritingSflContextProfile = {
     genreId: 'data_commentary',
@@ -113,6 +114,28 @@ describe('validateSflAnalysis', () => {
 describe('requireCompleteSflProfile', () => {
     it('rejects profiles still marked as needing staff input', () => {
         expect(() => requireCompleteSflProfile({ ...profile, genreState: 'needs_staff_input' }))
-            .toThrow('Confirm the assignment genre/register profile');
+            .toThrow('Confirm the genre and register profile');
+    });
+
+    it('rejects the shipped default profile even after its state is changed', () => {
+        const placeholder = buildDefaultSflContextProfile();
+        expect(() => requireCompleteSflProfile({ ...placeholder, genreState: 'staff_confirmed' }))
+            .toThrow('Complete the genre and register profile');
+    });
+
+    it('accepts a profile once every placeholder field has been replaced', () => {
+        const filled: WritingSflContextProfile = {
+            ...buildDefaultSflContextProfile(),
+            genreState: 'staff_confirmed',
+            genreLabel: 'Data commentary',
+            task: 'Write a data commentary interpreting the lab results.',
+            purpose: 'Explain what the measured trend means for the hypothesis.',
+            audience: 'A lab instructor familiar with the experiment.',
+            field: 'Undergraduate chemical engineering lab measurements.',
+            tenor: 'Student reporting findings to an evaluating instructor.',
+            mode: 'A written take-home report submitted after the lab session.',
+            productionConditions: 'Take-home, individually written, open resources.'
+        };
+        expect(() => requireCompleteSflProfile(filled)).not.toThrow();
     });
 });

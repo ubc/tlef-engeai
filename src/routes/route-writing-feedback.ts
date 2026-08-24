@@ -95,8 +95,8 @@ function safeError(error: unknown): string {
         'Feedback comments no longer match', 'Feedback comments failed validation',
         'Assignment title is required', 'Assignment deadline is invalid',
         'Assignment instructions must be text', 'Assignment instructions exceeds',
-        'Complete the SFL assignment profile', 'Confirm the assignment genre/register profile',
-        'Add at least one reviewed SFL stage', 'Add SFL task requirements',
+        'Complete the genre and register profile', 'Confirm the genre and register profile',
+        'Add at least one reviewed stage', 'Add task requirements',
         'Glossary term is required', 'Glossary definition is required',
         'Glossary term exceeds', 'Glossary definition exceeds'
     ];
