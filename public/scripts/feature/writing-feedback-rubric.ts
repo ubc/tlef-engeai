@@ -31,7 +31,8 @@ import {
     RUBRIC_SLUG,
     parseBand,
     renderRubricGrid,
-    slugFromLabel
+    slugFromLabel,
+    spaceBandsEvenly
 } from './writing-feedback-grid.js';
 import {
     Assignment,
@@ -79,6 +80,163 @@ const FUNCTION_OPTIONS: Array<{ value: WfFunctionTag; label: string }> = [
     { value: 'interpersonal', label: 'Interpersonal' },
     { value: 'organizational', label: 'Organizational' }
 ];
+
+/* ------------------------------------------------------------------------- *
+ * Default rubric mirror
+ *
+ * Mirrored from src/writing-feedback/default-rubric-profile.ts and
+ * lab-report-profile.ts, which the browser bundle cannot import: public/scripts/
+ * never reaches into src/. Behaviour here is identical to the server data; the
+ * two are kept in sync by the shared points/labels asserted in
+ * src/writing-feedback/__tests__/default-rubric-profile.test.ts and
+ * lab-report-profile.test.ts, and by this task's requirement that both were
+ * edited together (Tasks 3, 4, and this one land in the same review).
+ * ------------------------------------------------------------------------- */
+
+const DEFAULT_WRITING_LEVELS_MIRROR: RubricLevel[] = [
+    { id: 'weak', label: 'Weak', description: 'The criterion is not yet demonstrated; revision should start here.', rank: 1 },
+    { id: 'developing', label: 'Developing', description: 'The criterion is partly demonstrated and needs focused revision.', rank: 2 },
+    { id: 'proficient', label: 'Proficient', description: 'The criterion is clearly demonstrated for this task.', rank: 3 },
+    { id: 'exemplary', label: 'Exemplary', description: 'The criterion is demonstrated precisely and effectively.', rank: 4 }
+];
+
+const DEFAULT_WRITING_CRITERIA_MIRROR: Array<{ id: string; label: string; description: string; functionTag?: WfFunctionTag; sflDimension?: string; points: number; descriptors: Record<string, string> }> = [
+    {
+        id: 'organization', label: 'Organization', functionTag: 'organizational', points: 30,
+        description: 'How effectively the text is staged and held together for this task.',
+        sflDimension: 'Information sequencing, theme progression, cohesive ties, and paragraph boundaries.',
+        descriptors: {
+            weak: 'Ideas appear in no clear sequence, paragraph boundaries are unclear or absent, and a reader must work to find related information.',
+            developing: 'A rough sequence is visible but transitions are missing or inconsistent, and some paragraphs mix unrelated ideas.',
+            proficient: 'Information is sequenced logically with clear paragraph boundaries and cohesive ties; a reader can follow the progression without re-reading.',
+            exemplary: "The sequence builds purposefully toward the task's goal, transitions make relationships between ideas explicit, and paragraphing reinforces the structure."
+        }
+    },
+    {
+        id: 'content', label: 'Content', functionTag: 'content', points: 40,
+        description: 'How accurately and completely the text represents the subject of the assignment.',
+        sflDimension: 'Technical entities, processes, participants, circumstances, and the relations between them.',
+        descriptors: {
+            weak: 'The subject matter is mostly inaccurate, missing, or unrelated to what the task asked for.',
+            developing: 'Core content is present but incomplete or contains inaccuracies that a reader familiar with the topic would notice.',
+            proficient: 'The subject matter is represented accurately and completely, with entities, processes, and relationships explained correctly.',
+            exemplary: 'Content is accurate, complete, and precise, with relationships between entities and processes explained in a way that shows command of the subject.'
+        }
+    },
+    {
+        id: 'interpersonal_positioning', label: 'Interpersonal Positioning', functionTag: 'interpersonal', points: 30,
+        description: 'How effectively the writer positions the reader for the stated audience and purpose.',
+        sflDimension: 'Modality, hedging, stance, and technicality calibrated to the stated audience.',
+        descriptors: {
+            weak: 'Stance and tone do not match the stated audience or purpose; claims are overstated, unsupported, or written for the wrong reader.',
+            developing: 'Stance is mostly appropriate but modality, hedging, or technicality slip out of register in places.',
+            proficient: 'Modality, hedging, and technicality are calibrated to the stated audience and purpose throughout.',
+            exemplary: 'The writer positions the reader precisely and consistently, using stance and technicality that anticipate what this audience needs to be convinced or informed.'
+        }
+    }
+];
+
+const LAB_REPORT_LEVELS_MIRROR: RubricLevel[] = [
+    { id: 'weak', label: 'Weak', description: 'The section is not yet demonstrated; revision should start here.', rank: 1, points: 0 },
+    { id: 'developing', label: 'Developing', description: 'The section is partly demonstrated and needs focused revision.', rank: 2, points: 1 },
+    { id: 'proficient', label: 'Proficient', description: 'The section is clearly demonstrated for this lab report.', rank: 3, points: 2 },
+    { id: 'exemplary', label: 'Exemplary', description: 'The section is demonstrated precisely and effectively.', rank: 4, points: 3 }
+];
+
+const LAB_REPORT_CRITERIA_MIRROR: Array<{ id: string; label: string; description: string; points: number; descriptors: Record<string, string> }> = [
+    { id: 'report_presentation', label: 'Report Presentation', points: 15,
+        description: 'Whether the report is properly formatted, contains all required elements, and is presented in a clear, organized, professional way.',
+        descriptors: {
+            weak: 'The report is missing required elements or its formatting makes it difficult to follow.',
+            developing: 'Most required elements are present, but formatting or organization is inconsistent in places.',
+            proficient: 'The report is properly formatted, contains all required elements, and is organized clearly.',
+            exemplary: 'The report is properly formatted, complete, and presented in a polished, professional way that reads like a finished technical document.'
+        } },
+    { id: 'language', label: 'Language', points: 5,
+        description: 'Whether the quality of the language is appropriate and technical language is used where appropriate.',
+        descriptors: {
+            weak: 'Language errors or imprecise wording interfere with understanding, and technical terms are used incorrectly or not at all.',
+            developing: 'Language is mostly clear, but technical terminology is used inconsistently or occasionally imprecisely.',
+            proficient: 'Language quality is appropriate throughout and technical terms are used correctly where needed.',
+            exemplary: 'Language is precise and appropriate throughout, and technical terminology is used accurately and confidently.'
+        } },
+    { id: 'abstract', label: 'Summary/Abstract', points: 10,
+        description: 'Whether the summary is complete and concise, and states the experimental objectives, important results, and main conclusions.',
+        descriptors: {
+            weak: 'The summary is missing, or omits the objectives, results, or conclusions.',
+            developing: 'The summary states most of the objectives, results, and conclusions but is incomplete or unfocused.',
+            proficient: 'The summary is complete and concise, and clearly states the objectives, key results, and main conclusions.',
+            exemplary: 'The summary is complete, concise, and gives a reader who reads nothing else an accurate picture of what was done, found, and concluded.'
+        } },
+    { id: 'results_discussion', label: 'Results and Discussion', points: 45,
+        description: 'Whether every point in the lab handout is addressed, the discussion is correct and comprehensive, results are compared to theoretical or reported values, sources of error and deviations are critically discussed, and the report demonstrates understanding of the phenomena involved.',
+        descriptors: {
+            weak: 'Most handout points are unaddressed, results are not compared to expected values, and deviations are not discussed.',
+            developing: 'Some handout points are addressed and results are compared to expected values, but the discussion of deviations or error sources is thin or missing.',
+            proficient: 'Every point in the handout is addressed, results are compared to theoretical or reported values, and sources of error and deviations are discussed.',
+            exemplary: 'Every point is addressed comprehensively, results are compared critically to expected values, and deviations are explained with plausible, well-reasoned causes that show real understanding of the phenomena.'
+        } },
+    { id: 'conclusions', label: 'Conclusions', points: 5,
+        description: 'Whether the conclusions are supported by the results and discussion, relevant information is presented, and recommendations for improving the experiment are made.',
+        descriptors: {
+            weak: 'Conclusions are missing, unsupported by the results, or unrelated to the discussion.',
+            developing: 'Conclusions follow the results in general terms but omit relevant information or recommendations.',
+            proficient: 'Conclusions are supported by the results and discussion, present relevant information, and include recommendations for improving the experiment.',
+            exemplary: 'Conclusions follow directly and precisely from the results and discussion, and the recommendations show genuine insight into how the experiment could be improved.'
+        } },
+    { id: 'references', label: 'References', points: 5,
+        description: 'Whether material is appropriately referenced in the required citation style.',
+        descriptors: {
+            weak: 'Sources are missing or not cited in the required style.',
+            developing: 'Most sources are cited, but the style is inconsistent or some citations are missing.',
+            proficient: 'Material is appropriately referenced throughout in the required citation style.',
+            exemplary: 'Every source is referenced accurately and consistently in the required citation style, with no gaps.'
+        } },
+    { id: 'sample_calculations', label: 'Sample Calculations', points: 15,
+        description: 'Whether calculations are presented clearly and logically, use correct equations, are accurate, and report the correct number of significant figures.',
+        descriptors: {
+            weak: 'Calculations are missing, use incorrect equations, or contain errors that affect the results.',
+            developing: 'Calculations are mostly correct but are presented unclearly or use an inconsistent number of significant figures.',
+            proficient: 'Calculations are presented clearly and logically, use correct equations, are accurate, and report the correct number of significant figures.',
+            exemplary: 'Calculations are presented clearly and logically, are fully accurate, use correct equations, and are precise about significant figures throughout.'
+        } }
+];
+
+/**
+ * defaultRubricCriteria - builds fresh criterion rows for the reset action
+ *
+ * @param lens - Which rubric's default template to build
+ * @returns Detached criteria with bands and descriptors already spaced via {@link spaceBandsEvenly}
+ */
+function defaultRubricCriteria(lens: WritingFeedbackLens): RubricCriterion[] {
+    const source = lens === 'technical' ? LAB_REPORT_CRITERIA_MIRROR : DEFAULT_WRITING_CRITERIA_MIRROR;
+    const levels = lens === 'technical' ? LAB_REPORT_LEVELS_MIRROR : DEFAULT_WRITING_LEVELS_MIRROR;
+    return source.map((criterion) => {
+        const cells = spaceBandsEvenly(criterion.points, levels);
+        Object.entries(criterion.descriptors).forEach(([levelId, descriptor]) => {
+            if (cells[levelId]) cells[levelId] = { ...cells[levelId], descriptor };
+        });
+        return {
+            id: criterion.id,
+            label: criterion.label,
+            description: criterion.description,
+            ...('functionTag' in criterion && criterion.functionTag ? { functionTag: criterion.functionTag } : {}),
+            ...('sflDimension' in criterion && criterion.sflDimension ? { sflDimension: criterion.sflDimension } : {}),
+            points: criterion.points,
+            cells
+        } as RubricCriterion;
+    });
+}
+
+/**
+ * defaultRubricLevels - fresh, detached copies of the default ordinal scale
+ *
+ * @param lens - Which rubric's default level set to build
+ * @returns Detached levels, safe for an editor to mutate
+ */
+function defaultRubricLevels(lens: WritingFeedbackLens): RubricLevel[] {
+    return (lens === 'technical' ? LAB_REPORT_LEVELS_MIRROR : DEFAULT_WRITING_LEVELS_MIRROR).map((level) => ({ ...level }));
+}
 
 /** The assignment description shared by every rubric the assignment owns. */
 interface AssignmentDetailsInput {
@@ -966,6 +1124,26 @@ function renderRubricPage(
         onFillFromInstructions: async (status) => {
             if (!context) throw new Error('The rubric page is still loading.');
             await fillRubricsFromInstructions(context, status);
+        },
+        onResetToDefault: async () => {
+            if (!context) throw new Error('The rubric page is still loading.');
+            const confirmation = await showConfirmModal(
+                'Reset to the default rubric?',
+                isLabReport
+                    ? 'Both the writing rubric and the technical rubric will be replaced with their starting templates. This does not save until you click Save draft or Approve.'
+                    : 'The rubric will be replaced with its starting template. This does not save until you click Save draft or Approve.',
+                'Reset rubric',
+                'Cancel',
+                'danger'
+            );
+            if (confirmation.action !== 'reset-rubric') return;
+            context.sections.forEach((section) => {
+                if (!section.canEdit) return;
+                section.working.criteria = defaultRubricCriteria(section.lens);
+                section.working.levels = defaultRubricLevels(section.lens);
+            });
+            state.panelDirty = linguisticData.permissions.canEdit ? true : state.panelDirty;
+            await openRubricPage(assignment.id);
         }
     });
 
@@ -1042,6 +1220,7 @@ interface AssignmentDetailsOptions {
     notice?: { message: string; tone: 'success' | 'error' };
     onInput: () => void;
     onFillFromInstructions: (status: HTMLElement) => Promise<void>;
+    onResetToDefault: () => Promise<void>;
 }
 
 const firstOpenAutofillAttempts = new Set<string>();
@@ -1088,6 +1267,9 @@ function renderAssignmentDetails(
         );
         if (!options.hasInstructions) fillButton.title = 'Add the assignment instructions first';
         headingRow.append(fillButton);
+
+        const resetButton = createButton('Reset to the default rubric', 'secondary', async () => options.onResetToDefault());
+        headingRow.append(resetButton);
     }
 
     const form = document.createElement('form');
