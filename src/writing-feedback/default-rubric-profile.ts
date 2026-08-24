@@ -13,6 +13,8 @@
 
 import type {
     WritingAssignment,
+    WritingLevelId,
+    WritingRubricCell,
     WritingRubricCriterion,
     WritingRubricDefinition,
     WritingRubricLevel,
@@ -56,6 +58,48 @@ export const DEFAULT_WRITING_LEVELS: ReadonlyArray<WritingRubricLevel> = [
     { id: 'proficient', label: 'Proficient', description: 'The criterion is clearly demonstrated for this task.', rank: 3 },
     { id: 'exemplary', label: 'Exemplary', description: 'The criterion is demonstrated precisely and effectively.', rank: 4 }
 ];
+
+/** Per-criterion, per-level descriptors merged into the derived point bands. */
+const DEFAULT_WRITING_DESCRIPTORS: Record<string, Record<string, string>> = {
+    organization: {
+        weak: 'Ideas appear in no clear sequence, paragraph boundaries are unclear or absent, and a reader must work to find related information.',
+        developing: 'A rough sequence is visible but transitions are missing or inconsistent, and some paragraphs mix unrelated ideas.',
+        proficient: 'Information is sequenced logically with clear paragraph boundaries and cohesive ties; a reader can follow the progression without re-reading.',
+        exemplary: "The sequence builds purposefully toward the task's goal, transitions make relationships between ideas explicit, and paragraphing reinforces the structure."
+    },
+    content: {
+        weak: 'The subject matter is mostly inaccurate, missing, or unrelated to what the task asked for.',
+        developing: 'Core content is present but incomplete or contains inaccuracies that a reader familiar with the topic would notice.',
+        proficient: 'The subject matter is represented accurately and completely, with entities, processes, and relationships explained correctly.',
+        exemplary: 'Content is accurate, complete, and precise, with relationships between entities and processes explained in a way that shows command of the subject.'
+    },
+    interpersonal_positioning: {
+        weak: 'Stance and tone do not match the stated audience or purpose; claims are overstated, unsupported, or written for the wrong reader.',
+        developing: 'Stance is mostly appropriate but modality, hedging, or technicality slip out of register in places.',
+        proficient: 'Modality, hedging, and technicality are calibrated to the stated audience and purpose throughout.',
+        exemplary: 'The writer positions the reader precisely and consistently, using stance and technicality that anticipate what this audience needs to be convinced or informed.'
+    }
+};
+
+/**
+ * withDefaultDescriptors - merges the seeded descriptor text into derived point bands.
+ *
+ * @param criterionId - Criterion whose bands are being built
+ * @param cells - Bands already derived by {@link spaceBandsEvenly}
+ * @returns The same bands, each carrying its seeded descriptor when one exists
+ */
+function withDefaultDescriptors(
+    criterionId: string,
+    cells: Record<WritingLevelId, WritingRubricCell>
+): Record<WritingLevelId, WritingRubricCell> {
+    const descriptors = DEFAULT_WRITING_DESCRIPTORS[criterionId];
+    if (!descriptors) return cells;
+    const withText: Record<WritingLevelId, WritingRubricCell> = {};
+    Object.entries(cells).forEach(([levelId, cell]) => {
+        withText[levelId] = descriptors[levelId] ? { ...cell, descriptor: descriptors[levelId] } : cell;
+    });
+    return withText;
+}
 
 /**
  * buildDefaultSflContextProfile - creates an editable starter profile for V2.
@@ -121,7 +165,7 @@ export function buildDefaultWritingRubric(
         sflContext: buildDefaultSflContextProfile(),
         criteria: DEFAULT_WRITING_CRITERIA.map((criterion) => ({
             ...criterion,
-            cells: spaceBandsEvenly(criterion.points ?? 0, DEFAULT_WRITING_LEVELS)
+            cells: withDefaultDescriptors(criterion.id, spaceBandsEvenly(criterion.points ?? 0, DEFAULT_WRITING_LEVELS))
         })),
         levels: DEFAULT_WRITING_LEVELS.map((level) => ({ ...level })),
         updatedAt: now,
