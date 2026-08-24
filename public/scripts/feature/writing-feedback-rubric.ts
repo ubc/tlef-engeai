@@ -847,11 +847,6 @@ function renderAssignmentDetails(
 
     const headingRow = document.createElement('div');
     headingRow.className = 'wf-rubric-heading-row';
-    headingRow.append(createText(
-        'h2',
-        options.isLabReport ? '1 · Assignment details' : 'Assignment details',
-        'wf-section-title'
-    ));
     if (options.isLabReport) {
         headingRow.append(createText('span', 'used by both rubrics', 'wf-quiet-note'));
     }
@@ -1116,21 +1111,25 @@ function renderRubricSection(
     const canEdit = data.permissions.canEdit;
     const lensQuery = lens === 'technical' ? '?lens=technical' : '';
 
-    const section = document.createElement('details');
+    const section = document.createElement('div');
     section.className = 'wf-rubric-section';
-    section.open = true;
-    const summary = document.createElement('summary');
-    summary.className = 'wf-rubric-section__summary';
     // A heading element, not a span: h2 matches the sibling 'Assignment details'
     // heading above and gives the grid below an ancestor heading to sit under.
     const summaryTitle = createText('h2', options.heading, 'wf-rubric-section__title');
     const summaryMeta = createText('span', rubricSizeSummary(working), 'wf-rubric-section__meta');
-    summary.append(summaryTitle, summaryMeta);
-    if (options.showState) summary.append(approvalStateChip(data));
-    section.append(summary);
+    const summaryContent: HTMLElement[] = [summaryTitle, summaryMeta];
+    if (options.showState) summaryContent.push(approvalStateChip(data));
 
     const layout = document.createElement('div');
     layout.className = 'wf-rubric-layout';
+    const header = disclosureHeader(
+        summaryContent,
+        layout,
+        `wf-rubric-section-body-${crypto.randomUUID()}`,
+        true,
+        'wf-rubric-section__summary'
+    );
+    section.append(header);
     const editor = document.createElement('div');
     editor.className = 'wf-rubric-editor';
 

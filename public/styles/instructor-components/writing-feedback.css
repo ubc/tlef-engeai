@@ -919,17 +919,6 @@
     cursor: pointer;
 }
 
-.wf-rubric-section__summary::before {
-    content: ">";
-    color: var(--text-secondary);
-    font-size: 13px;
-    transition: transform 120ms ease;
-}
-
-.wf-rubric-section[open] > .wf-rubric-section__summary::before {
-    transform: rotate(90deg);
-}
-
 .wf-rubric-section__title {
     flex: 1 1 auto;
     margin: 0;
