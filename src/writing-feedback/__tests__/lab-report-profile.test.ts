@@ -78,4 +78,14 @@ describe('APSC 182 weights are data, not prose', () => {
             });
         });
     });
+
+    it('gives every criterion a descriptor at every level', () => {
+        const rubric = buildLabReportRubric('u', new Date());
+        rubric.criteria.forEach((criterion) => {
+            rubric.levels.forEach((level) => {
+                const cell = criterion.cells?.[level.id];
+                expect(cell?.descriptor?.trim().length ?? 0).toBeGreaterThan(0);
+            });
+        });
+    });
 });
