@@ -97,6 +97,69 @@
 - UI-only states such as loading, dirty form, and recoverable error are not persisted. Durable states are the saved rubric draft, approved rubric version, submission status, append-only staff revision, release preview/release, and sanitized job failure.
 - `deleteWritingAssignment(ctx, courseId, assignmentId)` refuses to delete (returns `{ deleted: false, submissionCount }`) while any `writing-submissions` row references the assignment; staff must delete those first. `deleteWritingSubmission(ctx, courseId, submissionId)` deletes a submission at any status and cascades a delete of its `writing-feedback-runs`, `writing-releases`, and queued `writing-jobs` rows (matched on `payload.submissionId`); reviews live embedded in the submission document, so no separate cleanup is needed for those.
 
+### LMS integration token collections
+
+`canvas_tokens` and `moodle_tokens` hold per-user LMS credentials. They are owned by
+`@ubc/ubc-genai-toolkit-lms-integration`'s `createMongoTokenStore`, **not** by a
+`src/db/mongo/` delegate, and are wired in `src/routes/route-lms.ts`. Collection
+names are overridable via `CANVAS_TOKEN_COLLECTION_NAME` / `MOODLE_TOKEN_COLLECTION_NAME`.
+
+- **Separate collection per provider, always.** The store keys documents solely by
+  `userKey`, with no provider discriminator — a shared collection would have each
+  provider silently overwrite the other's tokens.
+- **`userKey` is `GlobalUser.userId`, never a PUID.** `resolveUserKey` in
+  `route-lms.ts` resolves the signed-in user's PUID to their internal `userId` via
+  `findGlobalUserByPUID` before any write, preserving the invariant that
+  `active-users` is the only collection storing a PUID at rest. The lookup is
+  asynchronous; the package accepts `getUserKey: (req) => string | Promise<string>`.
+- Document shape is `{ _id, userKey, tokens }`. A unique index on `userKey` is
+  created lazily on first use and memoized, so it is safe under multi-worker
+  startup. Canvas stores an access/refresh pair with `expiresAt` and `canvasUserId`;
+  Moodle stores the `wstoken` and `moodleUserId` (no expiry, no refresh).
+- Token values are never logged, never returned through the API, and never placed
+  in error messages. `GET /api/lms/status` reports configuration presence only.
+- These collections are **not** course-scoped and carry no course association.
+  Disconnecting deletes the local row; for Moodle it does not revoke the token
+  in Moodle itself.
+- Distinct from `canvas-connections` (see writing feedback above), which is a
+  reserved, currently unused collection for a future course-level Canvas
+  connection and is unrelated to these per-user token stores.
+
+### LMS course links (`active-course-list.lmsLink`)
+
+`course-lms-link-mongo.ts` owns the pointer from an EngE-AI course to the LMS course it
+was imported from. It is a field on the existing `active-course-list` catalog document,
+not a collection of its own.
+
+- Shape is `{ provider, courseId, name, code, linkedAt, linkedBy }`. `provider` is stored
+  explicitly because the LMS package dropped `provider` from `LmsCourse` in 1.0.0 — its
+  ids are provider-scoped, so a bare `courseId` is ambiguous once a second LMS exists.
+  `linkedBy` is a `GlobalUser.userId`, never a PUID.
+- Present only on **Canvas-imported** courses. Admin-created courses have no `lmsLink`
+  and are joined with `courseCode`; both kinds coexist permanently.
+- `lms_link_provider_course_unique` is a **unique partial** index on
+  `(lmsLink.provider, lmsLink.courseId)`, filtered on `lmsLink.courseId: { $exists: true }`.
+  Partial because most courses carry no link and a plain unique index would treat every
+  missing value as a duplicate. Unique because two EngE-AI courses claiming one Canvas
+  course would make student matching ambiguous — whichever row was read first would win.
+- The index name and its `partialFilterExpression` are a matched pair: MongoDB rejects an
+  index whose filter changed under an existing name. Changing this definition requires an
+  explicit reviewed migration, not an in-place edit. Created best-effort at startup in
+  `server.ts`; `setCourseLmsLink` checks for a conflicting claim before writing, so the
+  index is a safety net rather than the primary guard.
+- **Enrollment is resolved per user, not by roster matching.** Each person authorizes
+  Canvas as themselves, so the link plus the caller's own Canvas enrollments is enough to
+  place them — no Canvas-user-to-EngE-AI-account matching table exists.
+- **One roster read does happen, and it stores nothing.** Instructor import verifies the
+  Canvas `integration_id` against the CWL PUID, which Canvas only exposes to a teacher in
+  a course context. That read is the teacher roster of the course being imported
+  (`enrollmentTypes: ['teacher']`), performed once, compared in memory, and discarded.
+  No `integration_id` — the importer's or any co-instructor's — is written to any
+  collection or log. The student join path performs no roster read at all.
+  `active-users` remains the only collection storing a PUID at rest.
+- Sync is add-only: a student whose Canvas enrollment disappears keeps their EngE-AI
+  enrollment and chat history. Nothing in this path deletes an enrollment row.
+
 - **TBD**: One-way deps (example: flags + user enrichment).
 
 ## Tests and coverage
