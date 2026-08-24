@@ -867,35 +867,51 @@
 }
 
 .wf-rubric-details .wf-form-grid {
-    display: block;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px 20px;
+    padding: 4px 0 0;
 }
 
 .wf-rubric-details .wf-field {
-    grid-template-columns: minmax(9rem, 13rem) minmax(0, 1fr);
-    align-items: start;
-    gap: 12px;
+    display: block;
     margin: 0;
-    padding: 12px 0;
-    border-top: 1px solid var(--border-color);
-}
-
-.wf-rubric-details .wf-field:first-child {
+    padding: 0;
     border-top: 0;
 }
 
 .wf-rubric-details .wf-field label {
-    padding-top: 9px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 0 0 4px;
     color: var(--text-secondary);
     font-weight: 600;
+    font-size: 13px;
+}
+
+.wf-rubric-details .wf-field label .wf-field-count {
+    color: var(--text-secondary);
+    font-weight: 400;
+    font-size: 12px;
+    white-space: nowrap;
 }
 
 .wf-rubric-details .wf-field input,
 .wf-rubric-details .wf-field textarea {
+    width: 100%;
     color: var(--text-primary);
 }
 
 .wf-rubric-details .wf-field--wide {
-    grid-column: auto;
+    grid-column: 1 / -1;
+}
+
+@media (max-width: 768px) {
+    .wf-rubric-details .wf-form-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
 }
 
 .wf-rubric-section {
@@ -2223,15 +2239,6 @@ mark.wf-anchor.is-filtered-out,
 
     .wf-rubric-heading-row .wf-button {
         width: 100%;
-    }
-
-    .wf-rubric-details .wf-field {
-        grid-template-columns: 1fr;
-        gap: 6px;
-    }
-
-    .wf-rubric-details .wf-field label {
-        padding-top: 0;
     }
 
     .wf-grid {

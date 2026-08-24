@@ -878,16 +878,27 @@ function renderAssignmentDetails(
 
     const entries: Array<{ label: string; control: HTMLInputElement | HTMLTextAreaElement; wide?: boolean }> = [
         { label: 'Title', control: namedControl(inputControl(draft.title), 'title'), wide: true },
-        { label: 'Task', control: namedControl(textAreaControl(draft.task, 4), 'task'), wide: true },
-        { label: 'Audience', control: namedControl(textAreaControl(draft.audience, 3), 'audience') },
-        { label: 'Purpose', control: namedControl(textAreaControl(draft.purpose, 3), 'purpose') },
+        { label: 'Task', control: namedControl(textAreaControl(draft.task, 3), 'task'), wide: true },
+        { label: 'Audience', control: namedControl(textAreaControl(draft.audience, 2), 'audience') },
+        { label: 'Purpose', control: namedControl(textAreaControl(draft.purpose, 2), 'purpose') },
         { label: 'Requirements', control: constraints },
         { label: 'Learning outcomes', control: learningOutcomes },
-        { label: 'How to grade', control: namedControl(textAreaControl(draft.gradingIntent, 4), 'gradingIntent'), wide: true }
+        { label: 'How to grade', control: namedControl(textAreaControl(draft.gradingIntent, 2), 'gradingIntent'), wide: true }
     ];
     entries.forEach((entry) => {
         bindTextControl(entry.control, options.canEdit, options.onInput);
-        grid.append(field(entry.label, entry.control, undefined, entry.wide));
+        const wrapper = field(entry.label, entry.control, undefined, entry.wide);
+        if (entry.control === constraints || entry.control === learningOutcomes) {
+            const countSpan = createText('span', '', 'wf-field-count');
+            wrapper.querySelector('label')?.append(countSpan);
+            const updateCount = (): void => {
+                const count = entry.control.value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).length;
+                countSpan.textContent = count === 0 ? '' : `${count} ${count === 1 ? 'item' : 'items'}`;
+            };
+            entry.control.addEventListener('input', updateCount);
+            updateCount();
+        }
+        grid.append(wrapper);
     });
 
     const sflContext = draft.sflContext;
