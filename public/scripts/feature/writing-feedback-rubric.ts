@@ -208,6 +208,8 @@ function renderSflProfileBox(
         && sflContext.genreLabel && sflContext.field && sflContext.tenor && sflContext.mode
         && sflContext.actualEvaluator && sflContext.productionConditions
         && sflContext.stages.length
+        && sflContext.stages.every((stage) => stage.purpose.trim())
+        && sflContext.taskRequirements.length
     );
 
     const outer = document.createElement('div');
