@@ -27,12 +27,14 @@ import {
     WorkspaceContext,
     baseUrl,
     chip,
+    collapseDisclosure,
     confirmDiscardDirty,
     createButton,
     createIconButton,
     createText,
     createZoomControl,
     element,
+    expandDisclosure,
     field,
     formatDate,
     handleActionError,
@@ -54,67 +56,6 @@ import { openReview } from './writing-feedback-review.js';
 // ---------------------------------------------------------------------------
 // Landing view
 // ---------------------------------------------------------------------------
-
-const SUBMISSION_PANEL_TRANSITION_TIMEOUT_MS = 380;
-const submissionPanelTransitions = new WeakMap<HTMLElement, { finish: () => void }>();
-
-/** Completes the current panel transition once, including its timeout fallback. */
-function waitForSubmissionPanelTransition(panel: HTMLElement, settle: () => void): Promise<void> {
-    submissionPanelTransitions.get(panel)?.finish();
-    return new Promise((resolve) => {
-        let finished = false;
-        const finish = (): void => {
-            if (finished) return;
-            finished = true;
-            window.clearTimeout(timer);
-            panel.removeEventListener('transitionend', onTransitionEnd);
-            submissionPanelTransitions.delete(panel);
-            settle();
-            resolve();
-        };
-        const onTransitionEnd = (event: TransitionEvent): void => {
-            if (event.target === panel && event.propertyName === 'max-height') finish();
-        };
-        const timer = window.setTimeout(finish, SUBMISSION_PANEL_TRANSITION_TIMEOUT_MS);
-        submissionPanelTransitions.set(panel, { finish });
-        panel.addEventListener('transitionend', onTransitionEnd);
-    });
-}
-
-/** Reveals a populated submission panel without leaving a fixed height ceiling. */
-async function expandSubmissionPanel(panel: HTMLElement): Promise<void> {
-    submissionPanelTransitions.get(panel)?.finish();
-    panel.hidden = false;
-    panel.classList.remove('wf-submission-panel--leave');
-    panel.classList.add('wf-submission-panel--enter');
-    panel.style.maxHeight = '0px';
-    const targetHeight = panel.scrollHeight;
-    const completion = waitForSubmissionPanelTransition(panel, () => {
-        panel.classList.remove('wf-submission-panel--enter');
-        panel.style.maxHeight = 'none';
-    });
-    void panel.offsetHeight;
-    panel.classList.remove('wf-submission-panel--enter');
-    panel.style.maxHeight = `${targetHeight}px`;
-    await completion;
-}
-
-/** Collapses a panel and removes it from focus and accessibility trees at rest. */
-async function collapseSubmissionPanel(panel: HTMLElement): Promise<void> {
-    submissionPanelTransitions.get(panel)?.finish();
-    if (panel.hidden) return;
-    panel.style.maxHeight = `${panel.scrollHeight}px`;
-    panel.classList.remove('wf-submission-panel--enter');
-    void panel.offsetHeight;
-    const completion = waitForSubmissionPanelTransition(panel, () => {
-        panel.hidden = true;
-        panel.classList.remove('wf-submission-panel--leave');
-        panel.style.removeProperty('max-height');
-    });
-    panel.classList.add('wf-submission-panel--leave');
-    panel.style.maxHeight = '0px';
-    await completion;
-}
 
 async function loadLanding(): Promise<void> {
     setView('landing');
@@ -260,7 +201,7 @@ function renderAssignmentCard(assignment: Assignment): HTMLElement {
     card.append(header);
 
     const panel = document.createElement('div');
-    panel.className = 'wf-submission-panel';
+    panel.className = 'wf-submission-panel wf-disclosure-body';
     panel.id = panelId;
     panel.hidden = true;
     panel.setAttribute('aria-busy', 'false');
@@ -275,7 +216,7 @@ async function toggleAssignmentExpand(assignmentId: string): Promise<void> {
         const header = document.querySelector<HTMLElement>(`[aria-controls="wf-assignment-panel-${CSS.escape(assignmentId)}"]`);
         header?.setAttribute('aria-expanded', 'false');
         const panel = document.getElementById(`wf-assignment-panel-${assignmentId}`);
-        if (panel) await collapseSubmissionPanel(panel);
+        if (panel) await collapseDisclosure(panel);
         return;
     }
     const previousAssignmentId = state.expandedAssignmentId;
@@ -286,7 +227,7 @@ async function toggleAssignmentExpand(assignmentId: string): Promise<void> {
     });
     if (previousAssignmentId) {
         const previousPanel = document.getElementById(`wf-assignment-panel-${previousAssignmentId}`);
-        if (previousPanel) void collapseSubmissionPanel(previousPanel);
+        if (previousPanel) void collapseDisclosure(previousPanel);
     }
     await expandAssignment(assignmentId);
 }
@@ -310,7 +251,7 @@ async function expandAssignment(assignmentId: string): Promise<void> {
         );
         panel.replaceChildren(errorRow);
         panel.setAttribute('aria-busy', 'false');
-        await expandSubmissionPanel(panel);
+        await expandDisclosure(panel);
         throw error;
     }
     if (state.expandedAssignmentId !== assignmentId || !panel.isConnected) return;
@@ -376,7 +317,7 @@ async function expandAssignment(assignmentId: string): Promise<void> {
     panel.append(footer);
     panel.setAttribute('aria-busy', 'false');
     refreshIcons();
-    await expandSubmissionPanel(panel);
+    await expandDisclosure(panel);
 }
 
 // ---------------------------------------------------------------------------

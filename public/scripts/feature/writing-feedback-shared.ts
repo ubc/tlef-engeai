@@ -857,3 +857,131 @@ export async function handleActionError(error: unknown): Promise<void> {
     setWorkspaceMessage(message, 'error');
     await showErrorModal('Writing Feedback action failed', message);
 }
+
+const DISCLOSURE_TRANSITION_TIMEOUT_MS = 380;
+const disclosureTransitions = new WeakMap<HTMLElement, { finish: () => void }>();
+
+/** Completes the current disclosure transition once, including its timeout fallback. */
+function waitForDisclosureTransition(panel: HTMLElement, settle: () => void): Promise<void> {
+    disclosureTransitions.get(panel)?.finish();
+    return new Promise((resolve) => {
+        let finished = false;
+        const finish = (): void => {
+            if (finished) return;
+            finished = true;
+            window.clearTimeout(timer);
+            panel.removeEventListener('transitionend', onTransitionEnd);
+            disclosureTransitions.delete(panel);
+            settle();
+            resolve();
+        };
+        const onTransitionEnd = (event: TransitionEvent): void => {
+            if (event.target === panel && event.propertyName === 'max-height') finish();
+        };
+        const timer = window.setTimeout(finish, DISCLOSURE_TRANSITION_TIMEOUT_MS);
+        disclosureTransitions.set(panel, { finish });
+        panel.addEventListener('transitionend', onTransitionEnd);
+    });
+}
+
+/**
+ * expandDisclosure - reveals a collapsible panel with the shared height/opacity animation.
+ *
+ * Shared by the assignment submission panel and every rubric-page collapsible
+ * section so the page has exactly one open/close animation, not one per section.
+ *
+ * @param panel - Element carrying the `wf-disclosure-body` class
+ */
+export async function expandDisclosure(panel: HTMLElement): Promise<void> {
+    disclosureTransitions.get(panel)?.finish();
+    panel.hidden = false;
+    panel.classList.remove('wf-disclosure-body--leave');
+    panel.classList.add('wf-disclosure-body--enter');
+    panel.style.maxHeight = '0px';
+    const targetHeight = panel.scrollHeight;
+    const completion = waitForDisclosureTransition(panel, () => {
+        panel.classList.remove('wf-disclosure-body--enter');
+        panel.style.maxHeight = 'none';
+    });
+    void panel.offsetHeight;
+    panel.classList.remove('wf-disclosure-body--enter');
+    panel.style.maxHeight = `${targetHeight}px`;
+    await completion;
+}
+
+/**
+ * collapseDisclosure - hides a collapsible panel with the shared height/opacity animation.
+ *
+ * @param panel - Element carrying the `wf-disclosure-body` class
+ */
+export async function collapseDisclosure(panel: HTMLElement): Promise<void> {
+    disclosureTransitions.get(panel)?.finish();
+    if (panel.hidden) return;
+    panel.style.maxHeight = `${panel.scrollHeight}px`;
+    panel.classList.remove('wf-disclosure-body--enter');
+    void panel.offsetHeight;
+    const completion = waitForDisclosureTransition(panel, () => {
+        panel.hidden = true;
+        panel.classList.remove('wf-disclosure-body--leave');
+        panel.style.removeProperty('max-height');
+    });
+    panel.classList.add('wf-disclosure-body--leave');
+    panel.style.maxHeight = '0px';
+    await completion;
+}
+
+/**
+ * disclosureHeader - builds a clickable header that expands/collapses a panel.
+ *
+ * Mirrors the assignment card's expand control (role=button, tabindex=0,
+ * aria-expanded, aria-controls, Enter/Space activation) so every collapsible
+ * section on the page behaves identically to keyboard and screen-reader users.
+ *
+ * @param content - Elements placed inside the header, before the chevron
+ * @param panel - Body element this header expands and collapses; mutated (id, class, hidden)
+ * @param panelId - Id assigned to `panel` for `aria-controls`
+ * @param initiallyOpen - Whether the panel starts expanded
+ * @param className - Header class name, e.g. `wf-rubric-step-header`
+ * @returns Detached header; caller appends both the header and `panel` into the DOM
+ */
+export function disclosureHeader(
+    content: HTMLElement[],
+    panel: HTMLElement,
+    panelId: string,
+    initiallyOpen: boolean,
+    className: string
+): HTMLElement {
+    panel.id = panelId;
+    panel.classList.add('wf-disclosure-body');
+    panel.hidden = !initiallyOpen;
+    if (initiallyOpen) panel.style.maxHeight = 'none';
+
+    const header = document.createElement('div');
+    header.className = className;
+    header.setAttribute('role', 'button');
+    header.setAttribute('tabindex', '0');
+    header.setAttribute('aria-expanded', String(initiallyOpen));
+    header.setAttribute('aria-controls', panelId);
+    header.append(...content);
+
+    const icon = document.createElement('span');
+    icon.className = 'wf-expand-icon';
+    icon.innerHTML = '<i data-feather="chevron-down" aria-hidden="true"></i>';
+    header.append(icon);
+
+    const toggle = (): void => {
+        const nextOpen = header.getAttribute('aria-expanded') !== 'true';
+        header.setAttribute('aria-expanded', String(nextOpen));
+        void (nextOpen ? expandDisclosure(panel) : collapseDisclosure(panel));
+    };
+    header.addEventListener('click', toggle);
+    header.addEventListener('keydown', (event) => {
+        if (event.target !== header) return;
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            toggle();
+        }
+    });
+
+    return header;
+}

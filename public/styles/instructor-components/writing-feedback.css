@@ -486,7 +486,7 @@
     transition: transform 0.3s ease;
 }
 
-.wf-assignment-header[aria-expanded="true"] .wf-expand-icon {
+[role="button"][aria-expanded="true"] .wf-expand-icon {
     transform: rotate(180deg);
 }
 
@@ -496,7 +496,7 @@
     height: 18px;
 }
 
-.wf-submission-panel {
+.wf-disclosure-body {
     overflow: hidden;
     opacity: 1;
     transform: translateY(0);
@@ -506,14 +506,14 @@
         transform 0.3s ease;
 }
 
-.wf-submission-panel--enter,
-.wf-submission-panel--leave {
+.wf-disclosure-body--enter,
+.wf-disclosure-body--leave {
     opacity: 0;
     transform: translateY(-0.35rem);
     pointer-events: none;
 }
 
-.wf-submission-panel[hidden] {
+.wf-disclosure-body[hidden] {
     display: none;
 }
 
