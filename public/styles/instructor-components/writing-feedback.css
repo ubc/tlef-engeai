@@ -978,6 +978,47 @@
     min-height: 44px;
 }
 
+.wf-rubric-step {
+    margin: 0 0 20px;
+    background: var(--chat-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.wf-rubric-step-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 52px;
+    padding: 16px 20px;
+    cursor: pointer;
+    border-left: 4px solid var(--color-chbe-green);
+}
+
+.wf-rubric-step-header .wf-section-title {
+    flex: 1 1 auto;
+    margin: 0;
+}
+
+.wf-rubric-step-meta {
+    color: var(--text-secondary);
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.wf-rubric-step-body {
+    padding: 0 20px 20px;
+}
+
+.wf-rubric-step-body > .wf-rubric-step {
+    margin: 0 0 15px;
+}
+
+.wf-rubric-step-body > .wf-rubric-step:last-child {
+    margin-bottom: 0;
+}
+
 .wf-rubric-library-select {
     min-height: 40px;
     min-width: min(100%, 16rem);

@@ -47,11 +47,13 @@ import {
     confirmDiscardDirty,
     createButton,
     createText,
+    disclosureHeader,
     element,
     field,
     formatDate,
     inputControl,
     jsonRequest,
+    refreshIcons,
     request,
     setWorkspaceMessage,
     setQueryState,
@@ -504,6 +506,22 @@ function rubricSizeSummary(working: RubricDefinition): string {
     return `${countText} · ${Number(total.toFixed(2))} points`;
 }
 
+/**
+ * detailsCompletionSummary - the "N of M fields complete" line shown in the step-1 header
+ *
+ * @param form - The assignment-details form
+ * @returns Summary counting the same required fields {@link collectAssignmentDetails} checks
+ */
+function detailsCompletionSummary(form: HTMLFormElement): string {
+    const required = ['title', 'task', 'audience', 'purpose', 'gradingIntent'];
+    const filled = required.filter((name) => rubricTextValue(form, name).length > 0).length;
+    const listsFilled = (rubricLines(form, 'constraints').length > 0 ? 1 : 0)
+        + (rubricLines(form, 'learningOutcomes').length > 0 ? 1 : 0);
+    const total = required.length + 2;
+    const done = filled + listsFilled;
+    return done === total ? 'Complete' : `${done} of ${total} fields complete`;
+}
+
 function rubricLensQuery(lens: WritingFeedbackLens): string {
     return lens === 'technical' ? '?lens=technical' : '?lens=linguistic';
 }
@@ -707,7 +725,10 @@ function renderRubricPage(
     };
 
     let context: RubricPageContext | undefined;
-    const detailsForm = renderAssignmentDetails(root, writingSource, {
+
+    const step1Body = document.createElement('div');
+    step1Body.className = 'wf-rubric-step-body';
+    const detailsForm = renderAssignmentDetails(step1Body, writingSource, {
         canEdit: linguisticData.permissions.canEdit,
         isLabReport,
         labContext: technicalSource?.labContext ?? '',
@@ -716,12 +737,22 @@ function renderRubricPage(
         onInput: () => {
             if (linguisticData.permissions.canEdit) state.panelDirty = true;
             clearValidation();
+            step1Meta.textContent = detailsCompletionSummary(detailsForm);
         },
         onFillFromInstructions: async (status) => {
             if (!context) throw new Error('The rubric page is still loading.');
             await fillRubricsFromInstructions(context, status);
         }
     });
+
+    const step1Meta = createText('span', '', 'wf-rubric-step-meta');
+    const step1 = document.createElement('div');
+    step1.className = 'wf-rubric-step';
+    const step1Title = createText('h2', '1 · Assignment details', 'wf-section-title');
+    const step1Header = disclosureHeader([step1Title, step1Meta], step1Body, 'wf-rubric-step-1-body', true, 'wf-rubric-step-header');
+    step1.append(step1Header, step1Body);
+    root.append(step1);
+    step1Meta.textContent = detailsCompletionSummary(detailsForm);
 
     const pageContext: RubricPageContext = {
         assignment,
@@ -732,10 +763,12 @@ function renderRubricPage(
     };
     context = pageContext;
 
-    root.append(renderRubricSection(pageContext, linguisticData, 'linguistic', {
-        heading: isLabReport ? '2 · Writing rubric' : 'Rubric',
+    const step2Body = document.createElement('div');
+    step2Body.className = 'wf-rubric-step-body';
+    step2Body.append(renderRubricSection(pageContext, linguisticData, 'linguistic', {
+        heading: isLabReport ? 'Writing rubric' : 'Rubric',
         errorLabel: isLabReport ? 'Writing rubric' : '',
-        showState: false
+        showState: isLabReport
     }));
 
     if (technicalData) {
@@ -743,16 +776,26 @@ function renderRubricPage(
         // deleted directly via the API before ever being approved). Offer a
         // re-seed action instead of throwing out of renderRubricSection.
         if (!technicalData.draft && !technicalData.approved) {
-            root.append(renderMissingTechnicalRubric(assignment));
+            step2Body.append(renderMissingTechnicalRubric(assignment));
         } else {
-            root.append(renderRubricSection(pageContext, technicalData, 'technical', {
+            step2Body.append(renderRubricSection(pageContext, technicalData, 'technical', {
                 heading: 'Technical rubric',
                 errorLabel: 'Technical rubric',
                 showState: true
             }));
         }
     }
+
+    const step2Meta = createText('span', rubricSizeSummary(writingSource), 'wf-rubric-step-meta');
+    const step2 = document.createElement('div');
+    step2.className = 'wf-rubric-step';
+    const step2Title = createText('h2', '2 · Rubric', 'wf-section-title');
+    const step2Header = disclosureHeader([step2Title, step2Meta], step2Body, 'wf-rubric-step-2-body', true, 'wf-rubric-step-header');
+    step2.append(step2Header, step2Body);
+    root.append(step2);
+
     if (notice) setWorkspaceMessage(notice.message, notice.tone);
+    refreshIcons();
 }
 
 /** Rendering options that differ between an assignment's first and second rubric. */
