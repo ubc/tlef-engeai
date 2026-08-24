@@ -16,6 +16,7 @@ import type {
     WritingLevelId,
     WritingRubricDefinition
 } from './contracts';
+import { resolveBand } from './rubric-bands';
 
 const compactText = z.string().trim().min(1).max(1200);
 const optionalCompactText = z.string().trim().max(1200).optional();
@@ -186,6 +187,33 @@ export function assertRetiredIdsNotReused(
     const reusedLevel = input.levels.find((level) => retiredLevels.has(level.id));
     if (reusedLevel) {
         throw new Error(`"${reusedLevel.label}" reuses a name previously used by a removed level. Choose another.`);
+    }
+}
+
+/**
+ * requireCompleteRubricCells - approval gate ensuring every weighted criterion
+ * carries a points range and a descriptor at every performance level.
+ *
+ * Draft saves are never blocked by this — staff may save a partially filled
+ * grid at any time. Only approval, which is what lets a rubric reach the
+ * feedback engine, requires the grid to be complete.
+ *
+ * @param draft - Candidate rubric draft about to be approved
+ * @throws Error naming how many cells are missing a range or a description
+ */
+export function requireCompleteRubricCells(draft: WritingRubricDefinition): void {
+    let missing = 0;
+    draft.criteria.forEach((criterion) => {
+        if (criterion.points === undefined || criterion.points <= 0) return;
+        draft.levels.forEach((level) => {
+            const band = resolveBand(criterion, level.id, draft.levels);
+            if (!band || !band.descriptor?.trim()) missing += 1;
+        });
+    });
+    if (missing > 0) {
+        throw new Error(
+            `Complete the rubric grid before approving: ${missing} cell${missing === 1 ? '' : 's'} still need${missing === 1 ? 's' : ''} a points range or a description.`
+        );
     }
 }
 

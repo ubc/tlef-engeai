@@ -107,3 +107,31 @@ describe('POST rubric-draft/fill', () => {
         expect(routeIndex).toBeLessThan(approveIndex);
     });
 });
+
+describe('POST rubric-draft/approve completeness gates', () => {
+    // Captures the approve route's full body the same way `fillRouteBody` does above,
+    // so a deleted or renamed route fails this test instead of leaving it silently green.
+    function approveRouteBody(): string | null {
+        const pattern = /router\.post\(\s*'\/:courseId\/writing-feedback\/assignments\/:assignmentId\/rubric-draft\/approve',([\s\S]*?)\nrouter\./;
+        return source.match(pattern)?.[1].trim() ?? null;
+    }
+
+    it('runs the rubric-cell completeness gate for both lenses, unlike the linguistic-only SFL gate', () => {
+        const body = approveRouteBody();
+        expect(body).not.toBeNull();
+        expect(body).toMatch(/requireCompleteRubricCells\(selected\.draft\);/);
+        // The SFL gate stays linguistic-only; the cell-completeness gate must not be
+        // nested inside that same `if (lens === 'linguistic')` branch.
+        expect(body).not.toMatch(/if \(lens === 'linguistic'\) requireCompleteRubricCells/);
+    });
+
+    it('keeps the new gate inside the same try/catch that returns HTTP 400 with a safe error', () => {
+        const body = approveRouteBody();
+        expect(body).not.toBeNull();
+        // The gate call and the 400 response it feeds both sit inside one try/catch;
+        // this pins that the gate throw is what reaches safeError(), not a separate path.
+        expect(body).toMatch(
+            /try \{[\s\S]*?requireCompleteRubricCells\(selected\.draft\);[\s\S]*?\} catch \(error\) \{[\s\S]*?return res\.status\(400\)\.json\(\{ success: false, error: safeError\(error\) \}\);/
+        );
+    });
+});

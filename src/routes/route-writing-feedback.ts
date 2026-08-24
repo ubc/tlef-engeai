@@ -27,6 +27,7 @@ import {
     assertRetiredIdsNotReused,
     buildRubricDraft,
     gradeMappingFromApprovedRubric,
+    requireCompleteRubricCells,
     writingRubricDraftInputSchema
 } from '../writing-feedback/rubric-schema';
 import { requireCompleteSflProfile } from '../writing-feedback/sfl-analysis';
@@ -97,6 +98,7 @@ function safeError(error: unknown): string {
         'Assignment instructions must be text', 'Assignment instructions exceeds',
         'Complete the genre and register profile', 'Confirm the genre and register profile',
         'Add at least one reviewed stage', 'Add task requirements',
+        'Complete the rubric grid before approving',
         'Glossary term is required', 'Glossary definition is required',
         'Glossary term exceeds', 'Glossary definition exceeds'
     ];
@@ -482,6 +484,7 @@ router.post(
         // Promote only the persisted draft version; the delegate rejects concurrent rubric changes.
         try {
             if (lens === 'linguistic') requireCompleteSflProfile(selected.draft.sflContext);
+            requireCompleteRubricCells(selected.draft);
         } catch (error) {
             return res.status(400).json({ success: false, error: safeError(error) });
         }

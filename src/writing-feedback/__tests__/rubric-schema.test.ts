@@ -17,9 +17,11 @@ import {
     assertRetiredIdsNotReused,
     buildRubricDraft,
     gradeMappingFromApprovedRubric,
+    requireCompleteRubricCells,
     writingRubricDraftInputSchema
 } from '../rubric-schema';
 import type { WritingRubricDraftInput } from '../rubric-schema';
+import type { WritingRubricDefinition } from '../contracts';
 
 function inputFromDefault(): WritingRubricDraftInput {
     const rubric = buildDefaultWritingRubric('system', new Date('2026-01-01T00:00:00.000Z'));
@@ -393,5 +395,55 @@ describe('assertRetiredIdsNotReused', () => {
     it('ignores unapproved versions entirely', () => {
         const draft = { ...approved, status: 'draft' as const };
         expect(() => assertRetiredIdsNotReused([draft], input(['anything']))).not.toThrow();
+    });
+});
+
+describe('requireCompleteRubricCells', () => {
+    const baseLevels = [
+        { id: 'weak', label: 'Weak', description: 'd', rank: 1 },
+        { id: 'strong', label: 'Strong', description: 'd', rank: 2 }
+    ];
+
+    function draftWith(cells: Record<string, { min: number; max: number; descriptor?: string }> | undefined): WritingRubricDefinition {
+        return {
+            version: 1,
+            status: 'draft',
+            title: 't',
+            task: 't',
+            audience: 't',
+            purpose: 't',
+            constraints: ['c'],
+            learningOutcomes: ['o'],
+            gradingIntent: 'g',
+            criteria: [{ id: 'crit', label: 'Criterion', description: 'd', points: 10, cells }],
+            levels: baseLevels,
+            updatedAt: new Date(),
+            updatedBy: 'u'
+        };
+    }
+
+    it('rejects a weighted criterion missing a band at some level', () => {
+        expect(() => requireCompleteRubricCells(draftWith({ weak: { min: 0, max: 5, descriptor: 'd' } })))
+            .toThrow(/points range or a description/);
+    });
+
+    it('rejects a weighted criterion with a band but no descriptor', () => {
+        expect(() => requireCompleteRubricCells(draftWith({
+            weak: { min: 0, max: 5, descriptor: 'd' },
+            strong: { min: 6, max: 10 }
+        }))).toThrow(/points range or a description/);
+    });
+
+    it('accepts a fully described weighted criterion', () => {
+        expect(() => requireCompleteRubricCells(draftWith({
+            weak: { min: 0, max: 5, descriptor: 'd1' },
+            strong: { min: 6, max: 10, descriptor: 'd2' }
+        }))).not.toThrow();
+    });
+
+    it('ignores a criterion with no weight', () => {
+        const draft = draftWith(undefined);
+        draft.criteria[0]!.points = undefined;
+        expect(() => requireCompleteRubricCells(draft)).not.toThrow();
     });
 });
