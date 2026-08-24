@@ -30,7 +30,8 @@ import {
     MIN_LEVELS,
     RUBRIC_SLUG,
     parseBand,
-    renderRubricGrid
+    renderRubricGrid,
+    slugFromLabel
 } from './writing-feedback-grid.js';
 import {
     Assignment,
@@ -41,11 +42,13 @@ import {
     RubricResponse,
     SflContextProfile,
     SflGenreProfileState,
+    SflStage,
     WfFunctionTag,
     WritingFeedbackLens,
     chip,
     confirmDiscardDirty,
     createButton,
+    createIconButton,
     createText,
     disclosureHeader,
     element,
@@ -157,6 +160,229 @@ function selectControl(options: Array<{ value: string; label: string }>, current
         select.append(item);
     });
     return select;
+}
+
+/** One field in the genre/register profile: plain label, optional SFL hint, and its control. */
+interface SflFieldSpec {
+    label: string;
+    hint?: string;
+    control: RubricControl;
+    wide?: boolean;
+}
+
+/**
+ * sflField - builds one genre-profile field with a plain label and an optional SFL hint line
+ *
+ * Mirrors {@link field} but appends the hint as a `.wf-sfl-hint` line under the control
+ * instead of as a `<small>` sibling, and never puts SFL terminology in the label itself.
+ *
+ * @param spec - Label, optional hint, and control for this field
+ * @returns Detached field wrapper
+ */
+function sflField(spec: SflFieldSpec): HTMLDivElement {
+    const wrapper = field(spec.label, spec.control, undefined, spec.wide);
+    if (spec.hint) wrapper.append(createText('small', spec.hint, 'wf-sfl-hint'));
+    return wrapper;
+}
+
+/**
+ * renderSflProfileBox - the genre and register profile as its own collapsible sub-section
+ *
+ * Plain-language labels are primary; the SFL term (Field, Tenor, Mode, embedded genres)
+ * appears only as a hint line, and the internal `genreId` is never shown (D-066, D-073).
+ * Stages use {@link renderStageRepeater} instead of a delimited textarea.
+ *
+ * @param sflContext - Current profile values, or undefined for a brand-new draft
+ * @param canEdit - Whether the current staff user may modify the profile
+ * @param onInput - Dirty-tracking handler shared with the rest of the details form
+ * @returns Detached sub-box; its controls are named `sfl.*` and read by {@link collectSflContext}
+ */
+function renderSflProfileBox(
+    sflContext: SflContextProfile | undefined,
+    canEdit: boolean,
+    onInput: () => void
+): HTMLDivElement {
+    const complete = Boolean(
+        sflContext
+        && sflContext.genreState !== 'needs_staff_input'
+        && sflContext.genreLabel && sflContext.field && sflContext.tenor && sflContext.mode
+        && sflContext.actualEvaluator && sflContext.productionConditions
+        && sflContext.stages.length
+    );
+
+    const outer = document.createElement('div');
+    outer.className = 'wf-field wf-field--wide';
+
+    const box = document.createElement('div');
+    box.className = 'wf-sfl-box';
+    const body = document.createElement('div');
+    body.className = 'wf-sfl-box-body';
+
+    const title = createText('h3', 'Genre and register profile', 'wf-section-title');
+    const statusChip = chip(complete ? 'Ready' : 'Needs your input', complete ? 'green' : 'amber');
+    const header = disclosureHeader([title, statusChip], body, `wf-sfl-box-body-${crypto.randomUUID()}`, !complete, 'wf-sfl-box-header');
+
+    body.append(createText('p', 'Genre or document type', 'wf-sfl-group-label'));
+    const genreLabelControl = namedControl(inputControl(sflContext?.genreLabel ?? 'Custom assignment genre'), 'sfl.genreLabel');
+    const genreStateControl = namedControl(selectControl(GENRE_STATE_OPTIONS, sflContext?.genreState ?? 'custom'), 'sfl.genreState');
+    body.append(sflField({ label: 'Genre or document type', control: genreLabelControl, wide: true }));
+    body.append(sflField({ label: 'Profile status', control: genreStateControl, wide: true }));
+
+    body.append(createText('p', 'What the writing is', 'wf-sfl-group-label'));
+    const fieldControl = namedControl(textAreaControl(sflContext?.field ?? '', 2), 'sfl.field');
+    const tenorControl = namedControl(textAreaControl(sflContext?.tenor ?? '', 2), 'sfl.tenor');
+    body.append(sflField({
+        label: 'Subject matter', control: fieldControl,
+        hint: 'SFL: Field — what the writing is about and what activity it serves'
+    }));
+    body.append(sflField({
+        label: 'Reader relationship', control: tenorControl,
+        hint: 'SFL: Tenor — the relationship between writer and reader, and the stance expected'
+    }));
+
+    body.append(createText('p', 'How it is produced', 'wf-sfl-group-label'));
+    const modeControl = namedControl(textAreaControl(sflContext?.mode ?? '', 2), 'sfl.mode');
+    const evaluatorControl = namedControl(textAreaControl(sflContext?.actualEvaluator ?? 'Instructor or teaching assistant.', 1), 'sfl.actualEvaluator');
+    const productionControl = namedControl(textAreaControl(sflContext?.productionConditions ?? '', 2), 'sfl.productionConditions');
+    body.append(sflField({
+        label: 'Format and conditions', control: modeControl,
+        hint: 'SFL: Mode — channel, length, and how the writing is prepared'
+    }));
+    body.append(sflField({ label: 'Who marks it', control: evaluatorControl }));
+    body.append(sflField({
+        label: 'Writing conditions', control: productionControl,
+        hint: 'Timed, take-home, collaborative, or resource-supported'
+    }));
+
+    body.append(createText('p', 'How it is built', 'wf-sfl-group-label'));
+    body.append(renderStageRepeater(sflContext?.stages ?? [], canEdit, onInput));
+    const embeddedGenres = namedControl(textAreaControl((sflContext?.embeddedGenres ?? []).join('\n'), 2), 'sfl.embeddedGenres');
+    embeddedGenres.placeholder = 'One per line';
+    const taskRequirements = namedControl(textAreaControl((sflContext?.taskRequirements ?? []).join('\n'), 3), 'sfl.taskRequirements');
+    taskRequirements.placeholder = 'One explicit task object per line';
+    const glossaryTerms = namedControl(textAreaControl((sflContext?.approvedGlossaryTerms ?? []).join('\n'), 2), 'sfl.approvedGlossaryTerms');
+    glossaryTerms.placeholder = 'Optional, one per line';
+    body.append(sflField({
+        label: 'Genres inside it', control: embeddedGenres,
+        hint: 'SFL: Embedded genres — e.g. a data commentary inside a lab report'
+    }));
+    body.append(sflField({ label: 'Things the task explicitly requires', control: taskRequirements }));
+    body.append(sflField({ label: 'Course glossary terms', control: glossaryTerms, hint: 'Optional' }));
+
+    [genreLabelControl, fieldControl, tenorControl, modeControl, evaluatorControl, productionControl,
+        embeddedGenres, taskRequirements, glossaryTerms].forEach((control) => bindTextControl(control, canEdit, onInput));
+    setEditable(genreStateControl, canEdit);
+    genreStateControl.addEventListener('change', onInput);
+
+    box.append(header, body);
+    outer.append(box);
+    return outer;
+}
+
+/**
+ * renderStageRepeater - editable list of assignment stages, replacing the old
+ * pipe-delimited textarea with real add/remove/reorder controls
+ *
+ * Each row writes two hidden-in-plain-sight named controls,
+ * `sfl.stage.{n}.label` and `sfl.stage.{n}.purpose`, that {@link readStageRepeaterRows}
+ * reads back on save. Stage ids are derived from the label the same way criterion
+ * ids are derived, via {@link slugFromLabel}, and are never shown to staff.
+ *
+ * @param initialStages - Stages already on the draft, in order
+ * @param canEdit - Whether the current staff user may modify the profile
+ * @param onInput - Dirty-tracking handler shared with the rest of the details form
+ * @returns Detached field wrapper containing the repeater
+ */
+function renderStageRepeater(
+    initialStages: SflStage[],
+    canEdit: boolean,
+    onInput: () => void
+): HTMLDivElement {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'wf-field wf-field--wide';
+    const labelEl = document.createElement('label');
+    labelEl.textContent = 'Stages';
+    wrapper.append(labelEl);
+
+    const list = document.createElement('div');
+    list.className = 'wf-stage-repeater';
+    wrapper.append(list);
+
+    const rows: Array<{ id: string; nameLabel: HTMLInputElement; purpose: HTMLTextAreaElement }> = [];
+
+    const renumber = (): void => {
+        list.replaceChildren();
+        rows.forEach((row, index) => {
+            row.nameLabel.name = `sfl.stage.${index}.label`;
+            row.purpose.name = `sfl.stage.${index}.purpose`;
+            const rowEl = document.createElement('div');
+            rowEl.className = 'wf-stage-row';
+            rowEl.append(row.nameLabel, row.purpose);
+            if (canEdit) {
+                const remove = createIconButton('trash-2', `Remove stage ${row.nameLabel.value || index + 1}`, 'danger', async () => {
+                    const at = rows.indexOf(row);
+                    if (at === -1) return;
+                    rows.splice(at, 1);
+                    renumber();
+                    onInput();
+                });
+                rowEl.append(remove);
+            }
+            list.append(rowEl);
+        });
+    };
+
+    const addRow = (label: string, purpose: string): void => {
+        const nameLabel = document.createElement('input');
+        nameLabel.type = 'text';
+        nameLabel.value = label;
+        nameLabel.placeholder = 'Stage name';
+        nameLabel.readOnly = !canEdit;
+        nameLabel.addEventListener('input', onInput);
+        const purposeControl = document.createElement('textarea');
+        purposeControl.value = purpose;
+        purposeControl.rows = 1;
+        purposeControl.placeholder = 'What this stage should accomplish';
+        purposeControl.readOnly = !canEdit;
+        purposeControl.addEventListener('input', onInput);
+        rows.push({ id: crypto.randomUUID(), nameLabel, purpose: purposeControl });
+        renumber();
+    };
+
+    (initialStages.length ? initialStages : [{ id: 'main_response', label: 'Main response', purpose: '', required: true, order: 1 }])
+        .forEach((stage) => addRow(stage.label, stage.purpose));
+
+    if (canEdit) {
+        const addButton = createButton('Add stage', 'secondary', async () => {
+            addRow('', '');
+            onInput();
+        });
+        wrapper.append(addButton);
+    }
+
+    return wrapper;
+}
+
+/**
+ * readStageRepeaterRows - reads the stage repeater's controls back into stage values
+ *
+ * @param form - Details form owning the repeater
+ * @returns Stages in row order, with ids derived from each label via {@link slugFromLabel}
+ */
+function readStageRepeaterRows(form: HTMLFormElement): SflStage[] {
+    const stages: SflStage[] = [];
+    const usedIds = new Set<string>();
+    for (let index = 0; ; index += 1) {
+        const label = optionalControlValue(form, `sfl.stage.${index}.label`);
+        if (label === undefined) break;
+        const purpose = optionalControlValue(form, `sfl.stage.${index}.purpose`) ?? '';
+        if (!label.trim()) continue;
+        let id = slugFromLabel(label) || `stage_${index + 1}`;
+        while (usedIds.has(id)) id = `${id}_${index + 1}`;
+        usedIds.add(id);
+        stages.push({ id, label, purpose, required: true, order: stages.length + 1 });
+    }
+    return stages;
 }
 
 function setEditable(control: RubricControl, editable: boolean): void {
@@ -370,7 +596,11 @@ function collectAssignmentDetails(form: HTMLFormElement): AssignmentDetailsInput
     };
 }
 
-function collectSflContext(form: HTMLFormElement, details: AssignmentDetailsInput): SflContextProfile {
+function collectSflContext(
+    form: HTMLFormElement,
+    details: AssignmentDetailsInput,
+    previousGenreId: string | undefined
+): SflContextProfile {
     const genreLabel = rubricTextValue(form, 'sfl.genreLabel');
     const fieldValue = rubricTextValue(form, 'sfl.field');
     const tenor = rubricTextValue(form, 'sfl.tenor');
@@ -378,20 +608,12 @@ function collectSflContext(form: HTMLFormElement, details: AssignmentDetailsInpu
     const actualEvaluator = rubricTextValue(form, 'sfl.actualEvaluator');
     const productionConditions = rubricTextValue(form, 'sfl.productionConditions');
     if ([genreLabel, fieldValue, tenor, mode, actualEvaluator, productionConditions].some((value) => !value)) {
-        throw new Error('Complete the SFL assignment profile before saving.');
+        throw new Error('Complete the genre and register profile before saving.');
     }
-    const stages = rubricLines(form, 'sfl.stages').map((line, index) => {
-        const parts = line.split('|').map((part) => part.trim());
-        const rawId = parts.length >= 3 ? parts[0] : '';
-        const label = parts.length >= 3 ? parts[1] : parts[0];
-        const purpose = parts.length >= 3 ? parts.slice(2).join(' | ') : (parts[1] || label);
-        const idSource = rawId || label || `stage_${index + 1}`;
-        const id = idSource.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || `stage_${index + 1}`;
-        return { id, label, purpose, required: true, order: index + 1 };
-    });
-    if (!stages.length) throw new Error('Add at least one reviewed SFL stage before saving.');
+    const stages = readStageRepeaterRows(form);
+    if (!stages.length) throw new Error('Add at least one reviewed stage before saving.');
     return {
-        genreId: rubricTextValue(form, 'sfl.genreId') || undefined,
+        genreId: previousGenreId,
         genreLabel,
         genreState: (rubricTextValue(form, 'sfl.genreState') || 'custom') as SflGenreProfileState,
         task: details.task,
@@ -901,41 +1123,7 @@ function renderAssignmentDetails(
         grid.append(wrapper);
     });
 
-    const sflContext = draft.sflContext;
-    const stageLines = (sflContext?.stages ?? []).map((stage) =>
-        `${stage.id} | ${stage.label} | ${stage.purpose}`
-    );
-    const sflStages = namedControl(textAreaControl(stageLines.join('\n'), 5), 'sfl.stages');
-    sflStages.placeholder = 'stage_id | Stage label | What this stage should accomplish';
-    const embeddedGenres = namedControl(textAreaControl((sflContext?.embeddedGenres ?? []).join('\n'), 3), 'sfl.embeddedGenres');
-    embeddedGenres.placeholder = 'One per line';
-    const taskRequirements = namedControl(textAreaControl((sflContext?.taskRequirements ?? draft.constraints).join('\n'), 4), 'sfl.taskRequirements');
-    taskRequirements.placeholder = 'One explicit task object per line';
-    const glossaryTerms = namedControl(textAreaControl((sflContext?.approvedGlossaryTerms ?? []).join('\n'), 3), 'sfl.approvedGlossaryTerms');
-    glossaryTerms.placeholder = 'Optional, one per line';
-    const sflControls: Array<{ label: string; control: RubricControl; help?: string; wide?: boolean }> = [
-        { label: 'Genre or document type', control: namedControl(inputControl(sflContext?.genreLabel ?? 'Custom assignment genre'), 'sfl.genreLabel') },
-        { label: 'Profile state', control: namedControl(selectControl(GENRE_STATE_OPTIONS, sflContext?.genreState ?? 'custom'), 'sfl.genreState') },
-        { label: 'Genre id', control: namedControl(inputControl(sflContext?.genreId ?? 'custom'), 'sfl.genreId') },
-        { label: 'Field', control: namedControl(textAreaControl(sflContext?.field ?? '', 3), 'sfl.field') },
-        { label: 'Tenor', control: namedControl(textAreaControl(sflContext?.tenor ?? '', 3), 'sfl.tenor') },
-        { label: 'Mode', control: namedControl(textAreaControl(sflContext?.mode ?? '', 3), 'sfl.mode') },
-        { label: 'Actual evaluator', control: namedControl(textAreaControl(sflContext?.actualEvaluator ?? 'Instructor or teaching assistant.', 2), 'sfl.actualEvaluator') },
-        { label: 'Production conditions', control: namedControl(textAreaControl(sflContext?.productionConditions ?? '', 3), 'sfl.productionConditions') },
-        { label: 'Stages', control: sflStages, help: 'One per line: id | label | purpose.', wide: true },
-        { label: 'Embedded genres', control: embeddedGenres },
-        { label: 'Task requirements for analysis', control: taskRequirements },
-        { label: 'Approved glossary terms', control: glossaryTerms }
-    ];
-    sflControls.forEach((entry) => {
-        if (entry.control instanceof HTMLSelectElement) {
-            setEditable(entry.control, options.canEdit);
-            entry.control.addEventListener('change', options.onInput);
-        } else {
-            bindTextControl(entry.control, options.canEdit, options.onInput);
-        }
-        grid.append(field(entry.label, entry.control, entry.help, entry.wide));
-    });
+    grid.append(renderSflProfileBox(draft.sflContext, options.canEdit, options.onInput));
 
     // The lab handout is versioned and approval-gated on the technical rubric,
     // so it is edited here but never sent with the writing rubric.
@@ -1001,7 +1189,11 @@ function renderAssignmentDetails(
  */
 async function saveAssignmentRubrics(context: RubricPageContext): Promise<void> {
     const details = collectAssignmentDetails(context.detailsForm);
-    const sflContext = collectSflContext(context.detailsForm, details);
+    const sflContext = collectSflContext(
+        context.detailsForm,
+        details,
+        context.sections.find((section) => section.lens === 'linguistic')?.working.sflContext?.genreId
+    );
     const labContext = rubricTextValue(context.detailsForm, 'labContext').slice(0, MAX_LAB_CONTEXT) || undefined;
 
     // Validate every rubric before writing any of them. Validating inside the write

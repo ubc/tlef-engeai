@@ -1024,6 +1024,54 @@
     margin-bottom: 0;
 }
 
+.wf-sfl-box {
+    margin: 16px 0 0;
+    background: var(--background-2);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.wf-sfl-box-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    padding: 10px 16px;
+    cursor: pointer;
+}
+
+.wf-sfl-box-header .wf-section-title {
+    flex: 1 1 auto;
+    margin: 0;
+    font-size: 15px;
+}
+
+.wf-sfl-box-body {
+    padding: 4px 16px 16px;
+}
+
+.wf-sfl-group-label {
+    margin: 14px 0 6px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.wf-sfl-group-label:first-child {
+    margin-top: 0;
+}
+
+.wf-sfl-hint {
+    display: block;
+    margin-top: 4px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.4;
+}
+
 .wf-rubric-library-select {
     min-height: 40px;
     min-width: min(100%, 16rem);
