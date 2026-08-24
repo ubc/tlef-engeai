@@ -56,6 +56,9 @@ import * as InstructorPeriodAllowanceMongo from './mongo/instructor-period-allow
 // @rdschrs: Implemented the Writing Feedback persistence façade and delegate boundary.
 import * as WritingFeedbackMongo from './mongo/writing-feedback-mongo';
 import type {
+    CanvasAssignmentDetails,
+    CanvasImportedRubric,
+    CanvasRubricRow,
     StaffReviewRevision,
     WritingFeedbackRun,
     WritingJob,
@@ -230,6 +233,41 @@ export class EngEAI_MongoDB {
         title: string,
         dueAt?: Date
     ) => WritingFeedbackMongo.createCanvasWritingAssignment(this.ctx(), courseId, canvasAssignmentId, title, dueAt);
+
+    /**
+     * saveCanvasAssignmentContext — stores the rubric and brief imported from Canvas.
+     *
+     * Preserves any instructor-chosen SFL lens across a re-import. Never alters the approved
+     * rubric that governs generation.
+     *
+     * @param courseId - Owning course id
+     * @param assignmentId - Local assignment id
+     * @param context - Imported rubric (`null` when Canvas has none) and assignment details
+     * @returns Updated assignment or `null`
+     */
+    public saveCanvasAssignmentContext = async (
+        courseId: string,
+        assignmentId: string,
+        context: { rubric: CanvasImportedRubric | null; details: CanvasAssignmentDetails }
+    ) => WritingFeedbackMongo.saveCanvasAssignmentContext(this.ctx(), courseId, assignmentId, context);
+
+    /**
+     * updateCanvasRubricCells — saves staff edits to an imported rubric's cell text and lenses.
+     *
+     * Row structure is taken from storage, not the request, so rows cannot be added or removed.
+     *
+     * @param courseId - Owning course id
+     * @param assignmentId - Local assignment id
+     * @param rows - Edited rows keyed by Canvas criterion id
+     * @param actorUserId - Roster userId of the editing staff member
+     * @returns Updated assignment or `null`
+     */
+    public updateCanvasRubricCells = async (
+        courseId: string,
+        assignmentId: string,
+        rows: CanvasRubricRow[],
+        actorUserId: string
+    ) => WritingFeedbackMongo.updateCanvasRubricCells(this.ctx(), courseId, assignmentId, rows, actorUserId);
 
     /**
      * createManualWritingAssignment — persists a staff-created local assignment.

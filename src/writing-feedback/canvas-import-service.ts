@@ -17,6 +17,7 @@
  */
 
 import { createHash } from 'crypto';
+import { appLogger } from '../utils/logger';
 import type {
     CanvasImportAssignmentSummary,
     CanvasImportGateway,
@@ -314,6 +315,22 @@ export class SafeCanvasImportService {
         const integration = status.integration;
         const target = await this.store.getWritingAssignment(input.courseId, input.targetAssignmentId);
         if (!target) throw new Error('Writing assignment not found');
+
+        // Pull the source rubric and brief before any submission is written, so a staff member
+        // reviewing the first import already has the assessment context beside the work. A
+        // failure here must not lose the submissions: the rubric is reference material in this
+        // phase and nothing downstream reads it, so the import continues without it.
+        if (this.gateway.loadAssignmentContext && this.store.saveCanvasAssignmentContext) {
+            try {
+                const context = await this.gateway.loadAssignmentContext(input.canvasAssignmentId);
+                await this.store.saveCanvasAssignmentContext(input.courseId, input.targetAssignmentId, context);
+            } catch (error) {
+                // Message only — a Canvas payload can carry assignment text.
+                appLogger.error('[WritingFeedback] Canvas rubric/details import failed:', {
+                    message: error instanceof Error ? error.message : 'unknown'
+                });
+            }
+        }
 
         // Snapshot existing attempts before writes to make ordinary retries inexpensive.
         const preview = await this.previewAssignment(input.canvasAssignmentId);

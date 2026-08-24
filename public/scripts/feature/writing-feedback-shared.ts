@@ -276,6 +276,52 @@ export interface CanvasImportResult {
     rubricImport: 'not_imported'; // explicit guarantee that Canvas rubric data was not activated
 }
 
+/** One rating (column) of an imported Canvas rubric row. */
+export interface CanvasRubricRating {
+    canvasRatingId: string; // Canvas rating key used to address this cell on save
+    label: string; // short rating name, e.g. "Full Marks"
+    description: string; // performance descriptor for this rating
+    points?: number; // Canvas points for this rating; displayed, never used to grade
+}
+
+/** One criterion (row) of an imported Canvas rubric, mirroring Canvas exactly. */
+export interface CanvasRubricRow {
+    canvasCriterionId: string; // Canvas criterion key used to address this row on save
+    label: string; // row name, e.g. "Thesis"
+    description: string; // fuller explanation of the row
+    points?: number; // Canvas per-criterion weight; displayed only, never applied to grading
+    ratings: CanvasRubricRating[]; // this row's own ratings; counts may differ between rows
+}
+
+/** A rubric authored in Canvas and imported for staff review. */
+export interface CanvasImportedRubric {
+    canvasRubricId?: string; // Canvas rubric identifier when reported
+    title: string; // rubric title as Canvas names it
+    pointsPossible?: number; // Canvas rubric total; display only
+    rows: CanvasRubricRow[]; // criteria in Canvas order
+    importedAt: string; // first import timestamp
+    updatedAt: string; // latest staff edit timestamp
+    updatedBy?: string; // roster userId of the last editor
+}
+
+/** Assignment brief imported from Canvas; reference material for staff. */
+export interface CanvasAssignmentDetails {
+    descriptionHtml?: string; // Canvas rich-editor HTML as delivered
+    descriptionText?: string; // plain-text rendering shown to staff
+    pointsPossible?: number; // Canvas assignment points
+    dueAt?: string; // Canvas due date at import time
+    importedAt: string; // when the brief was pulled
+}
+
+/** Imported rubric payload plus the state the workspace must be explicit about. */
+export interface CanvasRubricResponse {
+    rubric: CanvasImportedRubric | null; // null when the Canvas assignment had no rubric
+    details: CanvasAssignmentDetails | null; // imported brief, when present
+    /** Always false in this phase: the approved A2 rubric still drives feedback generation. */
+    governsGeneration: boolean;
+    permissions: { canEdit: boolean }; // instructor/admin only; TAs read-only
+}
+
 /** Staff-facing text for each submission lifecycle state. */
 export const STATUS_LABELS: Record<SubmissionStatus, string> = {
     imported: 'Imported',

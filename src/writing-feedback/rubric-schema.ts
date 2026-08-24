@@ -127,3 +127,29 @@ export function gradeMappingFromApprovedRubric(
     }
     return mapping;
 }
+
+/**
+ * Staff edits to an imported Canvas rubric's cells.
+ *
+ * Structure is deliberately absent from this contract. Rows and ratings are addressed by their
+ * Canvas ids and reconciled against what is stored, so this payload cannot add, remove, or
+ * reorder a row — the rubric's shape belongs to Canvas, and the instructor changes it there.
+ * Only cell text travels here.
+ *
+ * Cell text may be blank: a Canvas rubric routinely leaves `long_description` empty, and
+ * rejecting that would make otherwise valid rubrics uneditable.
+ */
+export const canvasRubricEditInputSchema = z.object({
+    rows: z.array(z.object({
+        canvasCriterionId: z.string().trim().min(1).max(120),
+        label: z.string().trim().min(1).max(200),
+        description: z.string().trim().max(1200),
+        ratings: z.array(z.object({
+            canvasRatingId: z.string().trim().min(1).max(120),
+            label: z.string().trim().max(200),
+            description: z.string().trim().max(1200)
+        })).max(20)
+    })).min(1).max(40)
+});
+
+export type CanvasRubricEditInput = z.infer<typeof canvasRubricEditInputSchema>;

@@ -19,7 +19,7 @@ import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { LocalDocumentExtractionService } from '../writing-feedback/document-extraction-service';
 import { WritingFeedbackService } from '../writing-feedback/writing-feedback-service';
 import { MockCanvasGateway, SafeCanvasReleaseService } from '../writing-feedback/canvas-release-service';
-import type { WritingSourceType } from '../writing-feedback/contracts';
+import type { CanvasRubricRow, WritingSourceType } from '../writing-feedback/contracts';
 import { SafeCanvasImportService } from '../writing-feedback/canvas-import-service';
 import {
     isLiveCanvasCourse,
@@ -32,6 +32,7 @@ import { anchoredCommentsInputSchema } from '../writing-feedback/anchored-commen
 import {
     approveRubricDraft,
     buildRubricDraft,
+    canvasRubricEditInputSchema,
     gradeMappingFromApprovedRubric,
     writingRubricDraftInputSchema
 } from '../writing-feedback/rubric-schema';
@@ -68,7 +69,8 @@ function safeError(error: unknown): string {
         'An approved rubric is required', 'Rubric changed after feedback generation',
         'Generate feedback before staff approval',
         'Feedback comments no longer match', 'Feedback comments failed validation',
-        'Assignment title is required', 'Assignment deadline is invalid'
+        'Assignment title is required', 'Assignment deadline is invalid',
+        'Canvas rubric rows cannot be added or removed', 'Rubric edit failed validation'
     ];
     return safePrefixes.some((prefix) => message.startsWith(prefix))
         ? message
@@ -215,14 +217,91 @@ router.post('/:courseId/writing-feedback/canvas/import', withCanvasClientWhenLin
             targetAssignmentId: target.id,
             canvasAssignmentId
         });
+        // Re-read: importAssignment stores the Canvas rubric and brief on the assignment, so
+        // the copy fetched before the import no longer reflects it.
+        const imported = await mongo.getWritingAssignment(courseId(req), target.id) ?? target;
         res.status(existing ? 200 : 201).json({
             success: true,
-            data: { ...result, targetAssignment: target, rubricImport: 'not_imported' }
+            data: {
+                ...result,
+                targetAssignment: imported,
+                // The Canvas rubric is imported for staff review and editing, and explicitly
+                // does not govern generation in this phase — `imported.rubric` still does.
+                rubricImport: imported.canvasRubric ? 'reference_only' : 'no_canvas_rubric'
+            }
         });
     } catch (error) {
         res.status(400).json({ success: false, error: safeError(error) });
     }
 }));
+
+/**
+ * @route GET /:courseId/writing-feedback/assignments/:assignmentId/canvas-rubric
+ * @description The rubric and brief imported from Canvas, mirroring the Canvas rubric.
+ * @access Any course staff; editing is instructor/admin only, reported as `canEdit`.
+ */
+router.get('/:courseId/writing-feedback/assignments/:assignmentId/canvas-rubric', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    const mongo = await EngEAI_MongoDB.getInstance();
+    const assignment = await mongo.getWritingAssignment(courseId(req), String(req.params.assignmentId));
+    if (!assignment) return res.status(404).json({ success: false, error: 'Writing assignment not found' });
+    const currentCourse = await mongo.getActiveCourse(courseId(req));
+    const globalUser = (req.session as any).globalUser;
+    res.json({
+        success: true,
+        data: {
+            rubric: assignment.canvasRubric ?? null,
+            details: assignment.canvasDetails ?? null,
+            // States plainly that this rubric is reference material, so the workspace never
+            // implies feedback was generated against it.
+            governsGeneration: false,
+            permissions: {
+                canEdit: Boolean(currentCourse && canManageCourseRoster(currentCourse, globalUser))
+            }
+        }
+    });
+}));
+
+/**
+ * @route PUT /:courseId/writing-feedback/assignments/:assignmentId/canvas-rubric
+ * @description Saves staff edits to imported rubric cell text.
+ * @access Instructors/admins only; TAs have read-only rubric access.
+ *
+ * Rows cannot be added or removed here. The persistence layer rebuilds from the stored rows and
+ * rejects any Canvas criterion id it does not already hold, so the rubric's shape stays the one
+ * Canvas defined.
+ */
+router.put(
+    '/:courseId/writing-feedback/assignments/:assignmentId/canvas-rubric',
+    requireRosterManageAPI(['params']),
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        try {
+            const parsed = canvasRubricEditInputSchema.safeParse(req.body);
+            if (!parsed.success) {
+                return res.status(400).json({ success: false, error: 'Rubric edit failed validation' });
+            }
+            const globalUser = (req.session as any).globalUser;
+            const mongo = await EngEAI_MongoDB.getInstance();
+            const updated = await mongo.updateCanvasRubricCells(
+                courseId(req),
+                String(req.params.assignmentId),
+                parsed.data.rows as CanvasRubricRow[],
+                globalUser?.userId ?? 'unknown'
+            );
+            if (!updated?.canvasRubric) {
+                return res.status(404).json({ success: false, error: 'Canvas rubric not found' });
+            }
+            res.json({
+                success: true,
+                data: {
+                    rubric: updated.canvasRubric,
+                    governsGeneration: false
+                }
+            });
+        } catch (error) {
+            res.status(400).json({ success: false, error: safeError(error) });
+        }
+    })
+);
 
 router.get('/:courseId/writing-feedback/assignments/:assignmentId/rubric', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     const mongo = await EngEAI_MongoDB.getInstance();

@@ -18,6 +18,8 @@ import { showConfirmModal } from '../ui/modal-overlay.js';
 import { showSuccessToast } from '../ui/toast-notification.js';
 import {
     Assignment,
+    CanvasRubricResponse,
+    CanvasRubricRow,
     RubricDefinition,
     RubricResponse,
     chip,
@@ -101,8 +103,80 @@ function collectRubric(form: HTMLFormElement, source: RubricDefinition): Omit<Ru
     };
 }
 
+/**
+ * canvasCellValue - reads one imported-rubric cell by control name
+ *
+ * The imported grid sits inside the rubric editor's form and so cannot be a form of its own,
+ * which rules out `form.elements`. Names are generated here rather than supplied, so a plain
+ * attribute selector is a safe lookup.
+ *
+ * @param container - Element wrapping the imported grid
+ * @param name - Generated control name, e.g. `row.0.label`
+ * @returns Trimmed control value, or an empty string when the control is absent
+ */
+function canvasCellValue(container: HTMLElement, name: string): string {
+    const control = container.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="${name}"]`);
+    return control?.value.trim() ?? '';
+}
+
 function namedControl<T extends HTMLInputElement | HTMLTextAreaElement>(control: T, name: string): T {
     control.name = name;
+    return control;
+}
+
+/**
+ * autoGrow - keeps a textarea exactly as tall as the text it holds
+ *
+ * Imported Canvas descriptors are frequently empty, so a fixed multi-row box would
+ * spend most of the grid on nothing. Height is measured rather than declared because
+ * scrollHeight is the only reliable source for the wrapped line count.
+ *
+ * @param textarea - Control to size against its own content
+ */
+function autoGrow(textarea: HTMLTextAreaElement): void {
+    const fit = (): void => {
+        textarea.style.height = 'auto';
+        // A control inside a hidden container reports no scroll height. Keeping the natural
+        // row height there is the safe failure: too short beats collapsed to nothing.
+        if (textarea.scrollHeight > 0) textarea.style.height = `${textarea.scrollHeight}px`;
+    };
+    textarea.addEventListener('input', fit);
+    textarea.addEventListener('focus', fit);
+    // scrollHeight reads 0 until the control has been laid out, so the first fit waits a frame.
+    requestAnimationFrame(fit);
+}
+
+/**
+ * quietField - builds a grid control that reads as text until it is hovered or focused
+ *
+ * The imported grid is scanned far more often than it is edited, so borders and labels
+ * would bury the rubric under form chrome. The control stays a real named form element
+ * so the save handler keeps addressing it by name, and carries its own accessible name
+ * because the visible label is the column header rather than per-control text.
+ *
+ * @param control - Detached input or textarea to place in the grid
+ * @param name - Form element name the save handler reads back
+ * @param ariaLabel - Accessible name replacing the omitted visible label
+ * @param readOnly - True when the viewer may not edit the imported rubric
+ * @param modifier - Optional presentation modifier class
+ * @returns The same control, named, labelled, and styled for the grid
+ */
+function quietField<T extends HTMLInputElement | HTMLTextAreaElement>(
+    control: T,
+    name: string,
+    ariaLabel: string,
+    readOnly: boolean,
+    modifier?: string
+): T {
+    namedControl(control, name);
+    control.className = `wf-quiet-field${modifier ? ` ${modifier}` : ''}`;
+    control.setAttribute('aria-label', ariaLabel);
+    // Read-only staff keep the same grid rather than a second render path; the control
+    // simply refuses input instead of collecting edits that have nowhere to be saved.
+    control.readOnly = readOnly;
+    // A one-row textarea would clip any descriptor that wraps, so multiline controls track
+    // their own content height instead of being given a fixed row count.
+    if (control instanceof HTMLTextAreaElement) autoGrow(control);
     return control;
 }
 
@@ -152,18 +226,26 @@ export async function openRubricPage(assignmentId: string): Promise<void> {
     if (!state.assignments.length) state.assignments = await request<Assignment[]>('/assignments');
     const assignment = state.assignments.find((item) => item.id === assignmentId);
     if (!assignment) throw new Error('Writing assignment not found');
-    const data = await request<RubricResponse>(`/assignments/${encodeURIComponent(assignmentId)}/rubric`);
-    renderRubricPage(root, assignment, data);
+    const [data, canvas] = await Promise.all([
+        request<RubricResponse>(`/assignments/${encodeURIComponent(assignmentId)}/rubric`),
+        request<CanvasRubricResponse>(`/assignments/${encodeURIComponent(assignmentId)}/canvas-rubric`)
+    ]);
+    renderRubricPage(root, assignment, data, canvas);
 }
 
-function renderRubricPage(root: HTMLDivElement, assignment: Assignment, data: RubricResponse): void {
+function renderRubricPage(
+    root: HTMLDivElement,
+    assignment: Assignment,
+    data: RubricResponse,
+    canvas: CanvasRubricResponse
+): void {
     root.replaceChildren();
     // A saved draft is the editable source when present, but the approved
     // definition remains the generation/release source until explicit approval.
     const source = data.draft ?? data.approved;
     const canEdit = data.permissions.canEdit;
 
-    const back = createButton('Back to assignments', 'quiet', async () => {
+    const back = createButton('← Back to assignments', 'quiet', async () => {
         if (!(await confirmDiscardDirty('setup'))) return;
         state.panelDirty = false;
         await views.showLanding();
@@ -184,6 +266,8 @@ function renderRubricPage(root: HTMLDivElement, assignment: Assignment, data: Ru
     header.append(heading, meta);
     root.append(header);
 
+    // Rubric state leads the page, above both rubrics, so the draft/approved position is read
+    // before either editor rather than found partway down.
     const status = document.createElement('div');
     status.className = `wf-callout${data.draft ? ' wf-callout--warning' : ' wf-callout--success'}`;
     status.append(
@@ -196,6 +280,15 @@ function renderRubricPage(root: HTMLDivElement, assignment: Assignment, data: Ru
         )
     );
     root.append(status);
+
+    // The instructor's real rubric leads, at full width rather than inside the editor column.
+    // Neither rubric gets an invented section heading: each already carries its own name, and a
+    // label describing which one drives generation would expire once both do. The regions still
+    // need accessible names so assistive technology can tell two rubric editors apart.
+    root.append(renderCanvasRubricSection(assignment, canvas));
+    const engeAiRubric = document.createElement('section');
+    engeAiRubric.setAttribute('aria-label', 'Rubric built in EngE-AI');
+    root.append(engeAiRubric);
 
     const layout = document.createElement('div');
     layout.className = 'wf-rubric-layout';
@@ -356,6 +449,221 @@ function renderRubricPage(root: HTMLDivElement, assignment: Assignment, data: Ru
 
     editor.append(form);
     layout.append(editor, preview);
-    root.append(layout);
+    engeAiRubric.append(layout);
     renderRubricPreview(preview, form, source);
+}
+
+/**
+ * renderCanvasRubricSection - shows the rubric imported from Canvas
+ *
+ * Rendered as a section of its own, above the A2 rubric editor, because the two are separate
+ * objects: different shapes, different endpoints, and different lifecycles — this one is a mirror
+ * that a re-import replaces, the other is versioned and approved. The section takes no invented
+ * heading; the rubric's own Canvas title names it, and the metadata line states its provenance.
+ *
+ * The grid mirrors the Canvas rubric exactly: a criterion-per-row table with the same columns
+ * Canvas shows, and no EngE-AI-specific fields mixed in, so staff can compare the import against
+ * the original without translating between two layouts. Rows are fixed here — there is no add or
+ * delete control, and the server rebuilds row structure from storage regardless of what this form
+ * sends — so the rubric's shape stays the one the instructor authored in Canvas. Each row keeps
+ * its own rating count, leaving the grid intentionally ragged where Canvas is.
+ *
+ * Every cell is an in-place control that presents as text until hovered or focused. Reviewing the
+ * import is the common case and editing the rare one, so form chrome stays out of the way rather
+ * than turning a rubric that fits on one screen into several screens of boxes.
+ */
+function renderCanvasRubricSection(assignment: Assignment, canvas: CanvasRubricResponse): HTMLElement {
+    const section = document.createElement('section');
+    section.className = 'wf-canvas-rubric-section';
+    section.setAttribute('aria-label', 'Rubric imported from Canvas');
+
+    if (!canvas.rubric) {
+        const empty = document.createElement('div');
+        empty.className = 'wf-callout wf-callout--warning';
+        empty.append(
+            createText('strong', 'No Canvas rubric for this assignment'),
+            createText(
+                'span',
+                assignment.canvasAssignmentId
+                    ? 'This assignment was imported from Canvas but had no rubric attached. Build one in Canvas and import again, or author the rubric above in EngE-AI.'
+                    : 'This assignment was created in EngE-AI, so there is no Canvas rubric to import. Author the rubric above.'
+            )
+        );
+        section.append(empty);
+        return section;
+    }
+
+    const rubric = canvas.rubric;
+    const canEdit = canvas.permissions.canEdit;
+
+    // The rubric's own name leads, at heading weight, because it identifies which Canvas rubric
+    // this is — the surrounding metadata only qualifies it.
+    section.append(createText('h3', rubric.title, 'wf-canvas-rubric-title'));
+
+    const meta = document.createElement('p');
+    meta.className = 'wf-assignment-meta';
+    meta.append(
+        createText('span', rubric.pointsPossible === undefined ? 'No rubric total' : `${rubric.pointsPossible} points total`),
+        createText('span', `Imported ${formatDate(rubric.importedAt)}`),
+        chip(canEdit ? 'Editable' : 'Read-only', canEdit ? 'green' : 'neutral')
+    );
+    section.append(meta);
+
+    if (canvas.details?.descriptionText) {
+        const brief = document.createElement('details');
+        brief.className = 'wf-canvas-brief';
+        const summary = document.createElement('summary');
+        summary.textContent = 'Assignment brief imported from Canvas';
+        const body = createText('p', canvas.details.descriptionText);
+        body.className = 'wf-canvas-brief-body';
+        brief.append(summary, body);
+        section.append(brief);
+    }
+
+    // A div rather than a form: this grid is rendered inside the rubric editor's own form,
+    // and nested forms are invalid. Input events still bubble, so dirty tracking is unaffected.
+    const form = document.createElement('div');
+    form.className = 'wf-canvas-rubric-form';
+
+    // Same shape Canvas shows the instructor: one row per criterion, its ratings beside it.
+    // Reading the import against the Canvas original is the whole job of this screen, so the
+    // grid is scanned rather than scrolled through, and edits happen in place.
+    const table = document.createElement('table');
+    table.className = 'wf-canvas-rubric-table';
+
+    const tableHead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    const criterionHeading = createText('th', 'Criterion');
+    criterionHeading.setAttribute('scope', 'col');
+    const ratingsHeading = document.createElement('th');
+    ratingsHeading.setAttribute('scope', 'col');
+    ratingsHeading.append(createText('span', 'Ratings'));
+    headRow.append(criterionHeading, ratingsHeading);
+    tableHead.append(headRow);
+    table.append(tableHead);
+
+    const tableBody = document.createElement('tbody');
+    rubric.rows.forEach((row, rowIndex) => {
+        const rowEl = document.createElement('tr');
+        rowEl.className = 'wf-canvas-rubric-row';
+        rowEl.dataset.criterionId = row.canvasCriterionId;
+        const rowNumber = rowIndex + 1;
+
+        const criterionDescription = quietField(
+            textAreaControl(row.description, 1),
+            `row.${rowIndex}.description`,
+            `Criterion ${rowNumber} description`,
+            !canEdit,
+            'wf-quiet-field--multiline'
+        );
+        // An empty description collapses to an invisible line, so editors get a prompt where
+        // Canvas left the field blank.
+        if (canEdit) criterionDescription.placeholder = 'Add a description';
+
+        const criterionCell = document.createElement('th');
+        criterionCell.setAttribute('scope', 'row');
+        criterionCell.className = 'wf-canvas-rubric-criterion';
+        criterionCell.append(
+            quietField(
+                inputControl(row.label),
+                `row.${rowIndex}.label`,
+                `Criterion ${rowNumber} name`,
+                !canEdit,
+                'wf-quiet-field--title'
+            ),
+            criterionDescription
+        );
+        if (row.points !== undefined) {
+            criterionCell.append(createText('p', `${row.points} pts`, 'wf-canvas-rubric-row-points'));
+        }
+        rowEl.append(criterionCell);
+
+        const ratingsCell = document.createElement('td');
+        ratingsCell.className = 'wf-canvas-rubric-ratings';
+        // The strip carries the flex layout so the cell itself stays a table-cell and keeps
+        // its fixed column width and top alignment.
+        const ratingStrip = document.createElement('div');
+        ratingStrip.className = 'wf-canvas-rubric-rating-strip';
+        row.ratings.forEach((rating, ratingIndex) => {
+            const cell = document.createElement('div');
+            cell.className = 'wf-canvas-rubric-cell';
+            cell.dataset.ratingId = rating.canvasRatingId;
+
+            const cellHead = document.createElement('div');
+            cellHead.className = 'wf-canvas-rubric-cell-head';
+            cellHead.append(quietField(
+                inputControl(rating.label),
+                `row.${rowIndex}.rating.${ratingIndex}.label`,
+                `Criterion ${rowNumber}, rating ${ratingIndex + 1} name`,
+                !canEdit,
+                'wf-quiet-field--rating'
+            ));
+            if (rating.points !== undefined) {
+                cellHead.append(createText('span', `${rating.points} pts`, 'wf-canvas-rubric-points'));
+            }
+            cell.append(cellHead);
+
+            const descriptor = quietField(
+                textAreaControl(rating.description, 1),
+                `row.${rowIndex}.rating.${ratingIndex}.description`,
+                `Criterion ${rowNumber}, rating ${ratingIndex + 1} descriptor`,
+                !canEdit,
+                'wf-quiet-field--multiline'
+            );
+            // Canvas rubrics routinely ship ratings with no descriptor. An empty control that
+            // collapses to one line keeps the grid readable while still accepting an edit.
+            if (canEdit) descriptor.placeholder = 'Add descriptor';
+            cell.append(descriptor);
+
+            ratingStrip.append(cell);
+        });
+        ratingsCell.append(ratingStrip);
+        rowEl.append(ratingsCell);
+        tableBody.append(rowEl);
+    });
+    table.append(tableBody);
+    form.append(table);
+
+    if (canEdit) {
+        // Durable inline dirty state: the save control sits below a grid that can run long,
+        // so unsaved work has to be visible without scrolling back up to notice it.
+        const dirtyState = chip('No unsaved changes', 'neutral');
+        dirtyState.setAttribute('aria-live', 'polite');
+        const setDirty = (dirty: boolean): void => {
+            // Text carries the state as well as colour, so the distinction survives for anyone
+            // who cannot separate the neutral and amber tones.
+            state.panelDirty = dirty;
+            dirtyState.textContent = dirty ? 'Unsaved changes' : 'No unsaved changes';
+            dirtyState.className = `wf-chip wf-chip--${dirty ? 'amber' : 'neutral'}`;
+        };
+        form.addEventListener('input', () => setDirty(true));
+
+        const actions = document.createElement('div');
+        actions.className = 'wf-canvas-rubric-actions';
+        actions.append(dirtyState, createButton('Save rubric edits', 'primary', async () => {
+            const rows: CanvasRubricRow[] = rubric.rows.map((row, rowIndex) => ({
+                canvasCriterionId: row.canvasCriterionId,
+                label: canvasCellValue(form, `row.${rowIndex}.label`),
+                description: canvasCellValue(form, `row.${rowIndex}.description`),
+                ratings: row.ratings.map((rating, ratingIndex) => ({
+                    canvasRatingId: rating.canvasRatingId,
+                    label: canvasCellValue(form, `row.${rowIndex}.rating.${ratingIndex}.label`),
+                    description: canvasCellValue(form, `row.${rowIndex}.rating.${ratingIndex}.description`)
+                }))
+            }));
+            if (rows.some((row) => !row.label)) throw new Error('Every rubric row needs a name.');
+
+            await jsonRequest<CanvasRubricResponse>(
+                `/assignments/${encodeURIComponent(assignment.id)}/canvas-rubric`,
+                'PUT',
+                { rows }
+            );
+            setDirty(false);
+            showSuccessToast('Canvas rubric edits saved. Nothing was written back to Canvas.');
+        }));
+        form.append(actions);
+    }
+
+    section.append(form);
+    return section;
 }

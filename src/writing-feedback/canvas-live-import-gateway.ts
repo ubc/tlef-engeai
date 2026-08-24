@@ -24,6 +24,12 @@
 
 import type { canvas } from '@ubc/ubc-genai-toolkit-lms-integration';
 import type {
+    CanvasAssignmentDetails,
+    CanvasImportedRubric,
+    CanvasRubricRating,
+    CanvasRubricRow
+} from './contracts';
+import type {
     CanvasImportAssignmentSummary,
     CanvasImportAttachment,
     CanvasImportContentKind,
@@ -71,9 +77,30 @@ interface CanvasAssignmentPayload {
     submission_types?: string[];
     has_submitted_submissions?: boolean;
     published?: boolean;
-    rubric?: unknown[];
+    rubric?: CanvasRubricCriterionPayload[];
+    rubric_settings?: {
+        id?: number | string;
+        title?: string | null;
+        points_possible?: number | null;
+    } | null;
+    /** Canvas rich-editor HTML for the assignment brief. */
+    description?: string | null;
     /** True while Canvas is withholding student identity for anonymous grading. */
     anonymize_students?: boolean;
+}
+
+/** One rubric row as Canvas serializes it inside an assignment payload. */
+interface CanvasRubricCriterionPayload {
+    id?: number | string;
+    description?: string | null;
+    long_description?: string | null;
+    points?: number | null;
+    ratings?: Array<{
+        id?: number | string;
+        description?: string | null;
+        long_description?: string | null;
+        points?: number | null;
+    }> | null;
 }
 
 /** The subset of Canvas's submission payload this module reads. */
@@ -163,6 +190,63 @@ export function liveCanvasStatus(): CanvasImportStatus {
             'Assignments and submissions are read from this course in Canvas using your own Canvas authorization. Importing copies submission text into EngE-AI; nothing is written back to Canvas.',
         nextStep: 'Choose an assignment to review its submissions before importing.'
     };
+}
+
+
+/** Canvas serializes rubric text as plain strings; normalize null/undefined to empty. */
+function text(value: string | null | undefined): string {
+    return typeof value === 'string' ? value.trim() : '';
+}
+
+function numberOrUndefined(value: number | null | undefined): number | undefined {
+    return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+/**
+ * Maps one Canvas rubric row, preserving its own rating list.
+ *
+ * Ratings stay exactly as Canvas ordered and sized them. Two rows of the same rubric may carry
+ * different counts, and normalizing that away would fabricate cells the instructor never wrote.
+ *
+ * The mapped row carries only what Canvas returned. Nothing EngE-AI-specific is attached here,
+ * so the stored rubric stays a faithful mirror of the one the instructor authored in Canvas.
+ */
+function toRubricRow(payload: CanvasRubricCriterionPayload, index: number): CanvasRubricRow {
+    const ratings: CanvasRubricRating[] = (payload.ratings ?? []).map((rating, ratingIndex) => ({
+        canvasRatingId: String(rating?.id ?? `rating-${index}-${ratingIndex}`),
+        label: text(rating?.description),
+        description: text(rating?.long_description),
+        points: numberOrUndefined(rating?.points)
+    }));
+    return {
+        canvasCriterionId: String(payload.id ?? `criterion-${index}`),
+        label: text(payload.description) || `Criterion ${index + 1}`,
+        description: text(payload.long_description),
+        points: numberOrUndefined(payload.points),
+        ratings
+    };
+}
+
+/**
+ * Reduces Canvas rich-editor HTML to plain text.
+ *
+ * A local tag strip rather than the document parser: this runs inside the import request for a
+ * single short brief, and writing the brief to a temp file to parse it back would cost more
+ * than it returns. Block-level tags become newlines so paragraph and list structure survives.
+ */
+function htmlToText(html: string): string {
+    return html
+        .replace(/<\s*(br|\/p|\/div|\/li|\/h[1-6]|\/tr)\s*\/?>/gi, '\n')
+        .replace(/<[^>]*>/g, '')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, '&')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;/gi, "'")
+        .replace(/[ \t]+/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
 }
 
 /**
@@ -335,6 +419,59 @@ export class LiveCanvasImportGateway implements CanvasImportGateway {
             fileName: attachment.fileName
         });
         return extraction.text;
+    }
+
+    /**
+     * Loads the assignment's rubric and brief for staff review.
+     *
+     * One request: Canvas serializes `rubric`, `rubric_settings`, and `description` inline on
+     * the assignment, so no separate rubric endpoint or OAuth scope is involved. The listing
+     * path already reads `rubric` to report `rubricState` — this keeps the data instead of
+     * discarding it.
+     *
+     * @param canvasAssignmentId - Canvas assignment id selected by staff
+     * @returns The rubric, or `null` when the assignment has none, plus the imported brief
+     */
+    async loadAssignmentContext(canvasAssignmentId: string): Promise<{
+        rubric: CanvasImportedRubric | null;
+        details: CanvasAssignmentDetails;
+    }> {
+        const assignment = await this.client.get<CanvasAssignmentPayload>(
+            `/courses/${encodeURIComponent(this.canvasCourseId)}/assignments/${encodeURIComponent(canvasAssignmentId)}`
+        );
+
+        const importedAt = new Date();
+        const descriptionHtml = text(assignment?.description) || undefined;
+        const details: CanvasAssignmentDetails = {
+            descriptionHtml,
+            descriptionText: descriptionHtml ? htmlToText(descriptionHtml) : undefined,
+            pointsPossible: numberOrUndefined(assignment?.points_possible),
+            dueAt: assignment?.due_at ? new Date(assignment.due_at) : undefined,
+            importedAt
+        };
+
+        const rows = (assignment?.rubric ?? []).map(toRubricRow);
+        if (rows.length === 0) {
+            // No Canvas rubric. The instructor authors one in EngE-AI instead — the existing
+            // manual path — so this is an ordinary outcome, not a failure.
+            return { rubric: null, details };
+        }
+
+        return {
+            rubric: {
+                canvasRubricId: assignment.rubric_settings?.id !== undefined
+                    ? String(assignment.rubric_settings.id)
+                    : undefined,
+                title: text(assignment.rubric_settings?.title)
+                    || text(assignment.name)
+                    || 'Canvas rubric',
+                pointsPossible: numberOrUndefined(assignment.rubric_settings?.points_possible),
+                rows,
+                importedAt,
+                updatedAt: importedAt
+            },
+            details
+        };
     }
 
     /**

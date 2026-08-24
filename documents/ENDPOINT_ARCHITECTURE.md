@@ -168,7 +168,9 @@ Canvas endpoints report their integration mode honestly. `demo` with `integratio
 | GET | `/canvas/status` | Returns `live`, `demo`, or `not_configured` status plus safe staff-facing guidance, and a `connectUrl` when the only blocker is this staff member's Canvas authorization. Never requires a Canvas credential (it is what tells the UI to ask for one) and never returns tokens |
 | GET | `/canvas/assignments` | Lists importable assignments: real ones from the linked Canvas course, or synthetic ones in local demo mode. `401` + `connectUrl` when the course is Canvas-linked and the caller has not authorized Canvas |
 | GET | `/canvas/assignments/:canvasAssignmentId/preview` | Read-only preview before import. Returns display label, attempt, timestamp, `contentKind`, and attachment file names only — never source record keys or Canvas file URLs, and it downloads no attachment bytes |
-| POST | `/canvas/import` | Creates/reuses the mapped writing assignment, imports/reconciles its submissions, and reports imported/skipped/unsupported/failed counts; allowed for instructors/TAs |
+| POST | `/canvas/import` | Creates/reuses the mapped writing assignment, imports its Canvas rubric and brief, imports/reconciles its submissions, and reports imported/skipped/unsupported/failed counts; allowed for instructors/TAs |
+| GET | `/assignments/:assignmentId/canvas-rubric` | The rubric and brief imported from Canvas, plus `governsGeneration: false`; any course staff |
+| PUT | `/assignments/:assignmentId/canvas-rubric` | Saves staff edits to imported rubric cell text. Rows cannot be added or removed; instructor/admin only |
 | POST | `/assignments/:assignmentId/canvas-import-fixture` | Backward-compatible, clearly labelled synthetic import helper for local testing only |
 | DELETE | `/assignments/:assignmentId` | Deletes an assignment; `409` while it still has any submissions (delete those first). Any course staff |
 | GET | `/assignments/:assignmentId/rubric` | Returns approved rubric, optional draft, immutable history, and the caller's edit permission |
@@ -207,6 +209,23 @@ Assignment listing offers only what can actually be imported: the assignment mus
 Two intake paths land in deliberately different states. `online_text_entry` bodies are converted from Canvas RCE HTML and stored verified (`sourceType: canvas_text`, `status: imported`). `online_upload` attachments are downloaded during the import only — never during a preview — parsed locally through the same extractor as manual uploads, and stored `requiresVerification: true` / `status: verification_needed`, because extraction from bytes can silently mangle content. Everything else (`online_url`, `media_recording`, unreadable uploads) is counted in `unsupportedCount` rather than dropped silently. Each submission is intaken independently: a download or parse failure increments `failedCount` and the run continues, and because import is idempotent, re-running retries only what failed. Attachment downloads are capped at 25 MB and constrained by the package's download guard (first hop must match the configured Canvas origin, the bearer token is dropped after any off-origin redirect, and an HTML response is rejected).
 
 Submission text never enters the course-material RAG/Qdrant pipeline. Canvas write-back is not implemented in any mode, so `release`/`release-preview` refuse for a live course with an explanatory message.
+
+### Canvas rubric import
+
+Import also pulls the assignment's rubric and brief. Canvas serializes `rubric`, `rubric_settings`, and `description` inline on the assignment payload, so this costs no extra request and no extra OAuth scope. A rubric failure never loses the submissions: it is logged (message only — a Canvas payload can carry assignment text) and the submission import continues.
+
+The imported rubric is stored as `WritingAssignment.canvasRubric`, **separate from** `WritingAssignment.rubric`. That separation is deliberate and is the whole reason this phase is small. `WritingRubricDefinition` is the A2 contract the feedback engine, PDF renderer, and release path are built on — exactly four criteria and four shared levels, enforced both in the type system (`A2CriterionId`, `A2Level`) and in Zod (`.length(4)` plus `z.enum` on ids). A Canvas rubric has a variable row count and per-row ratings and cannot be expressed in it.
+
+Consequences staff must be told, and are, in the workspace banner:
+
+- **The imported rubric does not govern feedback generation.** `governsGeneration` is always `false`; the approved A2 rubric still drives every run. A later phase generalises the assessment pipeline and switches over.
+- **Rows are fixed at import.** Cell text and the SFL lens are editable in EngE-AI; adding or removing a row is done in Canvas. `updateCanvasRubricCells` rebuilds row structure from storage and rejects any Canvas criterion id it does not already hold, so a crafted request cannot change the shape.
+- **Ragged rubrics are preserved.** Canvas defines ratings per criterion, so one row may have two ratings and the next five. Rows keep their own rating lists rather than being padded to a rectangle, which would invent cells the instructor never wrote.
+- **The stored rubric mirrors Canvas exactly.** Rows carry only what Canvas returned — name, description, weight, and their own ratings — with no EngE-AI-specific fields mixed in, so what staff see is the rubric they authored in Canvas.
+- **Canvas points are inert.** Both per-criterion weights and per-rating points are stored and displayed, and neither feeds grading — EngE-AI averages criteria equally today, and the rubric rules forbid inferring criterion weights.
+- **Canvas is authoritative on re-import.** A re-import replaces the stored rubric with what Canvas currently holds, superseding any local cell edits. Only `importedAt` is preserved, so "first imported" stays accurate.
+
+The import response reports `rubricImport: 'reference_only'` when a rubric was imported and `'no_canvas_rubric'` when the Canvas assignment had none. An assignment with no Canvas rubric uses the existing manual authoring path, unchanged.
 
 The rubric draft body contains complete task, audience, purpose, constraints, learning outcomes, grading intent, four A2 criteria/SFL descriptions, and four ordinal levels with optional points. Draft validation failures return field-safe `400` responses. Approving without a saved draft is a conflict; TAs receive `403` for both rubric mutation routes. Saving or approving a rubric never updates Canvas automatically.
 

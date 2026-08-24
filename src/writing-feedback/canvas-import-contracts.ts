@@ -11,7 +11,12 @@
  * @description: Defines read-only Canvas import and local storage interfaces.
  */
 
-import type { WritingAssignment, WritingSubmission } from './contracts';
+import type {
+    CanvasAssignmentDetails,
+    CanvasImportedRubric,
+    WritingAssignment,
+    WritingSubmission
+} from './contracts';
 
 /**
  * Honest capability state returned before staff can browse or import Canvas data.
@@ -131,12 +136,34 @@ export interface CanvasImportGateway {
      * would parse every submission in the assignment to answer a question staff have not asked.
      */
     extractTextEntry?(body: string): Promise<string>;
+    /**
+     * Loads the source assignment's rubric and description for staff review.
+     *
+     * Optional because the demo adapter has no rubric to serve. Returns `rubric: null` when the
+     * assignment genuinely has none in Canvas — the instructor then authors one in EngE-AI,
+     * which is the existing manual path and needs no import.
+     */
+    loadAssignmentContext?(canvasAssignmentId: string): Promise<{
+        rubric: CanvasImportedRubric | null;
+        details: CanvasAssignmentDetails;
+    }>;
 }
 
 /** Persistence capabilities used by the import service without coupling it to Mongo. */
 export interface CanvasImportStore {
     /** Resolves the existing local assignment that will own imported submissions. */
     getWritingAssignment(courseId: string, assignmentId: string): Promise<WritingAssignment | null>;
+    /**
+     * Stores the imported Canvas rubric and assignment details on the local assignment.
+     *
+     * Optional so the demo adapter and existing tests need no rubric persistence. Called once
+     * per import, before submissions are written.
+     */
+    saveCanvasAssignmentContext?(
+        courseId: string,
+        assignmentId: string,
+        context: { rubric: CanvasImportedRubric | null; details: CanvasAssignmentDetails }
+    ): Promise<unknown>;
     /** Lists existing attempts used to skip idempotent re-imports. */
     listWritingSubmissions(courseId: string, assignmentId: string): Promise<WritingSubmission[]>;
     /** Creates one local submission without exposing adapter internals to storage. */

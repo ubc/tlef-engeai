@@ -223,6 +223,78 @@ describe('LiveCanvasImportGateway submission previews', () => {
     });
 });
 
+describe('LiveCanvasImportGateway rubric and assignment-detail import', () => {
+    const RUBRIC_ASSIGNMENT = {
+        id: 101,
+        name: 'Technical Description',
+        points_possible: 20,
+        description: '<p>Describe a <strong>device</strong>.</p><ul><li>100-200 words</li></ul>',
+        rubric_settings: { id: 55, title: 'Essay Rubric', points_possible: 24 },
+        rubric: [
+            {
+                id: '_1234', description: 'Thesis', long_description: 'States a clear claim.', points: 10,
+                ratings: [
+                    { id: 'r1', description: 'Full Marks', long_description: 'Clear claim.', points: 10 },
+                    { id: 'r2', description: 'No Marks', long_description: '', points: 0 }
+                ]
+            },
+            {
+                // Deliberately ragged: three ratings against the previous row's two.
+                id: '_5678', description: 'Evidence', long_description: '', points: 14,
+                ratings: [
+                    { id: 'r3', description: 'Strong', long_description: '', points: 14 },
+                    { id: 'r4', description: 'Adequate', long_description: '', points: 7 },
+                    { id: 'r5', description: 'Weak', long_description: '', points: 0 }
+                ]
+            }
+        ]
+    };
+
+    it('preserves each row\'s own ratings instead of padding to a rectangle', async () => {
+        const { client } = fakeClient({ get: { '/assignments/101': RUBRIC_ASSIGNMENT } });
+        const { rubric } = await new LiveCanvasImportGateway({ client, canvasCourseId: '55' })
+            .loadAssignmentContext('101');
+
+        expect(rubric?.rows.map((row) => row.ratings.length)).toEqual([2, 3]);
+        expect(rubric?.rows[0]).toMatchObject({ canvasCriterionId: '_1234', label: 'Thesis', points: 10 });
+        expect(rubric?.title).toBe('Essay Rubric');
+        expect(rubric?.pointsPossible).toBe(24);
+    });
+
+    it('mirrors Canvas exactly, adding no EngE-AI fields of its own', async () => {
+        const { client } = fakeClient({ get: { '/assignments/101': RUBRIC_ASSIGNMENT } });
+        const { rubric } = await new LiveCanvasImportGateway({ client, canvasCourseId: '55' })
+            .loadAssignmentContext('101');
+
+        expect(Object.keys(rubric!.rows[0]).sort()).toEqual(
+            ['canvasCriterionId', 'description', 'label', 'points', 'ratings']
+        );
+        expect(Object.keys(rubric!.rows[0].ratings[0]).sort()).toEqual(
+            ['canvasRatingId', 'description', 'label', 'points']
+        );
+    });
+
+    it('imports the assignment brief as both HTML and plain text', async () => {
+        const { client } = fakeClient({ get: { '/assignments/101': RUBRIC_ASSIGNMENT } });
+        const { details } = await new LiveCanvasImportGateway({ client, canvasCourseId: '55' })
+            .loadAssignmentContext('101');
+
+        expect(details.descriptionHtml).toContain('<strong>device</strong>');
+        expect(details.descriptionText).toBe('Describe a device.\n100-200 words');
+        expect(details.pointsPossible).toBe(20);
+    });
+
+    it('reports no rubric rather than failing when Canvas has none', async () => {
+        const { client } = fakeClient({ get: { '/assignments/102': { id: 102, name: 'No Rubric', description: '' } } });
+        const context = await new LiveCanvasImportGateway({ client, canvasCourseId: '55' })
+            .loadAssignmentContext('102');
+
+        // The instructor authors one in EngE-AI instead; this is an ordinary outcome.
+        expect(context.rubric).toBeNull();
+        expect(context.details.importedAt).toBeInstanceOf(Date);
+    });
+});
+
 describe('SafeCanvasImportService over a live gateway', () => {
     const SUBMISSIONS = [
         { user_id: 900, attempt: 1, submission_type: 'online_text_entry', body: '<p>Heat exchanger prose.</p>', submitted_at: '2026-09-21T18:15:00Z', workflow_state: 'submitted', user: { id: 900, name: 'Jordan Lee' } },
