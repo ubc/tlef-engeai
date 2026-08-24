@@ -19,6 +19,7 @@ import type {
     WritingAssignment,
     WritingFeedbackLens,
     WritingFeedbackRun,
+    WritingGlossaryEntry,
     WritingJob,
     WritingRelease,
     WritingRubricDefinition,
@@ -33,6 +34,7 @@ const SUBMISSIONS = 'writing-submissions';
 const RUNS = 'writing-feedback-runs';
 const RELEASES = 'writing-releases';
 const JOBS = 'writing-jobs';
+const GLOSSARY = 'writing-glossary-entries';
 /** Reserved for a future Canvas OAuth integration; no token is written by the MVP. */
 const CANVAS_CONNECTIONS = 'canvas-connections';
 const CANVAS_ASSIGNMENT_INDEX = 'writing_canvas_assignment_unique';
@@ -46,6 +48,7 @@ function submissions(ctx: MongoDalContext): Collection<WritingSubmission & { rev
 function runs(ctx: MongoDalContext): Collection<WritingFeedbackRun> { return ctx.db.collection(RUNS); }
 function releases(ctx: MongoDalContext): Collection<WritingRelease> { return ctx.db.collection(RELEASES); }
 function jobs(ctx: MongoDalContext): Collection<WritingJob> { return ctx.db.collection(JOBS); }
+function glossary(ctx: MongoDalContext): Collection<WritingGlossaryEntry> { return ctx.db.collection(GLOSSARY); }
 
 let indexesEnsured = false;
 
@@ -152,6 +155,8 @@ export async function ensureWritingFeedbackIndexes(ctx: MongoDalContext): Promis
         runs(ctx).createIndex({ submissionId: 1, createdAt: -1 }),
         releases(ctx).createIndex({ payloadFingerprint: 1 }, { unique: true }),
         jobs(ctx).createIndex({ state: 1, leaseUntil: 1, createdAt: 1 }),
+        jobs(ctx).createIndex({ courseId: 1, type: 1, 'payload.submissionId': 1, state: 1 }),
+        glossary(ctx).createIndex({ courseId: 1, normalizedTerm: 1 }, { unique: true }),
         ctx.db.collection(CANVAS_CONNECTIONS).createIndex({ courseId: 1 }, { unique: true, sparse: true })
     ]);
     indexesEnsured = true;
@@ -685,6 +690,102 @@ export async function countWritingFeedbackRunsByLens(
     return runs(ctx).countDocuments({ courseId, assignmentId, lens });
 }
 
+function normalizeGlossaryTerm(term: string): string {
+    return term.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+}
+
+/**
+ * listWritingGlossaryEntries — returns reusable course glossary entries.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param search - Optional term/definition substring filter
+ * @returns Course-scoped glossary entries ordered by term
+ */
+export async function listWritingGlossaryEntries(
+    ctx: MongoDalContext,
+    courseId: string,
+    search?: string
+): Promise<WritingGlossaryEntry[]> {
+    await ensureWritingFeedbackIndexes(ctx);
+    const filter: Filter<WritingGlossaryEntry> = { courseId };
+    const query = search?.trim();
+    if (query) {
+        filter.$or = [
+            { term: { $regex: query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } },
+            { definition: { $regex: query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } }
+        ];
+    }
+    return glossary(ctx).find(filter).sort({ normalizedTerm: 1 }).limit(100).toArray();
+}
+
+/**
+ * createWritingGlossaryEntry — inserts a course-scoped reusable definition.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param input - Validated term, definition, course, and actor
+ * @returns Newly persisted glossary entry
+ * @throws MongoDB duplicate-key error when the normalized term already exists
+ */
+export async function createWritingGlossaryEntry(
+    ctx: MongoDalContext,
+    input: { courseId: string; term: string; definition: string; actorUserId: string }
+): Promise<WritingGlossaryEntry> {
+    await ensureWritingFeedbackIndexes(ctx);
+    const now = new Date();
+    const entry: WritingGlossaryEntry = {
+        id: randomUUID(),
+        courseId: input.courseId,
+        term: input.term.trim().replace(/\s+/g, ' '),
+        normalizedTerm: normalizeGlossaryTerm(input.term),
+        definition: input.definition.trim(),
+        version: 1,
+        createdAt: now,
+        createdBy: input.actorUserId,
+        updatedAt: now,
+        updatedBy: input.actorUserId
+    };
+    await glossary(ctx).insertOne(entry);
+    return entry;
+}
+
+/**
+ * updateWritingGlossaryEntry — version-checked update for a reusable definition.
+ *
+ * The expected version prevents a stale editor from overwriting a newer staff
+ * definition. Version increments on any successful term or definition change.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param entryId - Glossary entry being updated
+ * @param update - New term/definition plus expected version and actor
+ * @returns Updated entry, or `null` when the id/version predicate fails
+ * @throws MongoDB duplicate-key error when the normalized term is already used
+ */
+export async function updateWritingGlossaryEntry(
+    ctx: MongoDalContext,
+    courseId: string,
+    entryId: string,
+    update: { term: string; definition: string; expectedVersion: number; actorUserId: string }
+): Promise<WritingGlossaryEntry | null> {
+    await ensureWritingFeedbackIndexes(ctx);
+    const updated = await glossary(ctx).findOneAndUpdate(
+        { id: entryId, courseId, version: update.expectedVersion },
+        {
+            $set: {
+                term: update.term.trim().replace(/\s+/g, ' '),
+                normalizedTerm: normalizeGlossaryTerm(update.term),
+                definition: update.definition.trim(),
+                updatedAt: new Date(),
+                updatedBy: update.actorUserId
+            },
+            $inc: { version: 1 }
+        },
+        { returnDocument: 'after' }
+    );
+    return updated;
+}
+
 /**
  * appendWritingReview — appends an immutable staff-authored revision.
  *
@@ -813,6 +914,32 @@ export async function enqueueWritingJob(ctx: MongoDalContext, job: Omit<WritingJ
     const stored: WritingJob = { ...job, id: randomUUID(), attempts: 0, createdAt: now, updatedAt: now };
     await jobs(ctx).insertOne(stored);
     return stored;
+}
+
+/**
+ * findActiveWritingJob — finds queued or leased work for one submission/type.
+ *
+ * Used by the generate endpoint to make duplicate clicks idempotent while
+ * allowing completed or terminally failed jobs to remain historical records.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param submissionId - Submission pointer stored in the job payload
+ * @param type - Worker handler type
+ * @returns Active job, or `null` when none is queued/leased
+ */
+export async function findActiveWritingJob(
+    ctx: MongoDalContext,
+    courseId: string,
+    submissionId: string,
+    type: WritingJob['type']
+): Promise<WritingJob | null> {
+    return jobs(ctx).findOne({
+        courseId,
+        type,
+        'payload.submissionId': submissionId,
+        state: { $in: ['queued', 'leased'] }
+    });
 }
 
 /**

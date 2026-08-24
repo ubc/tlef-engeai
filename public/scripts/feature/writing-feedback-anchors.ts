@@ -24,12 +24,15 @@ import {
     PRIORITY_LABELS,
     PRIORITY_TONES,
     SubmissionDetail,
+    WritingGlossaryEntry,
     WfFunctionTag,
     WfLevelTag,
     WfPriority,
     chip,
     createText,
-    field
+    field,
+    jsonRequest,
+    request
 } from './writing-feedback-shared.js';
 
 interface AnnotationContext {
@@ -45,6 +48,21 @@ let workingComments: AnchoredComment[] = [];
 let activeCommentId: string | null = null;
 let editingCommentId: string | null = null;
 let filters: { fn: 'all' | WfFunctionTag; level: 'all' | WfLevelTag } = { fn: 'all', level: 'all' };
+let glossaryCache: WritingGlossaryEntry[] | null = null;
+
+async function loadGlossaryEntries(): Promise<WritingGlossaryEntry[]> {
+    if (!glossaryCache) glossaryCache = await request<WritingGlossaryEntry[]>('/glossary');
+    return glossaryCache;
+}
+
+function glossarySnapshot(entry: WritingGlossaryEntry): NonNullable<AnchoredComment['glossarySnapshot']> {
+    return {
+        id: entry.id,
+        term: entry.term,
+        definition: entry.definition,
+        version: entry.version
+    };
+}
 
 /**
  * initAnchorWorkingSet - starts an editable annotation session for one submission
@@ -429,25 +447,30 @@ function renderCardDisplay(
         guidance.append(createText('span', 'Revision guidance: ', 'wf-annotation-label'), document.createTextNode(comment.howToImprove));
         card.append(guidance);
     }
-    if (comment.courseMaterialLink) {
+    if (comment.courseMaterialMention || comment.courseMaterialLink) {
         const box = document.createElement('div');
         box.className = 'wf-material-box';
         const title = document.createElement('span');
         title.className = 'wf-material-title';
         title.textContent = 'SUGGESTED COURSE MATERIAL';
-        const link = document.createElement('a');
-        link.href = comment.courseMaterialLink;
-        link.target = '_blank';
-        link.rel = 'noopener';
-        link.textContent = comment.courseMaterialLink;
-        box.append(title, createText('span', 'Review this material before revising: '), link);
+        if (comment.courseMaterialMention) {
+            box.append(title, createText('span', `Review this material before revising: ${comment.courseMaterialMention.label}`));
+        } else if (comment.courseMaterialLink) {
+            const link = document.createElement('a');
+            link.href = comment.courseMaterialLink;
+            link.target = '_blank';
+            link.rel = 'noopener';
+            link.textContent = comment.courseMaterialLink;
+            box.append(title, createText('span', 'Review this material before revising: '), link);
+        }
         card.append(box);
     }
-    if (comment.glossaryDefinition) {
+    const glossaryValue = comment.glossarySnapshot ?? comment.glossaryDefinition;
+    if (glossaryValue) {
         const glossary = document.createElement('p');
         glossary.append(
-            createText('span', `Glossary — ${comment.glossaryDefinition.term}: `, 'wf-annotation-label'),
-            document.createTextNode(comment.glossaryDefinition.definition)
+            createText('span', `Glossary — ${glossaryValue.term}: `, 'wf-annotation-label'),
+            document.createTextNode(glossaryValue.definition)
         );
         card.append(glossary);
     }
@@ -488,10 +511,17 @@ function renderCardEditor(
     link.placeholder = 'https://…';
     const glossaryTerm = document.createElement('input');
     glossaryTerm.type = 'text';
-    glossaryTerm.value = comment.glossaryDefinition?.term ?? '';
+    glossaryTerm.value = comment.glossarySnapshot?.term ?? comment.glossaryDefinition?.term ?? '';
+    const glossaryListId = `wf-glossary-${comment.id}`;
+    glossaryTerm.setAttribute('list', glossaryListId);
+    const glossaryOptions = document.createElement('datalist');
+    glossaryOptions.id = glossaryListId;
     const glossaryDefinition = document.createElement('textarea');
-    glossaryDefinition.value = comment.glossaryDefinition?.definition ?? '';
+    glossaryDefinition.value = comment.glossarySnapshot?.definition ?? comment.glossaryDefinition?.definition ?? '';
     glossaryDefinition.rows = 2;
+    const glossaryStatus = createText('p', '', 'wf-help-text');
+    glossaryStatus.setAttribute('role', 'status');
+    glossaryStatus.setAttribute('aria-live', 'polite');
 
     const functionSelect = tagSelect<WfFunctionTag>(FUNCTION_TAG_LABELS, comment.functionTag, 'No function');
     const levelSelect = tagSelect<WfLevelTag>(LEVEL_TAG_LABELS, comment.levelTag, 'No level');
@@ -501,10 +531,37 @@ function renderCardEditor(
         const term = glossaryTerm.value.trim();
         const definition = glossaryDefinition.value.trim();
         comment.glossaryDefinition = term && definition ? { term, definition } : undefined;
+        if (!term || !definition) {
+            comment.glossaryEntryId = undefined;
+            comment.glossarySnapshot = undefined;
+        }
+    };
+    const refreshGlossaryOptions = async (): Promise<void> => {
+        const entries = await loadGlossaryEntries();
+        glossaryOptions.replaceChildren();
+        entries.forEach((entry) => {
+            const option = document.createElement('option');
+            option.value = entry.term;
+            option.label = entry.definition;
+            glossaryOptions.append(option);
+        });
+    };
+    const applyGlossaryMatch = async (): Promise<void> => {
+        const entries = await loadGlossaryEntries();
+        const selected = entries.find((entry) => entry.term.toLocaleLowerCase() === glossaryTerm.value.trim().toLocaleLowerCase());
+        if (!selected) return;
+        glossaryDefinition.value = selected.definition;
+        comment.glossaryEntryId = selected.id;
+        comment.glossarySnapshot = glossarySnapshot(selected);
+        comment.glossaryDefinition = { term: selected.term, definition: selected.definition };
+        glossaryStatus.textContent = `Using glossary entry v${selected.version}.`;
+        context.markDirty();
     };
     commentText.addEventListener('input', () => { comment.comment = commentText.value; context.markDirty(); });
     howToImprove.addEventListener('input', () => { comment.howToImprove = howToImprove.value.trim() || undefined; context.markDirty(); });
     link.addEventListener('input', () => { comment.courseMaterialLink = link.value.trim() || undefined; context.markDirty(); });
+    glossaryTerm.addEventListener('focus', () => { void refreshGlossaryOptions(); });
+    glossaryTerm.addEventListener('change', () => { void applyGlossaryMatch(); });
     [glossaryTerm, glossaryDefinition].forEach((control) => control.addEventListener('input', () => { syncGlossary(); context.markDirty(); }));
     functionSelect.addEventListener('change', () => { comment.functionTag = (functionSelect.value || undefined) as WfFunctionTag | undefined; context.markDirty(); });
     levelSelect.addEventListener('change', () => { comment.levelTag = (levelSelect.value || undefined) as WfLevelTag | undefined; context.markDirty(); });
@@ -520,9 +577,37 @@ function renderCardEditor(
         field('Glossary term', glossaryTerm),
         field('Glossary definition', glossaryDefinition)
     );
+    card.append(glossaryOptions, glossaryStatus);
 
     const actions = document.createElement('div');
     actions.className = 'wf-annotation-actions';
+    const saveGlossary = document.createElement('button');
+    saveGlossary.type = 'button';
+    saveGlossary.className = 'wf-button wf-button--secondary';
+    saveGlossary.textContent = 'Save glossary';
+    saveGlossary.addEventListener('click', async () => {
+        const term = glossaryTerm.value.trim();
+        const definition = glossaryDefinition.value.trim();
+        if (!term || !definition) {
+            glossaryStatus.textContent = 'Enter a term and definition first.';
+            return;
+        }
+        const existing = (await loadGlossaryEntries())
+            .find((entry) => entry.term.toLocaleLowerCase() === term.toLocaleLowerCase());
+        const entry = existing
+            ? await jsonRequest<WritingGlossaryEntry>(
+                `/glossary/${encodeURIComponent(existing.id)}`,
+                'PUT',
+                { term, definition, expectedVersion: existing.version, confirmDefinitionChange: true }
+            )
+            : await jsonRequest<WritingGlossaryEntry>('/glossary', 'POST', { term, definition });
+        glossaryCache = null;
+        comment.glossaryEntryId = entry.id;
+        comment.glossarySnapshot = glossarySnapshot(entry);
+        comment.glossaryDefinition = { term: entry.term, definition: entry.definition };
+        glossaryStatus.textContent = `Saved glossary entry v${entry.version}.`;
+        context.markDirty();
+    });
     const done = document.createElement('button');
     done.type = 'button';
     done.className = 'wf-button wf-button--primary';
@@ -531,7 +616,7 @@ function renderCardEditor(
         editingCommentId = null;
         rerender();
     });
-    actions.append(done, deleteButton(comment, context, rerender));
+    actions.append(saveGlossary, done, deleteButton(comment, context, rerender));
     card.append(actions);
 }
 

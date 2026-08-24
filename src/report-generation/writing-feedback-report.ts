@@ -382,8 +382,14 @@ function renderAnnotatedText(
 function popupText(comment: AnchoredComment): string {
     const parts = [comment.comment.trim()];
     if (comment.howToImprove?.trim()) parts.push(`How to improve: ${comment.howToImprove.trim()}`);
-    if (comment.courseMaterialLink) parts.push(`See: ${comment.courseMaterialLink}`);
-    if (comment.glossaryDefinition) {
+    if (comment.courseMaterialMention) {
+        parts.push(`Review: ${comment.courseMaterialMention.label}`);
+    } else if (comment.courseMaterialLink) {
+        parts.push(`See: ${comment.courseMaterialLink}`);
+    }
+    if (comment.glossarySnapshot) {
+        parts.push(`Glossary — ${comment.glossarySnapshot.term}: ${comment.glossarySnapshot.definition}`);
+    } else if (comment.glossaryDefinition) {
         parts.push(`Glossary — ${comment.glossaryDefinition.term}: ${comment.glossaryDefinition.definition}`);
     }
     return parts.join('\n\n');

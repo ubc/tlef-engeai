@@ -29,6 +29,7 @@ import {
     gradeMappingFromApprovedRubric,
     writingRubricDraftInputSchema
 } from '../writing-feedback/rubric-schema';
+import { requireCompleteSflProfile } from '../writing-feedback/sfl-analysis';
 import { listCriterionLibrary } from '../writing-feedback/criterion-library';
 import { isCourseStaff } from '../utils/course-staff';
 import { parseLens, selectRubric } from '../writing-feedback/rubric-lens';
@@ -67,6 +68,18 @@ function cleanOptionalText(value: unknown, field: string): string | undefined {
     if (text.length > MAX_TEXT_CHARS) throw new Error(`${field} exceeds the 30,000-character limit`);
     return text;
 }
+function cleanBoundedText(value: unknown, field: string, max: number): string {
+    if (typeof value !== 'string') throw new Error(`${field} is required`);
+    const text = value.replace(/\u0000/g, '').trim();
+    if (!text) throw new Error(`${field} is required`);
+    if (text.length > max) throw new Error(`${field} exceeds the ${max}-character limit`);
+    return text;
+}
+function isDuplicateKey(error: unknown): boolean {
+    return typeof error === 'object' && error !== null
+        && 'code' in error
+        && (error as { code?: unknown }).code === 11000;
+}
 function safeError(error: unknown): string {
     const message = error instanceof Error ? error.message : 'Writing feedback request failed';
     const safePrefixes = [
@@ -81,7 +94,11 @@ function safeError(error: unknown): string {
         'Generate feedback before staff approval',
         'Feedback comments no longer match', 'Feedback comments failed validation',
         'Assignment title is required', 'Assignment deadline is invalid',
-        'Assignment instructions must be text', 'Assignment instructions exceeds'
+        'Assignment instructions must be text', 'Assignment instructions exceeds',
+        'Complete the SFL assignment profile', 'Confirm the assignment genre/register profile',
+        'Add at least one reviewed SFL stage', 'Add SFL task requirements',
+        'Glossary term is required', 'Glossary definition is required',
+        'Glossary term exceeds', 'Glossary definition exceeds'
     ];
     return safePrefixes.some((prefix) => message.startsWith(prefix))
         ? message
@@ -166,6 +183,72 @@ router.get('/:courseId/writing-feedback/workspace-context', asyncHandlerWithAuth
             canvas
         }
     });
+}));
+
+router.get('/:courseId/writing-feedback/glossary', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    const mongo = await EngEAI_MongoDB.getInstance();
+    const search = typeof req.query.search === 'string' ? req.query.search.slice(0, 120) : undefined;
+    res.json({ success: true, data: await mongo.listWritingGlossaryEntries(courseId(req), search) });
+}));
+
+router.post('/:courseId/writing-feedback/glossary', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const globalUser = (req.session as any).globalUser;
+        const mongo = await EngEAI_MongoDB.getInstance();
+        const entry = await mongo.createWritingGlossaryEntry({
+            courseId: courseId(req),
+            term: cleanBoundedText(req.body?.term, 'Glossary term', 80),
+            definition: cleanBoundedText(req.body?.definition, 'Glossary definition', 600),
+            actorUserId: globalUser.userId
+        });
+        res.status(201).json({ success: true, data: entry });
+    } catch (error) {
+        res.status(isDuplicateKey(error) ? 409 : 400).json({
+            success: false,
+            error: isDuplicateKey(error)
+                ? 'A glossary entry for that term already exists'
+                : safeError(error)
+        });
+    }
+}));
+
+router.put('/:courseId/writing-feedback/glossary/:entryId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const expectedVersion = Number(req.body?.expectedVersion);
+        if (!Number.isInteger(expectedVersion) || expectedVersion < 1) {
+            return res.status(400).json({ success: false, error: 'A glossary version is required' });
+        }
+        if (req.body?.confirmDefinitionChange !== true) {
+            return res.status(409).json({
+                success: false,
+                error: 'Confirm glossary definition changes before updating',
+                needsConfirmation: true
+            });
+        }
+        const globalUser = (req.session as any).globalUser;
+        const mongo = await EngEAI_MongoDB.getInstance();
+        const updated = await mongo.updateWritingGlossaryEntry(
+            courseId(req),
+            String(req.params.entryId),
+            {
+                term: cleanBoundedText(req.body?.term, 'Glossary term', 80),
+                definition: cleanBoundedText(req.body?.definition, 'Glossary definition', 600),
+                expectedVersion,
+                actorUserId: globalUser.userId
+            }
+        );
+        if (!updated) {
+            return res.status(409).json({ success: false, error: 'The glossary entry changed while you were editing. Reload and try again.' });
+        }
+        res.json({ success: true, data: updated });
+    } catch (error) {
+        res.status(isDuplicateKey(error) ? 409 : 400).json({
+            success: false,
+            error: isDuplicateKey(error)
+                ? 'A glossary entry for that term already exists'
+                : safeError(error)
+        });
+    }
 }));
 
 router.get('/:courseId/writing-feedback/canvas/status', asyncHandlerWithAuth(async (_req: Request, res: Response) => {
@@ -397,6 +480,12 @@ router.post(
         const globalUser = (req.session as any).globalUser;
 
         // Promote only the persisted draft version; the delegate rejects concurrent rubric changes.
+        try {
+            if (lens === 'linguistic') requireCompleteSflProfile(selected.draft.sflContext);
+        } catch (error) {
+            return res.status(400).json({ success: false, error: safeError(error) });
+        }
+
         const approved = approveRubricDraft(selected.draft, globalUser.userId);
         const updated = await mongo.approveWritingRubricDraft(
             courseId(req),
@@ -579,17 +668,24 @@ router.post('/:courseId/writing-feedback/submissions/:submissionId/verify', asyn
 }));
 
 /**
- * Generates a feedback draft for every lens the assignment requires.
+ * Queues a feedback draft for every lens the assignment requires.
  *
- * Responds with `{ linguistic?, technical? }`. A lab report whose technical
- * lens failed or whose technical rubric is unapproved responds without the
- * `technical` key; the linguistic draft remains reviewable.
+ * The queued job stores only internal ids; the worker reloads verified text
+ * inside the Writing Feedback boundary. Clients poll submission detail until
+ * the status reaches `draft_ready` or `failed`.
  */
 router.post('/:courseId/writing-feedback/submissions/:submissionId/generate', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const mongo = await EngEAI_MongoDB.getInstance();
-        const result = await new WritingFeedbackService(mongo).generate(courseId(req), String(req.params.submissionId));
-        res.json({ success: true, data: result });
+        const job = await new WritingFeedbackService(mongo).enqueueGeneration(courseId(req), String(req.params.submissionId));
+        res.status(202).json({
+            success: true,
+            data: {
+                status: 'queued',
+                jobId: job.id,
+                submissionId: String(req.params.submissionId)
+            }
+        });
     } catch (error) {
         res.status(400).json({ success: false, error: safeError(error) });
     }

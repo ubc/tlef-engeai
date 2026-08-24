@@ -466,6 +466,23 @@ async function refreshReview(submissionId: string): Promise<void> {
     await openReview(submissionId);
 }
 
+function delay(ms: number): Promise<void> {
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function waitForGeneration(submissionId: string): Promise<SubmissionDetail> {
+    const deadline = Date.now() + 120_000;
+    while (Date.now() < deadline) {
+        const detail = await request<SubmissionDetail>(`/submissions/${encodeURIComponent(submissionId)}`);
+        if (detail.submission.status === 'draft_ready') return detail;
+        if (detail.submission.status === 'failed') {
+            throw new Error('Feedback generation failed. Check the rubric/profile and try again.');
+        }
+        await delay(2000);
+    }
+    throw new Error('Feedback generation is still running. Refresh this submission in a moment.');
+}
+
 function renderReviewView(root: HTMLDivElement, detail: SubmissionDetail): void {
     const { submission, feedbackRun } = detail;
     const assignment = state.currentAssignment;
@@ -729,17 +746,15 @@ function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assignment | 
                 staleRubric ? 'Regenerate with approved rubric' : 'Generate feedback',
                 'primary',
                 async () => {
-                    // The technical lens is allowed to fail without failing the linguistic
-                    // draft; surface that gap instead of silently reporting full success.
-                    const generated = await jsonRequest<{ linguistic?: unknown; technical?: unknown }>(
+                    await jsonRequest<{ status: 'queued'; jobId: string; submissionId: string }>(
                         `/submissions/${encodeURIComponent(submission.id)}/generate`,
                         'POST'
                     );
-                    if (assignment?.isLabReport && !generated.technical) {
+                    showSuccessToast('Feedback generation queued. This page will refresh when it is ready.');
+                    const settled = await waitForGeneration(submission.id);
+                    if (assignment?.isLabReport && assignment.technicalRubric?.status === 'approved' && !settled.technicalFeedbackRun) {
                         showErrorToast('Technical feedback was not generated. Check that the technical rubric is approved, then generate again.');
-                    } else {
-                        showSuccessToast('Feedback draft generated for staff review.');
-                    }
+                    } else showSuccessToast('Feedback draft generated for staff review.');
                     await refreshReview(submission.id);
                 },
                 submission.requiresVerification
@@ -1083,6 +1098,18 @@ function renderSummaryTab(
         goalsSection.append(goalCard);
     });
     children.push(goalsSection);
+
+    const mentions = feedbackRun.result.courseMaterialMentions ?? [];
+    if (mentions.length) {
+        const materialsSection = document.createElement('section');
+        materialsSection.className = 'wf-feedback-section';
+        materialsSection.append(createText('h3', 'Useful course materials to revisit'));
+        const materialList = document.createElement('ul');
+        materialList.className = 'wf-strength-list';
+        mentions.forEach((mention) => materialList.append(createText('li', mention.label)));
+        materialsSection.append(materialList);
+        children.push(materialsSection);
+    }
 
     const reviewSection = document.createElement('section');
     reviewSection.className = 'wf-feedback-section';

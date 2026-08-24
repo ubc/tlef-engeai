@@ -59,6 +59,7 @@ import type {
     StaffReviewRevision,
     WritingFeedbackLens,
     WritingFeedbackRun,
+    WritingGlossaryEntry,
     WritingJob,
     WritingRelease,
     WritingRubricDefinition,
@@ -395,6 +396,39 @@ export class EngEAI_MongoDB {
         WritingFeedbackMongo.countWritingFeedbackRunsByLens(this.ctx(), courseId, assignmentId, lens);
 
     /**
+     * listWritingGlossaryEntries — lists reusable Writing Feedback glossary definitions.
+     *
+     * @param courseId - Owning course id
+     * @param search - Optional term/definition search text
+     * @returns Course-scoped glossary entries
+     */
+    public listWritingGlossaryEntries = async (courseId: string, search?: string): Promise<WritingGlossaryEntry[]> =>
+        WritingFeedbackMongo.listWritingGlossaryEntries(this.ctx(), courseId, search);
+
+    /**
+     * createWritingGlossaryEntry — creates a reusable course glossary definition.
+     *
+     * @param input - Course, term, definition, and actor
+     * @returns Newly persisted entry
+     */
+    public createWritingGlossaryEntry = async (input: { courseId: string; term: string; definition: string; actorUserId: string }) =>
+        WritingFeedbackMongo.createWritingGlossaryEntry(this.ctx(), input);
+
+    /**
+     * updateWritingGlossaryEntry — version-checked reusable glossary update.
+     *
+     * @param courseId - Owning course id
+     * @param entryId - Entry being updated
+     * @param update - New value, expected version, and actor
+     * @returns Updated entry or `null`
+     */
+    public updateWritingGlossaryEntry = async (
+        courseId: string,
+        entryId: string,
+        update: { term: string; definition: string; expectedVersion: number; actorUserId: string }
+    ) => WritingFeedbackMongo.updateWritingGlossaryEntry(this.ctx(), courseId, entryId, update);
+
+    /**
      * appendWritingReview — appends an immutable staff revision and invalidates approval.
      *
      * @param courseId - Owning course id
@@ -458,6 +492,17 @@ export class EngEAI_MongoDB {
      */
     public enqueueWritingJob = async (job: Omit<WritingJob, 'id' | 'createdAt' | 'updatedAt' | 'attempts'>) =>
         WritingFeedbackMongo.enqueueWritingJob(this.ctx(), job);
+
+    /**
+     * findActiveWritingJob — resolves queued or leased work for a submission.
+     *
+     * @param courseId - Owning course id
+     * @param submissionId - Submission pointer stored in the job payload
+     * @param type - Worker handler type
+     * @returns Active job or `null`
+     */
+    public findActiveWritingJob = async (courseId: string, submissionId: string, type: WritingJob['type']) =>
+        WritingFeedbackMongo.findActiveWritingJob(this.ctx(), courseId, submissionId, type);
 
     /**
      * leaseNextWritingJob — atomically claims the oldest runnable job.

@@ -134,6 +134,7 @@ describe('Writing Feedback assignment persistence', () => {
             'writing-feedback-runs': indexOnlyCollection(),
             'writing-releases': indexOnlyCollection(),
             'writing-jobs': indexOnlyCollection(),
+            'writing-glossary-entries': indexOnlyCollection(),
             'canvas-connections': indexOnlyCollection()
         });
 

@@ -19,7 +19,8 @@ import type {
     WritingAssignment,
     WritingFeedbackLens,
     WritingRubricCriterion,
-    WritingRubricDefinition
+    WritingRubricDefinition,
+    WritingSflContextProfile
 } from './contracts';
 
 /** Where a draft's grid came from, which decides how much auto-fill may rewrite. */
@@ -63,6 +64,7 @@ export interface AutofillProposal {
     constraints: string[];
     learningOutcomes: string[];
     gradingIntent: string;
+    sflContext?: WritingSflContextProfile;
     criteria: WritingRubricCriterion[];
 }
 
@@ -136,6 +138,7 @@ export function mergeAutofill(
         constraints: proposal.constraints.length ? proposal.constraints : draft.constraints,
         learningOutcomes: proposal.learningOutcomes.length ? proposal.learningOutcomes : draft.learningOutcomes,
         gradingIntent: proposal.gradingIntent || draft.gradingIntent,
+        ...(proposal.sflContext ? { sflContext: proposal.sflContext } : {}),
         criteria
     };
 }
@@ -166,6 +169,9 @@ export function buildAutofillPrompt(instructions: string, draft: WritingRubricDe
         '- Each descriptor says what work at that level looks like for that criterion,',
         '  in one sentence, specific to this assignment.',
         '- Do not add, remove, or rename criteria or levels. Use exactly the ids given.',
+        '- Also propose an SFL context profile for the assignment. Treat genre as a staged social purpose, not a format label.',
+        '- If the assignment is unfamiliar or composite, set genreState to custom or composite and do not invent Ferreira DR/DC/PS stages.',
+        '- Include task, purpose, audience, field, tenor, mode, actual evaluator, production conditions, explicit stages, embedded genres, task requirements, and learning outcomes.',
         '- Keep each of task, audience, purpose, and grading intent under 1000 characters.',
         '- Keep each criterion description and each descriptor to one or two sentences.',
         '',
@@ -189,6 +195,30 @@ const autofillProposalSchema = z.object({
     constraints: z.array(z.string().trim().min(1).max(300)).max(12),
     learningOutcomes: z.array(z.string().trim().min(1).max(400)).max(12),
     gradingIntent: z.string().trim().max(2000),
+    sflContext: z.object({
+        genreId: z.string().trim().min(1).max(120).optional(),
+        genreLabel: z.string().trim().min(1).max(160),
+        genreState: z.enum(['declared', 'staff_confirmed', 'custom', 'composite', 'needs_staff_input']),
+        task: z.string().trim().min(1).max(2000),
+        purpose: z.string().trim().min(1).max(2000),
+        audience: z.string().trim().min(1).max(2000),
+        field: z.string().trim().min(1).max(2000),
+        tenor: z.string().trim().min(1).max(2000),
+        mode: z.string().trim().min(1).max(2000),
+        actualEvaluator: z.string().trim().min(1).max(2000),
+        productionConditions: z.string().trim().min(1).max(2000),
+        stages: z.array(z.object({
+            id: z.string().trim().min(1).max(64).regex(/^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/),
+            label: z.string().trim().min(1).max(120),
+            purpose: z.string().trim().min(1).max(600),
+            required: z.boolean().optional(),
+            order: z.number().int().min(1).max(50).optional()
+        })).min(1).max(20),
+        embeddedGenres: z.array(z.string().trim().min(1).max(160)).max(12),
+        taskRequirements: z.array(z.string().trim().min(1).max(300)).min(1).max(20),
+        learningOutcomes: z.array(z.string().trim().min(1).max(400)).min(1).max(20),
+        approvedGlossaryTerms: z.array(z.string().trim().min(1).max(80)).max(30).optional()
+    }).optional(),
     criteria: z.array(z.object({
         id: z.string().trim().min(1).max(64),
         label: z.string().trim().min(1).max(80),
@@ -247,6 +277,18 @@ function deterministicAutofillProposal(draft: WritingRubricDefinition): Autofill
         constraints: draft.constraints.length ? [...draft.constraints] : ['[MOCK] Constraint'],
         learningOutcomes: draft.learningOutcomes.length ? [...draft.learningOutcomes] : ['[MOCK] Learning outcome'],
         gradingIntent: draft.gradingIntent || '[MOCK] Formative.',
+        ...(draft.sflContext ? {
+            sflContext: {
+                ...draft.sflContext,
+                stages: draft.sflContext.stages.map((stage) => ({ ...stage })),
+                embeddedGenres: [...draft.sflContext.embeddedGenres],
+                taskRequirements: [...draft.sflContext.taskRequirements],
+                learningOutcomes: [...draft.sflContext.learningOutcomes],
+                ...(draft.sflContext.approvedGlossaryTerms
+                    ? { approvedGlossaryTerms: [...draft.sflContext.approvedGlossaryTerms] }
+                    : {})
+            }
+        } : {}),
         criteria: draft.criteria.map((criterion) => ({
             ...criterion,
             description: criterion.description || `[MOCK] ${criterion.label} description.`
@@ -317,6 +359,19 @@ export async function proposeRubricFromInstructions(
     // The model is told not to invent criteria. Anything it invented anyway is dropped
     // here, so the merge rules only ever see ids the draft already has.
     const known = new Set(draft.criteria.map((criterion) => criterion.id));
+    const sflContext = validated.data.sflContext
+        ? {
+            ...validated.data.sflContext,
+            task: clipToDraftLimit(validated.data.sflContext.task),
+            purpose: clipToDraftLimit(validated.data.sflContext.purpose),
+            audience: clipToDraftLimit(validated.data.sflContext.audience),
+            field: clipToDraftLimit(validated.data.sflContext.field),
+            tenor: clipToDraftLimit(validated.data.sflContext.tenor),
+            mode: clipToDraftLimit(validated.data.sflContext.mode),
+            actualEvaluator: clipToDraftLimit(validated.data.sflContext.actualEvaluator),
+            productionConditions: clipToDraftLimit(validated.data.sflContext.productionConditions)
+        }
+        : undefined;
     return {
         ...validated.data,
         // The proposal schema allows more length than the draft validator does (see
@@ -326,6 +381,7 @@ export async function proposeRubricFromInstructions(
         audience: clipToDraftLimit(validated.data.audience),
         purpose: clipToDraftLimit(validated.data.purpose),
         gradingIntent: clipToDraftLimit(validated.data.gradingIntent),
+        ...(sflContext ? { sflContext } : {}),
         criteria: validated.data.criteria
             .filter((criterion) => known.has(criterion.id))
             .map((criterion) => ({ ...criterion, description: clipToDraftLimit(criterion.description) }))

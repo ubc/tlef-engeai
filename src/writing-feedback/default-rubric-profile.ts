@@ -15,7 +15,8 @@ import type {
     WritingAssignment,
     WritingRubricCriterion,
     WritingRubricDefinition,
-    WritingRubricLevel
+    WritingRubricLevel,
+    WritingSflContextProfile
 } from './contracts';
 import { DEFAULT_WRITING_PROFILE_VERSION } from './contracts';
 import { spaceBandsEvenly } from './rubric-bands';
@@ -57,6 +58,42 @@ export const DEFAULT_WRITING_LEVELS: ReadonlyArray<WritingRubricLevel> = [
 ];
 
 /**
+ * buildDefaultSflContextProfile - creates an editable starter profile for V2.
+ *
+ * The values are deliberately plain placeholders and the state keeps approval
+ * blocked until staff confirm or replace the profile.
+ *
+ * @returns Staff-editable genre/register profile attached to the linguistic rubric
+ */
+export function buildDefaultSflContextProfile(): WritingSflContextProfile {
+    return {
+        genreId: 'custom',
+        genreLabel: 'Instructor-confirmed assignment genre',
+        genreState: 'needs_staff_input',
+        task: 'Describe what students are expected to write.',
+        purpose: 'Describe what the writing should accomplish for its reader.',
+        audience: 'Describe the intended reader or audience.',
+        field: 'Describe the disciplinary subject matter and activity.',
+        tenor: 'Describe the writer-reader relationship and expected stance.',
+        mode: 'Describe the format, length, medium, and preparation conditions.',
+        actualEvaluator: 'Instructor or teaching assistant.',
+        productionConditions: 'Describe whether this is timed, take-home, collaborative, or resource-supported.',
+        stages: [{
+            id: 'main_response',
+            label: 'Main response',
+            purpose: 'Carries the central work requested by the assignment.',
+            required: true,
+            order: 1
+        }],
+        embeddedGenres: [],
+        taskRequirements: ['Replace this line with an explicit task requirement.'],
+        learningOutcomes: [
+            'Use language choices that fit the assignment purpose, reader, and genre.'
+        ]
+    };
+}
+
+/**
  * buildDefaultWritingRubric - creates a fresh draft copy of the platform template.
  *
  * @param actorUserId - Internal actor recorded as the template creator
@@ -81,6 +118,7 @@ export function buildDefaultWritingRubric(
             'Position language appropriately for the stated audience and purpose.'
         ],
         gradingIntent: 'Provide formative, evidence-based feedback using ordinal levels. Numeric grading requires instructor-authored points.',
+        sflContext: buildDefaultSflContextProfile(),
         criteria: DEFAULT_WRITING_CRITERIA.map((criterion) => ({
             ...criterion,
             cells: spaceBandsEvenly(criterion.points ?? 0, DEFAULT_WRITING_LEVELS)

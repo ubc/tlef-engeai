@@ -25,6 +25,34 @@ const slug = z.string()
     .max(64)
     .regex(/^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/, 'Use a lowercase slug with letters, numbers, and underscores');
 
+const sflStageSchema = z.object({
+    id: slug,
+    label: z.string().trim().min(1).max(120),
+    purpose: z.string().trim().min(1).max(600),
+    required: z.boolean().optional(),
+    order: z.number().int().min(1).max(50).optional()
+});
+
+/** Staff-reviewed genre/register profile saved with the linguistic rubric draft. */
+export const writingSflContextProfileInputSchema = z.object({
+    genreId: z.string().trim().min(1).max(120).optional(),
+    genreLabel: z.string().trim().min(1).max(160),
+    genreState: z.enum(['declared', 'staff_confirmed', 'custom', 'composite', 'needs_staff_input']),
+    task: compactText,
+    purpose: compactText,
+    audience: compactText,
+    field: compactText,
+    tenor: compactText,
+    mode: compactText,
+    actualEvaluator: compactText,
+    productionConditions: compactText,
+    stages: z.array(sflStageSchema).min(1).max(20),
+    embeddedGenres: z.array(z.string().trim().min(1).max(160)).max(12),
+    taskRequirements: z.array(z.string().trim().min(1).max(300)).min(1).max(20),
+    learningOutcomes: z.array(z.string().trim().min(1).max(400)).min(1).max(20),
+    approvedGlossaryTerms: z.array(z.string().trim().min(1).max(80)).max(30).optional()
+});
+
 /** One grid cell. Ranges are inclusive and may collapse to a single value. */
 const rubricCell = z.object({
     min: z.number().finite().min(0).max(1000),
@@ -43,6 +71,8 @@ export const writingRubricDraftInputSchema = z.object({
     gradingIntent: compactText,
     /** Optional instructor-approved lab handout context supplied to the technical lens. */
     labContext: z.string().trim().max(12000).optional(),
+    /** Staff-reviewed genre/register profile used by the V2 linguistic pipeline. */
+    sflContext: writingSflContextProfileInputSchema.optional(),
     criteria: z.array(z.object({
         id: slug,
         label: z.string().trim().min(1).max(80),

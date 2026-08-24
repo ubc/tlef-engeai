@@ -28,6 +28,38 @@ export type WritingCriterionId = string;
 /** Instructor-authored performance-level slug, frozen after its first approval. */
 export type WritingLevelId = string;
 
+/** Staff-reviewed genre/register state used by SFL-founded feedback. */
+export type SflGenreProfileState = 'declared' | 'staff_confirmed' | 'custom' | 'composite' | 'needs_staff_input';
+
+/** One staff-approved stage or move in the assignment profile. */
+export interface SflStage {
+    id: string; // stable stage key inside the rubric version
+    label: string; // staff-facing stage name
+    purpose: string; // communicative work expected of the stage
+    required?: boolean; // whether absence can matter for feedback
+    order?: number; // optional expected sequence
+}
+
+/** Staff-reviewed assignment context used by the V2 linguistic pipeline. */
+export interface SflContextProfile {
+    genreId?: string; // known SFL profile id or custom/composite label
+    genreLabel: string; // plain-language genre or document type
+    genreState: SflGenreProfileState; // confirmation state reviewed with the rubric
+    task: string; // assignment task profile
+    purpose: string; // communicative purpose profile
+    audience: string; // intended reader profile
+    field: string; // disciplinary subject/activity
+    tenor: string; // writer-reader relationship and stance
+    mode: string; // medium/format/production mode
+    actualEvaluator: string; // who reviews the work
+    productionConditions: string; // timed/take-home/resource/collaboration conditions
+    stages: SflStage[]; // confirmed stages or moves
+    embeddedGenres: string[]; // nested genres such as data commentary
+    taskRequirements: string[]; // explicit task objects
+    learningOutcomes: string[]; // outcomes the analyzer may connect to
+    approvedGlossaryTerms?: string[]; // optional terms relevant to the assignment
+}
+
 /** Mirror of WritingRubricCell. Points band and descriptor for one grid cell. */
 export interface RubricCell {
     min: number;
@@ -66,6 +98,7 @@ export interface RubricDefinition {
     constraints: string[]; // explicit task requirements; never inferred by the model
     learningOutcomes: string[]; // instructor-approved outcomes governing feedback
     gradingIntent: string; // states formative/summative intent and grading boundaries
+    sflContext?: SflContextProfile; // V2 linguistic genre/register profile approved with the rubric
     criteria: RubricCriterion[]; // assignment-specific criteria and optional SFL lenses
     levels: RubricLevel[]; // complete ordinal scale and optional point mapping
     updatedAt: string; // server timestamp shown in rubric provenance/history
@@ -96,7 +129,14 @@ export interface Assignment {
 export interface CriterionFeedback {
     criterion: WritingCriterionId; // joins the result to the approved rubric criterion
     suggestedLevel: WritingLevelId; // model draft level requiring human review
-    evidence: Array<{ quote: string; rationale: string }>; // exact verified-text quote and the model's rationale for citing it
+    evidence: Array<{
+        quote: string;
+        rationale: string;
+        sflFindingIds?: string[];
+        courseMaterialMention?: CourseMaterialMention;
+        glossaryEntryId?: string;
+        glossarySnapshot?: GlossarySnapshot;
+    }>; // exact verified-text quote and the model's rationale for citing it
     explanation: string; // criterion-level formative explanation
     confidence: number; // staff-only diagnostic excluded from student output
 }
@@ -108,11 +148,49 @@ export interface FeedbackRun {
     lens?: WritingFeedbackLens; // which feedback lens produced this run
     createdAt: string; // generation timestamp shown in review provenance
     result: {
+        schemaVersion?: string; // V2 result schema, absent on older runs
         criteria: CriterionFeedback[]; // supported criterion judgments with exact evidence
         strengths: string[]; // positive observations included in student-facing output
         revisionGoals: Array<{ skillTag: string; goal: string; guidedQuestion: string }>; // up to three actionable, Socratic priorities
         internalFlags: string[]; // staff-only warnings excluded from PDF/release payloads
+        courseMaterialMentions?: CourseMaterialMention[]; // deduplicated useful course resources
     }; // validated structured result; never edited in place by the browser
+}
+
+/** Server-resolved course material label safe for student-facing feedback. */
+export interface CourseMaterialMention {
+    id: string; // deterministic mention identity
+    label: string; // display label, e.g. Week · Item · Resource
+    courseId?: string;
+    topicOrWeekId?: string;
+    topicOrWeekTitle?: string;
+    itemId?: string;
+    itemTitle?: string;
+    materialId?: string;
+    materialName?: string;
+    version?: string;
+}
+
+/** Reusable course glossary entry returned by glossary endpoints. */
+export interface WritingGlossaryEntry {
+    id: string; // glossary entry id
+    courseId: string; // owning course
+    term: string; // display term
+    normalizedTerm: string; // uniqueness key
+    definition: string; // plain-language definition
+    version: number; // increments on update
+    createdAt: string; // server timestamp
+    createdBy: string; // internal actor
+    updatedAt: string; // server timestamp
+    updatedBy: string; // internal actor
+}
+
+/** Historical glossary snapshot stored on an annotation. */
+export interface GlossarySnapshot {
+    id: string; // glossary entry id
+    term: string; // term at selection time
+    definition: string; // definition at selection time
+    version: number; // selected glossary version
 }
 
 /** Academic Writing Matrix function used to categorize staff annotations. */
@@ -134,7 +212,10 @@ export interface AnchoredComment {
     comment: string; // feedback exposed to the student after approval/release
     howToImprove?: string; // optional concrete revision direction
     courseMaterialLink?: string; // optional staff-selected learning resource
+    courseMaterialMention?: CourseMaterialMention; // resolved course-material label preferred for V2
     glossaryDefinition?: { term: string; definition: string }; // optional disciplinary-language support
+    glossaryEntryId?: string; // selected glossary entry id
+    glossarySnapshot?: GlossarySnapshot; // definition retained for historical PDFs
     origin: 'model_seed' | 'staff'; // provenance label preserved in review history
     /** Server-stamped display name of the staff comment author; unset for model seeds. */
     authorName?: string;
@@ -177,8 +258,8 @@ export interface ReviewRevision {
 }
 
 const DIFF_FIELDS: Array<keyof AnchoredComment> = [
-    'quote', 'comment', 'howToImprove', 'courseMaterialLink', 'glossaryDefinition',
-    'functionTag', 'levelTag', 'priority'
+    'quote', 'comment', 'howToImprove', 'courseMaterialLink', 'courseMaterialMention',
+    'glossaryDefinition', 'glossaryEntryId', 'glossarySnapshot', 'functionTag', 'levelTag', 'priority'
 ];
 
 function commentsDiffer(a: AnchoredComment, b: AnchoredComment): boolean {

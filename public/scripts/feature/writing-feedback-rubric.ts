@@ -39,6 +39,8 @@ import {
     RubricDefinition,
     RubricLevel,
     RubricResponse,
+    SflContextProfile,
+    SflGenreProfileState,
     WfFunctionTag,
     WritingFeedbackLens,
     chip,
@@ -60,6 +62,13 @@ import {
 } from './writing-feedback-shared.js';
 
 const MAX_LAB_CONTEXT = 12000;
+const GENRE_STATE_OPTIONS: Array<{ value: SflGenreProfileState; label: string }> = [
+    { value: 'custom', label: 'Custom or unfamiliar genre' },
+    { value: 'composite', label: 'Composite genre' },
+    { value: 'declared', label: 'Declared course genre' },
+    { value: 'staff_confirmed', label: 'Staff-confirmed profile' },
+    { value: 'needs_staff_input', label: 'Needs staff input' }
+];
 const FUNCTION_OPTIONS: Array<{ value: WfFunctionTag; label: string }> = [
     { value: 'content', label: 'Content' },
     { value: 'interpersonal', label: 'Interpersonal' },
@@ -84,7 +93,10 @@ interface RubricStructureInput {
 }
 
 /** Complete `PUT .../rubric-draft` payload for a single rubric. */
-type RubricDraftInput = AssignmentDetailsInput & RubricStructureInput & { labContext?: string };
+type RubricDraftInput = AssignmentDetailsInput & RubricStructureInput & {
+    labContext?: string;
+    sflContext?: SflContextProfile;
+};
 
 type RubricControl = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 
@@ -133,6 +145,18 @@ function namedControl<T extends RubricControl>(control: T, name: string): T {
     return control;
 }
 
+function selectControl(options: Array<{ value: string; label: string }>, current: string): HTMLSelectElement {
+    const select = document.createElement('select');
+    options.forEach((option) => {
+        const item = document.createElement('option');
+        item.value = option.value;
+        item.textContent = option.label;
+        if (option.value === current) item.selected = true;
+        select.append(item);
+    });
+    return select;
+}
+
 function setEditable(control: RubricControl, editable: boolean): void {
     if (control instanceof HTMLSelectElement) {
         control.disabled = !editable;
@@ -165,6 +189,18 @@ function detachedRubric(source: RubricDefinition): RubricDefinition {
         ...source,
         constraints: [...source.constraints],
         learningOutcomes: [...source.learningOutcomes],
+        ...(source.sflContext ? {
+            sflContext: {
+                ...source.sflContext,
+                stages: source.sflContext.stages.map((stage) => ({ ...stage })),
+                embeddedGenres: [...source.sflContext.embeddedGenres],
+                taskRequirements: [...source.sflContext.taskRequirements],
+                learningOutcomes: [...source.sflContext.learningOutcomes],
+                ...(source.sflContext.approvedGlossaryTerms
+                    ? { approvedGlossaryTerms: [...source.sflContext.approvedGlossaryTerms] }
+                    : {})
+            }
+        } : {}),
         criteria: source.criteria.map((criterion) => ({ ...criterion })),
         levels: source.levels
             .map((level) => ({ ...level }))
@@ -329,6 +365,46 @@ function collectAssignmentDetails(form: HTMLFormElement): AssignmentDetailsInput
         constraints,
         learningOutcomes,
         gradingIntent: rubricTextValue(form, 'gradingIntent'),
+    };
+}
+
+function collectSflContext(form: HTMLFormElement, details: AssignmentDetailsInput): SflContextProfile {
+    const genreLabel = rubricTextValue(form, 'sfl.genreLabel');
+    const fieldValue = rubricTextValue(form, 'sfl.field');
+    const tenor = rubricTextValue(form, 'sfl.tenor');
+    const mode = rubricTextValue(form, 'sfl.mode');
+    const actualEvaluator = rubricTextValue(form, 'sfl.actualEvaluator');
+    const productionConditions = rubricTextValue(form, 'sfl.productionConditions');
+    if ([genreLabel, fieldValue, tenor, mode, actualEvaluator, productionConditions].some((value) => !value)) {
+        throw new Error('Complete the SFL assignment profile before saving.');
+    }
+    const stages = rubricLines(form, 'sfl.stages').map((line, index) => {
+        const parts = line.split('|').map((part) => part.trim());
+        const rawId = parts.length >= 3 ? parts[0] : '';
+        const label = parts.length >= 3 ? parts[1] : parts[0];
+        const purpose = parts.length >= 3 ? parts.slice(2).join(' | ') : (parts[1] || label);
+        const idSource = rawId || label || `stage_${index + 1}`;
+        const id = idSource.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || `stage_${index + 1}`;
+        return { id, label, purpose, required: true, order: index + 1 };
+    });
+    if (!stages.length) throw new Error('Add at least one reviewed SFL stage before saving.');
+    return {
+        genreId: rubricTextValue(form, 'sfl.genreId') || undefined,
+        genreLabel,
+        genreState: (rubricTextValue(form, 'sfl.genreState') || 'custom') as SflGenreProfileState,
+        task: details.task,
+        purpose: details.purpose,
+        audience: details.audience,
+        field: fieldValue,
+        tenor,
+        mode,
+        actualEvaluator,
+        productionConditions,
+        stages,
+        embeddedGenres: rubricLines(form, 'sfl.embeddedGenres'),
+        taskRequirements: rubricLines(form, 'sfl.taskRequirements'),
+        learningOutcomes: details.learningOutcomes,
+        approvedGlossaryTerms: rubricLines(form, 'sfl.approvedGlossaryTerms')
     };
 }
 
@@ -776,6 +852,42 @@ function renderAssignmentDetails(
         grid.append(field(entry.label, entry.control, undefined, entry.wide));
     });
 
+    const sflContext = draft.sflContext;
+    const stageLines = (sflContext?.stages ?? []).map((stage) =>
+        `${stage.id} | ${stage.label} | ${stage.purpose}`
+    );
+    const sflStages = namedControl(textAreaControl(stageLines.join('\n'), 5), 'sfl.stages');
+    sflStages.placeholder = 'stage_id | Stage label | What this stage should accomplish';
+    const embeddedGenres = namedControl(textAreaControl((sflContext?.embeddedGenres ?? []).join('\n'), 3), 'sfl.embeddedGenres');
+    embeddedGenres.placeholder = 'One per line';
+    const taskRequirements = namedControl(textAreaControl((sflContext?.taskRequirements ?? draft.constraints).join('\n'), 4), 'sfl.taskRequirements');
+    taskRequirements.placeholder = 'One explicit task object per line';
+    const glossaryTerms = namedControl(textAreaControl((sflContext?.approvedGlossaryTerms ?? []).join('\n'), 3), 'sfl.approvedGlossaryTerms');
+    glossaryTerms.placeholder = 'Optional, one per line';
+    const sflControls: Array<{ label: string; control: RubricControl; help?: string; wide?: boolean }> = [
+        { label: 'Genre or document type', control: namedControl(inputControl(sflContext?.genreLabel ?? 'Custom assignment genre'), 'sfl.genreLabel') },
+        { label: 'Profile state', control: namedControl(selectControl(GENRE_STATE_OPTIONS, sflContext?.genreState ?? 'custom'), 'sfl.genreState') },
+        { label: 'Genre id', control: namedControl(inputControl(sflContext?.genreId ?? 'custom'), 'sfl.genreId') },
+        { label: 'Field', control: namedControl(textAreaControl(sflContext?.field ?? '', 3), 'sfl.field') },
+        { label: 'Tenor', control: namedControl(textAreaControl(sflContext?.tenor ?? '', 3), 'sfl.tenor') },
+        { label: 'Mode', control: namedControl(textAreaControl(sflContext?.mode ?? '', 3), 'sfl.mode') },
+        { label: 'Actual evaluator', control: namedControl(textAreaControl(sflContext?.actualEvaluator ?? 'Instructor or teaching assistant.', 2), 'sfl.actualEvaluator') },
+        { label: 'Production conditions', control: namedControl(textAreaControl(sflContext?.productionConditions ?? '', 3), 'sfl.productionConditions') },
+        { label: 'Stages', control: sflStages, help: 'One per line: id | label | purpose.', wide: true },
+        { label: 'Embedded genres', control: embeddedGenres },
+        { label: 'Task requirements for analysis', control: taskRequirements },
+        { label: 'Approved glossary terms', control: glossaryTerms }
+    ];
+    sflControls.forEach((entry) => {
+        if (entry.control instanceof HTMLSelectElement) {
+            setEditable(entry.control, options.canEdit);
+            entry.control.addEventListener('change', options.onInput);
+        } else {
+            bindTextControl(entry.control, options.canEdit, options.onInput);
+        }
+        grid.append(field(entry.label, entry.control, entry.help, entry.wide));
+    });
+
     // The lab handout is versioned and approval-gated on the technical rubric,
     // so it is edited here but never sent with the writing rubric.
     if (options.isLabReport) {
@@ -840,6 +952,7 @@ function renderAssignmentDetails(
  */
 async function saveAssignmentRubrics(context: RubricPageContext): Promise<void> {
     const details = collectAssignmentDetails(context.detailsForm);
+    const sflContext = collectSflContext(context.detailsForm, details);
     const labContext = rubricTextValue(context.detailsForm, 'labContext').slice(0, MAX_LAB_CONTEXT) || undefined;
 
     // Validate every rubric before writing any of them. Validating inside the write
@@ -886,6 +999,7 @@ async function saveAssignmentRubrics(context: RubricPageContext): Promise<void> 
         const input: RubricDraftInput = {
             ...details,
             ...structure,
+            ...(section.lens === 'linguistic' ? { sflContext } : {}),
             ...(section.lens === 'technical' ? { labContext } : {})
         };
         await jsonRequest<Assignment>(

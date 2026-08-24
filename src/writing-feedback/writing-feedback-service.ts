@@ -21,8 +21,10 @@ import type {
     WritingAssignment,
     WritingFeedbackEngine,
     WritingFeedbackLens,
+    WritingFeedbackRunTrace,
     WritingFeedbackResult,
     WritingFeedbackRun,
+    WritingJob,
     WritingRubricDefinition,
     WritingSubmission
 } from './contracts';
@@ -33,6 +35,9 @@ import { lensesForAssignment, selectRubric } from './rubric-lens';
 import { ModelSelectionService } from '../dashboard-setting/model-selection-service';
 import { StudentWritingFeedbackPdfService } from '../report-generation/writing-feedback-report';
 import { resolveNumericGrade } from './feedback-schema';
+import { requireCompleteSflProfile } from './sfl-analysis';
+
+type GeneratedFeedbackWithTrace = WritingFeedbackResult & { runTrace?: WritingFeedbackRunTrace };
 
 type ReviewableSubmission = WritingSubmission & { reviews?: StaffReviewRevision[] };
 
@@ -149,6 +154,42 @@ export class WritingFeedbackService {
     }
 
     /**
+     * Enqueues linguistic/technical generation without sending student text in the job.
+     *
+     * This is the HTTP-facing async contract: it validates the same prerequisites that
+     * would otherwise fail immediately, marks the submission as generating, and queues
+     * only internal ids. Duplicate queued/leased jobs are returned instead of creating
+     * additional model attempts.
+     *
+     * @param courseId - Course authorization/persistence boundary
+     * @param submissionId - Submission selected by staff
+     * @returns Active or newly queued generate job
+     * @throws Error when verification or approved-rubric prerequisites are missing
+     */
+    async enqueueGeneration(courseId: string, submissionId: string): Promise<WritingJob> {
+        const submission = await this.requireSubmission(courseId, submissionId);
+        if (submission.requiresVerification || !submission.verifiedText?.trim()) {
+            throw new Error('Staff must verify the submission text before feedback generation');
+        }
+        const assignment = await this.requireAssignment(courseId, submission.assignmentId);
+        if (!assignment.rubric || assignment.rubric.status !== 'approved') {
+            throw new Error('An approved rubric is required before feedback generation');
+        }
+        requireCompleteSflProfile(assignment.rubric.sflContext);
+        const existing = await this.mongo.findActiveWritingJob(courseId, submissionId, 'generate');
+        if (existing) return existing;
+
+        await this.mongo.setWritingSubmissionStatus(courseId, submissionId, 'generating');
+        return this.mongo.enqueueWritingJob({
+            courseId,
+            type: 'generate',
+            state: 'queued',
+            maxAttempts: 3,
+            payload: { submissionId }
+        });
+    }
+
+    /**
      * Generates and persists one lens's immutable run against its currently-approved rubric.
      *
      * @param lens - Lens to generate; selects the engine and stamped prompt version
@@ -173,7 +214,8 @@ export class WritingFeedbackService {
             assignment: input.assignment,
             verifiedText: input.verifiedText,
             llmCallOptions: input.llmCallOptions
-        });
+        }) as GeneratedFeedbackWithTrace;
+        const { runTrace, ...storedResult } = result;
         // Persist immutable provenance before declaring the draft review-ready.
         await this.mongo.createWritingFeedbackRun({
             courseId: input.courseId,
@@ -182,13 +224,16 @@ export class WritingFeedbackService {
             profileVersion: input.assignment.profileVersion,
             rubricVersion: rubric.version,
             lens,
-            result,
+            result: storedResult,
             modelMetadata: {
                 engine: engine.constructor.name,
-                promptVersion: lens === 'technical' ? TECHNICAL_PROMPT_VERSION : 'writing-feedback-v1'
-            }
+                promptVersion: lens === 'technical'
+                    ? TECHNICAL_PROMPT_VERSION
+                    : (runTrace?.writerPromptVersion ?? 'writing-feedback-v2')
+            },
+            ...(lens === 'linguistic' && runTrace ? runTrace : {})
         });
-        return result;
+        return storedResult;
     }
 
     /**

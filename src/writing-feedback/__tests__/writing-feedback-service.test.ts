@@ -39,7 +39,13 @@ function approvedAssignment(version = 1): WritingAssignment {
         'Local writing assignment'
     );
     assignment.rubric = approveRubricDraft(
-        { ...assignment.rubric, version },
+        {
+            ...assignment.rubric,
+            version,
+            sflContext: assignment.rubric.sflContext
+                ? { ...assignment.rubric.sflContext, genreState: 'custom' }
+                : assignment.rubric.sflContext
+        },
         'instructor-1',
         new Date('2026-01-01T00:00:00.000Z')
     );
@@ -193,6 +199,44 @@ describe('WritingFeedbackService rubric provenance', () => {
         await expect(new WritingFeedbackService(mongo, engine).approve('course-1', 'submission-1', 'instructor-1'))
             .rejects.toThrow('Rubric changed after feedback generation');
         expect(approve).not.toHaveBeenCalled();
+    });
+
+    it('queues generation with IDs only and reuses an active job', async () => {
+        const assignment = approvedAssignment(1);
+        const queuedJob = {
+            id: 'job-1',
+            courseId: 'course-1',
+            type: 'generate' as const,
+            state: 'queued' as const,
+            attempts: 0,
+            maxAttempts: 3,
+            payload: { submissionId: 'submission-1' },
+            createdAt: new Date(),
+            updatedAt: new Date()
+        };
+        const mongo = {
+            getWritingSubmission: jest.fn(async () => submission('imported')),
+            getWritingAssignment: jest.fn(async () => assignment),
+            findActiveWritingJob: jest.fn()
+                .mockResolvedValueOnce(null)
+                .mockResolvedValueOnce(queuedJob),
+            setWritingSubmissionStatus: jest.fn(async () => null),
+            enqueueWritingJob: jest.fn(async (job) => ({ ...job, id: 'job-1', attempts: 0, createdAt: new Date(), updatedAt: new Date() }))
+        } as unknown as EngEAI_MongoDB;
+
+        const service = new WritingFeedbackService(mongo, { generate: jest.fn(async () => result) });
+        const created = await service.enqueueGeneration('course-1', 'submission-1');
+        const reused = await service.enqueueGeneration('course-1', 'submission-1');
+
+        expect(created.payload).toEqual({ submissionId: 'submission-1' });
+        expect(reused.id).toBe('job-1');
+        expect((mongo as any).enqueueWritingJob).toHaveBeenCalledTimes(1);
+        expect((mongo as any).enqueueWritingJob).toHaveBeenCalledWith(expect.objectContaining({
+            courseId: 'course-1',
+            type: 'generate',
+            state: 'queued',
+            payload: { submissionId: 'submission-1' }
+        }));
     });
 });
 

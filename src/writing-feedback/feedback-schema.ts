@@ -13,16 +13,42 @@
 
 import { z } from 'zod';
 import type {
+    CourseMaterialMention,
     WritingFeedbackResult,
+    WritingGlossarySnapshot,
     WritingRubricDefinition
 } from './contracts';
 
 /** Maximum model evidence span so seeded annotations stay clause- or sentence-focused. */
 export const MAX_EVIDENCE_QUOTE_LENGTH = 280;
 
+const courseMaterialMentionSchema: z.ZodType<CourseMaterialMention> = z.object({
+    id: z.string().trim().min(1).max(120),
+    label: z.string().trim().min(1).max(240),
+    courseId: z.string().trim().min(1).max(120).optional(),
+    topicOrWeekId: z.string().trim().min(1).max(120).optional(),
+    topicOrWeekTitle: z.string().trim().min(1).max(160).optional(),
+    itemId: z.string().trim().min(1).max(120).optional(),
+    itemTitle: z.string().trim().min(1).max(160).optional(),
+    materialId: z.string().trim().min(1).max(120).optional(),
+    materialName: z.string().trim().min(1).max(160).optional(),
+    version: z.string().trim().min(1).max(120).optional()
+});
+
+const glossarySnapshotSchema: z.ZodType<WritingGlossarySnapshot> = z.object({
+    id: z.string().trim().min(1).max(120),
+    term: z.string().trim().min(1).max(80),
+    definition: z.string().trim().min(1).max(600),
+    version: z.number().int().min(1).max(1000000)
+});
+
 const evidenceSchema = z.object({
     quote: z.string().min(1).max(MAX_EVIDENCE_QUOTE_LENGTH),
-    rationale: z.string().min(1)
+    rationale: z.string().min(1),
+    sflFindingIds: z.array(z.string().trim().min(1).max(80)).max(6).optional(),
+    courseMaterialMention: courseMaterialMentionSchema.optional(),
+    glossaryEntryId: z.string().trim().min(1).max(120).optional(),
+    glossarySnapshot: glossarySnapshotSchema.optional()
 });
 
 const revisionGoalSchema = z.object({
@@ -50,6 +76,7 @@ export function buildFeedbackSchema(rubric: WritingRubricDefinition) {
     const allowedCriteria = new Set(criterionIds);
     const allowedLevels = new Set(levelIds);
     return z.object({
+        schemaVersion: z.string().trim().min(1).max(80).optional(),
         criteria: z.array(z.object({
             criterion: z.string().refine((value) => allowedCriteria.has(value), 'Criterion is not part of the approved rubric'),
             suggestedLevel: z.string().refine((value) => allowedLevels.has(value), 'Performance level is not part of the approved rubric'),
@@ -57,9 +84,10 @@ export function buildFeedbackSchema(rubric: WritingRubricDefinition) {
             explanation: z.string().min(1),
             confidence: z.number().min(0).max(1)
         })).length(criterionIds.length),
-        strengths: z.array(z.string().min(1)).max(5),
+        strengths: z.array(z.string().min(1)).max(2),
         revisionGoals: z.array(revisionGoalSchema).max(3),
-        internalFlags: z.array(z.string()).max(8)
+        internalFlags: z.array(z.string()).max(8),
+        courseMaterialMentions: z.array(courseMaterialMentionSchema).max(5).optional()
     }).superRefine((feedback, ctx) => {
         const returnedIds = feedback.criteria.map((criterion) => criterion.criterion);
         if (new Set(returnedIds).size !== criterionIds.length) {
