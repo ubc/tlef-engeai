@@ -641,6 +641,22 @@ export function queryState(key: 'wfAssignment' | 'wfSubmission' | 'wfView'): str
  * @param withTime - Whether to include localized time
  * @returns Localized text, or an em dash for missing/invalid input
  */
+/**
+ * assignmentOriginText - where an assignment came from, and when it arrived
+ *
+ * Shared between the assignment list and the rubric page header so the two cannot drift
+ * apart in wording — they already did once, one saying "Created" while the other named the
+ * source. A record is created at the moment it is imported, so `createdAt` answers both.
+ *
+ * @param assignment - Assignment whose provenance is wanted
+ * @returns One staff-facing sentence naming the source and the date
+ */
+export function assignmentOriginText(assignment: Assignment): string {
+    return assignment.canvasAssignmentId
+        ? `Imported from Canvas ${formatDate(assignment.createdAt)}`
+        : `Created manually ${formatDate(assignment.createdAt)}`;
+}
+
 export function formatDate(value?: string, withTime = false): string {
     if (!value) return '—';
     const date = new Date(value);
@@ -676,14 +692,27 @@ export function createText(tag: keyof HTMLElementTagNameMap, text: string, class
  */
 export function createButton(
     label: string,
-    variant: 'primary' | 'secondary' | 'quiet' | 'danger',
+    variant: 'primary' | 'secondary' | 'quiet' | 'danger' | 'chip',
     action: (button: HTMLButtonElement) => Promise<void>,
-    disabled = false
+    disabled = false,
+    iconName?: string
 ): HTMLButtonElement {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = `wf-button wf-button--${variant}`;
-    button.textContent = label;
+    if (iconName) {
+        // Matches the documents header badges: a feather glyph ahead of its label, with the
+        // text in its own span so the icon cannot inherit the label's line box.
+        const icon = document.createElement('i');
+        icon.setAttribute('data-feather', iconName);
+        icon.setAttribute('aria-hidden', 'true');
+        const text = document.createElement('span');
+        text.className = 'wf-button-text';
+        text.textContent = label;
+        button.append(icon, text);
+    } else {
+        button.textContent = label;
+    }
     button.disabled = disabled;
     button.addEventListener('click', () => void runButtonAction(button, action));
     return button;

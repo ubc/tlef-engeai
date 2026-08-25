@@ -18,6 +18,7 @@ import { showSuccessToast } from '../ui/toast-notification.js';
 import { showDeleteConfirmationModal, showConfirmModal } from '../ui/modal-overlay.js';
 import {
     Assignment,
+    assignmentOriginText,
     CanvasAssignment,
     CanvasAuthRequiredError,
     CanvasImportResult,
@@ -124,18 +125,23 @@ function renderAssignmentCard(assignment: Assignment): HTMLElement {
     heading.append(createText('h2', assignment.title));
     const meta = document.createElement('p');
     meta.className = 'wf-assignment-meta';
+    // Provenance rides on the date rather than a separate badge: the record is created at the
+    // moment it is imported, so one line answers both "where did this come from" and "when".
+    const submissionCount = assignment.submissionCount ?? 0;
     meta.append(
-        createText('span', `Created ${formatDate(assignment.createdAt)}`),
-        createText('span', assignment.dueAt ? `Deadline ${formatDate(assignment.dueAt, true)}` : 'No deadline')
+        createText('span', assignmentOriginText(assignment)),
+        createText('span', `${submissionCount} submission${submissionCount === 1 ? '' : 's'}`)
     );
+    // A deadline is imported from Canvas whenever the assignment carries one, so its absence
+    // means Canvas has none set. Saying "No deadline" spends a segment on that, so the
+    // segment is omitted instead.
+    if (assignment.dueAt) {
+        meta.append(createText('span', `Deadline ${formatDate(assignment.dueAt, true)}`));
+    }
     heading.append(meta);
 
     const controls = document.createElement('div');
     controls.className = 'wf-assignment-controls';
-    controls.append(
-        chip(assignment.canvasAssignmentId ? 'Canvas import' : 'Manual', assignment.canvasAssignmentId ? 'blue' : 'neutral'),
-        chip(`${assignment.submissionCount ?? 0} submissions`, 'green')
-    );
     const canManageRubric = Boolean(state.workspace?.permissions.canManageRubric);
     if (canManageRubric) {
         const labHint = createText('span', '', 'wf-help-text');
@@ -169,9 +175,11 @@ function renderAssignmentCard(assignment: Assignment): HTMLElement {
         controls.append(labToggle, labHint);
     }
     const rubricButton = createButton(
-        canManageRubric ? 'Edit rubric' : 'View rubric',
-        'secondary',
-        async () => openRubricPage(assignment.id)
+        canManageRubric ? 'Edit Rubric' : 'View Rubric',
+        'chip',
+        async () => openRubricPage(assignment.id),
+        false,
+        canManageRubric ? 'edit-3' : 'eye'
     );
     rubricButton.addEventListener('click', (event) => event.stopPropagation());
     controls.append(rubricButton);
@@ -270,9 +278,25 @@ async function expandAssignment(assignmentId: string): Promise<void> {
         row.className = 'wf-submission-row';
         const late = Boolean(assignment.dueAt && new Date(submission.createdAt) > new Date(assignment.dueAt));
 
+        // The row is the object, so the row opens it — the same mouse/Enter/Space contract the
+        // assignment header above already uses, and a far larger target than a button would be.
+        // The delete control inside stops its own propagation, so it cannot open the review.
+        const rowLabel = submission.studentLabel || 'Unlabelled student';
+        row.setAttribute('role', 'button');
+        row.setAttribute('tabindex', '0');
+        row.setAttribute('aria-label', `Open submission for ${rowLabel}`);
+        row.addEventListener('click', () => void openReview(submission.id).catch(handleActionError));
+        row.addEventListener('keydown', (event) => {
+            if (event.target !== row) return;
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                void openReview(submission.id).catch(handleActionError);
+            }
+        });
+
         const info = document.createElement('div');
         info.className = 'wf-submission-info';
-        info.append(createText('strong', submission.studentLabel || 'Unlabelled student'));
+        info.append(createText('strong', rowLabel));
         const rowMeta = document.createElement('span');
         rowMeta.className = 'wf-submission-meta';
         rowMeta.append(createText('span', `Submitted ${formatDate(submission.createdAt, true)}`));
@@ -287,7 +311,6 @@ async function expandAssignment(assignmentId: string): Promise<void> {
         actions.className = 'wf-submission-actions';
         const label = submission.studentLabel || 'this submission';
         actions.append(
-            createButton('Open submission', 'secondary', async () => openReview(submission.id)),
             createIconButton('trash-2', `Delete submission for ${label}`, 'danger', async () => {
                 const extraWarning = submission.status === 'released'
                     ? ' This submission was already released to the student; deleting it removes only the local record and cannot recall the release.'
@@ -309,6 +332,13 @@ async function expandAssignment(assignmentId: string): Promise<void> {
                 showSuccessToast('Submission deleted.');
             })
         );
+        // Affordance only: the row carries the click, so this must not take focus or be read
+        // out as a second control.
+        const openIcon = document.createElement('span');
+        openIcon.className = 'wf-submission-open-icon';
+        openIcon.setAttribute('aria-hidden', 'true');
+        openIcon.innerHTML = '<i data-feather="chevron-right"></i>';
+        actions.append(openIcon);
         row.append(info, actions);
         panel.append(row);
     });
@@ -675,15 +705,17 @@ async function showCanvasImport(): Promise<void> {
         radio.checked = index === 0;
         const label = document.createElement('label');
         label.htmlFor = radio.id;
-        const due = assignment.dueAt ? formatDate(assignment.dueAt) : 'No due date';
         // Canvas cannot report a submitted count without a request per assignment, so the
         // number is promised at preview rather than guessed at here.
         const count = assignment.submissionCount === undefined
             ? 'Submissions counted at preview'
             : `${assignment.submissionCount} submissions`;
+        // A due date is shown only when Canvas holds one; its absence is not worth a segment.
+        const summary = [count, `${assignment.pointsPossible ?? '—'} points`];
+        if (assignment.dueAt) summary.push(formatDate(assignment.dueAt));
         label.append(
             createText('strong', assignment.title),
-            createText('span', `${count} · ${assignment.pointsPossible ?? '—'} points · ${due}`),
+            createText('span', summary.join(' · ')),
             createText('span', assignment.rubricState === 'canvas_rubric' ? 'Canvas rubric detected' : 'No Canvas rubric')
         );
         card.append(radio, label);

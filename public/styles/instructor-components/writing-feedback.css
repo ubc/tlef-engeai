@@ -212,6 +212,39 @@
     background: rgba(139, 0, 0, 0.08);
 }
 
+/*
+ * Chip button — the documents page's `.content-status` / `.status-add-session` recipe.
+ *
+ * Deliberately not built on `.wf-button`'s own sizing: it overrides the padding, radius,
+ * weight, and gap so that a rubric control sitting in an assignment header reads as the same
+ * kind of affordance as "Add Section", "Draft", and "Delete" one page over.
+ */
+.wf-button--chip {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    gap: 4px;
+    background: rgba(76, 86, 175, 0.1);
+    color: var(--color-navy-blue);
+    border: 1px solid var(--color-navy-blue);
+    transition: all 0.3s ease;
+}
+
+.wf-button--chip:hover:not(:disabled) {
+    background: rgba(76, 86, 175, 0.2);
+    border-color: #4c56af;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(76, 86, 175, 0.3);
+}
+
+.wf-button--chip .feather,
+.wf-button--chip svg {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+}
+
 .wf-button:disabled {
     cursor: not-allowed;
     opacity: 0.55;
@@ -462,6 +495,15 @@
     gap: 10px;
 }
 
+/*
+ * The lab-report hint only speaks after the toggle is used. While empty it is still a flex
+ * item, so the row spends a gap on either side of nothing — leaving twice the space between
+ * the toggle and the buttons as between the buttons themselves.
+ */
+.wf-assignment-controls .wf-help-text:empty {
+    display: none;
+}
+
 .wf-lab-toggle {
     display: inline-flex;
     align-items: center;
@@ -529,6 +571,42 @@
 
 .wf-submission-row:first-child {
     border-top: 1px solid var(--border-color);
+}
+
+/* The row opens the submission, so it carries the same interaction cues as the assignment
+   header above it: pointer, hover wash, and a visible focus ring for keyboard users. */
+.wf-submission-row[role='button'] {
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.wf-submission-row[role='button']:hover {
+    background: var(--hover-bg);
+}
+
+.wf-submission-row[role='button']:focus-visible {
+    outline: 2px solid var(--color-chbe-green);
+    outline-offset: -2px;
+}
+
+/* Affordance for the row's own click target, not a control of its own. It slides slightly on
+   hover so the row reads as leading somewhere. */
+.wf-submission-open-icon {
+    display: inline-flex;
+    align-items: center;
+    color: var(--text-secondary);
+    transition: transform 0.2s ease, color 0.2s ease;
+}
+
+.wf-submission-row[role='button']:hover .wf-submission-open-icon {
+    color: var(--text-primary);
+    transform: translateX(2px);
+}
+
+.wf-submission-open-icon .feather,
+.wf-submission-open-icon svg {
+    width: 18px;
+    height: 18px;
 }
 
 .wf-submission-info {
