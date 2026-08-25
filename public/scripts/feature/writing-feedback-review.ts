@@ -1222,6 +1222,31 @@ function renderReleaseCard(submission: Submission, assignment: Assignment | null
     const card = document.createElement('section');
     card.className = 'wf-release-card';
     const workspace = state.workspace!;
+
+    // A live Canvas course reads submissions but cannot write feedback back: the release path
+    // is still the local mock, and the server refuses it outright for the `canvas` integration.
+    // The generic branch below would enable "Release to Canvas" as soon as the rubric gained a
+    // points mapping, producing a button that can only ever fail — so live renders the honest
+    // state and no action at all, pointing at the PDF that is the actual return path.
+    if (workspace.canvas.mode === 'live') {
+        card.append(
+            createText('h3', 'Return feedback to the student'),
+            createText(
+                'p',
+                'Feedback is not written back to Canvas. Download the approved feedback PDF from the review header and return it to the student yourself.'
+            )
+        );
+        const liveState = document.createElement('div');
+        liveState.className = 'wf-release-state';
+        liveState.setAttribute('role', 'status');
+        liveState.setAttribute('aria-live', 'polite');
+        liveState.textContent = submission.status === 'approved'
+            ? 'Approved. The student feedback PDF is ready to download.'
+            : 'Approve the staff-reviewed feedback to enable the student PDF.';
+        card.append(liveState);
+        return card;
+    }
+
     const isDemo = workspace.canvas.mode === 'demo';
     const hasNumericMapping = Boolean(assignment?.gradeMapping);
     // Release remains unavailable until human approval, a complete numeric

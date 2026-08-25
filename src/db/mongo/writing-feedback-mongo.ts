@@ -15,6 +15,9 @@ import { randomUUID } from 'crypto';
 import type { Collection, Filter, IndexDescriptionInfo, UpdateFilter } from 'mongodb';
 import type { MongoDalContext } from './mongo-context';
 import type {
+    CanvasAssignmentDetails,
+    CanvasImportedRubric,
+    CanvasRubricRow,
     StaffReviewRevision,
     WritingAssignment,
     WritingFeedbackLens,
@@ -496,6 +499,115 @@ export async function mapWritingAssignmentToCanvas(
         { returnDocument: 'after' }
     );
     return updated ? normalizeWritingAssignment(updated) : null;
+}
+
+/**
+ * saveCanvasAssignmentContext — stores the rubric and brief imported from Canvas.
+ *
+ * A re-import replaces the stored rubric with what Canvas currently holds, which is the point
+ * of re-importing: the local copy is a mirror of the Canvas rubric, so Canvas is authoritative
+ * and any local cell edits are superseded. Only `importedAt` survives, so "first imported"
+ * stays accurate.
+ *
+ * This never touches {@link WritingAssignment.rubric}: the approved A2 definition still governs
+ * generation in this phase.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param assignmentId - Local assignment id
+ * @param context - Imported rubric (or `null` when Canvas has none) and assignment details
+ * @returns Updated assignment, or `null` when the scoped assignment is absent
+ */
+export async function saveCanvasAssignmentContext(
+    ctx: MongoDalContext,
+    courseId: string,
+    assignmentId: string,
+    context: { rubric: CanvasImportedRubric | null; details: CanvasAssignmentDetails }
+): Promise<WritingAssignment | null> {
+    const now = new Date();
+    const existing = await assignments(ctx).findOne({ id: assignmentId, courseId });
+    if (!existing) return null;
+
+    const update: Record<string, unknown> = { canvasDetails: context.details, updatedAt: now };
+    if (context.rubric) {
+        update.canvasRubric = {
+            ...context.rubric,
+            importedAt: existing.canvasRubric?.importedAt ?? context.rubric.importedAt,
+            updatedAt: now
+        } satisfies CanvasImportedRubric;
+    }
+
+    return assignments(ctx).findOneAndUpdate(
+        { id: assignmentId, courseId },
+        { $set: update },
+        { returnDocument: 'after' }
+    );
+}
+
+/**
+ * updateCanvasRubricCells — saves staff edits to an imported rubric's cell text.
+ *
+ * Rows are addressed by Canvas criterion id and matched against what is stored, so a request
+ * cannot add or remove a row: the structure came from Canvas and is edited there. Only the
+ * text of each cell changes, and a later re-import replaces it with what Canvas holds.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param assignmentId - Local assignment id
+ * @param rows - Edited rows, keyed by `canvasCriterionId`
+ * @param actorUserId - Roster userId recorded as the editor; never a PUID
+ * @returns Updated assignment, or `null` when the assignment or its imported rubric is absent
+ * @throws Error when a submitted row does not correspond to a stored one
+ */
+export async function updateCanvasRubricCells(
+    ctx: MongoDalContext,
+    courseId: string,
+    assignmentId: string,
+    rows: CanvasRubricRow[],
+    actorUserId: string
+): Promise<WritingAssignment | null> {
+    const existing = await assignments(ctx).findOne({ id: assignmentId, courseId });
+    if (!existing?.canvasRubric) return null;
+
+    const editsById = new Map(rows.map((row) => [row.canvasCriterionId, row]));
+    for (const key of editsById.keys()) {
+        if (!existing.canvasRubric.rows.some((row) => row.canvasCriterionId === key)) {
+            throw new Error('Canvas rubric rows cannot be added or removed');
+        }
+    }
+
+    // Rebuild from the stored rows, never from the request, so row count and order are the
+    // Canvas structure regardless of what the client sent.
+    const merged: CanvasRubricRow[] = existing.canvasRubric.rows.map((stored) => {
+        const edit = editsById.get(stored.canvasCriterionId);
+        if (!edit) return stored;
+        const ratingEditsById = new Map(edit.ratings.map((rating) => [rating.canvasRatingId, rating]));
+        return {
+            ...stored,
+            label: edit.label,
+            description: edit.description,
+            ratings: stored.ratings.map((rating) => {
+                const ratingEdit = ratingEditsById.get(rating.canvasRatingId);
+                return ratingEdit
+                    ? { ...rating, label: ratingEdit.label, description: ratingEdit.description }
+                    : rating;
+            })
+        };
+    });
+
+    const now = new Date();
+    return assignments(ctx).findOneAndUpdate(
+        { id: assignmentId, courseId },
+        {
+            $set: {
+                'canvasRubric.rows': merged,
+                'canvasRubric.updatedAt': now,
+                'canvasRubric.updatedBy': actorUserId,
+                updatedAt: now
+            }
+        },
+        { returnDocument: 'after' }
+    );
 }
 
 /**

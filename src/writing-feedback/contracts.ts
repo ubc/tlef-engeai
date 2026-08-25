@@ -179,6 +179,16 @@ export interface WritingAssignment {
     /** Immutable previously approved technical rubrics retained for audit. */
     technicalRubricHistory?: WritingRubricDefinition[];
     canvasAssignmentId?: string; // optional source reference for approved integration work
+    /**
+     * Rubric authored in Canvas and imported for staff review.
+     *
+     * Present only on Canvas-imported assignments that had a rubric. It does **not** govern
+     * feedback generation in this phase — {@link WritingAssignment.rubric} still does — so the
+     * two can differ, and the workspace says so explicitly rather than implying otherwise.
+     */
+    canvasRubric?: CanvasImportedRubric;
+    /** Assignment description and metadata imported from Canvas; reference material only. */
+    canvasDetails?: CanvasAssignmentDetails;
     /** Submission deadline shown to staff; sourced from Canvas or manual entry. */
     dueAt?: Date;
     createdAt: Date; // assignment audit creation timestamp
@@ -195,6 +205,25 @@ export interface WritingSubmission {
     /** Staff-visible label; never returned to students. */
     studentLabel?: string;
     attempt: number; // distinguishes repeat attempts by the same student for idempotent import/release
+    /**
+     * Provider-scoped Canvas user id, present only on submissions pulled from a live Canvas
+     * course. It exists because {@link WritingSubmission.studentId} is a one-way hash and
+     * Canvas addresses a submission by user id on write-back, so release could not otherwise
+     * find its target without re-deriving it from a fresh fetch.
+     *
+     * This is a Canvas-internal integer, the same class of identifier as
+     * `activeCourse.lmsLink.courseId`. It is deliberately **not** an institutional identifier:
+     * `integration_id` (PUID), `sis_user_id` (student number), and `login_id` (CWL) are never
+     * read, never stored, and never logged.
+     *
+     * It travels in staff-facing responses, which is not a leak: Writing Feedback is a
+     * staff-only surface, and those same payloads already carry the student's real name in
+     * {@link WritingSubmission.studentLabel}, which identifies a person far more directly than
+     * a provider-scoped integer does. What must hold is that it never reaches a student and is
+     * never logged. The Canvas import preview strips it anyway, because that response also
+     * carries attachment download URLs that must not leave the server.
+     */
+    canvasUserId?: string;
     sourceType: WritingSourceType; // controls intake and verification expectations
     originalText: string; // extracted/source transcript retained for staff comparison
     verifiedText?: string; // sole text permitted to enter feedback generation
@@ -209,6 +238,83 @@ export interface WritingSubmission {
     approvedBy?: string;
     /** Display name captured at approval; used as the PDF annotation author. */
     approvedByName?: string;
+}
+
+/**
+ * One rating (column) on an imported Canvas rubric row.
+ *
+ * Canvas defines ratings **per criterion**, so two rows of the same rubric may carry different
+ * numbers of ratings. That raggedness is preserved rather than normalized: padding rows to a
+ * rectangle would invent rating cells the instructor never wrote.
+ */
+export interface CanvasRubricRating {
+    /** Canvas's own rating id, retained so edits survive a re-import. */
+    canvasRatingId: string;
+    label: string; // Canvas `description`; the short rating name, e.g. "Full Marks"
+    description: string; // Canvas `long_description`; the performance descriptor
+    /** Points Canvas assigns this rating. Displayed only — never used to compute a grade today. */
+    points?: number;
+}
+
+/**
+ * One criterion (row) of an imported Canvas rubric.
+ *
+ * Mirrors the Canvas row exactly — name, description, weight, and its own ratings. Rows are
+ * fixed at import and carry no EngE-AI-specific fields; the rubric a staff member sees here is
+ * the rubric they authored in Canvas.
+ */
+export interface CanvasRubricRow {
+    /** Canvas's own criterion id; the stable key for matching edits across a re-import. */
+    canvasCriterionId: string;
+    label: string; // Canvas `description`; the row name, e.g. "Thesis"
+    description: string; // Canvas `long_description`; the row's fuller explanation
+    /**
+     * Canvas's per-criterion point value — a weight. Stored for display and future use, and
+     * deliberately not fed into grading: EngE-AI averages criteria equally today, and the
+     * rubric rules forbid inferring criterion weights.
+     */
+    points?: number;
+    ratings: CanvasRubricRating[]; // this row's own ratings, in Canvas order
+}
+
+/**
+ * A rubric authored in Canvas and imported for staff review.
+ *
+ * Deliberately separate from {@link WritingRubricDefinition}. That type is the A2 contract the
+ * feedback engine, PDF renderer, and release path are all built on — exactly four criteria and
+ * four shared levels, enforced in the type system and in Zod. An imported Canvas rubric has a
+ * variable row count and per-row ratings and cannot be expressed in it. Keeping the two apart
+ * lets instructors author and refine real rubrics now without destabilising generation; a later
+ * phase generalises the assessment pipeline and makes this the governing definition.
+ */
+export interface CanvasImportedRubric {
+    /** Canvas rubric id when `rubric_settings` reports one. */
+    canvasRubricId?: string;
+    title: string; // Canvas rubric title, or the assignment title when unnamed
+    /** Total points Canvas reports for the rubric. Display only. */
+    pointsPossible?: number;
+    rows: CanvasRubricRow[]; // criteria in Canvas order; count fixed at import
+    importedAt: Date; // when this rubric was first pulled from Canvas
+    updatedAt: Date; // latest staff cell/lens edit
+    /** Roster userId of the last staff member to edit it; never a PUID. */
+    updatedBy?: string;
+}
+
+/**
+ * Assignment context imported from Canvas alongside the rubric.
+ *
+ * Held as raw source text. A future agent derives the rubric's `task`, `purpose`, `audience`,
+ * and `constraints` from it; until that exists this is reference material for staff, and
+ * nothing reads it automatically.
+ */
+export interface CanvasAssignmentDetails {
+    /** Canvas `description` — rich-editor HTML, stored as delivered. */
+    descriptionHtml?: string;
+    /** Plain-text rendering of the description, for display and future extraction. */
+    descriptionText?: string;
+    pointsPossible?: number; // Canvas assignment points, distinct from the rubric total
+    dueAt?: Date; // Canvas due date at import time
+    importedAt: Date; // when these details were pulled
 }
 
 /** Exact verified-text excerpt and rationale supporting one rubric judgment. */

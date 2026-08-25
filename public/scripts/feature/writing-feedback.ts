@@ -19,7 +19,9 @@ import { showDeleteConfirmationModal, showConfirmModal } from '../ui/modal-overl
 import {
     Assignment,
     CanvasAssignment,
+    CanvasAuthRequiredError,
     CanvasImportResult,
+    CanvasPreview,
     CanvasStatus,
     STATUS_LABELS,
     STATUS_TONES,
@@ -565,21 +567,32 @@ async function showManualImport(assignment: Assignment): Promise<void> {
     studentId.focus();
 }
 
+/**
+ * showCanvasImport - opens the assignment chooser for the active Canvas adapter
+ *
+ * The same panel serves three states, and the copy must not blur them: a live Canvas course
+ * reads real student submissions, the local demo reads synthetic fixtures, and an unconnected
+ * or unlinked course offers the one action that would change that. Status is therefore fetched
+ * and acted on *before* assignments — listing assignments in a live course requires a Canvas
+ * authorization this staff member may not have, and that call answers `401`, not an empty list.
+ */
 async function showCanvasImport(): Promise<void> {
     if (!(await confirmDiscardDirty('setup'))) return;
     state.panelDirty = false;
     const workspace = state.workspace!;
-    const content = openActionPanel(workspace.canvas.mode === 'demo' ? 'Try the Canvas import workflow' : 'Import assignments from Canvas');
+    const content = openActionPanel(
+        workspace.canvas.mode === 'demo' ? 'Try the Canvas import workflow' : 'Import assignments from Canvas'
+    );
     content.append(createText('p', 'Checking Canvas availability…', 'wf-muted-note'));
 
-    // Refresh integration truth on every open. The UI must distinguish synthetic
-    // demo data from an unavailable production connection before showing import actions.
-    const [status, canvasAssignments] = await Promise.all([
-        request<CanvasStatus>('/canvas/status'),
-        request<CanvasAssignment[]>('/canvas/assignments')
-    ]);
+    // Refresh integration truth on every open. The UI must distinguish synthetic demo data
+    // from a live Canvas course and from an unavailable connection before showing any action.
+    const status = await request<CanvasStatus>('/canvas/status');
     workspace.canvas = status;
     content.replaceChildren();
+
+    const isDemo = status.mode === 'demo';
+    const isLive = status.mode === 'live';
 
     const callout = document.createElement('div');
     callout.className = `wf-callout${status.canImport ? ' wf-callout--success' : ' wf-callout--warning'}`;
@@ -587,25 +600,68 @@ async function showCanvasImport(): Promise<void> {
     content.append(callout);
 
     if (!status.canImport) {
-        // Capability/connection failure is a durable inline state, not an attempt
-        // to call Canvas or a misleading disabled demo.
-        content.append(
-            createText('p', status.nextStep || 'Canvas connection setup is required.', 'wf-panel-intro'),
-            createText(
+        // Capability/connection failure is a durable inline state, not an attempt to call
+        // Canvas or a misleading disabled demo.
+        content.append(createText('p', status.nextStep || 'Canvas connection setup is required.', 'wf-panel-intro'));
+        if (status.connectUrl) {
+            // Authorization is the only blocker, and it is one this staff member can clear.
+            const connectRow = document.createElement('div');
+            connectRow.className = 'wf-button-row';
+            const connect = document.createElement('a');
+            connect.className = 'wf-button wf-button--primary';
+            connect.href = status.connectUrl;
+            connect.textContent = 'Connect Canvas';
+            connectRow.append(connect);
+            content.append(connectRow);
+        } else {
+            content.append(createText(
                 'p',
                 workspace.permissions.canManageRubric
                     ? 'Next production gate: configure a scoped developer key, encrypted user OAuth tokens, an approved retention policy, and a Canvas sandbox.'
                     : 'Ask the course instructor to complete the institutionally approved Canvas connection setup.'
-            )
-        );
+            ));
+        }
         return;
+    }
+
+    let canvasAssignments: CanvasAssignment[];
+    try {
+        canvasAssignments = await request<CanvasAssignment[]>('/canvas/assignments');
+    } catch (error) {
+        // A credential revoked between the status check and this call lands here.
+        if (error instanceof CanvasAuthRequiredError) {
+            const connectRow = document.createElement('div');
+            connectRow.className = 'wf-button-row';
+            const connect = document.createElement('a');
+            connect.className = 'wf-button wf-button--primary';
+            connect.href = error.connectUrl;
+            connect.textContent = 'Connect Canvas';
+            connectRow.append(connect);
+            content.append(createText('p', error.message, 'wf-panel-intro'), connectRow);
+            return;
+        }
+        throw error;
     }
 
     content.append(createText(
         'p',
-        'Choose an assignment. Importing adds a local rubric draft and carries available assignment directions into this workspace. A detected Canvas rubric is shown but is not silently copied or changed.',
+        isLive
+            ? 'Choose an assignment. Importing copies its submissions, assignment directions, and Canvas rubric into this workspace. The rubric arrives as an editable draft that guides feedback only once you approve it, and nothing is written back to Canvas.'
+            : 'Choose an assignment. Importing adds a local rubric draft and carries available assignment directions into this workspace. The draft guides feedback only once you approve it.',
         'wf-panel-intro'
     ));
+
+    if (canvasAssignments.length === 0) {
+        content.append(createText(
+            'p',
+            isLive
+                ? 'No assignments in this Canvas course currently accept text or file submissions, have any submissions yet, or are outside anonymous grading.'
+                : 'No assignments are available to import.',
+            'wf-muted-note'
+        ));
+        return;
+    }
+
     const list = document.createElement('div');
     list.className = 'wf-canvas-list';
     canvasAssignments.forEach((assignment, index) => {
@@ -620,9 +676,14 @@ async function showCanvasImport(): Promise<void> {
         const label = document.createElement('label');
         label.htmlFor = radio.id;
         const due = assignment.dueAt ? formatDate(assignment.dueAt) : 'No due date';
+        // Canvas cannot report a submitted count without a request per assignment, so the
+        // number is promised at preview rather than guessed at here.
+        const count = assignment.submissionCount === undefined
+            ? 'Submissions counted at preview'
+            : `${assignment.submissionCount} submissions`;
         label.append(
             createText('strong', assignment.title),
-            createText('span', `${assignment.submissionCount} submissions · ${assignment.pointsPossible ?? '—'} points · ${due}`),
+            createText('span', `${count} · ${assignment.pointsPossible ?? '—'} points · ${due}`),
             createText('span', assignment.rubricState === 'canvas_rubric' ? 'Canvas rubric detected' : 'No Canvas rubric')
         );
         card.append(radio, label);
@@ -639,10 +700,20 @@ async function showCanvasImport(): Promise<void> {
         createButton('Preview import', 'secondary', async () => {
             const selected = content.querySelector<HTMLInputElement>('input[name="wf-canvas-assignment"]:checked');
             if (!selected) throw new Error('Choose an assignment first');
-            const preview = await request<{ assignment: CanvasAssignment; submissions: unknown[] }>(
+            const preview = await request<CanvasPreview>(
                 `/canvas/assignments/${encodeURIComponent(selected.value)}/preview`
             );
-            previewState.textContent = `${preview.submissions.length} synthetic submissions are eligible. Import does not generate or release feedback.`;
+            // Report the breakdown, not just a total: uploads land needing verification and
+            // unsupported submissions are skipped, and both change what happens next.
+            const eligible = preview.submissions.filter((entry) => entry.contentKind !== 'unsupported');
+            const uploads = eligible.filter((entry) => entry.contentKind === 'file_upload').length;
+            const unsupported = preview.submissions.length - eligible.length;
+            const parts = [
+                `${eligible.length} ${isDemo ? 'synthetic ' : ''}submission${eligible.length === 1 ? '' : 's'} eligible`
+            ];
+            if (uploads > 0) parts.push(`${uploads} file upload${uploads === 1 ? '' : 's'} will need transcript verification`);
+            if (unsupported > 0) parts.push(`${unsupported} skipped with no readable text`);
+            previewState.textContent = `${parts.join('; ')}. Import does not generate or release feedback.`;
         }),
         createButton('Import selected assignment', 'primary', async () => {
             const selected = content.querySelector<HTMLInputElement>('input[name="wf-canvas-assignment"]:checked');
@@ -655,11 +726,19 @@ async function showCanvasImport(): Promise<void> {
             await closeActionPanel(false);
             state.expandedAssignmentId = result.targetAssignment.id;
             await loadLanding();
+
+            const notes = [`${result.importedCount} submissions imported`, `${result.skippedCount} unchanged attempts skipped`];
+            if (result.unsupportedCount > 0) notes.push(`${result.unsupportedCount} had no readable text or exceeded the 30,000-character review limit`);
+            if (result.failedCount > 0) notes.push(`${result.failedCount} could not be read and can be retried by importing again`);
             setWorkspaceMessage(
-                `${result.importedCount} submissions imported; ${result.skippedCount} unchanged attempts skipped. No feedback was generated automatically.`,
-                'success'
+                `${notes.join('; ')}. No feedback was generated automatically.`,
+                result.failedCount > 0 ? 'warning' : 'success'
             );
-            showSuccessToast(`Imported ${result.importedCount} submissions from the Canvas demo.`);
+            showSuccessToast(
+                isDemo
+                    ? `Imported ${result.importedCount} submissions from the Canvas demo.`
+                    : `Imported ${result.importedCount} submissions from Canvas.`
+            );
         })
     );
     content.append(previewState, actions);
