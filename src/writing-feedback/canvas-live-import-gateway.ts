@@ -467,8 +467,7 @@ export class LiveCanvasImportGateway implements CanvasImportGateway {
                     || 'Canvas rubric',
                 pointsPossible: numberOrUndefined(assignment.rubric_settings?.points_possible),
                 rows,
-                importedAt,
-                updatedAt: importedAt
+                importedAt
             },
             details
         };

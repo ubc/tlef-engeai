@@ -19,6 +19,10 @@
 import { createHash } from 'crypto';
 import { appLogger } from '../utils/logger';
 import type {
+    CanvasAssignmentDetails,
+    CanvasImportedRubric
+} from './contracts';
+import type {
     CanvasImportAssignmentSummary,
     CanvasImportGateway,
     CanvasImportRequest,
@@ -255,6 +259,34 @@ export class SafeCanvasImportService {
         return this.gateway.getStatus();
     }
 
+    /**
+     * Loads the source rubric and brief for one assignment, without persisting anything.
+     *
+     * The caller needs this *before* the local assignment exists, because a Canvas rubric seeds
+     * that assignment's first rubric draft rather than being stored beside it.
+     *
+     * Failure is not fatal and is reported as `null`: the rubric and brief are context, and
+     * losing them must not cost a staff member the submissions they came to import.
+     *
+     * @param canvasAssignmentId - Source assignment selected by staff
+     * @returns Rubric and brief, or `null` when the adapter cannot supply them
+     */
+    async loadAssignmentContext(canvasAssignmentId: string): Promise<{
+        rubric: CanvasImportedRubric | null;
+        details: CanvasAssignmentDetails;
+    } | null> {
+        if (!this.gateway.loadAssignmentContext) return null;
+        try {
+            return await this.gateway.loadAssignmentContext(canvasAssignmentId);
+        } catch (error) {
+            // Message only — a Canvas payload can carry assignment text.
+            appLogger.error('[WritingFeedback] Canvas rubric/details import failed:', {
+                message: error instanceof Error ? error.message : 'unknown'
+            });
+            return null;
+        }
+    }
+
     /** Lists assignments only when the selected adapter explicitly permits import. */
     async listAssignments(): Promise<CanvasImportAssignmentSummary[]> {
         const status = await this.gateway.getStatus();
@@ -306,22 +338,6 @@ export class SafeCanvasImportService {
         const integration = status.integration;
         const target = await this.store.getWritingAssignment(input.courseId, input.targetAssignmentId);
         if (!target) throw new Error('Writing assignment not found');
-
-        // Pull the source rubric and brief before any submission is written, so a staff member
-        // reviewing the first import already has the assessment context beside the work. A
-        // failure here must not lose the submissions: the rubric is reference material in this
-        // phase and nothing downstream reads it, so the import continues without it.
-        if (this.gateway.loadAssignmentContext && this.store.saveCanvasAssignmentContext) {
-            try {
-                const context = await this.gateway.loadAssignmentContext(input.canvasAssignmentId);
-                await this.store.saveCanvasAssignmentContext(input.courseId, input.targetAssignmentId, context);
-            } catch (error) {
-                // Message only — a Canvas payload can carry assignment text.
-                appLogger.error('[WritingFeedback] Canvas rubric/details import failed:', {
-                    message: error instanceof Error ? error.message : 'unknown'
-                });
-            }
-        }
 
         // Snapshot existing attempts before writes to make ordinary retries inexpensive.
         const preview = await this.previewAssignment(input.canvasAssignmentId);

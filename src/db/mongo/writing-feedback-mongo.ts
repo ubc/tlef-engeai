@@ -30,6 +30,8 @@ import type {
     WritingSubmissionStatus
 } from '../../writing-feedback/contracts';
 import { buildDefaultWritingAssignment } from '../../writing-feedback/default-rubric-profile';
+import { seedRubricForLens } from '../../writing-feedback/rubric-seed';
+import type { ImportedRubricShape } from '../../writing-feedback/rubric-seed';
 import { rubricFieldPaths } from '../../writing-feedback/rubric-lens';
 
 const ASSIGNMENTS = 'writing-assignments';
@@ -288,6 +290,12 @@ export async function deleteWritingAssignment(
 /**
  * createCanvasWritingAssignment — idempotently creates a Canvas-mapped local assignment.
  *
+ * When the Canvas assignment carried a rubric, that rubric becomes the new assignment's
+ * starting grid instead of the built-in profile — it is the instructor's real rubric, and
+ * {@link seedRubricForLens} treats it as taking precedence. It arrives **unapproved**, so it
+ * cannot reach the model until an instructor reviews and approves it, and `rubricSource`
+ * records where it came from.
+ *
  * A duplicate course/Canvas mapping resolves to the existing local record;
  * unrelated insert failures propagate unchanged.
  *
@@ -297,6 +305,7 @@ export async function deleteWritingAssignment(
  * @param title - Canvas assignment title, trimmed and capped at 200 characters
  * @param instructions - Optional source assignment directions
  * @param dueAt - Optional Canvas deadline
+ * @param canvasRubric - Canvas rubric grid, when it could be represented as a draft
  * @returns Newly inserted or concurrently existing assignment
  * @throws Non-duplicate MongoDB errors
  */
@@ -306,16 +315,26 @@ export async function createCanvasWritingAssignment(
     canvasAssignmentId: string,
     title: string,
     instructions?: string,
-    dueAt?: Date
+    dueAt?: Date,
+    canvasRubric?: ImportedRubricShape
 ): Promise<WritingAssignment> {
     await ensureWritingFeedbackIndexes(ctx);
-    const assignment = {
-        ...buildDefaultWritingAssignment(
-            courseId,
-            randomUUID(),
-            title.trim().slice(0, 200),
-            instructions?.trim() || undefined
-        ),
+    const now = new Date();
+    const base = buildDefaultWritingAssignment(
+        courseId,
+        randomUUID(),
+        title.trim().slice(0, 200),
+        instructions?.trim() || undefined,
+        now
+    );
+    const assignment: WritingAssignment = {
+        ...base,
+        ...(canvasRubric
+            ? {
+                  rubric: seedRubricForLens({ lens: 'linguistic', actorUserId: 'platform', canvasRubric, now }),
+                  rubricSource: 'canvas' as const
+              }
+            : {}),
         canvasAssignmentId,
         ...(dueAt ? { dueAt } : {})
     };
@@ -502,113 +521,36 @@ export async function mapWritingAssignmentToCanvas(
 }
 
 /**
- * saveCanvasAssignmentContext — stores the rubric and brief imported from Canvas.
+ * saveCanvasAssignmentDetails — stores the assignment brief imported from Canvas.
  *
- * A re-import replaces the stored rubric with what Canvas currently holds, which is the point
- * of re-importing: the local copy is a mirror of the Canvas rubric, so Canvas is authoritative
- * and any local cell edits are superseded. Only `importedAt` survives, so "first imported"
- * stays accurate.
+ * Only the brief. The Canvas *rubric* is not stored beside the assignment: it seeds the
+ * assignment's first rubric draft at creation, so there is exactly one rubric concept and no
+ * second copy to reconcile.
  *
- * This never touches {@link WritingAssignment.rubric}: the approved A2 definition still governs
- * generation in this phase.
+ * A re-import refreshes the brief, because an instructor who edited the assignment in Canvas
+ * expects the current text. It deliberately does not touch `rubric` or `rubricDraft` — once a
+ * draft exists it carries staff edits, and silently replacing it from Canvas would discard
+ * their work.
  *
  * @param ctx - Connected Mongo data-layer context
- * @param courseId - Owning course id
- * @param assignmentId - Local assignment id
- * @param context - Imported rubric (or `null` when Canvas has none) and assignment details
- * @returns Updated assignment, or `null` when the scoped assignment is absent
+ * @param courseId - Course that owns the assignment
+ * @param assignmentId - Local assignment receiving the brief
+ * @param details - Imported assignment brief
+ * @returns Updated assignment, or `null` when it does not exist
  */
-export async function saveCanvasAssignmentContext(
+export async function saveCanvasAssignmentDetails(
     ctx: MongoDalContext,
     courseId: string,
     assignmentId: string,
-    context: { rubric: CanvasImportedRubric | null; details: CanvasAssignmentDetails }
+    details: CanvasAssignmentDetails
 ): Promise<WritingAssignment | null> {
-    const now = new Date();
-    const existing = await assignments(ctx).findOne({ id: assignmentId, courseId });
-    if (!existing) return null;
-
-    const update: Record<string, unknown> = { canvasDetails: context.details, updatedAt: now };
-    if (context.rubric) {
-        update.canvasRubric = {
-            ...context.rubric,
-            importedAt: existing.canvasRubric?.importedAt ?? context.rubric.importedAt,
-            updatedAt: now
-        } satisfies CanvasImportedRubric;
-    }
-
     return assignments(ctx).findOneAndUpdate(
         { id: assignmentId, courseId },
-        { $set: update },
+        { $set: { canvasDetails: details, updatedAt: new Date() } },
         { returnDocument: 'after' }
     );
 }
 
-/**
- * updateCanvasRubricCells — saves staff edits to an imported rubric's cell text.
- *
- * Rows are addressed by Canvas criterion id and matched against what is stored, so a request
- * cannot add or remove a row: the structure came from Canvas and is edited there. Only the
- * text of each cell changes, and a later re-import replaces it with what Canvas holds.
- *
- * @param ctx - Connected Mongo data-layer context
- * @param courseId - Owning course id
- * @param assignmentId - Local assignment id
- * @param rows - Edited rows, keyed by `canvasCriterionId`
- * @param actorUserId - Roster userId recorded as the editor; never a PUID
- * @returns Updated assignment, or `null` when the assignment or its imported rubric is absent
- * @throws Error when a submitted row does not correspond to a stored one
- */
-export async function updateCanvasRubricCells(
-    ctx: MongoDalContext,
-    courseId: string,
-    assignmentId: string,
-    rows: CanvasRubricRow[],
-    actorUserId: string
-): Promise<WritingAssignment | null> {
-    const existing = await assignments(ctx).findOne({ id: assignmentId, courseId });
-    if (!existing?.canvasRubric) return null;
-
-    const editsById = new Map(rows.map((row) => [row.canvasCriterionId, row]));
-    for (const key of editsById.keys()) {
-        if (!existing.canvasRubric.rows.some((row) => row.canvasCriterionId === key)) {
-            throw new Error('Canvas rubric rows cannot be added or removed');
-        }
-    }
-
-    // Rebuild from the stored rows, never from the request, so row count and order are the
-    // Canvas structure regardless of what the client sent.
-    const merged: CanvasRubricRow[] = existing.canvasRubric.rows.map((stored) => {
-        const edit = editsById.get(stored.canvasCriterionId);
-        if (!edit) return stored;
-        const ratingEditsById = new Map(edit.ratings.map((rating) => [rating.canvasRatingId, rating]));
-        return {
-            ...stored,
-            label: edit.label,
-            description: edit.description,
-            ratings: stored.ratings.map((rating) => {
-                const ratingEdit = ratingEditsById.get(rating.canvasRatingId);
-                return ratingEdit
-                    ? { ...rating, label: ratingEdit.label, description: ratingEdit.description }
-                    : rating;
-            })
-        };
-    });
-
-    const now = new Date();
-    return assignments(ctx).findOneAndUpdate(
-        { id: assignmentId, courseId },
-        {
-            $set: {
-                'canvasRubric.rows': merged,
-                'canvasRubric.updatedAt': now,
-                'canvasRubric.updatedBy': actorUserId,
-                updatedAt: now
-            }
-        },
-        { returnDocument: 'after' }
-    );
-}
 
 /**
  * createWritingSubmission — appends a course-scoped review submission.

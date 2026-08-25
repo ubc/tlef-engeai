@@ -179,14 +179,6 @@ export interface WritingAssignment {
     /** Immutable previously approved technical rubrics retained for audit. */
     technicalRubricHistory?: WritingRubricDefinition[];
     canvasAssignmentId?: string; // optional source reference for approved integration work
-    /**
-     * Rubric authored in Canvas and imported for staff review.
-     *
-     * Present only on Canvas-imported assignments that had a rubric. It does **not** govern
-     * feedback generation in this phase — {@link WritingAssignment.rubric} still does — so the
-     * two can differ, and the workspace says so explicitly rather than implying otherwise.
-     */
-    canvasRubric?: CanvasImportedRubric;
     /** Assignment description and metadata imported from Canvas; reference material only. */
     canvasDetails?: CanvasAssignmentDetails;
     /** Submission deadline shown to staff; sourced from Canvas or manual entry. */
@@ -248,7 +240,7 @@ export interface WritingSubmission {
  * rectangle would invent rating cells the instructor never wrote.
  */
 export interface CanvasRubricRating {
-    /** Canvas's own rating id, retained so edits survive a re-import. */
+    /** Canvas's own rating id. Transport only — never persisted locally. */
     canvasRatingId: string;
     label: string; // Canvas `description`; the short rating name, e.g. "Full Marks"
     description: string; // Canvas `long_description`; the performance descriptor
@@ -257,35 +249,34 @@ export interface CanvasRubricRating {
 }
 
 /**
- * One criterion (row) of an imported Canvas rubric.
+ * One criterion (row) of a Canvas rubric, exactly as Canvas returned it.
  *
- * Mirrors the Canvas row exactly — name, description, weight, and its own ratings. Rows are
- * fixed at import and carry no EngE-AI-specific fields; the rubric a staff member sees here is
- * the rubric they authored in Canvas.
+ * A transport shape, not a stored one: `canvas-rubric-mapping.ts` turns these rows into the
+ * criteria and levels that seed an assignment's first rubric draft, and nothing persists this
+ * shape. An assignment therefore only ever carries one rubric.
  */
 export interface CanvasRubricRow {
-    /** Canvas's own criterion id; the stable key for matching edits across a re-import. */
+    /** Canvas's own criterion id. Transport only — never persisted locally. */
     canvasCriterionId: string;
     label: string; // Canvas `description`; the row name, e.g. "Thesis"
     description: string; // Canvas `long_description`; the row's fuller explanation
     /**
-     * Canvas's per-criterion point value — a weight. Stored for display and future use, and
-     * deliberately not fed into grading: EngE-AI averages criteria equally today, and the
-     * rubric rules forbid inferring criterion weights.
+     * Canvas's per-criterion point value — a weight, carried onto the seeded criterion's
+     * `points`. It arrives inside an *unapproved* draft, so a Canvas weight only reaches
+     * grading after an instructor has reviewed and approved it: nothing is inferred.
      */
     points?: number;
     ratings: CanvasRubricRating[]; // this row's own ratings, in Canvas order
 }
 
 /**
- * A rubric authored in Canvas and imported for staff review.
+ * A rubric authored in Canvas, as read from Canvas.
  *
- * Deliberately separate from {@link WritingRubricDefinition}. That type is the A2 contract the
- * feedback engine, PDF renderer, and release path are all built on — exactly four criteria and
- * four shared levels, enforced in the type system and in Zod. An imported Canvas rubric has a
- * variable row count and per-row ratings and cannot be expressed in it. Keeping the two apart
- * lets instructors author and refine real rubrics now without destabilising generation; a later
- * phase generalises the assessment pipeline and makes this the governing definition.
+ * This is what crosses the wire, not what is stored. The rubric grid model now carries a
+ * variable criterion count, per-criterion cells, and row weights, so a Canvas rubric maps onto
+ * {@link WritingRubricDefinition} directly — `canvas-rubric-mapping.ts` does that mapping and
+ * `seedRubricForLens` makes the result an assignment's starting draft. There is no second
+ * stored rubric to keep in step, and no editor for one.
  */
 export interface CanvasImportedRubric {
     /** Canvas rubric id when `rubric_settings` reports one. */
@@ -293,11 +284,8 @@ export interface CanvasImportedRubric {
     title: string; // Canvas rubric title, or the assignment title when unnamed
     /** Total points Canvas reports for the rubric. Display only. */
     pointsPossible?: number;
-    rows: CanvasRubricRow[]; // criteria in Canvas order; count fixed at import
-    importedAt: Date; // when this rubric was first pulled from Canvas
-    updatedAt: Date; // latest staff cell/lens edit
-    /** Roster userId of the last staff member to edit it; never a PUID. */
-    updatedBy?: string;
+    rows: CanvasRubricRow[]; // criteria in Canvas order
+    importedAt: Date; // when this rubric was pulled from Canvas
 }
 
 /**

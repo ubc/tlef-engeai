@@ -2395,21 +2395,6 @@ mark.wf-anchor.is-filtered-out,
     }
 }
 
-/* ── Imported Canvas rubric ────────────────────────────────────────────────
-   Rendered below the approved rubric as a visibly separate artifact, because in
-   this phase it does not govern feedback generation. The grid repeats the shape
-   Canvas shows the instructor — criterion per row, ratings beside it — so the
-   import can be checked against the original by looking rather than scrolling.
-   Cells are editable in place and read as plain text until hovered or focused. */
-
-.wf-canvas-rubric-section {
-    /* Leads the rubric page, so the rule separates it from the A2 rubric below rather than
-       from anything above it. The status callout above supplies most of the leading gap. */
-    margin: 8px 0 32px;
-    padding-bottom: 24px;
-    border-bottom: 2px solid var(--border-color);
-}
-
 .wf-canvas-brief {
     margin: 0 0 16px;
     padding: 10px 16px;
@@ -2429,96 +2414,6 @@ mark.wf-anchor.is-filtered-out,
     color: var(--text-secondary);
     line-height: 1.5;
     white-space: pre-wrap;
-}
-
-.wf-canvas-rubric-title {
-    margin: 0 0 4px;
-    color: var(--text-primary);
-    font-size: 1.125rem;
-    font-weight: 600;
-}
-
-/* Grid */
-
-.wf-canvas-rubric-table {
-    width: 100%;
-    border-collapse: collapse;
-    table-layout: fixed;
-}
-
-.wf-canvas-rubric-table thead th {
-    padding: 10px 12px 8px;
-    border-bottom: 1px solid var(--border-color);
-    color: var(--text-primary);
-    font-size: 15px;
-    font-weight: 600;
-    text-align: left;
-    vertical-align: bottom;
-}
-
-.wf-canvas-rubric-table thead th:first-child {
-    width: 34%;
-    padding-left: 0;
-}
-
-.wf-canvas-rubric-table thead th:last-child {
-    padding-right: 0;
-}
-
-.wf-canvas-rubric-row {
-    border-bottom: 1px solid var(--border-color);
-}
-
-.wf-canvas-rubric-criterion,
-.wf-canvas-rubric-ratings {
-    padding: 12px;
-    text-align: left;
-    vertical-align: top;
-}
-
-.wf-canvas-rubric-criterion {
-    padding-left: 0;
-    font-weight: 400;
-}
-
-.wf-canvas-rubric-ratings {
-    padding-right: 0;
-}
-
-.wf-canvas-rubric-rating-strip {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-}
-
-.wf-canvas-rubric-row-points {
-    margin: 4px 0 0 8px;
-    color: var(--text-secondary);
-    font-size: 12px;
-}
-
-.wf-canvas-rubric-cell {
-    /* Basis kept tight so a three-rating row still fits one line in the narrower editor
-       column on a 1200px laptop; wider viewports let the cells grow to the max. */
-    flex: 1 1 150px;
-    max-width: 260px;
-    padding: 8px;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    background: var(--hover-bg);
-}
-
-.wf-canvas-rubric-cell-head {
-    display: flex;
-    align-items: baseline;
-    gap: 6px;
-}
-
-.wf-canvas-rubric-points {
-    flex: none;
-    color: var(--text-secondary);
-    font-size: 12px;
-    white-space: nowrap;
 }
 
 /* In-place cell controls — text until touched, a field once it is */
@@ -2580,49 +2475,7 @@ mark.wf-anchor.is-filtered-out,
     font-style: italic;
 }
 
-/* Save row */
-
-.wf-canvas-rubric-actions {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 12px;
-    margin-top: 16px;
-}
-
 @media (max-width: 900px) {
-    /* Two columns cannot hold a criterion and its ratings at this width, so each row
-       becomes a stacked block. The header row goes with the columns it described. */
-    .wf-canvas-rubric-table,
-    .wf-canvas-rubric-table tbody,
-    .wf-canvas-rubric-row,
-    .wf-canvas-rubric-criterion,
-    .wf-canvas-rubric-ratings {
-        display: block;
-    }
-
-    .wf-canvas-rubric-table thead {
-        display: none;
-    }
-
-    .wf-canvas-rubric-row {
-        margin-bottom: 12px;
-        padding-bottom: 12px;
-    }
-
-    .wf-canvas-rubric-criterion,
-    .wf-canvas-rubric-ratings {
-        padding: 0;
-    }
-
-    .wf-canvas-rubric-ratings {
-        margin-top: 8px;
-    }
-
-    .wf-canvas-rubric-cell {
-        max-width: none;
-    }
-
     /* Comfortable targets once the pointer is likely a finger. */
     .wf-quiet-field {
         min-height: 44px;
@@ -2635,7 +2488,4 @@ mark.wf-anchor.is-filtered-out,
         background: var(--hover-bg);
     }
 
-    .wf-canvas-rubric-actions {
-        justify-content: space-between;
     }
-}

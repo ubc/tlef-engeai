@@ -33,7 +33,6 @@ import {
     approveRubricDraft,
     assertRetiredIdsNotReused,
     buildRubricDraft,
-    canvasRubricEditInputSchema,
     gradeMappingFromApprovedRubric,
     requireCompleteRubricCells,
     writingRubricDraftInputSchema
@@ -44,6 +43,7 @@ import { isCourseStaff } from '../utils/course-staff';
 import { parseLens, selectRubric } from '../writing-feedback/rubric-lens';
 import { buildLabReportRubric } from '../writing-feedback/lab-report-profile';
 import { seedRubricForLens } from '../writing-feedback/rubric-seed';
+import { canvasRubricToSeedShape } from '../writing-feedback/canvas-rubric-mapping';
 import {
     autofillMergeRules,
     gridSourceFor,
@@ -333,6 +333,12 @@ router.post('/:courseId/writing-feedback/canvas/import', withCanvasClientWhenLin
         // Preview through the configured safe gateway before creating any local records.
         const preview = await service.previewAssignment(canvasAssignmentId);
 
+        // The rubric is read before the assignment exists because it seeds that assignment's
+        // first draft rather than sitting beside it. A rubric Canvas cannot express within the
+        // grid contract maps to null, and the built-in profile seeds the draft instead.
+        const context = await service.loadAssignmentContext(canvasAssignmentId);
+        const seedGrid = canvasRubricToSeedShape(context?.rubric) ?? undefined;
+
         // Reuse the Canvas mapping when present so repeated imports remain assignment-idempotent.
         const existing = await mongo.getWritingAssignmentByCanvasId(courseId(req), canvasAssignmentId);
         const target = existing ?? await mongo.createCanvasWritingAssignment(
@@ -340,8 +346,15 @@ router.post('/:courseId/writing-feedback/canvas/import', withCanvasClientWhenLin
             canvasAssignmentId,
             preview.assignment.title,
             preview.assignment.description,
-            preview.assignment.dueAt ? new Date(preview.assignment.dueAt) : undefined
+            preview.assignment.dueAt ? new Date(preview.assignment.dueAt) : undefined,
+            seedGrid
         );
+
+        // The brief is stored whether or not the assignment is new: an instructor who edited it
+        // in Canvas expects a re-import to bring the current text across.
+        if (context?.details) {
+            await mongo.saveCanvasAssignmentDetails(courseId(req), target.id, context.details);
+        }
 
         // Import local submission records only; this operation performs no Canvas write-back.
         const result = await service.importAssignment({
@@ -349,17 +362,28 @@ router.post('/:courseId/writing-feedback/canvas/import', withCanvasClientWhenLin
             targetAssignmentId: target.id,
             canvasAssignmentId
         });
-        // Re-read: importAssignment stores the Canvas rubric and brief on the assignment, so
-        // the copy fetched before the import no longer reflects it.
+        // Re-read: the brief was written after the assignment was fetched or created.
         const imported = await mongo.getWritingAssignment(courseId(req), target.id) ?? target;
         res.status(existing ? 200 : 201).json({
             success: true,
             data: {
                 ...result,
                 targetAssignment: imported,
-                // The Canvas rubric is imported for staff review and editing, and explicitly
-                // does not govern generation in this phase — `imported.rubric` still does.
-                rubricImport: imported.canvasRubric ? 'reference_only' : 'no_canvas_rubric'
+                /*
+                 * How the Canvas rubric was treated. `seeded_draft` means it became this
+                 * assignment's unapproved rubric draft and still needs staff approval before it
+                 * can reach the model. `unrepresentable` means Canvas held a rubric outside the
+                 * grid contract (over 10 criteria, or not 2-8 ratings) and the built-in profile
+                 * seeded the draft instead — a distinction staff need, since the rubric they see
+                 * is then not the one they authored.
+                 */
+                rubricImport: existing
+                    ? 'existing_assignment'
+                    : seedGrid
+                        ? 'seeded_draft'
+                        : context?.rubric
+                            ? 'unrepresentable'
+                            : 'no_canvas_rubric'
             }
         });
     } catch (error) {
@@ -367,72 +391,6 @@ router.post('/:courseId/writing-feedback/canvas/import', withCanvasClientWhenLin
     }
 }));
 
-/**
- * @route GET /:courseId/writing-feedback/assignments/:assignmentId/canvas-rubric
- * @description The rubric and brief imported from Canvas, mirroring the Canvas rubric.
- * @access Any course staff; editing is instructor/admin only, reported as `canEdit`.
- */
-router.get('/:courseId/writing-feedback/assignments/:assignmentId/canvas-rubric', asyncHandlerWithAuth(async (req: Request, res: Response) => {
-    const mongo = await EngEAI_MongoDB.getInstance();
-    const assignment = await mongo.getWritingAssignment(courseId(req), String(req.params.assignmentId));
-    if (!assignment) return res.status(404).json({ success: false, error: 'Writing assignment not found' });
-    const currentCourse = await mongo.getActiveCourse(courseId(req));
-    const globalUser = (req.session as any).globalUser;
-    res.json({
-        success: true,
-        data: {
-            rubric: assignment.canvasRubric ?? null,
-            details: assignment.canvasDetails ?? null,
-            // States plainly that this rubric is reference material, so the workspace never
-            // implies feedback was generated against it.
-            governsGeneration: false,
-            permissions: {
-                canEdit: Boolean(currentCourse && isCourseStaff(currentCourse, globalUser))
-            }
-        }
-    });
-}));
-
-/**
- * @route PUT /:courseId/writing-feedback/assignments/:assignmentId/canvas-rubric
- * @description Saves staff edits to imported rubric cell text.
- * @access Instructors/admins only; TAs have read-only rubric access.
- *
- * Rows cannot be added or removed here. The persistence layer rebuilds from the stored rows and
- * rejects any Canvas criterion id it does not already hold, so the rubric's shape stays the one
- * Canvas defined.
- */
-router.put(
-    '/:courseId/writing-feedback/assignments/:assignmentId/canvas-rubric',
-    asyncHandlerWithAuth(async (req: Request, res: Response) => {
-        try {
-            const parsed = canvasRubricEditInputSchema.safeParse(req.body);
-            if (!parsed.success) {
-                return res.status(400).json({ success: false, error: 'Rubric edit failed validation' });
-            }
-            const globalUser = (req.session as any).globalUser;
-            const mongo = await EngEAI_MongoDB.getInstance();
-            const updated = await mongo.updateCanvasRubricCells(
-                courseId(req),
-                String(req.params.assignmentId),
-                parsed.data.rows as CanvasRubricRow[],
-                globalUser?.userId ?? 'unknown'
-            );
-            if (!updated?.canvasRubric) {
-                return res.status(404).json({ success: false, error: 'Canvas rubric not found' });
-            }
-            res.json({
-                success: true,
-                data: {
-                    rubric: updated.canvasRubric,
-                    governsGeneration: false
-                }
-            });
-        } catch (error) {
-            res.status(400).json({ success: false, error: safeError(error) });
-        }
-    })
-);
 
 router.get('/:courseId/writing-feedback/assignments/:assignmentId/rubric', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     let lens: WritingFeedbackLens;

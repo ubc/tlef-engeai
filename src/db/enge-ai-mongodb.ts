@@ -7,6 +7,7 @@
  * @description: Singleton MongoDB access layer for EngE-AI — façade delegates into `mongo/` (`./mongo/course-mongo`, `./mongo/flag-mongo`, `./mongo/chat-mongo`, …).
  */
 
+import type { ImportedRubricShape } from '../writing-feedback/rubric-seed';
 import { MongoClient, Db } from 'mongodb';
 import * as dotenv from 'dotenv';
 import {
@@ -219,6 +220,7 @@ export class EngEAI_MongoDB {
      * @param title - Imported assignment title
      * @param instructions - Optional imported assignment directions
      * @param dueAt - Optional imported deadline
+     * @param canvasRubric - Canvas rubric grid seeding the draft, when one could be mapped
      * @returns Newly created or concurrently existing assignment
      */
     public createCanvasWritingAssignment = async (
@@ -226,50 +228,34 @@ export class EngEAI_MongoDB {
         canvasAssignmentId: string,
         title: string,
         instructions?: string,
-        dueAt?: Date
+        dueAt?: Date,
+        canvasRubric?: ImportedRubricShape
     ) => WritingFeedbackMongo.createCanvasWritingAssignment(
         this.ctx(),
         courseId,
         canvasAssignmentId,
         title,
         instructions,
-        dueAt
+        dueAt,
+        canvasRubric
     );
 
     /**
-     * saveCanvasAssignmentContext — stores the rubric and brief imported from Canvas.
+     * saveCanvasAssignmentDetails — stores the assignment brief imported from Canvas.
      *
-     * Preserves any instructor-chosen SFL lens across a re-import. Never alters the approved
-     * rubric that governs generation.
-     *
-     * @param courseId - Owning course id
-     * @param assignmentId - Local assignment id
-     * @param context - Imported rubric (`null` when Canvas has none) and assignment details
-     * @returns Updated assignment or `null`
-     */
-    public saveCanvasAssignmentContext = async (
-        courseId: string,
-        assignmentId: string,
-        context: { rubric: CanvasImportedRubric | null; details: CanvasAssignmentDetails }
-    ) => WritingFeedbackMongo.saveCanvasAssignmentContext(this.ctx(), courseId, assignmentId, context);
-
-    /**
-     * updateCanvasRubricCells — saves staff edits to an imported rubric's cell text and lenses.
-     *
-     * Row structure is taken from storage, not the request, so rows cannot be added or removed.
+     * The Canvas rubric is not stored here; it seeds the assignment's first rubric draft at
+     * creation. This never alters the approved rubric or an existing draft.
      *
      * @param courseId - Owning course id
      * @param assignmentId - Local assignment id
-     * @param rows - Edited rows keyed by Canvas criterion id
-     * @param actorUserId - Roster userId of the editing staff member
+     * @param details - Imported assignment brief
      * @returns Updated assignment or `null`
      */
-    public updateCanvasRubricCells = async (
+    public saveCanvasAssignmentDetails = async (
         courseId: string,
         assignmentId: string,
-        rows: CanvasRubricRow[],
-        actorUserId: string
-    ) => WritingFeedbackMongo.updateCanvasRubricCells(this.ctx(), courseId, assignmentId, rows, actorUserId);
+        details: CanvasAssignmentDetails
+    ) => WritingFeedbackMongo.saveCanvasAssignmentDetails(this.ctx(), courseId, assignmentId, details);
 
     /**
      * createManualWritingAssignment — persists a staff-created local assignment.
