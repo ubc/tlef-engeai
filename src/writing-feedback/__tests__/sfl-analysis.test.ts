@@ -90,6 +90,45 @@ describe('validateSflAnalysis', () => {
         )).toThrow('SFL analysis evidence did not match');
     });
 
+    it('reconciles a quote whose whitespace was collapsed by the model', () => {
+        const verifiedText = 'The measured value\n   increased. This matters for the conclusion.';
+        const result = validateSflAnalysis(analysis(), verifiedText, profile);
+
+        // Stored evidence is the exact original slice, not the model's normalized form.
+        expect(verifiedText).toContain(result.findings[0].evidence[0].quote);
+        expect(result.findings[0].evidence[0].quote).toBe('The measured value\n   increased.');
+    });
+
+    it('reconciles a quote whose apostrophe typography drifted', () => {
+        const verifiedText = 'The reviewer’s note explains the change.';
+        const drifted = analysis({
+            findings: [{
+                ...analysis().findings[0],
+                evidence: [{ quote: "The reviewer's note" }]
+            }]
+        });
+
+        const result = validateSflAnalysis(drifted, verifiedText, profile);
+
+        expect(result.findings[0].evidence[0].quote).toBe('The reviewer’s note');
+        expect(verifiedText).toContain(result.findings[0].evidence[0].quote);
+    });
+
+    it('still rejects a paraphrase that cannot be relocated', () => {
+        const paraphrased = analysis({
+            findings: [{
+                ...analysis().findings[0],
+                evidence: [{ quote: 'The author reports a rising trend.' }]
+            }]
+        });
+
+        expect(() => validateSflAnalysis(
+            paraphrased,
+            'The measured value increased. This matters for the conclusion.',
+            profile
+        )).toThrow('SFL analysis evidence did not match');
+    });
+
     it('refuses to extrapolate Ferreira expectedness rules to custom genres', () => {
         expect(() => validateSflAnalysis(
             analysis(),

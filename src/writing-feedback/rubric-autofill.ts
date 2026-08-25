@@ -13,8 +13,9 @@
  */
 
 import { z } from 'zod';
-import { LLMModule } from 'ubc-genai-toolkit-llm';
+import { LLMModule, type Message } from 'ubc-genai-toolkit-llm';
 import { isMockResponse } from '../helpers/mock-response';
+import { stripNulls, type WithoutNull } from './strip-nulls';
 import type {
     WritingAssignment,
     WritingFeedbackLens,
@@ -186,8 +187,13 @@ export function buildAutofillPrompt(instructions: string, draft: WritingRubricDe
     ].join('\n');
 }
 
-/** Shape the model must return. Anything else is discarded rather than repaired. */
-const autofillProposalSchema = z.object({
+/**
+ * Shape the model must return. Anything else is discarded rather than repaired.
+ *
+ * Exported only so __tests__/structured-output-schema.test.ts can pin its generated
+ * JSON schema against the provider's no-typeless-node rule.
+ */
+export const autofillProposalSchema = z.object({
     title: z.string().trim().max(160),
     task: z.string().trim().max(2000),
     audience: z.string().trim().max(2000),
@@ -196,7 +202,9 @@ const autofillProposalSchema = z.object({
     learningOutcomes: z.array(z.string().trim().min(1).max(400)).max(12),
     gradingIntent: z.string().trim().max(2000),
     sflContext: z.object({
-        genreId: z.string().trim().min(1).max(120).optional(),
+        // .nullish() (optional + nullable), not .optional(): OpenAI's structured-output
+        // JSON-schema mode requires every non-required field to accept null explicitly.
+        genreId: z.string().trim().min(1).max(120).nullish(),
         genreLabel: z.string().trim().min(1).max(160),
         genreState: z.enum(['declared', 'staff_confirmed', 'custom', 'composite', 'needs_staff_input']),
         task: z.string().trim().min(1).max(2000),
@@ -211,24 +219,24 @@ const autofillProposalSchema = z.object({
             id: z.string().trim().min(1).max(64).regex(/^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/),
             label: z.string().trim().min(1).max(120),
             purpose: z.string().trim().min(1).max(600),
-            required: z.boolean().optional(),
-            order: z.number().int().min(1).max(50).optional()
+            required: z.boolean().nullish(),
+            order: z.number().int().min(1).max(50).nullish()
         })).min(1).max(20),
         embeddedGenres: z.array(z.string().trim().min(1).max(160)).max(12),
         taskRequirements: z.array(z.string().trim().min(1).max(300)).min(1).max(20),
         learningOutcomes: z.array(z.string().trim().min(1).max(400)).min(1).max(20),
-        approvedGlossaryTerms: z.array(z.string().trim().min(1).max(80)).max(30).optional()
-    }).optional(),
+        approvedGlossaryTerms: z.array(z.string().trim().min(1).max(80)).max(30).nullish()
+    }).nullish(),
     criteria: z.array(z.object({
         id: z.string().trim().min(1).max(64),
         label: z.string().trim().min(1).max(80),
         description: z.string().trim().max(2000),
-        points: z.number().finite().min(0).max(1000).optional(),
+        points: z.number().finite().min(0).max(1000).nullish(),
         cells: z.record(z.object({
             min: z.number().finite().min(0).max(1000),
             max: z.number().finite().min(0).max(1000),
-            descriptor: z.string().trim().max(400).optional()
-        })).optional()
+            descriptor: z.string().trim().max(400).nullish()
+        })).nullish()
     })).max(10)
 });
 
@@ -336,53 +344,58 @@ export async function proposeRubricFromInstructions(
         return { ...mocked, criteria: mocked.criteria.filter((criterion) => known.has(criterion.id)) };
     }
 
-    const response = await llm.sendMessage(buildAutofillPrompt(instructions, draft), {});
-    const raw = String((response as { content?: unknown }).content ?? '');
-
-    // Models wrap JSON in prose or fences often enough that the object must be located
-    // rather than assumed to be the whole response.
-    const start = raw.indexOf('{');
-    const end = raw.lastIndexOf('}');
-    if (start === -1 || end <= start) throw new Error('Auto-fill response was not usable');
-
-    let parsed: unknown;
+    // sendStructuredConversation enforces JSON output at the API level (schema/function-
+    // calling mode, provider-dependent) and returns already-validated data. Earlier code
+    // used the plain sendMessage API with a prose-only prompt that never asked for JSON,
+    // so a real model would sometimes answer in prose with no JSON at all.
+    const messages: Message[] = [
+        { role: 'user', content: buildAutofillPrompt(instructions, draft) }
+    ];
+    let validatedData: WithoutNull<z.infer<typeof autofillProposalSchema>>;
     try {
-        parsed = JSON.parse(raw.slice(start, end + 1));
+        const response = await llm.sendStructuredConversation(messages, autofillProposalSchema, {
+            structuredOutputName: 'rubric_autofill'
+        });
+        // The structured-output schema accepts explicit `null` on every optional field
+        // (the API requires it); stripNulls omits those keys entirely rather than
+        // leaving them undefined, so this matches the plain absent-means-unset contract
+        // WritingSflContextProfile/WritingRubricCriterion use, and never leaves an
+        // undefined-valued key for MongoDB to serialize back as a stored null on write.
+        validatedData = stripNulls(response.parsed);
     } catch {
-        // The caught error can quote the response body; it is deliberately not reused.
+        // Model errors and responses can echo the prompt body; never reuse the message.
         throw new Error('Auto-fill response was not usable');
     }
-
-    const validated = autofillProposalSchema.safeParse(parsed);
-    if (!validated.success) throw new Error('Auto-fill response was not usable');
 
     // The model is told not to invent criteria. Anything it invented anyway is dropped
     // here, so the merge rules only ever see ids the draft already has.
     const known = new Set(draft.criteria.map((criterion) => criterion.id));
-    const sflContext = validated.data.sflContext
+    const sflContext = validatedData.sflContext
         ? {
-            ...validated.data.sflContext,
-            task: clipToDraftLimit(validated.data.sflContext.task),
-            purpose: clipToDraftLimit(validated.data.sflContext.purpose),
-            audience: clipToDraftLimit(validated.data.sflContext.audience),
-            field: clipToDraftLimit(validated.data.sflContext.field),
-            tenor: clipToDraftLimit(validated.data.sflContext.tenor),
-            mode: clipToDraftLimit(validated.data.sflContext.mode),
-            actualEvaluator: clipToDraftLimit(validated.data.sflContext.actualEvaluator),
-            productionConditions: clipToDraftLimit(validated.data.sflContext.productionConditions)
+            ...validatedData.sflContext,
+            task: clipToDraftLimit(validatedData.sflContext.task),
+            purpose: clipToDraftLimit(validatedData.sflContext.purpose),
+            audience: clipToDraftLimit(validatedData.sflContext.audience),
+            field: clipToDraftLimit(validatedData.sflContext.field),
+            tenor: clipToDraftLimit(validatedData.sflContext.tenor),
+            mode: clipToDraftLimit(validatedData.sflContext.mode),
+            actualEvaluator: clipToDraftLimit(validatedData.sflContext.actualEvaluator),
+            productionConditions: clipToDraftLimit(validatedData.sflContext.productionConditions)
         }
         : undefined;
     return {
-        ...validated.data,
+        title: validatedData.title,
+        constraints: validatedData.constraints,
+        learningOutcomes: validatedData.learningOutcomes,
         // The proposal schema allows more length than the draft validator does (see
         // `clipToDraftLimit`); clip here so a verbose response degrades to a slightly
         // shortened draft instead of being refused outright by the route's later check.
-        task: clipToDraftLimit(validated.data.task),
-        audience: clipToDraftLimit(validated.data.audience),
-        purpose: clipToDraftLimit(validated.data.purpose),
-        gradingIntent: clipToDraftLimit(validated.data.gradingIntent),
-        ...(sflContext ? { sflContext } : {}),
-        criteria: validated.data.criteria
+        task: clipToDraftLimit(validatedData.task),
+        audience: clipToDraftLimit(validatedData.audience),
+        purpose: clipToDraftLimit(validatedData.purpose),
+        gradingIntent: clipToDraftLimit(validatedData.gradingIntent),
+        sflContext,
+        criteria: validatedData.criteria
             .filter((criterion) => known.has(criterion.id))
             .map((criterion) => ({ ...criterion, description: clipToDraftLimit(criterion.description) }))
     };

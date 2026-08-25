@@ -43,6 +43,7 @@ import {
     sflFoundationPromptResource
 } from './sfl-foundation';
 import { sflAnalysisSchema, requireCompleteSflProfile, validateSflAnalysis } from './sfl-analysis';
+import { stripNulls } from './strip-nulls';
 import {
     resolveCourseMaterialMentions,
     type WritingFeedbackMaterialRetriever,
@@ -235,6 +236,7 @@ export function buildSflAnalyzerSystemPrompt(assignment: WritingAssignment): str
         'Return structured observations only: no feedback prose, no rubric levels, no grades, no rewrites, no hidden chain-of-thought.',
         'Keep observation, functional interpretation, rubric evaluation, and model confidence separate.',
         'Use exact evidence copied from the verified text for every finding.',
+        `Quote the shortest exact clause or single sentence that carries the pattern; never quote a whole paragraph. Each evidence quote must be at most ${MAX_EVIDENCE_QUOTE_LENGTH} characters.`,
         'Preserve acceptable alternatives and abstain when context, source access, stage profile, or evidence is insufficient.',
         'Do not judge technical correctness, author ability, effort, identity, language background, or proficiency.',
         'For custom or composite genres, do not apply Ferreira DR/DC/PS expectedness codes; use staff-confirmed stages and return ruleIds as an empty array.',
@@ -380,8 +382,13 @@ export class RubricWritingFeedbackEngine implements WritingFeedbackEngine {
             }
         );
 
+        // The structured-output schema accepts explicit `null` on every optional field
+        // (the API requires it); stripNulls omits those keys so the result matches the
+        // plain absent-means-unset contract WritingFeedbackResult/CriterionFeedback use,
+        // and never leaves an undefined-valued key for MongoDB to serialize back as null.
+        const writerResult = stripNulls(writerResponse.parsed) as WritingFeedbackResult;
         // Repair cosmetic quote drift only when it maps back to one exact source slice.
-        const result = reconcileExactEvidence(writerResponse.parsed as WritingFeedbackResult, input.verifiedText) as WritingFeedbackResultWithTrace;
+        const result = reconcileExactEvidence(writerResult, input.verifiedText) as WritingFeedbackResultWithTrace;
         validateWriterReferences(result, analysis, mentions);
         result.schemaVersion = WRITING_FEEDBACK_SCHEMA_V2;
         if (mentions.length && !result.courseMaterialMentions?.length) result.courseMaterialMentions = mentions;

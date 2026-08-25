@@ -182,9 +182,20 @@ describe('proposeRubricFromInstructions', () => {
         else process.env.MOCK_RESPONSE = originalMockResponse;
     });
 
-    /** Injected in place of a real `LLMModule`; only `sendMessage` is ever called. */
-    function fakeLlm(content: string): LLMModule {
-        return { sendMessage: async () => ({ content }) } as unknown as LLMModule;
+    /**
+     * Injected in place of a real `LLMModule`; only `sendStructuredConversation` is ever
+     * called. `sendStructuredConversation` enforces JSON output and validation at the API
+     * level, so the fake returns already-parsed data the way the real toolkit would.
+     */
+    function fakeLlm(parsed: unknown): LLMModule {
+        return { sendStructuredConversation: async () => ({ parsed }) } as unknown as LLMModule;
+    }
+
+    /** Simulates the toolkit itself rejecting (malformed/non-JSON model output, schema mismatch). */
+    function rejectingLlm(): LLMModule {
+        return {
+            sendStructuredConversation: async () => { throw new Error('model did not return valid structured output'); }
+        } as unknown as LLMModule;
     }
 
     const validResponseBody = {
@@ -207,27 +218,18 @@ describe('proposeRubricFromInstructions', () => {
         expect(result.criteria.map((c) => c.id)).toEqual(['organization']);
     });
 
-    it('locates a JSON object fenced inside surrounding prose', async () => {
-        const fenced = `Here is the rubric:\n\`\`\`json\n${JSON.stringify(validResponseBody)}\n\`\`\`\nHope that helps.`;
-        const result = await proposeRubricFromInstructions('i', draft(knownCriteria), fakeLlm(fenced));
-        expect(result.title).toBe('Lab 3 rubric');
-    });
-
-    it('throws a fixed message on malformed JSON', async () => {
+    it('throws a fixed message when the model does not return usable structured output', async () => {
+        // Covers what used to be "no JSON in the response," "malformed JSON," and
+        // "schema-invalid response": sendStructuredConversation now owns all three
+        // failure modes and simply rejects; our code only needs a fixed message back.
         await expect(
-            proposeRubricFromInstructions('i', draft(knownCriteria), fakeLlm('{"title": "T", corrupted}'))
-        ).rejects.toThrow('Auto-fill response was not usable');
-    });
-
-    it('throws a fixed message on a schema-invalid response', async () => {
-        await expect(
-            proposeRubricFromInstructions('i', draft(knownCriteria), fakeLlm(JSON.stringify({ nonsense: true })))
+            proposeRubricFromInstructions('i', draft(knownCriteria), rejectingLlm())
         ).rejects.toThrow('Auto-fill response was not usable');
     });
 
     it('drops any criterion id the model invented', async () => {
         const result = await proposeRubricFromInstructions(
-            'i', draft(knownCriteria), fakeLlm(JSON.stringify(validResponseBody))
+            'i', draft(knownCriteria), fakeLlm(validResponseBody)
         );
         expect(result.criteria.map((c) => c.id)).toEqual(['organization']);
     });
@@ -240,11 +242,60 @@ describe('proposeRubricFromInstructions', () => {
         const verboseBody = { ...validResponseBody, task: longTask };
 
         const result = await proposeRubricFromInstructions(
-            'i', draft(knownCriteria), fakeLlm(JSON.stringify(verboseBody))
+            'i', draft(knownCriteria), fakeLlm(verboseBody)
         );
 
         expect(result.task.length).toBeLessThanOrEqual(1200);
         // Clipped at a word boundary: the shortened text is a clean prefix of the original.
         expect(longTask.startsWith(result.task)).toBe(true);
+    });
+
+    it('omits (not merely undefines) optional fields the model returned as null', async () => {
+        // OpenAI's structured-output JSON-schema mode requires every optional field to
+        // be nullable, and the API sends an explicit `null` for a field the model left
+        // unset rather than omitting the key. The proposal schema must accept that shape.
+        //
+        // The returned AutofillProposal must OMIT the key entirely, not merely set it to
+        // `undefined` — `{ ...obj, key: undefined }` still leaves `key` as an own property,
+        // and MongoDB's driver serializes an undefined-valued property as a stored BSON
+        // null on write. A later read-back then hands the frontend a literal `null`,
+        // which the draft-save schema rejects ("Expected string, received null") the next
+        // time that draft is saved — this is the actual bug this test pins, not just the
+        // narrower "is the value falsy" check `toBeUndefined()` alone would allow to regress.
+        const bodyWithNulls = {
+            ...validResponseBody,
+            sflContext: {
+                genreId: null,
+                genreLabel: 'Custom genre',
+                genreState: 'custom',
+                task: 't', purpose: 'p', audience: 'a', field: 'f', tenor: 'te', mode: 'm',
+                actualEvaluator: 'ae', productionConditions: 'pc',
+                stages: [{ id: 'stage_one', label: 'Stage one', purpose: 'Does the work.', required: null, order: null }],
+                embeddedGenres: [],
+                taskRequirements: ['req'],
+                learningOutcomes: ['outcome'],
+                approvedGlossaryTerms: null
+            },
+            criteria: [
+                { id: 'organization', label: 'Organization', description: 'd', points: null,
+                  cells: { weak: { min: 0, max: 5, descriptor: null } } }
+            ]
+        };
+
+        const result = await proposeRubricFromInstructions('i', draft(knownCriteria), fakeLlm(bodyWithNulls));
+
+        // The property must be ABSENT, not present-with-undefined — `in` distinguishes
+        // the two the same way MongoDB's serializer does; `toBeUndefined()` alone would not.
+        expect('genreId' in (result.sflContext as object)).toBe(false);
+        expect('approvedGlossaryTerms' in (result.sflContext as object)).toBe(false);
+        expect('required' in result.sflContext!.stages[0]).toBe(false);
+        expect('order' in result.sflContext!.stages[0]).toBe(false);
+        expect('points' in result.criteria[0]).toBe(false);
+        expect('descriptor' in result.criteria[0].cells!.weak).toBe(false);
+        // Confirm no literal `null` leaked through anywhere in the normalized result,
+        // including via JSON.stringify (which itself drops undefined-valued keys, so this
+        // check alone is necessary-but-not-sufficient — the `in` checks above are the
+        // ones that actually pin the key-omission behavior this bug required).
+        expect(JSON.stringify(result)).not.toContain('null');
     });
 });

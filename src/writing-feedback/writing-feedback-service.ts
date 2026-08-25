@@ -36,6 +36,68 @@ import { ModelSelectionService } from '../dashboard-setting/model-selection-serv
 import { StudentWritingFeedbackPdfService } from '../report-generation/writing-feedback-report';
 import { resolveNumericGrade } from './feedback-schema';
 import { requireCompleteSflProfile } from './sfl-analysis';
+import { appLogger } from '../utils/logger';
+
+/**
+ * Fixed, developer-authored error strings this codebase throws for known validation
+ * failures (never model- or student-derived text) — safe to log verbatim. Anything
+ * outside this set (SDK errors, zod issues, etc.) must log only its error type.
+ */
+const SAFE_TO_LOG_MESSAGES = new Set([
+    'An approved rubric requires performance levels',
+    'Feedback referenced an unknown SFL finding',
+    'Feedback referenced a course material outside the retrieval allowlist',
+    'Verified submission text is required',
+    'An approved rubric is required before feedback generation',
+    'An approved rubric requires criteria and performance levels',
+    'Feedback evidence did not match the verified submission text',
+    'SFL analysis reused a finding id',
+    'SFL observation and interpretation must remain separate',
+    'SFL analysis referenced a stage outside the approved profile',
+    'SFL analysis evidence did not match the verified submission text',
+    'Ferreira expectedness rules cannot be extrapolated to a custom genre',
+    'SFL analysis referenced an unknown rule id',
+    'SFL analysis referenced an unknown source id',
+    'SFL analysis duplicated a genre-staging finding',
+    'SFL analysis returned too many findings'
+]);
+
+/**
+ * describeFailureSafely — renders a generation failure with no model or student content.
+ *
+ * A model/SDK error message can echo the prompt back, and the prompt carries verified
+ * submission text, so the raw message is never emitted. What is emitted is:
+ *
+ * - the error's constructor name (e.g. `APIError`, `ZodError`);
+ * - its message only when it exactly matches a fixed string this codebase throws;
+ * - Zod issue paths and codes, which name schema fields rather than values;
+ * - the evidence diagnostic attached by `validateSflAnalysis` (check name plus lengths);
+ * - transport fields (`status`, `code`, `type`), which are provider status metadata.
+ *
+ * @param error - Any thrown value from a lens run
+ * @returns One-line, content-free description safe for application logs
+ */
+export function describeFailureSafely(error: unknown): string {
+    const name = error instanceof Error ? error.constructor.name : typeof error;
+    const zodIssues = error && typeof error === 'object' && Array.isArray((error as { issues?: unknown[] }).issues)
+        ? (error as { issues: Array<{ path: (string | number)[]; code: string }> }).issues
+            .map((issue) => `${issue.path.join('.')}: ${issue.code}`).join('; ')
+        : undefined;
+    const message = zodIssues
+        ?? (error instanceof Error && SAFE_TO_LOG_MESSAGES.has(error.message)
+            ? error.message
+            : '(message withheld: not on the safe-to-log allowlist)');
+    const details = error && typeof error === 'object'
+        ? {
+            ...(('diagnostic' in error) ? { diagnostic: (error as { diagnostic: unknown }).diagnostic } : {}),
+            ...(('status' in error) ? { status: (error as { status: unknown }).status } : {}),
+            ...(('code' in error) ? { code: (error as { code: unknown }).code } : {}),
+            ...(('type' in error) ? { type: (error as { type: unknown }).type } : {})
+        }
+        : {};
+    const suffix = Object.keys(details).length ? ` ${JSON.stringify(details)}` : '';
+    return `${name} - ${message}${suffix}`;
+}
 
 type GeneratedFeedbackWithTrace = WritingFeedbackResult & { runTrace?: WritingFeedbackRunTrace };
 
@@ -131,7 +193,10 @@ export class WritingFeedbackService {
                 courseId, submissionId, assignment, verifiedText, llmCallOptions
             });
         } catch (error) {
-            // Preserve a visible retryable failure state without logging student/model content.
+            // Preserve a visible retryable failure state. The description is content-free by
+            // construction, so an operator can tell a schema rejection from a rate limit from
+            // an evidence mismatch without any student text reaching the log.
+            appLogger.log('[writing-feedback] linguistic lens failed:', describeFailureSafely(error));
             await this.mongo.setWritingSubmissionStatus(courseId, submissionId, 'failed');
             throw error;
         }
@@ -142,10 +207,12 @@ export class WritingFeedbackService {
                 results.technical = await this.runLens('technical', {
                     courseId, submissionId, assignment, verifiedText, llmCallOptions
                 });
-            } catch {
-                // Swallowed deliberately: the error can carry prompt/student content and must
-                // never be logged or surfaced. Staff see the missing technical draft in the
-                // review view and can regenerate; the linguistic draft stays reviewable.
+            } catch (error) {
+                // Not rethrown: a technical failure must leave the linguistic draft reviewable
+                // (D-058). It is described rather than swallowed silently, because an
+                // undiagnosable missing draft is an operational dead end — and
+                // describeFailureSafely never emits model or student content.
+                appLogger.log('[writing-feedback] technical lens failed:', describeFailureSafely(error));
             }
         }
 

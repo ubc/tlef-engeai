@@ -21,6 +21,7 @@ import {
     validateExactEvidence
 } from './feedback-schema';
 import { selectRubric } from './rubric-lens';
+import { stripNulls } from './strip-nulls';
 import type {
     WritingAssignment,
     WritingFeedbackEngine,
@@ -210,7 +211,11 @@ export class TechnicalWritingFeedbackEngine implements WritingFeedbackEngine {
             }
         );
 
+        // stripNulls omits any structured-output null the API required on an optional
+        // field, matching the plain absent-means-unset contract WritingFeedbackResult
+        // uses (see feedback-engine.ts for the fuller explanation).
+        const parsedResult = stripNulls(response.parsed) as WritingFeedbackResult;
         // Repair cosmetic quote drift only when it maps back to one exact source slice.
-        return reconcileExactEvidence(response.parsed as WritingFeedbackResult, input.verifiedText);
+        return reconcileExactEvidence(parsedResult, input.verifiedText);
     }
 }

@@ -40,9 +40,13 @@ Point mapping is all-or-nothing. Blank points keep feedback ordinal and block nu
 
 The linguistic engine is a two-call pipeline. It receives the assignment's approved rubric/profile and staff-verified submission text, then first runs a dedicated structured SFL analyzer. The analyzer may observe Content, Interpersonal, and Organizational meanings, but it must not produce feedback prose, rubric levels, grades, or hidden chain-of-thought. Its output keeps exact evidence, observation, functional interpretation, rule/source ids, alternatives, abstention reasons, and confidence as separate fields.
 
+The analyzer asks the model for the quote alone. It is never asked for character offsets: a model cannot count UTF-16 code units, and every stored offset is derived server-side with `indexOf` against the verified text.
+
+Before validation, analyzer evidence passes through the same relocation the feedback writer uses (`createQuoteRelocator`). Cosmetic drift — curly quotes, dash variants, collapsed whitespace, stray wrapping quotation marks — is mapped back to the exact original slice, and that slice is what is stored. A quote that cannot be relocated is a paraphrase or an invention and still fails the run.
+
 The analyzer validator must reject:
 
-- Evidence that is not an exact slice of the verified text.
+- Evidence that is not an exact slice of the verified text, after relocation.
 - Unknown SFL rule or source ids.
 - Ferreira expectedness rules used outside staff-approved Ferreira example genres.
 - C01/O01 duplicate staging findings over the same evidence.

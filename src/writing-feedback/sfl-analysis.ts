@@ -23,6 +23,8 @@ import {
 } from './contracts';
 import { SFL_RULES_BY_ID, SFL_SOURCE_PREFIXES } from './sfl-foundation';
 import { SFL_PROFILE_PLACEHOLDERS } from './default-rubric-profile';
+import { createQuoteRelocator, MAX_EVIDENCE_QUOTE_LENGTH } from './feedback-schema';
+import { stripNulls } from './strip-nulls';
 
 const foundedGenres = new Set<WritingFoundedGenreId>([
     'descriptive_report',
@@ -32,10 +34,19 @@ const foundedGenres = new Set<WritingFoundedGenreId>([
 
 const idSchema = z.string().trim().min(1).max(80).regex(/^[A-Za-z][A-Za-z0-9_-]*$/);
 
+// The model is asked for the quote only. It cannot count UTF-16 code units, and nothing
+// downstream reads model-supplied offsets: anchored-comments.ts derives every stored
+// offset itself with indexOf against the verified text. Asking for them only produced
+// unverifiable values that failed the mandatory lens. SflEvidenceSpan keeps the optional
+// fields so previously stored V2 runs still read back.
+//
+// .nullish() (optional + nullable), not .optional(): OpenAI's structured-output
+// JSON-schema mode requires every non-required field to accept null explicitly.
+// Capped at the same limit the feedback writer enforces (D-018). The writer is told to
+// copy a quote verbatim from a validated span, so a longer span here would produce a
+// writer result its own schema rejects.
 const evidenceSpanSchema = z.object({
-    quote: z.string().min(1).max(4000),
-    startOffset: z.number().int().min(0).optional(),
-    endOffset: z.number().int().min(1).optional()
+    quote: z.string().min(1).max(MAX_EVIDENCE_QUOTE_LENGTH)
 });
 
 const findingSchema = z.object({
@@ -50,14 +61,19 @@ const findingSchema = z.object({
     sourceIds: z.array(z.string().trim().min(1).max(120)).max(8),
     confidence: z.number().min(0).max(1),
     alternatives: z.array(z.string().trim().min(1).max(500)).max(5),
-    abstentionReason: z.string().trim().min(1).max(800).optional(),
-    stageId: z.string().trim().min(1).max(80).optional()
+    abstentionReason: z.string().trim().min(1).max(800).nullish(),
+    stageId: z.string().trim().min(1).max(80).nullish()
 });
 
-/** Structured output schema for the analyzer LLM call. */
+/**
+ * Structured output schema for the analyzer LLM call. `schemaVersion`/`foundationVersion`
+ * are accepted from the model only to satisfy the structured-output contract; both are
+ * always overwritten with the server's own constants in `validateSflAnalysis`'s return,
+ * so no `.default()` (and no normalization) is needed for either.
+ */
 export const sflAnalysisSchema = z.object({
-    schemaVersion: z.string().trim().min(1).default(WRITING_FEEDBACK_SCHEMA_V2),
-    foundationVersion: z.string().trim().min(1).default(SFL_FOUNDATION_VERSION),
+    schemaVersion: z.string().trim().min(1).nullish(),
+    foundationVersion: z.string().trim().min(1).nullish(),
     profileGenreState: z.enum(['declared', 'staff_confirmed', 'custom', 'composite', 'needs_staff_input']),
     findings: z.array(findingSchema).max(18),
     abstentions: z.array(z.string().trim().min(1).max(800)).max(12),
@@ -72,12 +88,49 @@ function sourceAllowed(sourceId: string): boolean {
     return SFL_SOURCE_PREFIXES.some((prefix) => sourceId === prefix || sourceId.startsWith(`${prefix}#`));
 }
 
-function exactSpan(span: { quote: string; startOffset?: number; endOffset?: number }, verifiedText: string): boolean {
-    if (!verifiedText.includes(span.quote)) return false;
-    if (span.startOffset === undefined || span.endOffset === undefined) return true;
-    return span.endOffset > span.startOffset
-        && span.endOffset <= verifiedText.length
-        && verifiedText.slice(span.startOffset, span.endOffset) === span.quote;
+/**
+ * Content-free description of why one evidence span failed validation.
+ *
+ * Carries only which check failed plus lengths/offsets — never a quote, never
+ * student text — so the service debug boundary can log it verbatim.
+ */
+export interface SflEvidenceDiagnostic {
+    reason:
+        | 'quote_not_substring' // model quote is absent from the verified text entirely
+        | 'offset_inverted' // endOffset <= startOffset
+        | 'offset_out_of_range' // endOffset beyond the verified text
+        | 'offset_mismatch'; // quote present, but not at the offsets the model supplied
+    quoteLength: number;
+    verifiedTextLength: number;
+    startOffset?: number;
+    endOffset?: number;
+}
+
+/**
+ * spanFailure - classifies an evidence span against the verified text.
+ *
+ * @param span - Model-supplied evidence span
+ * @param verifiedText - Staff-verified student text
+ * @returns A content-free diagnostic when the span is invalid, otherwise undefined
+ */
+function spanFailure(
+    span: { quote: string; startOffset?: number; endOffset?: number },
+    verifiedText: string
+): SflEvidenceDiagnostic | undefined {
+    const base = {
+        quoteLength: span.quote.length,
+        verifiedTextLength: verifiedText.length,
+        ...(span.startOffset === undefined ? {} : { startOffset: span.startOffset }),
+        ...(span.endOffset === undefined ? {} : { endOffset: span.endOffset })
+    };
+    if (!verifiedText.includes(span.quote)) return { reason: 'quote_not_substring', ...base };
+    if (span.startOffset === undefined || span.endOffset === undefined) return undefined;
+    if (span.endOffset <= span.startOffset) return { reason: 'offset_inverted', ...base };
+    if (span.endOffset > verifiedText.length) return { reason: 'offset_out_of_range', ...base };
+    if (verifiedText.slice(span.startOffset, span.endOffset) !== span.quote) {
+        return { reason: 'offset_mismatch', ...base };
+    }
+    return undefined;
 }
 
 /**
@@ -95,7 +148,11 @@ export function validateSflAnalysis(
     verifiedText: string,
     profile: WritingSflContextProfile
 ): SflAnalysis {
-    const parsed = sflAnalysisSchema.parse(analysis);
+    // The structured-output schema accepts explicit `null` on every optional field (the
+    // API requires it); stripNulls omits those keys entirely so this matches the plain
+    // absent-means-unset contract SflAnalysis/SflFinding/SflEvidenceSpan use.
+    const parsed = stripNulls(sflAnalysisSchema.parse(analysis));
+    const relocate = createQuoteRelocator(verifiedText);
     const ids = new Set<string>();
     const stageIds = new Set(profile.stages.map((stage) => stage.id));
     const founded = isFoundedGenre(profile);
@@ -113,8 +170,31 @@ export function validateSflAnalysis(
         if (finding.stageId && !stageIds.has(finding.stageId)) {
             throw new Error('SFL analysis referenced a stage outside the approved profile');
         }
-        if (finding.evidence.some((span) => !exactSpan(span, verifiedText))) {
-            throw new Error('SFL analysis evidence did not match the verified submission text');
+        // Repair cosmetic quote drift against the verified text, exactly as the feedback
+        // writer does. A quote that still cannot be located is a paraphrase or an
+        // invention and must fail the run rather than reach a student.
+        finding.evidence = finding.evidence.map((span) => {
+            const exact = relocate(span.quote);
+            if (exact === undefined) {
+                // `diagnostic` is content-free (check name plus lengths) and is rendered by
+                // describeFailureSafely at the service logging boundary.
+                const error = new Error('SFL analysis evidence did not match the verified submission text');
+                (error as Error & { diagnostic?: SflEvidenceDiagnostic }).diagnostic = {
+                    reason: 'quote_not_substring',
+                    quoteLength: span.quote.length,
+                    verifiedTextLength: verifiedText.length
+                };
+                throw error;
+            }
+            return { ...span, quote: exact };
+        });
+        const residualFailure = finding.evidence
+            .map((span) => spanFailure(span, verifiedText))
+            .find((failure): failure is SflEvidenceDiagnostic => failure !== undefined);
+        if (residualFailure) {
+            const error = new Error('SFL analysis evidence did not match the verified submission text');
+            (error as Error & { diagnostic?: SflEvidenceDiagnostic }).diagnostic = residualFailure;
+            throw error;
         }
         if (!founded && finding.ruleIds.length > 0) {
             throw new Error('Ferreira expectedness rules cannot be extrapolated to a custom genre');

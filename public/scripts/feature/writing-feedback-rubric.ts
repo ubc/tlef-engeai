@@ -1373,11 +1373,12 @@ function renderAssignmentDetails(
  */
 async function saveAssignmentRubrics(context: RubricPageContext): Promise<void> {
     const details = collectAssignmentDetails(context.detailsForm);
-    const sflContext = collectSflContext(
-        context.detailsForm,
-        details,
-        context.sections.find((section) => section.lens === 'linguistic')?.working.sflContext?.genreId
-    );
+    // A stored draft can carry a literal `null` here (older Mongo documents, or any
+    // future write path that leaves an undefined-valued key — MongoDB's driver
+    // serializes that as BSON null): coerce it to undefined so a save can never send
+    // `"genreId": null` back to a server schema that only accepts a string or absence.
+    const storedGenreId = context.sections.find((section) => section.lens === 'linguistic')?.working.sflContext?.genreId;
+    const sflContext = collectSflContext(context.detailsForm, details, storedGenreId ?? undefined);
     const labContext = rubricTextValue(context.detailsForm, 'labContext').slice(0, MAX_LAB_CONTEXT) || undefined;
 
     // Validate every rubric before writing any of them. Validating inside the write
