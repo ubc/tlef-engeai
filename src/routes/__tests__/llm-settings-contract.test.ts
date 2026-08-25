@@ -13,10 +13,10 @@ import type { CourseLlmSettings, FeatureLlmSelection } from '../../types/shared'
 
 const validBody = {
     chat: { modelId: 'gpt-5.6-luna', reasoningLevel: 'high' },
-    scenarioGeneration: { modelId: 'gpt-5.4-mini', reasoningLevel: 'medium' },
-    writingFeedback: { modelId: 'gpt-4o-mini', reasoningLevel: 'low' },
-    guidedPathway: { modelId: 'gpt-5.4-mini', reasoningLevel: 'medium' },
-    memoryAgent: { modelId: 'gpt-5.4-mini', reasoningLevel: 'low' },
+    scenarioGeneration: { modelId: 'gpt-5.6-luna', reasoningLevel: 'medium' },
+    writingFeedback: { modelId: 'gpt-5.6-luna', reasoningLevel: 'low' },
+    guidedPathway: { modelId: 'gpt-5.6-luna', reasoningLevel: 'medium' },
+    memoryAgent: { modelId: 'gpt-5.6-luna', reasoningLevel: 'low' },
 } satisfies Record<string, FeatureLlmSelection>;
 
 describe('PATCH /api/courses/:courseId/llm-settings contract', () => {
@@ -74,7 +74,8 @@ describe('PATCH /api/courses/:courseId/llm-settings contract', () => {
         expect(service.hasCachedCourseForTests('course-1')).toBe(true);
         const cached = await service.getSettingsForCourse('course-1');
         expect(cached.updatedBy).toBe('instructor-1');
-        expect(cached.memoryAgent.modelId).toBe('gpt-5.4-mini');
+        expect(cached.memoryAgent.modelId).toBe('gpt-5.6-luna');
+        expect(cached.memoryAgent.reasoningLevel).toBe('low');
         expect(cached.chat.modelId).toBe('gpt-5.6-luna');
     });
 });

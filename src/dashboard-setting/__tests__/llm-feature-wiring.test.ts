@@ -57,10 +57,10 @@ describe('LLM feature wiring (toolkit reasoningEffort)', () => {
             id: courseId,
             llmSettings: {
                 chat: { modelId: 'gpt-5.6-luna', reasoningLevel: 'high' },
-                scenarioGeneration: { modelId: 'gpt-5.4-mini', reasoningLevel: 'none' },
-                writingFeedback: { modelId: 'gpt-4o-mini', reasoningLevel: 'medium' },
-                guidedPathway: { modelId: 'gpt-5.4-mini', reasoningLevel: 'low' },
-                memoryAgent: { modelId: 'gpt-5.4-mini', reasoningLevel: 'medium' },
+                scenarioGeneration: { modelId: 'gpt-5.6-luna', reasoningLevel: 'none' },
+                writingFeedback: { modelId: 'gpt-5.6-luna', reasoningLevel: 'medium' },
+                guidedPathway: { modelId: 'gpt-5.6-luna', reasoningLevel: 'low' },
+                memoryAgent: { modelId: 'gpt-5.6-luna', reasoningLevel: 'medium' },
             },
         }));
     });
@@ -94,10 +94,10 @@ describe('LLM feature wiring (toolkit reasoningEffort)', () => {
             { model: string; reasoningEffort: AppReasoningLevel | undefined }
         > = {
             chat: { model: 'gpt-5.6-luna', reasoningEffort: 'high' },
-            scenarioGeneration: { model: 'gpt-5.4-mini', reasoningEffort: 'none' },
-            writingFeedback: { model: 'gpt-4o-mini', reasoningEffort: undefined },
-            guidedPathway: { model: 'gpt-5.4-mini', reasoningEffort: 'low' },
-            memoryAgent: { model: 'gpt-5.4-mini', reasoningEffort: 'medium' },
+            scenarioGeneration: { model: 'gpt-5.6-luna', reasoningEffort: 'none' },
+            writingFeedback: { model: 'gpt-5.6-luna', reasoningEffort: 'medium' },
+            guidedPathway: { model: 'gpt-5.6-luna', reasoningEffort: 'low' },
+            memoryAgent: { model: 'gpt-5.6-luna', reasoningEffort: 'medium' },
         };
 
         for (const feature of LLM_FEATURE_KEYS) {

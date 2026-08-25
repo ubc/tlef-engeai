@@ -135,10 +135,10 @@ Each `models[]` entry: `{ id, label, costTier, reasoningOptions: [{ id, label }]
 ```json
 {
   "chat": { "modelId": "gpt-5.6-luna", "reasoningLevel": "high" },
-  "scenarioGeneration": { "modelId": "gpt-5.4-mini", "reasoningLevel": "medium" },
-  "writingFeedback": { "modelId": "gpt-4o-mini", "reasoningLevel": "low" },
-  "guidedPathway": { "modelId": "gpt-5.4-mini", "reasoningLevel": "medium" },
-  "memoryAgent": { "modelId": "gpt-5.4-mini", "reasoningLevel": "low" }
+  "scenarioGeneration": { "modelId": "gpt-5.6-luna", "reasoningLevel": "medium" },
+  "writingFeedback": { "modelId": "gpt-5.6-luna", "reasoningLevel": "low" },
+  "guidedPathway": { "modelId": "gpt-5.6-luna", "reasoningLevel": "medium" },
+  "memoryAgent": { "modelId": "gpt-5.6-luna", "reasoningLevel": "low" }
 }
 ```
 
@@ -149,6 +149,8 @@ Each `models[]` entry: `{ id, label, costTier, reasoningOptions: [{ id, label }]
 | `gpt-5.6-luna` | GPT 5.6 Luna | `none`, `low`, `medium`, `high`, `xhigh`, `max` | [GPT-5.6 Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna) · [Reasoning guide](https://developers.openai.com/api/docs/guides/reasoning) |
 | `gpt-5.4-mini` | GPT 5.4 Mini | `none`, `low`, `medium`, `high`, `xhigh` | [GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini) |
 | `gpt-4o-mini` | GPT 4o Mini | _(empty)_ | [GPT-4o mini](https://developers.openai.com/api/docs/models/gpt-4o-mini) |
+
+**TEMPORARY — withheld models:** the platform LLM API key is currently provisioned for `gpt-5.6-luna` only, so `TEMPORARILY_UNAVAILABLE_MODEL_IDS` in `model-selection-list.ts` holds `gpt-5.4-mini` and `gpt-4o-mini`. Withheld ids are still returned in the GET catalog `models[]` carrying `unavailable: true`, but are rejected by PATCH (400) and clamped to `gpt-5.6-luna` when read from Mongo. The dashboard picker renders an `unavailable` row disabled with an "Unavailable" badge instead of hiding it, so an instructor whose course previously named a withheld model sees why the selection changed. Because staff course GET returns raw stored `llmSettings`, the client applies the same clamp — an `unavailable` model is listed but never adopted as a feature's selection. Emptying the list restores full selection with no other change.
 
 **App picker / PATCH `reasoningLevel`:** `AppReasoningLevel` = `none` \| `low` \| `medium` \| `high` only. Dashboard `reasoningOptions` are APP ∩ provider for that model (`xhigh` / `max` stay on the catalog, not in the picker or Mongo). When `supportedReasoningLevels` is empty, any app level may be stored but provider options omit `reasoningEffort`.
 

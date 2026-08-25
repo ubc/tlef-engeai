@@ -81,8 +81,32 @@ export const LLM_MODEL_CATALOG: readonly LlmModelCatalogEntry[] = (
     supportedReasoningLevels: [...spec.supportedReasoningLevels],
 }));
 
-/** Valid model IDs derived from the server catalog. */
-export const VALID_MODEL_IDS: readonly CourseLlmModelId[] = LLM_MODEL_CATALOG.map((e) => e.id);
+/**
+ * TEMPORARILY_UNAVAILABLE_MODEL_IDS - models withheld from selection while the
+ * platform LLM API key is provisioned for `gpt-5.6-luna` only.
+ *
+ * TEMPORARY: remove the ids from this list (leave it empty) once the key covers
+ * the full catalog again. Entries stay in {@link LLM_MODEL_SPECS} so labels,
+ * cost tiers, and provider reasoning lists survive the round trip.
+ */
+export const TEMPORARILY_UNAVAILABLE_MODEL_IDS: readonly CourseLlmModelId[] = [
+    'gpt-5.4-mini',
+    'gpt-4o-mini',
+] as const;
+
+/**
+ * SELECTABLE_MODEL_CATALOG - catalog entries instructors may actually pick.
+ *
+ * {@link LLM_MODEL_CATALOG} minus {@link TEMPORARILY_UNAVAILABLE_MODEL_IDS}. Drives
+ * the dashboard picker payload and the model-id guards, so withheld models are
+ * neither offered nor persistable while the key is limited.
+ */
+export const SELECTABLE_MODEL_CATALOG: readonly LlmModelCatalogEntry[] = LLM_MODEL_CATALOG.filter(
+    (entry) => !TEMPORARILY_UNAVAILABLE_MODEL_IDS.includes(entry.id)
+);
+
+/** Valid model IDs — selectable entries only, so withheld models fail validation. */
+export const VALID_MODEL_IDS: readonly CourseLlmModelId[] = SELECTABLE_MODEL_CATALOG.map((e) => e.id);
 
 /** App UI / PATCH / persistence reasoning levels (not the full provider catalog). */
 export const VALID_REASONING_LEVELS: readonly AppReasoningLevel[] = APP_REASONING_LEVELS;
@@ -120,16 +144,25 @@ export function appReasoningOptionsForEntry(entry: LlmModelCatalogEntry): LlmRea
  * toDashboardCatalogEntry - map one server catalog entry to the dashboard API shape.
  *
  * Facts only: id, label, costTier, app reasoning options. No `$` cost labels or brainCount.
+ * Withheld models are still projected, flagged `unavailable` so the picker can grey
+ * them out instead of hiding them.
  *
  * @param entry - Server catalog entry to project
  * @returns Dashboard picker row for GET llm-model-catalog
  */
 export function toDashboardCatalogEntry(entry: LlmModelCatalogEntry): LlmModelDashboardCatalogEntry {
-    return {
+    const row: LlmModelDashboardCatalogEntry = {
         id: entry.id,
         label: entry.label,
         costTier: entry.costTier,
         // App ∩ provider options for the reasoning picker
         reasoningOptions: appReasoningOptionsForEntry(entry),
     };
+
+    // Flag rather than omit — instructors see why a familiar model cannot be picked
+    if (TEMPORARILY_UNAVAILABLE_MODEL_IDS.includes(entry.id)) {
+        row.unavailable = true;
+    }
+
+    return row;
 }

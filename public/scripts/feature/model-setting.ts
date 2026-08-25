@@ -58,6 +58,13 @@ const REASONING_BRAIN_COUNT: Record<AppReasoningLevel, number> = {
     high: 3,
 };
 
+/** Short badge on a model the platform cannot currently serve. */
+const MODEL_UNAVAILABLE_NOTE = 'Unavailable';
+
+/** Full explanation, surfaced as the disabled option's tooltip. */
+const MODEL_UNAVAILABLE_HINT =
+    'This model is temporarily unavailable on the platform API key and cannot be selected right now.';
+
 /** Model row — replaces former $ / $$ / $$$ costLabel from API. */
 const COST_TIER_BRAIN_COUNT: Record<'low' | 'medium' | 'high', number> = {
     low: 1,
@@ -218,8 +225,26 @@ function findModelEntry(modelId: CourseLlmModelId): LlmModelDashboardCatalogEntr
     return modelCatalog.find((m) => m.id === modelId);
 }
 
+/** Catalog rows an instructor may actually choose (server rejects the rest on PATCH). */
+function selectableModels(): LlmModelDashboardCatalogEntry[] {
+    return modelCatalog.filter((m) => !m.unavailable);
+}
+
+/**
+ * findSelectableModelEntry - catalog lookup that refuses withheld models.
+ *
+ * Used wherever a model becomes the *selected* value, so an `unavailable` row can be
+ * listed in the popover without ever being adopted as a feature's selection.
+ */
+function findSelectableModelEntry(
+    modelId: CourseLlmModelId
+): LlmModelDashboardCatalogEntry | undefined {
+    const entry = findModelEntry(modelId);
+    return entry && !entry.unavailable ? entry : undefined;
+}
+
 function defaultModelEntry(): LlmModelDashboardCatalogEntry {
-    return findModelEntry(defaultSelection.modelId) ?? modelCatalog[0];
+    return findSelectableModelEntry(defaultSelection.modelId) ?? selectableModels()[0];
 }
 
 function hydrateFeatureSettings(stored: CourseLlmSettings | undefined): FeatureLlmSettingsMap {
@@ -278,7 +303,8 @@ function clampReasoningForModel(
 
 function sanitizeSelection(selection: FeatureLlmSelection | undefined): FeatureLlmSelection {
     if (!selection) return { ...defaultSelection };
-    const model = findModelEntry(selection.modelId) ?? defaultModelEntry();
+    // Withheld / unknown stored models fall back — the server clamps them the same way
+    const model = findSelectableModelEntry(selection.modelId) ?? defaultModelEntry();
     if (!model) return { ...defaultSelection };
     return {
         modelId: model.id,
@@ -312,7 +338,7 @@ function renderFeatureRows(): void {
 
     container.innerHTML = FEATURE_CATALOG.map((feature) => {
         const selection = featureSettings![feature.key];
-        const modelEntry = findModelEntry(selection.modelId) ?? defaultModelEntry();
+        const modelEntry = findSelectableModelEntry(selection.modelId) ?? defaultModelEntry();
         const reasoningLabel = reasoningLabelFor(modelEntry, selection.reasoningLevel);
         const modelLabel = modelEntry.label;
         const interactive = isFeatureInteractive(feature);
@@ -376,7 +402,7 @@ function renderPickerWrap(
 ): string {
     const id = pickerId(featureKey, kind);
     const selection = featureSettings![featureKey];
-    const modelEntry = findModelEntry(selection.modelId) ?? defaultModelEntry();
+    const modelEntry = findSelectableModelEntry(selection.modelId) ?? defaultModelEntry();
     const kindLabel = kind === 'reasoning' ? 'Reasoning' : 'Model';
     const canOpen = canManageState && interactive;
 
@@ -414,19 +440,25 @@ function renderModelOption(
     model: LlmModelDashboardCatalogEntry,
     selectedId: CourseLlmModelId
 ): string {
-    const selected = model.id === selectedId;
+    const unavailable = model.unavailable === true;
+    const selected = !unavailable && model.id === selectedId;
     return `
         <button
             type="button"
-            class="model-picker-option"
+            class="model-picker-option${unavailable ? ' model-picker-option--unavailable' : ''}"
             role="option"
             data-feature="${featureKey}"
             data-kind="model"
             data-value="${model.id}"
             aria-selected="${selected}"
+            ${unavailable ? `disabled aria-disabled="true" title="${escapeHtml(MODEL_UNAVAILABLE_HINT)}"` : ''}
         >
             <span class="model-picker-option-title">${escapeHtml(model.label)}</span>
-            <span class="model-reasoning-brains" aria-hidden="true">${renderBrainIcons(COST_TIER_BRAIN_COUNT[model.costTier])}</span>
+            ${
+                unavailable
+                    ? `<span class="model-picker-option-note">${escapeHtml(MODEL_UNAVAILABLE_NOTE)}</span>`
+                    : `<span class="model-reasoning-brains" aria-hidden="true">${renderBrainIcons(COST_TIER_BRAIN_COUNT[model.costTier])}</span>`
+            }
             ${selected ? '<span class="model-picker-option-check" aria-hidden="true">✓</span>' : ''}
         </button>`;
 }
@@ -519,7 +551,7 @@ function handleOptionSelect(option: HTMLButtonElement): void {
 
     if (kind === 'model' && isModelId(value)) {
         featureSettings[featureKey].modelId = value;
-        const model = findModelEntry(value)!;
+        const model = findSelectableModelEntry(value)!;
         featureSettings[featureKey].reasoningLevel = clampReasoningForModel(
             model,
             featureSettings[featureKey].reasoningLevel
@@ -619,7 +651,7 @@ function renderBrainIcons(count: number): string {
 }
 
 function isModelId(value: string): value is CourseLlmModelId {
-    return modelCatalog.some((m) => m.id === value);
+    return selectableModels().some((m) => m.id === value);
 }
 
 function isReasoningLevel(value: string): value is AppReasoningLevel {

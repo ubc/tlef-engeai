@@ -189,6 +189,11 @@ export interface LlmModelDashboardCatalogEntry {
     label: string;
     costTier: 'low' | 'medium' | 'high';
     reasoningOptions: LlmReasoningCatalogOption[];
+    /**
+     * True when the model is listed for context but cannot be chosen — the picker
+     * renders it disabled and PATCH rejects it. Absent means selectable.
+     */
+    unavailable?: boolean;
 }
 
 /** GET `/api/courses/:courseId/llm-model-catalog` response body. */
