@@ -118,6 +118,7 @@ describe('RubricWritingFeedbackEngine generic rubric contract', () => {
         const generated = await new RubricWritingFeedbackEngine().generate({ assignment, verifiedText });
 
         expect(prompt).not.toMatch(/LLED\s*200|Assignment\s*2|\bA2\b/i);
+        expect(prompt).toContain('Never state a confidence level, certainty, or how sure you are anywhere in prose');
         for (const criterion of dynamicCriteria) {
             expect(prompt).toContain(criterion.id);
             expect(prompt).toContain(criterion.label);

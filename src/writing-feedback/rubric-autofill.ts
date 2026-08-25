@@ -15,12 +15,16 @@
 import { z } from 'zod';
 import { LLMModule, type Message } from 'ubc-genai-toolkit-llm';
 import { isMockResponse } from '../helpers/mock-response';
+import { spaceBandsEvenly } from './rubric-bands';
 import { stripNulls, type WithoutNull } from './strip-nulls';
 import type {
     WritingAssignment,
     WritingFeedbackLens,
+    WritingLevelId,
+    WritingRubricCell,
     WritingRubricCriterion,
     WritingRubricDefinition,
+    WritingRubricLevel,
     WritingSflContextProfile
 } from './contracts';
 
@@ -93,6 +97,40 @@ export function autofillMergeRules(source: RubricGridSource): AutofillMergeRules
 }
 
 /**
+ * reconcileProposedCells - overrides model-authored numeric bands with weight-derived
+ * ones, keeping only the model's descriptor text.
+ *
+ * `buildAutofillPrompt` never tells the model a criterion's points weight, so its band
+ * numbers are unreliable: observed failures include scaling every row to an assumed
+ * 100-point total and collapsing every band to zero. Numeric point values are never
+ * the model's to invent (D-063); the same deterministic split "Space points evenly"
+ * uses (`spaceBandsEvenly`) is applied here instead. A level id the model invented —
+ * not part of `levels` — is passed through unchanged so the shared draft validator
+ * still rejects it.
+ *
+ * @param modelCells - Cells the model proposed, keyed by level id
+ * @param points - The criterion's resolved weight after this merge, if any
+ * @param levels - Rubric's performance levels, used only to derive bands
+ * @returns Cells with weight-correct numeric bands and the model's descriptor text
+ */
+function reconcileProposedCells(
+    modelCells: Record<WritingLevelId, WritingRubricCell>,
+    points: number | undefined,
+    levels: ReadonlyArray<WritingRubricLevel>
+): Record<WritingLevelId, WritingRubricCell> {
+    if (points === undefined) return modelCells;
+    const derived = spaceBandsEvenly(points, levels);
+    const reconciled: Record<WritingLevelId, WritingRubricCell> = {};
+    for (const [levelId, cell] of Object.entries(modelCells)) {
+        const band = derived[levelId];
+        reconciled[levelId] = band
+            ? { ...band, ...(cell.descriptor ? { descriptor: cell.descriptor } : {}) }
+            : cell;
+    }
+    return reconciled;
+}
+
+/**
  * mergeAutofill - applies a proposal to a draft under the given rules.
  *
  * Details are always written. Rows are never removed: an instructor who added a
@@ -113,13 +151,19 @@ export function mergeAutofill(
     const criteria = draft.criteria.map((criterion) => {
         const match = proposed.get(criterion.id);
         if (!match) return criterion;
+        // The weight this row will actually carry after this merge: the model's
+        // proposed points only where rows are writable, otherwise the row's own.
+        // Cell bands are always reconciled against this value, never the model's.
+        const nextPoints = rules.mayWriteRow && match.points !== undefined ? match.points : criterion.points;
         return {
             ...criterion,
             // The row's own text and weight move together: where rows are fixed, the
             // description belongs to whoever authored the row, not to the model.
             ...(rules.mayWriteRow && match.description ? { description: match.description } : {}),
             ...(rules.mayWriteRow && match.points !== undefined ? { points: match.points } : {}),
-            ...(rules.mayWriteCells && match.cells ? { cells: match.cells } : {})
+            ...(rules.mayWriteCells && match.cells
+                ? { cells: reconcileProposedCells(match.cells, nextPoints, draft.levels) }
+                : {})
         };
     });
 
@@ -127,7 +171,12 @@ export function mergeAutofill(
         const existing = new Set(draft.criteria.map((criterion) => criterion.id));
         proposal.criteria
             .filter((criterion) => !existing.has(criterion.id))
-            .forEach((criterion) => criteria.push({ ...criterion }));
+            .forEach((criterion) => criteria.push({
+                ...criterion,
+                ...(criterion.cells
+                    ? { cells: reconcileProposedCells(criterion.cells, criterion.points, draft.levels) }
+                    : {})
+            }));
     }
 
     return {

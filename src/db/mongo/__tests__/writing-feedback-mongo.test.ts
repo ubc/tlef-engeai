@@ -17,6 +17,7 @@ import type {
 } from '../../../writing-feedback/contracts';
 import {
     approveWritingRubricDraft,
+    completeWritingJob,
     createManualWritingAssignment,
     discardWritingRubricDraft,
     ensureWritingFeedbackIndexes,
@@ -468,5 +469,22 @@ describe('getLatestWritingFeedbackRun lens scoping', () => {
             submissionId: 'submission-1',
             $or: [{ lens: 'linguistic' }, { lens: { $exists: false } }]
         });
+    });
+});
+
+describe('completeWritingJob', () => {
+    it('clears a stale sanitizedError left by an earlier failed attempt', async () => {
+        const jobsCollection = { updateOne: jest.fn().mockResolvedValue(undefined) };
+        const ctx = contextWithCollections({ 'writing-jobs': jobsCollection });
+
+        await completeWritingJob(ctx, 'job-1');
+
+        expect(jobsCollection.updateOne).toHaveBeenCalledWith(
+            { id: 'job-1', state: 'leased' },
+            {
+                $set: { state: 'completed', updatedAt: expect.any(Date) },
+                $unset: { leaseUntil: '', sanitizedError: '' }
+            }
+        );
     });
 });
