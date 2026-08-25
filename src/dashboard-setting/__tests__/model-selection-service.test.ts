@@ -15,7 +15,11 @@ import type {
     FeatureLlmSelection,
     ProviderReasoningLevel,
 } from '../../types/shared';
-import { APP_REASONING_LEVELS } from '../model-selection-list';
+import {
+    APP_REASONING_LEVELS,
+    SELECTABLE_MODEL_CATALOG,
+    TEMPORARILY_UNAVAILABLE_MODEL_IDS,
+} from '../model-selection-list';
 
 const FIVE_MIN_MS = 5 * 60 * 1000;
 
@@ -58,10 +62,10 @@ describe('ModelSelectionService', () => {
                 id: courseId,
                 llmSettings: {
                     chat: { modelId: 'gpt-5.6-luna', reasoningLevel: 'high' },
-                    scenarioGeneration: { modelId: 'gpt-5.4-mini', reasoningLevel: 'medium' },
-                    writingFeedback: { modelId: 'gpt-4o-mini', reasoningLevel: 'low' },
-                    guidedPathway: { modelId: 'gpt-5.4-mini', reasoningLevel: 'medium' },
-                    memoryAgent: { modelId: 'gpt-5.4-mini', reasoningLevel: 'low' },
+                    scenarioGeneration: { modelId: 'gpt-5.6-luna', reasoningLevel: 'medium' },
+                    writingFeedback: { modelId: 'gpt-5.6-luna', reasoningLevel: 'none' },
+                    guidedPathway: { modelId: 'gpt-5.6-luna', reasoningLevel: 'medium' },
+                    memoryAgent: { modelId: 'gpt-5.6-luna', reasoningLevel: 'low' },
                 },
             };
         });
@@ -103,10 +107,15 @@ describe('ModelSelectionService', () => {
         });
 
         it('accepts APP ∩ provider reasoning on PATCH; provider-only levels stay catalog-only', () => {
+            // Reasoning support is a provider fact — asserted across the whole catalog
             for (const entry of LLM_MODEL_CATALOG) {
                 for (const level of entry.supportedReasoningLevels) {
                     expect(service.isReasoningSupported(entry.id, level)).toBe(true);
                 }
+            }
+
+            // PATCH acceptance only holds for models instructors may still select
+            for (const entry of SELECTABLE_MODEL_CATALOG) {
                 for (const level of APP_REASONING_LEVELS) {
                     if (!entry.supportedReasoningLevels.includes(level)) continue;
                     const body = Object.fromEntries(
@@ -138,30 +147,70 @@ describe('ModelSelectionService', () => {
             ]);
             expect(luna?.reasoningOptions.every((o) => !('brainCount' in o))).toBe(true);
 
-            const mini = service.getDashboardCatalog().models.find((m) => m.id === 'gpt-4o-mini');
-            expect(mini?.costTier).toBe('low');
-            expect(mini?.reasoningOptions).toEqual([]);
+            expect(luna?.unavailable).toBeUndefined();
+        });
+
+        it('lists withheld models flagged unavailable rather than dropping them', () => {
+            const models = service.getDashboardCatalog().models;
+
+            // Every catalog model still ships, so the picker can grey out the withheld ones
+            expect(models.map((m) => m.id)).toEqual(LLM_MODEL_CATALOG.map((e) => e.id));
+
+            for (const model of models) {
+                const withheld = TEMPORARILY_UNAVAILABLE_MODEL_IDS.includes(model.id);
+                expect(model.unavailable).toBe(withheld ? true : undefined);
+                // Display metadata survives so a disabled row still reads correctly
+                expect(model.label.length).toBeGreaterThan(0);
+            }
+
+            for (const entry of SELECTABLE_MODEL_CATALOG) {
+                expect(models.find((m) => m.id === entry.id)?.unavailable).toBeUndefined();
+            }
         });
 
         it('accepts models without native reasoning when reasoningLevel is still present in the body', () => {
+            const noReasoning = SELECTABLE_MODEL_CATALOG.find(
+                (e) => e.supportedReasoningLevels.length === 0
+            );
+            // Every currently selectable model has native reasoning — nothing to assert
+            if (!noReasoning) return;
+
             const parsed = service.parseUpdateRequest(
-                fullBody({ modelId: 'gpt-4o-mini', reasoningLevel: 'medium' })
+                fullBody({ modelId: noReasoning.id, reasoningLevel: 'medium' })
             );
             expect(parsed.ok).toBe(true);
+        });
+
+        it('rejects models withheld while the platform key is limited to one provider model', () => {
+            for (const withheld of TEMPORARILY_UNAVAILABLE_MODEL_IDS) {
+                expect(service.isCourseLlmModelId(withheld)).toBe(false);
+                expect(
+                    service.parseUpdateRequest(fullBody({ modelId: withheld, reasoningLevel: 'none' })).ok
+                ).toBe(false);
+            }
+        });
+
+        it('coerces stored withheld models back to the platform default on read', () => {
+            for (const withheld of TEMPORARILY_UNAVAILABLE_MODEL_IDS) {
+                const normalized = service.normalizeStoredSettings(
+                    fiveFeatureSettings({ chat: { modelId: withheld, reasoningLevel: 'none' } })
+                );
+                expect(normalized.chat).toEqual(DEFAULT_COURSE_LLM_SETTINGS.chat);
+            }
         });
 
         it('rejects unknown model, unknown reasoning, and malformed types', () => {
             expect(service.parseUpdateRequest(null).ok).toBe(false);
             expect(
                 service.parseUpdateRequest({
-                    ...fullBody({ modelId: 'gpt-5.4-mini', reasoningLevel: 'medium' }),
+                    ...fullBody({ modelId: 'gpt-5.6-luna', reasoningLevel: 'medium' }),
                     chat: { modelId: 'nope', reasoningLevel: 'medium' },
                 }).ok
             ).toBe(false);
             expect(
                 service.parseUpdateRequest({
-                    ...fullBody({ modelId: 'gpt-5.4-mini', reasoningLevel: 'medium' }),
-                    chat: { modelId: 'gpt-5.4-mini', reasoningLevel: 'ultra' },
+                    ...fullBody({ modelId: 'gpt-5.6-luna', reasoningLevel: 'medium' }),
+                    chat: { modelId: 'gpt-5.6-luna', reasoningLevel: 'ultra' },
                 }).ok
             ).toBe(false);
         });
@@ -224,7 +273,7 @@ describe('ModelSelectionService', () => {
 
             expect(chat.reasoningEffort).toBe('high');
             expect(scenario.reasoningEffort).toBe('medium');
-            expect(writing.reasoningEffort).toBeUndefined();
+            expect(writing.reasoningEffort).toBe('none');
             expect(pathway.reasoningEffort).toBe('medium');
             expect(memory.reasoningEffort).toBe('low');
             expect(mongoLoads).toBe(1);
@@ -493,8 +542,8 @@ describe('ModelSelectionService', () => {
     });
 
     describe('catalog-derived coverage completeness', () => {
-        it('covers every catalog model id as a valid CourseLlmModelId', () => {
-            for (const entry of LLM_MODEL_CATALOG) {
+        it('covers every selectable catalog model id as a valid CourseLlmModelId', () => {
+            for (const entry of SELECTABLE_MODEL_CATALOG) {
                 expect(service.isCourseLlmModelId(entry.id)).toBe(true);
             }
             expect(service.isCourseLlmModelId('gpt-9')).toBe(false);
