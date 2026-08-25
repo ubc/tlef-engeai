@@ -169,7 +169,7 @@ export async function resolveCanvasImportStatus(
             syntheticDataOnly: false,
             label: 'Connect your Canvas account',
             message:
-                'This course is linked to Canvas, but you have not authorized EngE-AI to read Canvas on your behalf. Submissions are read with your own Canvas permissions, so each staff member connects separately.',
+                'This course is linked to Canvas, but you have not authorized EngE-AI to read Canvas on your behalf. Submissions are read with your own Canvas permissions, so each course staff connects separately.',
             nextStep: 'Connect Canvas to browse this course’s assignments.',
             connectUrl: connectUrlFor(req)
         };

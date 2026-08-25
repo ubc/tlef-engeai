@@ -218,7 +218,7 @@ Which adapter serves a request is resolved per request from three inputs — whe
 | configured | absent | — | `demo` / `not_configured` | Course has no Canvas counterpart; env-selected local adapter applies |
 | absent | — | — | `demo` / `not_configured` | Demo outside production, fail-closed in production |
 
-Live reads go through the LMS package's generic authenticated client (`GET /courses/:id/assignments` and `.../assignments/:id/submissions`), because the package has no submissions resource. Each staff member connects Canvas separately and reads with their own Canvas permissions; there is no shared service credential.
+Live reads go through the LMS package's generic authenticated client (`GET /courses/:id/assignments` and `.../assignments/:id/submissions`), because the package has no submissions resource. Each course staff connects Canvas separately and reads with their own Canvas permissions; there is no shared service credential.
 
 Assignment listing offers only what can actually be imported: the assignment must accept text-entry or file-upload submissions, must already have submissions, and must not use anonymous grading (which withholds the identity staff review by — selecting one anyway returns an explanatory `400`). Canvas reports no submitted count on an assignment payload, so `submissionCount` is omitted in live mode and the exact figure arrives with the preview rather than being approximated from `needs_grading_count`.
 

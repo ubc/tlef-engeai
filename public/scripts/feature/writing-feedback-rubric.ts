@@ -36,6 +36,7 @@ import {
 } from './writing-feedback-grid.js';
 import {
     Assignment,
+    assignmentOriginText,
     RubricCell,
     RubricCriterion,
     RubricDefinition,
@@ -1059,7 +1060,7 @@ function renderRubricPage(
     root.replaceChildren();
     const isLabReport = Boolean(technicalData);
 
-    const back = createButton('Back to assignments', 'quiet', async () => {
+    const back = createButton('← Back to assignments', 'quiet', async () => {
         if (!(await confirmDiscardDirty('setup'))) return;
         state.panelDirty = false;
         await views.showLanding();
@@ -1077,8 +1078,10 @@ function renderRubricPage(
         // The writing rubric's approval state belongs beside the assignment title;
         // a lab report's second rubric carries its own state in its section header.
         approvalStateChip(linguisticData),
-        createText('span', `Created ${formatDate(assignment.createdAt)}`),
-        createText('span', assignment.dueAt ? `Deadline ${formatDate(assignment.dueAt, true)}` : 'No deadline'),
+        createText('span', assignmentOriginText(assignment)),
+        // Shown only when the assignment carries a deadline; "No deadline" spends a segment
+        // on the absence of something optional.
+        ...(assignment.dueAt ? [createText('span', `Deadline ${formatDate(assignment.dueAt, true)}`)] : []),
         chip(canEditAny ? 'Editable' : 'Read-only', canEditAny ? 'green' : 'neutral')
     );
     header.append(heading, meta);
