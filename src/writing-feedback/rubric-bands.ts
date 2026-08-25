@@ -19,18 +19,17 @@ import type {
 } from './contracts';
 
 /**
- * spaceBandsEvenly - partitions a criterion's weight across its levels.
+ * spaceBandsEvenly - divides a criterion's weight into one value per level.
  *
- * Each band ends at its share of the weight rounded to a whole point, and the next
- * begins one point above. A weight too small to spread leaves the top bands as single
- * values, and a weight smaller than the number of levels forces adjacent levels to
- * share a band — whole points cannot be divided more finely than one apiece. Neither
- * case is an error; callers that render bands should warn staff when a weight cannot
- * separate its levels.
+ * Each level earns its share of the weight rounded to a whole point, with the top level
+ * earning the full weight so rounding never loses a point. A weight smaller than the
+ * number of levels forces adjacent levels onto the same value — whole points cannot be
+ * divided more finely than one apiece — which is not an error, but callers that render
+ * these should warn staff when a weight cannot separate its levels.
  *
  * @param points - Maximum points the criterion contributes
  * @param levels - Levels of the rubric, in any order; rank decides the sequence
- * @returns Band per level id, or an empty map when the criterion carries no weight
+ * @returns Points per level id, or an empty map when the criterion carries no weight
  */
 export function spaceBandsEvenly(
     points: number,
@@ -42,16 +41,13 @@ export function spaceBandsEvenly(
     const bands: Record<WritingLevelId, WritingRubricCell> = {};
 
     ordered.forEach((level, index) => {
-        // Each band begins one point above where the previous one ended, so bands
-        // partition the weight without overlapping.
-        const min = index === 0 ? 0 : Math.floor((points * index) / ordered.length) + 1;
-        // The last band always ends exactly at the weight, so rounding never loses a point.
-        const ceiling = index === ordered.length - 1
+        // Each level earns its share of the weight; the top level earns all of it, so
+        // rounding never loses a point. `min` and `max` are equal because a cell holds a
+        // single award, not a range — the pair is kept only so stored rubrics keep their shape.
+        const award = index === ordered.length - 1
             ? points
             : Math.floor((points * (index + 1)) / ordered.length);
-        // A small weight can push a band's floor past its natural ceiling; it then
-        // collapses to a single value rather than inverting.
-        bands[level.id] = { min, max: Math.max(min, ceiling) };
+        bands[level.id] = { min: award, max: award };
     });
 
     return bands;

@@ -62,16 +62,16 @@ const MAX_TEXT = 1200;
  * ------------------------------------------------------------------------- */
 
 /**
- * spaceBandsEvenly - partitions a criterion's weight across its levels.
+ * spaceBandsEvenly - divides a criterion's weight into one value per level.
  *
- * Each band ends at its share of the weight rounded to a whole point, and the next
- * begins one point above. A weight too small to spread leaves the top bands as single
- * values, and a weight smaller than the number of levels forces adjacent levels to
- * share a band — whole points cannot be divided more finely than one apiece.
+ * Each level earns its share of the weight rounded to a whole point, with the top level
+ * earning the full weight so rounding never loses a point. A weight smaller than the
+ * number of levels forces adjacent levels onto the same value — whole points cannot be
+ * divided more finely than one apiece.
  *
  * @param points - Maximum points the criterion contributes
  * @param levels - Levels of the rubric, in any order; rank decides the sequence
- * @returns Band per level id, or an empty map when the criterion carries no weight
+ * @returns Points per level id, or an empty map when the criterion carries no weight
  */
 export function spaceBandsEvenly(
     points: number,
@@ -83,16 +83,13 @@ export function spaceBandsEvenly(
     const bands: Record<string, RubricCell> = {};
 
     ordered.forEach((level, index) => {
-        // Each band begins one point above where the previous one ended, so bands
-        // partition the weight without overlapping.
-        const min = index === 0 ? 0 : Math.floor((points * index) / ordered.length) + 1;
-        // The last band always ends exactly at the weight, so rounding never loses a point.
-        const ceiling = index === ordered.length - 1
+        // Each level earns its share of the weight; the top level earns all of it, so
+        // rounding never loses a point. `min` and `max` are equal because a cell holds a
+        // single award, not a range — the pair is kept only so stored rubrics keep their shape.
+        const award = index === ordered.length - 1
             ? points
             : Math.floor((points * (index + 1)) / ordered.length);
-        // A small weight can push a band's floor past its natural ceiling; it then
-        // collapses to a single value rather than inverting.
-        bands[level.id] = { min, max: Math.max(min, ceiling) };
+        bands[level.id] = { min: award, max: award };
     });
 
     return bands;
@@ -132,39 +129,36 @@ export function totalRubricPoints(criteria: ReadonlyArray<RubricCriterion>): num
 /* ------------------------------- End mirror ------------------------------- */
 
 /**
- * formatBand - the staff-facing text for one points range
+ * formatBand - the staff-facing text for the points one cell awards
  *
- * @param cell - Band to display
- * @returns `min – max`, collapsed to a single number when the range holds one value
+ * A cell holds a single value. A rubric authored before ranges were removed may still
+ * carry `min !== max`; it shows its `max`, the most that level could earn, and saving
+ * the rubric normalises it. Nothing is silently lowered.
+ *
+ * @param cell - Cell to display
+ * @returns The cell's points as a plain number
  */
 export function formatBand(cell: RubricCell): string {
-    return cell.min === cell.max ? String(cell.min) : `${cell.min} – ${cell.max}`;
+    return String(cell.max);
 }
 
 /**
- * parseBand - reads a points range typed by staff
+ * parseBand - reads the points typed by staff into one cell
  *
- * Accepts what {@link formatBand} writes plus the shapes staff type by hand: a hyphen
- * or any dash between the two numbers, the word `to`, or a single number for a band
- * that holds one value. A reversed range is read in the order the schema requires.
+ * One number. A range typed by hand is rejected rather than guessed at, so the cell reads
+ * as empty and the hint asks for points — Canvas rubrics carry a single value per rating,
+ * and a rubric authored here awards one value too.
  *
  * @param text - Raw control value
- * @returns The band, or undefined when the text is blank or is not a range
+ * @returns The cell, or undefined when the text is blank or is not a single number
  */
 export function parseBand(text: string): RubricCell | undefined {
-    const normalized = text
-        .trim()
-        // Every dash Unicode offers, including the en dash formatBand writes.
-        .replace(/[\u2010-\u2015\u2212]/g, '-')
-        .replace(/\s+to\s+/i, '-');
+    const normalized = text.trim();
     if (!normalized) return undefined;
-    const parts = normalized.split('-').map((part) => part.trim()).filter((part) => part.length > 0);
-    if (!parts.length || parts.length > 2) return undefined;
-    const numbers = parts.map(Number);
-    if (numbers.some((value) => !Number.isFinite(value) || value < 0 || value > 1000)) return undefined;
-    const [first] = numbers;
-    const second = numbers.length === 2 ? numbers[1] : first;
-    return { min: Math.min(first, second), max: Math.max(first, second) };
+    const points = Number(normalized);
+    if (!Number.isFinite(points) || points < 0 || points > 1000) return undefined;
+    // Stored as an equal pair: the shape stays `{ min, max }` so nothing downstream changes.
+    return { min: points, max: points };
 }
 
 /**
@@ -228,7 +222,6 @@ export interface RubricGridOptions {
     /** Whether the current staff user may modify this rubric. */
     canEdit: boolean;
     /** Shows the linguistic focus line; true for the writing rubric only. */
-    showLinguisticFocus: boolean;
     /** Active approved version, when this rubric has been approved at least once. */
     approvedVersion?: number;
     /** Version a structural change lands in, quoted in the removal confirmation. */
@@ -622,20 +615,6 @@ export function renderRubricGrid(
         description.addEventListener('input', onChange);
         rowHead.append(bar, description);
 
-        if (options.showLinguisticFocus) {
-            const focus = named(
-                textAreaControl(criterion.sflDimension ?? '', 1),
-                `criterion.${rowIndex}.sflDimension`,
-                `Criterion ${rowIndex + 1} linguistic focus`
-            );
-            focus.maxLength = MAX_TEXT;
-            focus.readOnly = !canEdit;
-            focus.className = 'wf-grid-text wf-grid-focus';
-            focus.placeholder = 'Linguistic focus';
-            focus.addEventListener('input', onChange);
-            rowHead.append(focus);
-        }
-
         row.append(rowHead);
 
         // Authored cells are exhaustive, so a missing key is an empty cell. A criterion
@@ -654,7 +633,7 @@ export function renderRubricGrid(
             const bandInput = named(
                 inputControl(band ? formatBand(band) : ''),
                 `criterion.${rowIndex}.cell.${columnIndex}.band`,
-                `Points range for criterion ${rowIndex + 1} at level ${columnIndex + 1}`
+                `Points for criterion ${rowIndex + 1} at level ${columnIndex + 1}`
             );
             bandInput.className = 'wf-grid-band';
             bandInput.readOnly = !canEdit;
@@ -680,7 +659,7 @@ export function renderRubricGrid(
                 descriptor.readOnly = !canEdit || !bandFilled;
                 cell.classList.toggle('wf-grid-cell--empty', !bandFilled);
                 if (!bandFilled) {
-                    hint.textContent = 'Enter a points range';
+                    hint.textContent = 'Enter points';
                 } else if (!descriptor.value.trim()) {
                     hint.textContent = 'Enter a description';
                 } else {

@@ -11,7 +11,7 @@
  * @description: Regression coverage for Canvas-rubric-to-grid mapping.
  */
 
-import { canvasRubricToSeedShape } from '../canvas-rubric-mapping';
+import { CANVAS_IMPORT_PLACEHOLDERS, canvasRubricToSeedShape } from '../canvas-rubric-mapping';
 import { writingRubricDraftInputSchema } from '../rubric-schema';
 import { buildDefaultWritingRubric } from '../default-rubric-profile';
 import { seedRubricForLens } from '../rubric-seed';
@@ -85,15 +85,39 @@ describe('canvasRubricToSeedShape', () => {
         expect(cells.excellent).toMatchObject({ min: 4, max: 4, descriptor: 'Excellent descriptor' });
     });
 
-    it('substitutes text where Canvas left a required field blank', () => {
+    it('never repeats a name as its own description', () => {
+        // Canvas usually omits long_description. Echoing the name would print the same words
+        // twice in the editor, which reads as a bug rather than as something to fill in.
         const blank = row('Thesis', FULL_SCALE);
         blank.description = '';
-        blank.ratings[0].description = '';
+        blank.ratings.forEach((rating) => { rating.description = ''; });
         const shape = canvasRubricToSeedShape(rubric([blank]))!;
 
-        // The schema requires non-empty descriptions; Canvas routinely omits long_description.
-        expect(shape.criteria[0].description).toBe('Thesis');
-        expect(shape.levels.every((level) => level.description.length > 0)).toBe(true);
+        expect(shape.criteria[0].description).toBe(CANVAS_IMPORT_PLACEHOLDERS.criterionDescription);
+        expect(shape.criteria[0].description).not.toBe(shape.criteria[0].label);
+        for (const level of shape.levels) {
+            expect(level.description).toBe(CANVAS_IMPORT_PLACEHOLDERS.levelDescription);
+            expect(level.description).not.toBe(level.label);
+        }
+    });
+
+    it('leaves a cell descriptor unset when Canvas supplied none', () => {
+        // `descriptor` is optional and the grid already prompts for it, so an absent descriptor
+        // is the honest state — repeating the rating name would echo the column header.
+        const blank = row('Thesis', FULL_SCALE);
+        blank.ratings.forEach((rating) => { rating.description = ''; });
+        const shape = canvasRubricToSeedShape(rubric([blank]))!;
+
+        const cells = shape.criteria[0].cells!;
+        expect(Object.keys(cells)).toHaveLength(4);
+        expect(Object.values(cells).every((cell) => cell.descriptor === undefined)).toBe(true);
+        // The band still carries the points Canvas did supply.
+        expect(cells.excellent).toMatchObject({ min: 4, max: 4 });
+    });
+
+    it('still keeps a descriptor Canvas did supply', () => {
+        const shape = canvasRubricToSeedShape(rubric([row('Thesis', FULL_SCALE)]))!;
+        expect(shape.criteria[0].cells!.excellent.descriptor).toBe('Excellent descriptor');
     });
 
     it('derives unique slugs when two rows share a name', () => {

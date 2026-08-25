@@ -618,7 +618,7 @@ function optionalControlValue(form: HTMLFormElement, name: string): string | und
 /**
  * readCellControls - rebuilds one criterion's per-level bands from its row of controls
  *
- * A cell exists only where staff entered a points range; a blank range means the
+ * A cell exists only where staff entered points; a blank cell means the
  * criterion awards nothing at that level, which the schema represents by omitting
  * the key rather than by inventing a zero.
  *
@@ -1545,7 +1545,7 @@ function renderRubricSection(
     };
 
     // The rubric is one table: criteria are rows, performance levels are columns,
-    // and every cell carries the points range that criterion awards at that level.
+    // and every cell carries the points that criterion awards at that level.
     const gridMount = document.createElement('div');
     gridMount.className = 'wf-rubric-grid-mount';
     gridMount.dataset.rubricGrid = lens;
@@ -1568,7 +1568,6 @@ function renderRubricSection(
     renderRubricGrid(gridMount, working, {
         canEdit,
         // The linguistic focus line belongs to the writing rubric only.
-        showLinguisticFocus: lens === 'linguistic',
         approvedVersion,
         nextVersion: data.draft?.version ?? (approvedVersion ?? 0) + 1,
         library: data.library ?? [],

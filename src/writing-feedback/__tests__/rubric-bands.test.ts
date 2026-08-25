@@ -1,7 +1,8 @@
 /**
- * @fileoverview Pins band derivation. Bands partition a criterion's weight across
- * its levels without overlapping, and collapse to single values when the weight is
- * too small to spread.
+ * @fileoverview Pins band derivation, and pins it identically for both mirrors. A cell
+ * awards one value, so each level takes a whole-point share of the criterion's weight and
+ * the top level takes all of it. `min` and `max` are always equal; the pair survives only
+ * so stored rubrics, the draft schema, and the PDF keep their existing shape.
  */
 
 import { resolveBand, spaceBandsEvenly, totalRubricPoints } from '../rubric-bands';
@@ -15,35 +16,34 @@ const levels: WritingRubricLevel[] = [
 ];
 
 describe('spaceBandsEvenly', () => {
-    it('partitions a 30-point criterion across four levels without overlap', () => {
+    it('gives each level a whole-point share of a 30-point criterion', () => {
         expect(spaceBandsEvenly(30, levels)).toEqual({
-            weak: { min: 0, max: 7 },
-            developing: { min: 8, max: 15 },
-            proficient: { min: 16, max: 22 },
-            exemplary: { min: 23, max: 30 }
+            weak: { min: 7, max: 7 },
+            developing: { min: 15, max: 15 },
+            proficient: { min: 22, max: 22 },
+            exemplary: { min: 30, max: 30 }
         });
     });
 
-    it('starts the lowest band at zero and ends the highest at the full weight', () => {
+    it('awards the full weight at the highest level', () => {
+        // Rounding is absorbed at the top so a criterion always reaches its own weight.
         const bands = spaceBandsEvenly(45, levels);
-        expect(bands.weak.min).toBe(0);
-        expect(bands.exemplary.max).toBe(45);
+        expect(bands.exemplary).toEqual({ min: 45, max: 45 });
     });
 
-    it('collapses middle bands to single values when the weight is small', () => {
-        expect(spaceBandsEvenly(5, levels)).toEqual({
-            weak: { min: 0, max: 1 },
-            developing: { min: 2, max: 2 },
-            proficient: { min: 3, max: 3 },
-            exemplary: { min: 4, max: 5 }
-        });
+    it('always writes an equal pair, never a range', () => {
+        for (const points of [1, 2, 5, 30, 45, 1000]) {
+            for (const cell of Object.values(spaceBandsEvenly(points, levels))) {
+                expect(cell.min).toBe(cell.max);
+            }
+        }
     });
 
-    it('never overlaps two bands', () => {
+    it('rises with each level and never falls back', () => {
         const bands = spaceBandsEvenly(45, levels);
         const ordered = levels.map((level) => bands[level.id]);
-        ordered.slice(1).forEach((band, index) => {
-            expect(band.min).toBeGreaterThan(ordered[index].max);
+        ordered.slice(1).forEach((cell, index) => {
+            expect(cell.max).toBeGreaterThanOrEqual(ordered[index].max);
         });
     });
 
@@ -56,15 +56,14 @@ describe('spaceBandsEvenly', () => {
         expect(spaceBandsEvenly(0, levels)).toEqual({});
     });
 
-    it('shares a band between levels when the weight is too small to separate them', () => {
-        // Bands are whole points, so a weight of 2 offers three distinct values
-        // (0, 1, 2) to divide among four levels. Two levels must therefore share.
-        // Collapsing is the intended degradation: no band ever inverts, and the
-        // grid warns staff when a weight cannot separate its levels.
+    it('repeats a value when the weight cannot separate every level', () => {
+        // Awards are whole points, so a weight of 2 cannot give four levels four distinct
+        // values. Repeating is the intended degradation, and the grid warns staff when a
+        // weight cannot separate its levels.
         expect(spaceBandsEvenly(2, levels)).toEqual({
             weak: { min: 0, max: 0 },
             developing: { min: 1, max: 1 },
-            proficient: { min: 2, max: 2 },
+            proficient: { min: 1, max: 1 },
             exemplary: { min: 2, max: 2 }
         });
     });
@@ -82,7 +81,7 @@ describe('resolveBand', () => {
 
     it('derives a band from the weight when none is authored', () => {
         const criterion = { id: 'organization', label: 'Organization', description: 'd', points: 30 };
-        expect(resolveBand(criterion, 'weak', levels)).toEqual({ min: 0, max: 7 });
+        expect(resolveBand(criterion, 'weak', levels)).toEqual({ min: 7, max: 7 });
     });
 
     it('returns undefined when the criterion is ordinal only', () => {
