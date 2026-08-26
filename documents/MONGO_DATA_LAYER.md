@@ -37,11 +37,17 @@
 - **System prompt config (v2)** — `system-prompt-config-mongo.ts` on `active-course-list`:
   - **`systemPromptConfig`** — `{ schemaVersion: 1, defaultConversationMode, modes: { socratic, explanatory } }` where each mode has `usePlatformDefault`, `modules[]`, `updatedAt`, optional `platformDefaultVersion`.
   - **Lazy migration (SP-001)** — `ensureSystemPromptConfig` maps legacy `collectionOfSystemPromptItems` → `systemPromptConfig`, then `$unset` the legacy field on access; no startup batch scan. Registry and sunset: [DATA_MIGRATIONS.md](DATA_MIGRATIONS.md#sp-001-system-prompt-v1--v2) (remove SP-001 code by **2026-06-30**).
-  - **Runtime assembly** — chat uses JSON defaults when `usePlatformDefault: true`; learning objectives are injected into the `course main intro` module at compose time via `{{course_learning_objectives}}` (not stored in instructor config).
+  - **Runtime assembly** — chat uses JSON defaults when `usePlatformDefault: true`; learning objectives are injected into the `course main intro` module at compose time via `{{course_learning_objectives}}` (not stored in instructor config). That module also carries LO-scope / off-scope redirect instructions (few-shot). Courses with customized mode bodies keep their Mongo copy until instructor Reset for that mode.
+- **Guided Pathways** (`pathways-mongo.ts` on `{courseName}_pathways`):
+  - **Pathway cards** — `GuidedPathway` docs (`id`, `order`, `title`, `enabled`, `triggerDescription`, `assistantResponse`, `ctas[]`, `updatedAt`). Platform seeds: `mental-health-crisis`, `inappropriate-content` (no `off-topic`; scope is teaching-prompt LO rules).
+  - **Evaluation shell singleton** — reserved id `__evaluation_system_prompt` / `docType: evaluationSystemPrompt` with `usePlatformDefault`, `body`, `updatedAt`. Filtered out of list/reorder/evaluation ids. Runtime fills `{{pathway_trigger_sections}}`.
+  - **GP-001** — lazy `deleteMany({ id: 'off-topic' })` on ensure/list/seed. Registry: [DATA_MIGRATIONS.md](DATA_MIGRATIONS.md#gp-001-remove-legacy-off-topic-pathway).
+  - **Lazy provision** — `ensurePathwaysCollection` creates collection + indexes; new-course seed / Reset inserts platform cards + evaluation shell.
 - **Chat threads** (`chat-mongo.ts` on `{courseName}_users.chats[]`) — conversation-level starring has been retired. New records and API responses omit `isPinned`; legacy embedded values are ignored on reads and may remain inert in MongoDB without a destructive migration. Optional `pinnedMessageId` continues to represent the separate message-level pin feature.
 - **Topic/week embedded content** (`topic-week-mongo.ts` on `active-course-list`):
   - **`learningObjectives[]`** per `items[]` — instructor CRUD; flattened via `getAllLearningObjectives` for system-prompt injection.
   - **`instructorStruggleTopics[]`** per `items[]` — instructor CRUD (`/struggle-topics` API); gated by `features.memoryAgent`; flattened via `getAllInstructorStruggleTopics` for memory-agent catalog only (not main chat system prompt).
+  - **`additionalMaterials[]`** — one parent record per uploaded file (not a chunk). Display title is `name`; OS filename is top-level `fileName`. `qdrantChunkIds[]` holds Qdrant point UUIDs; `chunksGenerated` equals that list length after `npm run migrate` C. Nested `file` blobs and singular `qdrantId` are stripped by migrate op A. Qdrant stores chunk vectors only; original file bytes are not in Mongo.
 - **Course capabilities** (`activeCourse.features` on `active-course-list`):
   - Keys: `writingFeedback`, `memoryAgent`, `guidedPathway`, `scenarioGeneration` — each `{ enabled, enabledAt?, enabledBy? }`; missing = disabled at read time.
   - New-course defaults live in `src/dashboard-setting/course-feature-defaults.ts` (builders in `course-features.ts`). Create/setup persist a full map with all off unless opted in.
@@ -174,7 +180,8 @@ not a collection of its own.
 
 ## Changelog / migration notes
 
-- **Data migrations registry:** [DATA_MIGRATIONS.md](DATA_MIGRATIONS.md) — SP-001 (system prompts), CM-001 (chat mode), OB-001 (startup backfill), SQ-001 (scenario questions collection), SQ-004 (scenario progress collection).
+- **Data migrations registry:** [DATA_MIGRATIONS.md](DATA_MIGRATIONS.md) — SP-001 (system prompts), CM-001 (chat mode), OB-001 / IPA-001 (`npm run migrate` op A), MIG-A/B/C/D (Mongo/Qdrant CLI), SQ-001, SQ-004.
+- **Manual migrate CLI:** `src/migrate/cli.ts` — `npm run migrate`. Not run from `server.ts`.
 - Façade delegates live under `src/db/mongo/` (split from monolithic `enge-ai-mongodb.ts`).
 
 ## References

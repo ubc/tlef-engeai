@@ -23,7 +23,7 @@
  */
 
 import { loadComponentHTML } from "../api/api.js";
-import { activeCourse, LearningObjective, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem } from "../types.js";
+import { activeCourse, LearningObjective, AdditionalMaterial, AdditionalMaterialUpload, TopicOrWeekInstance, TopicOrWeekItem } from "../types.js";
 import { showErrorModal, showHelpModal, showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConfirmationModal } from "../ui/modal-overlay.js";
 import { DocumentUploadModule } from '../services/document-upload-module.js';
 import type { UploadResult } from '../types.js';
@@ -899,7 +899,7 @@ async function handleOnboardingUpload(material: any): Promise<{ success: boolean
         }
 
         // Create the additional material object
-        const additionalMaterial: AdditionalMaterial = {
+        const additionalMaterial: AdditionalMaterialUpload = {
             id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             name: material.name,
             courseName: course.courseName,
@@ -950,7 +950,7 @@ async function handleOnboardingUpload(material: any): Promise<{ success: boolean
         const uploadedFile: DemoFile = {
             id: uploadResult.document.id,
             name: uploadResult.document.name,
-            type: uploadResult.document.sourceType === 'file' ? (uploadResult.document.file ? uploadResult.document.file.type : 'file') : 'text'
+            type: uploadResult.document.sourceType === 'file' ? (uploadResult.document.fileName || 'file') : 'text'
         };
 
         demoFiles.push(uploadedFile);

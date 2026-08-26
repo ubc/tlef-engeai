@@ -2,7 +2,7 @@
  * Onboarding Flags Migration
  *
  * Backfills instructorOnboardingCompleted and studentOnboardingCompleted on GlobalUser
- * from existing course and CourseUser data. Runs on every server restart.
+ * from existing course and CourseUser data. Invoked by `npm run migrate` op A (not server start).
  *
  * - Instructor: true if user is in instructors/teachingAssistants of any course with monitorSetup=true, else false
  * - Student: true if any CourseUser (across enrolled courses) has userOnboarding=true, else false
