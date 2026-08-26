@@ -65,6 +65,15 @@ const MODEL_UNAVAILABLE_NOTE = 'Unavailable';
 const MODEL_UNAVAILABLE_HINT =
     'This model is temporarily unavailable on the platform API key and cannot be selected right now.';
 
+/** Gap between the picker trigger and its popover, in px. */
+const POPOVER_GAP = 6;
+
+/** Smallest gap kept between the popover and the viewport edge, in px. */
+const VIEWPORT_MARGIN = 8;
+
+/** Floor for a clamped popover so it stays usable on very short viewports, in px. */
+const MIN_POPOVER_HEIGHT = 120;
+
 /** Model row — replaces former $ / $$ / $$$ costLabel from API. */
 const COST_TIER_BRAIN_COUNT: Record<'low' | 'medium' | 'high', number> = {
     low: 1,
@@ -84,6 +93,7 @@ let currentCourseRef: activeCourse | null = null;
 let canManageState = false;
 let openPickerId: string | null = null;
 let documentClickBound = false;
+let pickerRepositionBound = false;
 let isSaving = false;
 
 /**
@@ -334,6 +344,9 @@ function renderFeatureRows(): void {
     const container = document.getElementById('modelSettingFeatures');
     if (!container || !featureSettings || modelCatalog.length === 0) return;
 
+    // Rewriting the rows destroys the open popover's node — drop the dangling id
+    openPickerId = null;
+
     closeOpenPicker();
 
     container.innerHTML = FEATURE_CATALOG.map((feature) => {
@@ -519,6 +532,67 @@ function openPicker(id: string): void {
     popover.classList.add('is-open');
     trigger.setAttribute('aria-expanded', 'true');
     openPickerId = id;
+
+    // Must run while visible — the popover has to be laid out before it can be measured
+    positionOpenPicker();
+    ensurePickerRepositionHandlers();
+}
+
+/**
+ * positionOpenPicker — anchors the fixed popover to its trigger, flipping and clamping to fit.
+ *
+ * The popover is `position: fixed` (see .model-picker-popover) so the accordion's two
+ * `overflow: hidden` ancestors cannot clip it, which means its placement is ours to compute:
+ * right-aligned to the trigger and clamped into the viewport horizontally, below the trigger
+ * unless the space above is larger, with `max-height` set to the space actually available so
+ * a list too tall to fit scrolls instead of being cut off.
+ */
+function positionOpenPicker(): void {
+    if (!openPickerId) return;
+
+    const popover = document.getElementById(`popover-${openPickerId}`);
+    const trigger = document.getElementById(`trigger-${openPickerId}`);
+    if (!popover || !trigger) return;
+
+    // Clear any previous clamp so the popover reports its natural height again
+    popover.style.maxHeight = '';
+    const triggerRect = trigger.getBoundingClientRect();
+    const naturalHeight = popover.getBoundingClientRect().height;
+
+    // Step 1: pick a side — below unless it does not fit and above has more room
+    const spaceBelow = window.innerHeight - triggerRect.bottom - POPOVER_GAP - VIEWPORT_MARGIN;
+    const spaceAbove = triggerRect.top - POPOVER_GAP - VIEWPORT_MARGIN;
+    const openUp = naturalHeight > spaceBelow && spaceAbove > spaceBelow;
+
+    // Step 2: clamp to that side's room, keeping a usable minimum on very short viewports
+    const available = Math.max(openUp ? spaceAbove : spaceBelow, MIN_POPOVER_HEIGHT);
+    popover.style.maxHeight = `${available}px`;
+
+    // Re-measure: maxHeight may have shortened it and added a scrollbar
+    const rect = popover.getBoundingClientRect();
+
+    // Step 3: place it, right-aligned to the trigger but never off-screen
+    popover.style.top = openUp
+        ? `${triggerRect.top - POPOVER_GAP - rect.height}px`
+        : `${triggerRect.bottom + POPOVER_GAP}px`;
+    popover.style.left = `${Math.max(
+        VIEWPORT_MARGIN,
+        Math.min(triggerRect.right - rect.width, window.innerWidth - rect.width - VIEWPORT_MARGIN)
+    )}px`;
+}
+
+/**
+ * ensurePickerRepositionHandlers — keeps a fixed popover glued to its trigger.
+ *
+ * A fixed popover does not travel with the page, so anything that moves the trigger has to
+ * re-anchor it. Scroll is captured so scrolling in any container counts, not just the window.
+ * Bound once and inert while nothing is open.
+ */
+function ensurePickerRepositionHandlers(): void {
+    if (pickerRepositionBound) return;
+    pickerRepositionBound = true;
+    window.addEventListener('scroll', () => positionOpenPicker(), true);
+    window.addEventListener('resize', () => positionOpenPicker());
 }
 
 function closeOpenPicker(): void {
@@ -527,7 +601,13 @@ function closeOpenPicker(): void {
     const popover = document.getElementById(`popover-${openPickerId}`);
     const trigger = document.getElementById(`trigger-${openPickerId}`) as HTMLButtonElement | null;
     popover?.classList.remove('is-open');
-    if (popover) popover.hidden = true;
+    if (popover) {
+        popover.hidden = true;
+        // Drop the computed placement so the next open measures from a clean slate
+        popover.style.maxHeight = '';
+        popover.style.top = '';
+        popover.style.left = '';
+    }
     trigger?.setAttribute('aria-expanded', 'false');
     openPickerId = null;
 }

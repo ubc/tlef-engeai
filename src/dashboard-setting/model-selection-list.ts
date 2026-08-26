@@ -46,8 +46,10 @@ type LlmModelSpec = {
 /**
  * Per-model specs — `supportedReasoningLevels` are official provider lists:
  * - gpt-5.6-luna: https://developers.openai.com/api/docs/models/gpt-5.6-luna
- * - gpt-5.4-mini: https://developers.openai.com/api/docs/models/gpt-5.4-mini
- * - gpt-4o-mini: https://developers.openai.com/api/docs/models/gpt-4o-mini
+ *
+ * The three non-OpenAI ids are served by the incoming platform API and expose no
+ * `reasoning_effort` parameter, so their lists are empty: the service then omits
+ * `reasoningEffort` from the provider call and the picker renders no reasoning row.
  */
 export const LLM_MODEL_SPECS: Record<CourseLlmModelId, LlmModelSpec> = {
     'gpt-5.6-luna': {
@@ -55,13 +57,18 @@ export const LLM_MODEL_SPECS: Record<CourseLlmModelId, LlmModelSpec> = {
         costTier: 'high',
         supportedReasoningLevels: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
     },
-    'gpt-5.4-mini': {
-        label: 'GPT 5.4 Mini',
+    'qwen3.8-27b': {
+        label: 'Qwen 3.8 27B',
         costTier: 'medium',
-        supportedReasoningLevels: ['none', 'low', 'medium', 'high', 'xhigh'],
+        supportedReasoningLevels: [],
     },
-    'gpt-4o-mini': {
-        label: 'GPT 4o Mini',
+    'qwen3.6-35b-a3b': {
+        label: 'Qwen 3.6 35B A3B',
+        costTier: 'medium',
+        supportedReasoningLevels: [],
+    },
+    'gpt-4.1-mini-engeai-local': {
+        label: 'GPT 4.1 Mini (EngE-AI Local)',
         costTier: 'low',
         supportedReasoningLevels: [],
     },
@@ -85,13 +92,16 @@ export const LLM_MODEL_CATALOG: readonly LlmModelCatalogEntry[] = (
  * TEMPORARILY_UNAVAILABLE_MODEL_IDS - models withheld from selection while the
  * platform LLM API key is provisioned for `gpt-5.6-luna` only.
  *
- * TEMPORARY: remove the ids from this list (leave it empty) once the key covers
- * the full catalog again. Entries stay in {@link LLM_MODEL_SPECS} so labels,
- * cost tiers, and provider reasoning lists survive the round trip.
+ * TEMPORARY: the incoming platform API adds `qwen3.8-27b`, `qwen3.6-35b-a3b`, and
+ * `gpt-4.1-mini-engeai-local`. They ship in the catalog now so instructors can see
+ * what is coming, but stay withheld until that API is live — remove the ids from
+ * this list (leave it empty) at cutover. Entries stay in {@link LLM_MODEL_SPECS}
+ * so labels, cost tiers, and provider reasoning lists survive the round trip.
  */
 export const TEMPORARILY_UNAVAILABLE_MODEL_IDS: readonly CourseLlmModelId[] = [
-    'gpt-5.4-mini',
-    'gpt-4o-mini',
+    'qwen3.8-27b',
+    'qwen3.6-35b-a3b',
+    'gpt-4.1-mini-engeai-local',
 ] as const;
 
 /**

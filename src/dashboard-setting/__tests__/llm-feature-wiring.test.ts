@@ -152,7 +152,7 @@ describe('LLM feature wiring (toolkit reasoningEffort)', () => {
             'chat',
             {
                 ...DEFAULT_COURSE_LLM_SETTINGS,
-                chat: { modelId: 'gpt-4o-mini', reasoningLevel: 'medium' },
+                chat: { modelId: 'gpt-4.1-mini-engeai-local', reasoningLevel: 'medium' },
             },
             { temperature: 0.3 }
         );

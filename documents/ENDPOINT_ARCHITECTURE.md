@@ -142,15 +142,18 @@ Each `models[]` entry: `{ id, label, costTier, reasoningOptions: [{ id, label }]
 }
 ```
 
-**Provider catalog** (`supportedReasoningLevels` in `LLM_MODEL_SPECS` / `model-selection-list.ts` — verbatim from OpenAI docs):
+**Provider catalog** (`supportedReasoningLevels` in `LLM_MODEL_SPECS` / `model-selection-list.ts` — verbatim from provider docs):
 
 | `modelId` | Display | Official `supportedReasoningLevels` | Provider docs |
 |---|---|---|---|
 | `gpt-5.6-luna` | GPT 5.6 Luna | `none`, `low`, `medium`, `high`, `xhigh`, `max` | [GPT-5.6 Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna) · [Reasoning guide](https://developers.openai.com/api/docs/guides/reasoning) |
-| `gpt-5.4-mini` | GPT 5.4 Mini | `none`, `low`, `medium`, `high`, `xhigh` | [GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini) |
-| `gpt-4o-mini` | GPT 4o Mini | _(empty)_ | [GPT-4o mini](https://developers.openai.com/api/docs/models/gpt-4o-mini) |
+| `qwen3.8-27b` | Qwen 3.8 27B | _(empty)_ | — (platform API) |
+| `qwen3.6-35b-a3b` | Qwen 3.6 35B A3B | _(empty)_ | — (platform API) |
+| `gpt-4.1-mini-engeai-local` | GPT 4.1 Mini (EngE-AI Local) | _(empty)_ | — (platform API) |
 
-**TEMPORARY — withheld models:** the platform LLM API key is currently provisioned for `gpt-5.6-luna` only, so `TEMPORARILY_UNAVAILABLE_MODEL_IDS` in `model-selection-list.ts` holds `gpt-5.4-mini` and `gpt-4o-mini`. Withheld ids are still returned in the GET catalog `models[]` carrying `unavailable: true`, but are rejected by PATCH (400) and clamped to `gpt-5.6-luna` when read from Mongo. The dashboard picker renders an `unavailable` row disabled with an "Unavailable" badge instead of hiding it, so an instructor whose course previously named a withheld model sees why the selection changed. Because staff course GET returns raw stored `llmSettings`, the client applies the same clamp — an `unavailable` model is listed but never adopted as a feature's selection. Emptying the list restores full selection with no other change.
+The three non-`gpt-5.6-luna` ids are served by the incoming platform API and expose no `reasoning_effort` parameter, so their reasoning lists are empty: provider options omit `reasoningEffort` and the picker shows no reasoning row for them.
+
+**TEMPORARY — withheld models:** the platform LLM API key is currently provisioned for `gpt-5.6-luna` only, so `TEMPORARILY_UNAVAILABLE_MODEL_IDS` in `model-selection-list.ts` holds `qwen3.8-27b`, `qwen3.6-35b-a3b`, and `gpt-4.1-mini-engeai-local` — they are visible in Model Settings ahead of the new API going live, but not selectable until it does. Withheld ids are still returned in the GET catalog `models[]` carrying `unavailable: true`, but are rejected by PATCH (400) and clamped to `gpt-5.6-luna` when read from Mongo. The dashboard picker renders an `unavailable` row disabled with an "Unavailable" badge instead of hiding it, so an instructor whose course previously named a withheld model sees why the selection changed. Because staff course GET returns raw stored `llmSettings`, the client applies the same clamp — an `unavailable` model is listed but never adopted as a feature's selection. Emptying the list restores full selection with no other change.
 
 **App picker / PATCH `reasoningLevel`:** `AppReasoningLevel` = `none` \| `low` \| `medium` \| `high` only. Dashboard `reasoningOptions` are APP ∩ provider for that model (`xhigh` / `max` stay on the catalog, not in the picker or Mongo). When `supportedReasoningLevels` is empty, any app level may be stored but provider options omit `reasoningEffort`.
 
