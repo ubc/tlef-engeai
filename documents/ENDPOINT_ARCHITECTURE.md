@@ -299,7 +299,8 @@ Live Canvas OAuth routes are intentionally absent from this table until the priv
 | GET | `/api/courses/:courseId/flags/statistics` | Yes | Instructor | Flag counts for the course |
 | GET | `/api/courses/:courseId/flags/student/:userId` | Yes | **Record owner or course staff** | One student's flag history |
 | GET | `/api/courses/:courseId/flags/:flagId` | Yes | Instructor | Get flag report |
-| PUT | `/api/courses/:courseId/flags/:flagId` | Yes | Instructor | Update flag |
+| PUT | `/api/courses/:courseId/flags/:flagId` | Yes | Instructor (faculty, TA, admin) | Update flag (`unresolved` / `resolved` only; blocked when `escalated`) |
+| PATCH | `/api/courses/:courseId/flags/:flagId/escalate` | Yes | Instructor (faculty, TA, admin) | Escalate unresolved manual flag to platform admins |
 | PATCH | `/api/courses/:courseId/flags/:flagId/response` | Yes | Instructor | Update response |
 
 `GET /flags/student/:userId` is student-facing — a student reads their own history — so it uses
@@ -334,6 +335,19 @@ the server records a course-local `instructor-test` alert; the client cannot req
 | GET | `/api/admin/guided-pathway-flags` | Yes | **Admin** | Cross-course anonymous student-alert queue with period/course/pathway/status/reviewer/date filters; instructor tests excluded |
 | PATCH | `/api/admin/guided-pathway-flags/:courseId/:flagId/review` | Yes | **Admin** | Mark an escalated student alert reviewed in its owning course without deleting it; tests rejected |
 | POST | `/api/admin/guided-pathway-flags/:courseId/:flagId/reveal-identity` | Yes | **Admin** | Audit an escalated student-alert reveal in its owning course, then return only the current roster display name; tests rejected |
+
+#### Manual flag escalations (platform admin)
+
+| Method | Path | Auth | Role | Description |
+|--------|------|------|------|-------------|
+| GET | `/api/admin/manual-flags` | Yes | **Admin** | Cross-course escalated manual flag queue; optional `reviewState`, period/course/date filters |
+| PATCH | `/api/admin/manual-flags/:courseId/:flagId/review` | Yes | **Admin** | Mark an escalated manual flag reviewed |
+
+**Unified instructor Flag Management UI** merges manual flags and course-scoped Guided Pathway alerts client-side. RBAC split: TAs may list/resolve/escalate manual flags (`requireInstructorForCourseAPI`) but cannot access Guided Pathway alert APIs (`requireInstructorOrAdminForCourseAPI`).
+
+Automatic alerts are created when an enabled pathway with `notifyInstructorOnTrigger` wins for any **enrolled user or course staff** sender (students, TAs, faculty instructors, platform admins). TAs may trigger alerts while testing chat but still cannot list or act on GP flags in Flag Management. The stored `studentUserId` field holds the triggering user's id; admin identity reveal resolves the display name from the course roster, then `active-users` when the sender is staff not on the roster.
+
+**Guided Pathway category filters** (faculty/admin Flag Management UI only) are client-side: checkboxes mirror the current Pathway Library; each GP flag is classified by its persisted `pathwayId` against that library. Flags whose `pathwayId` is missing or no longer in the library appear under **Others** — never by title inference.
 
 List and action responses use an explicit anonymous projection: `origin`, pathway/course snapshots,
 exact message, trigger/decision/review times, state, and staff reviewer display names. They never
@@ -667,7 +681,7 @@ and exact message before hashing it; a unique Mongo key prevents duplicate autom
 
 Before RAG, an enabled Guided Pathway may intercept the message and return its predefined response.
 When its independent notification setting is on, the chat route attempts to create one anonymous
-alert in a separate failure boundary. An alert-write failure never blocks the predefined safety or
+alert in a separate failure boundary for enrolled users and course staff senders. An alert-write failure never blocks the predefined safety or
 redirection response. Trigger metadata remains backend-only and is not stored on `ChatMessage` or
 returned to the student.
 

@@ -55,6 +55,7 @@ import {
     ReportFixtureSeedError
 } from '../db/mongo/report-fixture-seed-mongo';
 import { activeCourse, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem, FlagReport, User, InitialAssistantPrompt, SystemPromptItem } from '../types/shared';
+import * as FlagMongo from '../db/mongo/flag-mongo';
 import { IDGenerator } from '../utils/unique-id-generator';
 import { memoryAgent } from '../memory-agent/memory-agent';
 import dotenv from 'dotenv';
@@ -2894,6 +2895,20 @@ router.put('/:courseId/flags/:flagId', requireInstructorForCourseAPI(['params'])
             });
         }
 
+        const existingFlag = await instance.getFlagReport(course.courseName, flagId);
+        if (!existingFlag) {
+            return res.status(404).json({
+                success: false,
+                error: 'Flag report not found'
+            });
+        }
+        if (existingFlag.status === 'escalated') {
+            return res.status(409).json({
+                success: false,
+                error: 'Escalated flags cannot be updated until reviewed by a platform administrator'
+            });
+        }
+
         // Prepare update data
         const updateData: Partial<FlagReport> = {};
         if (status !== undefined) updateData.status = status;
@@ -2934,6 +2949,41 @@ router.put('/:courseId/flags/:flagId', requireInstructorForCourseAPI(['params'])
             success: false,
             error: 'Failed to update flag report'
         });
+    }
+}));
+
+/**
+ * PATCH /:courseId/flags/:flagId/escalate
+ * Escalate an unresolved manual flag to platform administrators. Course staff only.
+ */
+router.patch('/:courseId/flags/:flagId/escalate', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId, flagId } = normalizeRouteParams(req.params);
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({ success: false, error: 'Course not found' });
+        }
+
+        const globalUser = (req.session as any)?.globalUser;
+        if (!globalUser?.userId || !globalUser?.name) {
+            return res.status(401).json({ success: false, error: 'Authenticated staff identity is unavailable' });
+        }
+
+        const data = await instance.escalateFlagReport(course.courseName, flagId, {
+            userId: globalUser.userId,
+            name: globalUser.name
+        });
+        res.json({ success: true, message: 'Flag escalated to administrators', data });
+    } catch (error) {
+        if (error instanceof FlagMongo.FlagReportNotFoundError) {
+            return res.status(404).json({ success: false, error: error.message });
+        }
+        if (error instanceof FlagMongo.FlagReportConflictError) {
+            return res.status(409).json({ success: false, error: error.message });
+        }
+        appLogger.error('Error escalating flag report:', { error });
+        res.status(500).json({ success: false, error: 'Failed to escalate flag report' });
     }
 }));
 

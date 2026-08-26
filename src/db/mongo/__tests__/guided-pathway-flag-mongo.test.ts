@@ -507,6 +507,33 @@ describe('guided-pathway-flag-mongo', () => {
         expect(roster.findOne).not.toHaveBeenCalled();
     });
 
+    it('falls back to active-users when the triggering user is not on the course roster', async () => {
+        const coll = collection({
+            findOneAndUpdate: jest.fn().mockResolvedValue({ studentUserId: 'instructor-1' })
+        });
+        const roster = { findOne: jest.fn().mockResolvedValue(null) };
+        const activeUsers = { findOne: jest.fn().mockResolvedValue({ name: 'Instructor Name' }) };
+        (guidedPathwayFlagCourseCollection as jest.Mock).mockReturnValue(coll);
+        (getCourseUsersMongoCollection as jest.Mock).mockResolvedValue(roster);
+
+        const ctx = context({
+            collection: jest.fn().mockReturnValue(activeUsers)
+        });
+
+        const result = await revealGuidedPathwayFlagIdentity(
+            ctx,
+            'course-1',
+            'flag-1',
+            { userId: 'admin-1', name: 'Admin' }
+        );
+
+        expect(result).toEqual({ studentName: 'Instructor Name' });
+        expect(activeUsers.findOne).toHaveBeenCalledWith(
+            { userId: 'instructor-1' },
+            { projection: { _id: 0, name: 1 } }
+        );
+    });
+
     it('fails closed without reading the roster when the reveal audit write fails', async () => {
         const coll = collection({
             findOneAndUpdate: jest.fn().mockRejectedValue(new Error('audit write failed'))

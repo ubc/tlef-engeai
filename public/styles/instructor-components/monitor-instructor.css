@@ -19,29 +19,11 @@
 
 .main-content { 
     width: 100%; 
-    max-width: 1200px;
-    margin: 0 auto;
 }
 
-/* Header — layout matches Initial Assistant Prompts (.assistant-prompts-header) */
+/* Header — actions only; bar chrome from .page-header */
 .monitor-header {
-    background: var(--color-chbe-green);
-    border-radius: 12px;
-    padding: 20px;
-    margin-bottom: 20px;
-    border: 1px solid var(--border-color);
-    box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.1);
-    animation: slideInDown 0.5s ease-in-out;
-    position: sticky;
-    z-index: 10;
-    top: 0;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.monitor-header.mobile-header-bar {
-    gap: 0.75rem;
+    flex-wrap: wrap;
 }
 
 .monitor-header .mobile-header-title {
@@ -50,13 +32,11 @@
 }
 
 .monitor-header h1 {
-    color: white;
-    margin: 0;
-    font-size: 24px;
+    flex-shrink: 0;
 }
 
 .current-date-display {
-    color: rgba(255, 255, 255, 0.9);
+    color: var(--text-secondary);
     font-size: 14px;
     font-weight: 500;
     margin: 0;
@@ -901,25 +881,9 @@
 
 /* Responsive Design - 768px primary breakpoint (RESPONSIVE_DESIGN.md) */
 @media (max-width: 768px) {
-    /* monitor-header.mobile-header-bar: about-like styling (single header) */
-    .monitor-header.mobile-header-bar {
-        padding: 12px 16px;
-        background: var(--chat-bg);
-        border: none !important;
-        border-radius: 12px;
-        margin-bottom: 20px;
-        box-shadow: none;
-        flex-direction: row;
-        align-items: center;
-        gap: 0.75rem;
-    }
-
-    /* Override instructor-mode.css truncation so "Monitor Dashboard" is fully visible on mobile */
+    /* Monitor title: allow full title text on narrow screens */
     #main-content-area .monitor-header.mobile-header-bar h1,
     #main-content-area .monitor-header.mobile-header-bar .mobile-header-title {
-        font-size: 1.25rem;
-        color: var(--color-chbe-green);
-        font-weight: 600;
         display: block;
         overflow: visible;
         text-overflow: clip;
@@ -928,16 +892,6 @@
 
     .monitor-section-title {
         display: none;
-    }
-
-    .monitor-header.mobile-header-bar .instructor-mobile-hamburger-btn {
-        color: var(--color-chbe-green);
-        padding: 0 !important;
-    }
-
-    .monitor-header.mobile-header-bar .instructor-mobile-hamburger-btn:hover {
-        background-color: rgba(92, 138, 58, 0.1);
-        color: var(--color-chbe-green);
     }
 
     .monitor-header.mobile-header-bar .monitor-header-actions {

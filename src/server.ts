@@ -21,6 +21,7 @@ import { sendHtmlPageWithBuildComment } from './utils/build-info';
 import academicPeriodRoutes from './routes/mongo/academic-period-routes';
 import adminCourseRoutes from './routes/mongo/admin-course-routes';
 import adminGuidedPathwayFlagRoutes from './routes/mongo/admin-guided-pathway-flag-routes';
+import adminManualFlagRoutes from './routes/mongo/admin-manual-flag-routes';
 
 // Import SAML authentication middleware
 import sessionMiddleware from './middleware/session';
@@ -269,6 +270,7 @@ app.use('/api/courses', writingFeedbackRoutes);
 app.use('/api/academic-periods', academicPeriodRoutes);
 app.use('/api/admin', adminCourseRoutes);
 app.use('/api/admin/guided-pathway-flags', adminGuidedPathwayFlagRoutes);
+app.use('/api/admin/manual-flags', adminManualFlagRoutes);
 app.use('/api/course', courseEntryRoutes);  // Course entry routes
 app.use('/api/user', userManagementRoutes);  // User management routes
 app.use('/api/health', healthRoutes);    // Health check routes

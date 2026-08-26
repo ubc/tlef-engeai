@@ -1,46 +1,6 @@
 <div class="flag-instructor-container">
     <link rel="stylesheet" href="/styles/instructor-components/flag-instructor.css">
-    <link rel="stylesheet" href="/styles/admin-guided-pathway-flags.css">
     <main class="main-content">
-        <div
-            id="flag-management-tabs"
-            class="flag-management-tabs"
-            role="tablist"
-            aria-label="Flag management views"
-            hidden
-        >
-            <button
-                type="button"
-                id="manual-flags-tab"
-                class="flag-management-tab"
-                role="tab"
-                aria-selected="true"
-                aria-controls="manual-flags-panel"
-            >
-                Manual Flags
-            </button>
-            <button
-                type="button"
-                id="guided-pathway-alerts-tab"
-                class="flag-management-tab"
-                role="tab"
-                aria-selected="false"
-                aria-controls="guided-pathway-alerts-panel"
-                tabindex="-1"
-                hidden
-            >
-                Guided Pathway Alerts
-                <span
-                    id="admin-guided-alert-count"
-                    class="admin-guided-alert-count"
-                    aria-label="0 awaiting review"
-                    hidden
-                >0</span>
-            </button>
-        </div>
-
-        <section id="manual-flags-panel" role="tabpanel" aria-labelledby="manual-flags-tab">
-        <!-- Header: desktop = title + nav-tiles + time-filter; mobile = hamburger + title + nav-tiles + filter-btn -->
         <header class="flags-header mobile-header-bar">
             <div class="header-left">
                 <button id="instructor-hamburger-btn" class="instructor-mobile-hamburger-btn icon-btn" title="Open menu" aria-label="Open menu">
@@ -49,166 +9,129 @@
                 <h1 class="mobile-header-title">Flag Management</h1>
             </div>
             <div class="header-right">
-                <div class="nav-tiles">
-                    <div class="nav-tile active" data-section="unresolved-flags">
+                <div class="nav-tiles" role="tablist" aria-label="Flag workflow status">
+                    <button type="button" class="nav-tile active" data-workflow="unresolved" aria-pressed="true" title="Unresolved">
                         <i data-feather="alert-triangle"></i>
-                        <span class="count" id="unresolved-flags-count"></span>
-                    </div>
-                    <div class="nav-tile" data-section="resolved-flags">
+                        <span class="count" id="unresolved-flags-count">0</span>
+                    </button>
+                    <button type="button" class="nav-tile" data-workflow="resolved" aria-pressed="false" title="Resolved">
                         <i data-feather="check"></i>
-                        <span class="count" id="resolved-flags-count"></span>
-                    </div>
+                        <span class="count" id="resolved-flags-count">0</span>
+                    </button>
+                    <button type="button" class="nav-tile" data-workflow="escalated" aria-pressed="false" title="Escalated to Admins">
+                        <i data-feather="arrow-up-circle"></i>
+                        <span class="count" id="escalated-flags-count">0</span>
+                    </button>
                 </div>
-                <div class="time-filter-dropdown">
-                    <select id="time-filter">
-                        <option value="recent">Recent Flags</option>
-                        <option value="former">Former Flags</option>
-                    </select>
-                    <i data-feather="chevron-down"></i>
-                </div>
-                <button id="flag-filter-btn" class="filter-btn" title="Filter flags" aria-label="Filter flags">
-                    <i data-feather="filter"></i>
-                </button>
             </div>
         </header>
 
-        <!-- Filter section - inline on desktop, hidden on mobile -->
-        <section class="filter-section">
-            <div class="filter-checkboxes" id="flag-filter-checkboxes-inline">
-                <label class="filter-checkbox">
-                    <input type="checkbox" data-filter="innacurate_response" checked>
-                    <span class="checkmark">✓</span>
-                    <span class="filter-text">Wrong calculations, formulas, or engineering principles</span>
-                </label>
-                <label class="filter-checkbox">
-                    <input type="checkbox" data-filter="harassment" checked>
-                    <span class="checkmark">✓</span>
-                    <span class="filter-text">Contains harassment, or content that violates EDI (Equity, Diversity, Inclusion) principles</span>
-                </label>
-                <label class="filter-checkbox">
-                    <input type="checkbox" data-filter="inappropriate" checked>
-                    <span class="checkmark">✓</span>
-                    <span class="filter-text">Response veers into personal opinions, political views, or non-academic discussions inappropriate for engineering education</span>
-                </label>
-                <label class="filter-checkbox">
-                    <input type="checkbox" data-filter="dishonesty" checked>
-                    <span class="checkmark">✓</span>
-                    <span class="filter-text">Provides content that appears copied from sources without attribution or encourages academic dishonesty</span>
-                </label>
-                <label class="filter-checkbox">
-                    <input type="checkbox" data-filter="interface bug" checked>
-                    <span class="checkmark">✓</span>
-                    <span class="filter-text">Interface bugs or usability issues</span>
-                </label>
-                <label class="filter-checkbox">
-                    <input type="checkbox" data-filter="other" checked>
-                    <span class="checkmark">✓</span>
-                    <span class="filter-text">Others</span>
-                </label>
+        <section
+            class="flag-filters-panel flag-filters-panel--collapsed"
+            id="flag-filters-panel"
+            aria-labelledby="flag-filters-heading"
+        >
+            <div class="flag-filters-panel__header">
+                <h2 id="flag-filters-heading">Filters</h2>
+                <button
+                    type="button"
+                    id="flag-filter-toggle-btn"
+                    class="flag-filter-toggle-btn"
+                    aria-expanded="false"
+                    aria-controls="flag-filters-panel-content"
+                    title="Show filters"
+                    aria-label="Show filters"
+                >
+                    <i data-feather="filter"></i>
+                    <span id="flag-filter-badge" class="flag-filter-badge" hidden>0</span>
+                </button>
             </div>
-        </section>
+            <div id="flag-filters-panel-content" class="flag-filters-panel__content" hidden>
+            <div class="flag-filters-panel__body">
+                <fieldset class="flag-filter-fieldset flag-filter-fieldset--source">
+                    <legend>Flag source</legend>
+                    <label class="filter-checkbox">
+                        <input type="checkbox" id="flag-source-manual" data-flag-source="manual" checked>
+                        <span class="filter-text">Manual flags</span>
+                    </label>
+                    <label class="filter-checkbox" id="flag-source-guided-wrap">
+                        <input type="checkbox" id="flag-source-guided" data-flag-source="guided-pathway" checked>
+                        <span class="filter-text">Guided Pathway flags</span>
+                    </label>
+                </fieldset>
 
-        <!-- Filter modal overlay (mobile only) -->
-        <div id="flag-filter-modal" class="flag-filter-modal" aria-hidden="true">
-            <div class="flag-filter-modal-backdrop"></div>
-            <div class="flag-filter-modal-content">
-                <div class="flag-filter-modal-header">
-                    <h3>Filter by flag type</h3>
-                    <button id="flag-filter-close-btn" class="flag-filter-close-btn" aria-label="Close filter">
-                        <i data-feather="x"></i>
-                    </button>
-                </div>
-                <div class="flag-filter-modal-body">
+                <fieldset class="flag-filter-fieldset" id="flag-manual-categories-fieldset">
+                    <legend>Manual categories</legend>
                     <div class="filter-checkboxes" id="flag-filter-checkboxes">
                         <label class="filter-checkbox">
                             <input type="checkbox" data-filter="innacurate_response" checked>
-                            <span class="checkmark">✓</span>
                             <span class="filter-text">Wrong calculations, formulas, or engineering principles</span>
                         </label>
                         <label class="filter-checkbox">
                             <input type="checkbox" data-filter="harassment" checked>
-                            <span class="checkmark">✓</span>
-                            <span class="filter-text">Contains harassment, or content that violates EDI (Equity, Diversity, Inclusion) principles</span>
+                            <span class="filter-text">Contains harassment, or content that violates EDI principles</span>
                         </label>
                         <label class="filter-checkbox">
                             <input type="checkbox" data-filter="inappropriate" checked>
-                            <span class="checkmark">✓</span>
-                            <span class="filter-text">Response veers into personal opinions, political views, or non-academic discussions inappropriate for engineering education</span>
+                            <span class="filter-text">Non-academic discussions inappropriate for engineering education</span>
                         </label>
                         <label class="filter-checkbox">
                             <input type="checkbox" data-filter="dishonesty" checked>
-                            <span class="checkmark">✓</span>
-                            <span class="filter-text">Provides content that appears copied from sources without attribution or encourages academic dishonesty</span>
+                            <span class="filter-text">Academic dishonesty or unattributed content</span>
                         </label>
                         <label class="filter-checkbox">
                             <input type="checkbox" data-filter="interface bug" checked>
-                            <span class="checkmark">✓</span>
                             <span class="filter-text">Interface bugs or usability issues</span>
                         </label>
                         <label class="filter-checkbox">
                             <input type="checkbox" data-filter="other" checked>
-                            <span class="checkmark">✓</span>
                             <span class="filter-text">Others</span>
                         </label>
                     </div>
-                </div>
-                <div class="flag-filter-modal-footer">
-                    <button id="flag-filter-apply-btn" class="flag-filter-apply-btn">Apply</button>
-                </div>
-            </div>
-        </div>
+                </fieldset>
 
-        <!-- Flag list - dynamically populated by TypeScript -->
-        <section class="flags-list" id="flags-list">
-            <!-- Flag cards will be dynamically generated here -->
-        </section>
-        </section>
-
-        <section
-            id="guided-pathway-alerts-panel"
-            class="guided-pathway-alerts"
-            role="tabpanel"
-            aria-labelledby="guided-pathway-alerts-tab"
-            hidden
-        >
-            <div id="course-guided-pathway-alerts-content">
-                <header class="guided-pathway-alerts__header mobile-header-bar">
-                    <div class="guided-pathway-alerts__heading-row">
-                        <button
-                            class="instructor-mobile-hamburger-btn icon-btn"
-                            type="button"
-                            title="Open menu"
-                            aria-label="Open menu"
-                        >
-                            <i data-feather="menu"></i>
-                        </button>
-                        <div>
-                            <h1>Guided Pathway Alerts</h1>
-                            <p>
-                                Review anonymous messages that triggered an active pathway. Messages sent from an
-                                instructor chat are labelled Test and cannot be escalated. For student alerts,
-                                escalating records your decision for platform administrators; EngE-AI does not contact
-                                LTIC. A message may still identify its author if personal information appears in its text.
-                            </p>
-                        </div>
+                <fieldset class="flag-filter-fieldset" id="flag-guided-categories-fieldset" hidden>
+                    <legend>Guided Pathway categories</legend>
+                    <div class="filter-checkboxes" id="flag-guided-category-checkboxes">
+                        <!-- Rendered from current Pathway Library + Others -->
                     </div>
-                    <div class="guided-pathway-alerts__status-filters" aria-label="Filter alerts by status">
-                        <button type="button" data-guided-alert-status="pending" aria-pressed="true">Pending</button>
-                        <button type="button" data-guided-alert-status="escalated" aria-pressed="false">Escalated</button>
-                        <button type="button" data-guided-alert-status="dismissed" aria-pressed="false">Dismissed</button>
+                </fieldset>
+
+                <fieldset class="flag-filter-fieldset flag-filter-fieldset--period">
+                    <legend>Period</legend>
+                    <label class="flag-filter-period-label">
+                        Preset
+                        <select id="flag-period-preset" class="flag-filter-control">
+                            <option value="all">All time</option>
+                            <option value="last-7d">Last 7 days</option>
+                            <option value="last-30d">Last 30 days</option>
+                            <option value="this-term">This term</option>
+                            <option value="custom">Custom range</option>
+                        </select>
+                    </label>
+                    <div id="flag-period-custom" class="flag-period-custom" hidden>
+                        <label class="flag-filter-period-label">
+                            From
+                            <input type="date" id="flag-period-from" class="flag-filter-control">
+                        </label>
+                        <label class="flag-filter-period-label">
+                            To
+                            <input type="date" id="flag-period-to" class="flag-filter-control">
+                        </label>
                     </div>
-                </header>
-
-                <p id="guided-pathway-alerts-status" class="guided-pathway-alerts__status" role="status" aria-live="polite"></p>
-                <div id="guided-pathway-alerts-list" class="guided-pathway-alerts__list" aria-live="polite"></div>
-                <nav class="guided-pathway-alerts__pagination" aria-label="Guided Pathway alert pages">
-                    <button type="button" id="guided-pathway-alerts-previous">Previous</button>
-                    <span id="guided-pathway-alerts-page-summary">Page 1 of 1</span>
-                    <button type="button" id="guided-pathway-alerts-next">Next</button>
-                </nav>
+                </fieldset>
             </div>
+            <div class="flag-filters-panel__footer">
+                <button type="button" id="flag-filter-clear-btn" class="flag-filter-clear-btn">Clear</button>
+                <button type="button" id="flag-filter-apply-btn" class="flag-filter-apply-btn">Apply</button>
+            </div>
+            </div>
+        </section>
 
-            <div id="admin-guided-pathway-alerts-content" class="admin-guided-alerts" hidden></div>
+        <p id="flag-management-status" class="flag-management-status" role="status" aria-live="polite"></p>
+
+        <section class="flags-list" id="flags-list" aria-live="polite" aria-busy="false">
+            <!-- Unified flag cards rendered by flag-management.ts -->
         </section>
     </main>
 </div>

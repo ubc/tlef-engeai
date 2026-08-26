@@ -16,7 +16,7 @@ import { renderOnCourseSetup } from "../onboarding/course-setup.js";
 import { renderDocumentSetup } from "../onboarding/document-setup.js";
 import { renderFlagSetup } from "../onboarding/flag-setup.js";
 import { renderMonitorSetup } from "../onboarding/monitor-setup.js";
-import { initializeFlags } from "../feature/flags.js";
+import { initializeFlagManagement } from '../feature/flag-management.js';
 import { initializeMonitorDashboard } from "../feature/monitor.js";
 import { ChatManager } from "../feature/chat.js";
 import { authService } from '../services/auth-service.js';
@@ -30,7 +30,6 @@ import { initializeAssistantPrompts, hasUnsavedPromptChanges, resetUnsavedPrompt
 import { initializeSystemPrompts, flushSystemPromptOnLeave } from '../feature/system-prompts.js';
 import { initializeScenarioQuestionsInstructor, isScenarioQuestionsMounted, syncScenarioQuestionsFromURL } from '../feature/scenario-questions-instructor.js';
 import { initializePathwayLibrary } from '../feature/pathway-library.js';
-import { initializeGuidedPathwayFlags } from '../feature/guided-pathway-flags.js';
 import { initializeDashboard, renderDashboardCards } from '../feature/dashboard.js';
 import { canManageGuidedPathways } from '../utils/course-permissions.js';
 import { 
@@ -895,11 +894,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 await initializeWritingFeedback(currentClass);
             }
             else if (componentName === 'flag-instructor') {
-                await initializeFlags();
-                await initializeGuidedPathwayFlags({
+                const gpEnabled = currentClass.features?.guidedPathway?.enabled === true;
+                await initializeFlagManagement({
                     courseId: currentClass.id,
-                    canAccess: canManageGuidedPathwayFeatures,
-                    isAdmin: authUser?.isAdmin === true,
+                    canAccessGuidedPathway: gpEnabled && canManageGuidedPathwayFeatures,
+                    courseCreatedAt: currentClass.date,
                 });
             }
             else if (componentName === 'monitor-instructor') {

@@ -25,32 +25,6 @@
 /* Main Content */
 .main-content {
     width: 100%;
-    overflow-y: auto;
-}
-
-.document-header {
-    background: var(--color-chbe-green);
-    border-radius: 12px;
-    padding: 20px;
-    margin-bottom: 20px;
-    border: 1px solid var(--border-color);
-    box-shadow: 
-        0px 2px 8px rgba(0, 0, 0, 0.1),
-        0px 0px 0px 20px white;
-    animation: slideInDown 0.5s ease-in-out;
-    position: sticky;
-    z-index: 10;
-    top: 0;
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-}
-
-.document-header h1 {
-    color: white;
-    margin: 0;
-    flex: 1;
-    min-width: 0;
 }
 
 /* Division overflow: desktop shows both delete buttons; mobile shows "..." dropdown */
@@ -950,33 +924,6 @@ button.content-status {
    =========================================== */
 
 @media (max-width: 768px) {
-    /* document-header.mobile-header-bar: about-like styling (single header, no duplicate) */
-    .document-header.mobile-header-bar {
-        padding: 12px 16px;
-        background: var(--chat-bg);
-        border: none !important;
-        border-radius: 12px;
-        margin-bottom: 20px;
-        box-shadow: none;
-    }
-
-    .document-header.mobile-header-bar h1,
-    .document-header.mobile-header-bar .mobile-header-title {
-        font-size: 1.25rem;
-        color: var(--color-chbe-green);
-        font-weight: 600;
-    }
-
-    .document-header.mobile-header-bar .instructor-mobile-hamburger-btn {
-        color: var(--color-chbe-green);
-        padding: 0 !important;
-    }
-
-    .document-header.mobile-header-bar .instructor-mobile-hamburger-btn:hover {
-        background-color: rgba(92, 138, 58, 0.1);
-        color: var(--color-chbe-green);
-    }
-
     /* Division control: hide desktop delete buttons, show overflow "..." on mobile */
     .division-actions-desktop {
         display: none;

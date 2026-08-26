@@ -34,6 +34,7 @@ import {
     GuidedPathwayFlagNotFoundError
 } from '../../flags/guided-pathway-flag-errors';
 import { getCourseUsersMongoCollection } from './course-user-mongo';
+import { activeUsersMongoCollection } from './mongo-collections';
 import {
     GuidedPathwayFlagCourseNotFoundError,
     getExistingGuidedPathwayFlagCourseScope,
@@ -671,10 +672,19 @@ export async function revealGuidedPathwayFlagIdentity(
         { userId: audited.studentUserId },
         { projection: { _id: 0, name: 1 } }
     );
-    if (!student || typeof student.name !== 'string' || !student.name.trim()) {
-        throw new GuidedPathwayFlagIdentityUnavailableError();
+    if (student && typeof student.name === 'string' && student.name.trim()) {
+        return { studentName: student.name };
     }
-    return { studentName: student.name };
+
+    const globalUser = await activeUsersMongoCollection(ctx.db).findOne(
+        { userId: audited.studentUserId },
+        { projection: { _id: 0, name: 1 } }
+    );
+    if (globalUser && typeof globalUser.name === 'string' && globalUser.name.trim()) {
+        return { studentName: globalUser.name };
+    }
+
+    throw new GuidedPathwayFlagIdentityUnavailableError();
 }
 
 /**

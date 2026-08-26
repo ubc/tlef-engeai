@@ -622,6 +622,11 @@ export interface CourseUser {
 
 
 // Types for flag reports
+export interface FlagReportActor {
+    userId: string; // staff user id at escalation or admin review time
+    name: string; // staff display name snapshot
+}
+
 export interface FlagReport {
     id: string;
     courseName: string; // Added to support course-specific flag collections
@@ -630,10 +635,38 @@ export interface FlagReport {
     reportType: string; // store the long explanation of the flag type
     chatContent: string;
     userId: string;
-    status: 'unresolved' | 'resolved';
+    status: 'unresolved' | 'resolved' | 'escalated';
     response?: string; // if resolved, the response from the instructor
+    escalatedAt?: Date; // when staff escalated to platform admins
+    escalatedBy?: FlagReportActor; // instructor or TA who escalated
+    adminReviewedAt?: Date; // when a platform admin marked the escalation reviewed
+    adminReviewedBy?: FlagReportActor; // platform admin who reviewed
     createdAt: Date;
     updatedAt: Date;
+}
+
+/** Safe cross-course manual escalation row for the platform-admin queue. */
+export interface ManualFlagEscalationView {
+    id: string; // stable flag id within the owning course collection
+    courseId: string; // owning active course id for admin review actions
+    courseName: string; // course-name snapshot for display
+    flagType: FlagReport['flagType']; // moderation category key
+    reportType: string; // long category label shown to staff
+    chatContent: string; // flagged chat excerpt; may contain identifying text
+    status: 'escalated'; // admin queue includes escalated manual flags only
+    escalatedAt: string; // ISO timestamp for queue sorting
+    escalatedByName?: string; // staff display name at escalation time
+    adminReviewedAt?: string; // ISO timestamp when platform admin reviewed
+    adminReviewedByName?: string; // platform-admin display name at review time
+    createdAt: string; // ISO timestamp for period filters
+}
+
+/** Paginated administrator manual-escalation list. */
+export interface ManualFlagEscalationListPage {
+    items: ManualFlagEscalationView[]; // escalated manual flags for the current page
+    page: number; // one-based page number
+    pageSize: number; // rows per page
+    total: number; // total rows matching filters
 }
 
 /** Lifecycle state for an automatic alert created by a Guided Pathway trigger. */

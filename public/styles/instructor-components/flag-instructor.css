@@ -23,7 +23,7 @@
     margin: 0 auto;
 }
 
-/* Header Section - Desktop: title + nav-tiles + time-filter; Mobile: hamburger + title + nav-tiles + filter-btn */
+/* Header Section - title + workflow tiles */
 .flags-header {
     background: var(--color-chbe-green);
     border-radius: 10px;
@@ -126,6 +126,8 @@
     transition: background-color 0.2s ease;
     min-width: 60px;
     justify-content: center;
+    color: inherit;
+    font: inherit;
 }
 
 .nav-tile:hover {
@@ -153,187 +155,158 @@
     padding: 2px 8px;
 }
 
-/* Filter button - hidden on desktop (inline filter used), visible on mobile */
-.filter-btn {
-    display: none;
-    background: var(--color-chbe-green);
-    border: 1px solid var(--color-chbe-green);
-    border-radius: 10px;
-    padding: 8px 14px;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: background-color 0.2s ease;
-    color: white;
-}
-
-.filter-btn:hover {
-    background: #2d7a2d;
-}
-
-.filter-btn i {
-    width: 16px;
-    height: 16px;
-    color: white;
-}
-
-/* Time Filter Dropdown - visible on desktop */
-.time-filter-dropdown {
-    position: relative;
-    display: flex;
-    align-items: center;
-    background: rgba(255,255,255,0.1);
-    border: 1px solid rgba(255,255,255,0.4);
-    border-radius: 10px;
-    padding: 8px 12px;
-    cursor: pointer;
-    min-width: 160px;
-}
-
-.time-filter-dropdown:hover {
-    background: rgba(255,255,255,0.2);
-}
-
-.time-filter-dropdown select {
-    background: transparent;
-    border: none;
-    color: white;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    outline: none;
-    appearance: none;
-    width: 100%;
-}
-
-.time-filter-dropdown i {
-    width: 16px;
-    height: 16px;
-    color: white;
-    margin-left: 8px;
-    pointer-events: none;
-}
-
-/* Choose Date Button */
-.choose-date-btn {
-    background: rgba(255,255,255,0.1);
-    border: 1px solid rgba(255,255,255,0.4);
-    border-radius: 10px;
-    padding: 8px 12px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    transition: background-color 0.2s ease;
-    min-width: 140px;
-}
-
-.choose-date-btn:hover {
-    background: rgba(255,255,255,0.2);
-}
-
-.choose-date-btn .button-text {
-    color: white;
-    font-size: 13px;
-    font-weight: 600;
-}
-
-.choose-date-btn i {
-    width: 16px;
-    height: 16px;
-    color: white;
-}
-
-/* Filter Section - inline on desktop, hidden on mobile */
-.filter-section {
+/* Filters sit first in page content (not in the header) */
+.flag-filters-panel {
     background: var(--chat-bg);
     border-radius: 10px;
     border: 1px solid var(--border-color);
-    padding: 15px 20px;
-    margin-bottom: 20px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-/* Filter Modal Overlay */
-.flag-filter-modal {
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    z-index: 1000;
-    align-items: center;
-    justify-content: center;
-}
-
-.flag-filter-modal.is-open {
-    display: flex;
-}
-
-.flag-filter-modal-backdrop {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.5);
-}
-
-.flag-filter-modal-content {
-    position: relative;
-    background: var(--chat-bg);
-    border-radius: 12px;
-    border: 1px solid var(--border-color);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-    width: 90%;
-    max-width: 480px;
-    max-height: 85vh;
-    overflow: hidden;
-    animation: slideInDown 0.3s ease;
-}
-
-.flag-filter-modal-header {
-    color: var(--color-chbe-green);
     padding: 16px 20px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.flag-filters-panel--collapsed {
+    padding: 12px 16px;
+}
+
+.flag-filters-panel__header {
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
 }
 
-.flag-filter-modal-header h3 {
+.flag-filters-panel--expanded .flag-filters-panel__header {
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.flag-filters-panel__header h2 {
     margin: 0;
-    font-size: 16px;
+    font-size: 13px;
     font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
 }
 
-.flag-filter-close-btn {
-    background: none;
-    border: none;
+.flag-filter-toggle-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 8px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--chat-bg);
     color: var(--color-chbe-green);
     cursor: pointer;
-    padding: 4px;
-    border-radius: 4px;
-    transition: background-color 0.2s ease;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
-.flag-filter-close-btn:hover {
-    background: rgba(255, 255, 255, 0.2);
+.flag-filter-toggle-btn:hover {
+    background: var(--hover-bg);
+    border-color: var(--color-chbe-green);
 }
 
-.flag-filter-close-btn i {
+.flag-filter-toggle-btn:focus-visible {
+    outline: 2px solid var(--color-chbe-green);
+    outline-offset: 2px;
+}
+
+.flag-filter-toggle-btn i,
+.flag-filter-toggle-btn svg {
     width: 18px;
     height: 18px;
 }
 
-.flag-filter-modal-body {
-    padding: 0 20px 20px 20px;
-    overflow-y: auto;
-    max-height: 50vh;
+.flag-filter-toggle-btn .flag-filter-badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
 }
 
-.flag-filter-modal-footer {
-    padding: 16px 20px;
+.flag-filters-panel__body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem 1.25rem;
+}
+
+.flag-filters-panel__body .flag-filter-fieldset--source {
+    grid-column: 1;
+    grid-row: 1;
+}
+
+.flag-filters-panel__body .flag-filter-fieldset--period {
+    grid-column: 2;
+    grid-row: 1;
+}
+
+.flag-filters-panel__body #flag-manual-categories-fieldset,
+.flag-filters-panel__body #flag-guided-categories-fieldset {
+    grid-column: 1 / -1;
+}
+
+.flag-filters-panel__footer {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color);
+}
+
+.flag-filters-panel__footer .flag-filter-apply-btn {
+    flex: 1;
+    width: auto;
+}
+
+.flag-filter-badge {
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9999px;
+    background: var(--color-eng-red);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 18px;
+    text-align: center;
+}
+
+/* ponytail: shadcn Input look via CSS tokens, not a shared form component */
+.flag-filter-control {
+    box-sizing: border-box;
+    display: block;
+    height: 36px;
+    width: 100%;
+    padding: 8px 12px;
+    font: inherit;
+    font-size: 14px;
+    color: var(--text-primary);
+    background: var(--chat-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.flag-filter-control:focus-visible {
+    outline: none;
+    border-color: var(--color-chbe-green);
+    box-shadow: 0 0 0 3px rgba(77, 122, 47, 0.2);
+}
+
+.flag-filter-control:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
 }
 
 .flag-filter-apply-btn {
@@ -345,24 +318,25 @@
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
-    transition: background-color 0.2s ease;
-    width: 100%;
+    transition: opacity 0.2s ease;
+    flex: 1;
+    width: auto;
 }
 
 .flag-filter-apply-btn:hover {
-    background: #2d7a2d;
+    opacity: 0.9;
 }
 
 .filter-checkboxes {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 16px;
 }
 
 .filter-checkbox {
     display: flex;
     align-items: flex-start;
-    gap: 12px;
+    gap: 10px;
     cursor: pointer;
     font-size: 14px;
     color: var(--text-primary);
@@ -370,29 +344,17 @@
 }
 
 .filter-checkbox input[type="checkbox"] {
-    display: none;
-}
-
-.checkmark {
-    width: 20px;
-    height: 20px;
-    background: var(--chat-bg);
-    border: 2px solid var(--border-color);
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-    font-weight: bold;
-    color: transparent; /* Hide checkmark by default */
+    width: 16px;
+    height: 16px;
+    margin: 2px 0 0;
     flex-shrink: 0;
-    margin-top: 2px;
+    accent-color: var(--color-chbe-green);
+    cursor: pointer;
 }
 
-.filter-checkbox input[type="checkbox"]:checked + .checkmark {
-    background: var(--pinned-color);
-    color: white; /* Show checkmark when checked */
-    border-color: var(--pinned-color);
+.filter-checkbox input[type="checkbox"]:focus-visible {
+    outline: 2px solid var(--color-chbe-green);
+    outline-offset: 2px;
 }
 
 .filter-text {
@@ -845,24 +807,14 @@
         color: var(--color-chbe-green);
     }
 
-    /* header-right: nav tiles + filter btn, no gap between them */
+    /* header-right: workflow tiles */
     #main-content-area .flags-header.mobile-header-bar .header-right {
         width: 100%;
         justify-content: flex-end;
         gap: 0.5rem;
     }
 
-    /* Hide time-filter on mobile */
-    .time-filter-dropdown {
-        display: none !important;
-    }
-
-    /* Hide inline filter section on mobile (use modal instead) */
-    .filter-section {
-        display: none !important;
-    }
-
-    /* nav-tiles: no gap between unresolved and resolved, ensure both visible */
+    /* nav-tiles: ensure both visible on mobile */
     #main-content-area .flags-header.mobile-header-bar .nav-tiles {
         flex-wrap: nowrap;
         gap: 0.5rem;
@@ -884,17 +836,21 @@
         color: white;
     }
 
-    #main-content-area .flags-header.mobile-header-bar .filter-btn {
-        display: flex;
-        min-width: 44px;
-        min-height: 44px;
-        flex-shrink: 0;
+    .filter-section .filter-checkboxes,
+    .flag-filters-panel__body .filter-checkboxes {
+        grid-template-columns: 1fr;
     }
 
-    .filter-section .filter-checkboxes {
-        display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
+    .flag-filters-panel__body {
+        grid-template-columns: 1fr;
+    }
+
+    .flag-filters-panel__body .flag-filter-fieldset--source,
+    .flag-filters-panel__body .flag-filter-fieldset--period,
+    .flag-filters-panel__body #flag-manual-categories-fieldset,
+    .flag-filters-panel__body #flag-guided-categories-fieldset {
+        grid-column: 1;
+        grid-row: auto;
     }
 
     .filter-checkbox {
@@ -1189,6 +1145,131 @@
     color: var(--text-secondary);
 }
 
+/* Unified flag management */
+.flag-card__title-prefix {
+    font-weight: 700;
+}
+
+.flag-card__title-detail {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.flag-card__source--manual .flag-card__title-prefix {
+    color: #2563eb;
+}
+
+.flag-card__source--guided .flag-card__title-prefix {
+    color: #dc2626;
+}
+
+.flag-filter-fieldset {
+    border: none;
+    margin: 0;
+    padding: 0;
+    min-width: 0;
+}
+
+.flag-filter-fieldset legend {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.flag-filter-fieldset[disabled] {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.flag-filter-period-label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin-bottom: 0.75rem;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.flag-filter-period-label:last-child {
+    margin-bottom: 0;
+}
+
+.flag-period-custom {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+}
+
+.flag-filter-clear-btn {
+    flex: 0 0 auto;
+    padding: 10px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: var(--chat-bg);
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.flag-filter-clear-btn:hover {
+    background: var(--hover-bg);
+    border-color: var(--text-secondary);
+}
+
+.flag-filter-clear-btn:focus-visible,
+.flag-filter-apply-btn:focus-visible {
+    outline: 2px solid var(--color-chbe-green);
+    outline-offset: 2px;
+}
+
+.flag-management-status,
+.flags-list-empty {
+    padding: 0.75rem 1rem;
+    color: var(--text-secondary);
+}
+
+.escalate-button,
+.guided-dismiss-button {
+    margin-left: 8px;
+    padding: 8px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: var(--chat-bg);
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.escalate-button {
+    border-color: #dc2626;
+    color: #dc2626;
+}
+
+.flag-escalation-meta {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: 0.75rem;
+    line-height: 1.5;
+}
+
+.admin-guided-alert-card__source-badge {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.admin-guided-alert-card__source-badge--manual {
+    color: #2563eb;
+}
+
+.admin-guided-alert-card__source-badge--guided {
+    color: #dc2626;
+}
+
 @media (max-width: 768px) {
     .flag-management-tabs {
         display: flex;
@@ -1262,5 +1343,9 @@
 
     .guided-pathway-alert-card__status {
         align-self: flex-start;
+    }
+
+    .flag-period-custom {
+        grid-template-columns: 1fr;
     }
 }

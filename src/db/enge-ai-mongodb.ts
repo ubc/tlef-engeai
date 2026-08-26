@@ -17,6 +17,7 @@ import {
     PersistedConversationModeId,
     CourseUser,
     FlagReport,
+    FlagReportActor,
     GlobalUser,
     InitialAssistantPrompt,
     MemoryAgentEntry,
@@ -747,6 +748,24 @@ export class EngEAI_MongoDB {
 
     public getFlagReportsWithUserNames = async (courseName: string) =>
         FlagMongo.getFlagReportsWithUserNames(this.ctx(), courseName);
+
+    public escalateFlagReport = async (
+        courseName: string,
+        flagId: string,
+        actor: FlagReportActor
+    ) => FlagMongo.escalateFlagReport(this.ctx(), courseName, flagId, actor);
+
+    public markManualFlagAdminReviewed = async (
+        courseName: string,
+        flagId: string,
+        actor: FlagReportActor
+    ) => FlagMongo.markManualFlagAdminReviewed(this.ctx(), courseName, flagId, actor);
+
+    public listEscalatedManualFlagsForAdmin = async (filters: FlagMongo.ManualFlagAdminListFilters) =>
+        FlagMongo.listEscalatedManualFlagsForAdmin(this.ctx(), filters);
+
+    public countManualFlagsAwaitingAdminReview = async () =>
+        FlagMongo.countManualFlagsAwaitingAdminReview(this.ctx());
 
     /**
      * #########################################################

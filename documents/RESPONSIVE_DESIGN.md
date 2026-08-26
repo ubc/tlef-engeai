@@ -188,6 +188,14 @@ The student mode uses a consistent mobile header pattern across welcome screen, 
 
 ---
 
+## Instructor Flag Management
+
+**Flag Management** (`flag-instructor.html`, `flag-instructor.css`) uses the instructor mobile header pattern (hamburger + title + workflow nav tiles) at **768px**.
+
+**Filters** sit in page content, first below the header (not in the header, not a modal). Source, category, and period controls apply with Clear/Apply. Custom date fields stack to one column at ≤768px.
+
+---
+
 ## Instructor Dashboard
 
 The instructor dashboard (`dashboard-instructor.html`, `dashboard.css`) uses a two-column topbar on desktop and stacks on mobile. `.dashboard-page-header` is `position: sticky` inside `.dashboard-grid-view` (the scrollport), with opaque `var(--chat-bg)` chrome and negative margins matching grid padding so cards cannot peek beside it.
@@ -209,6 +217,54 @@ The instructor dashboard (`dashboard-instructor.html`, `dashboard.css`) uses a t
 Course Information was removed from the instructor sidebar footer; course code lives in the dashboard topbar and metadata in the Course Information accordion.
 
 ---
+
+## Page shell (reusable layout)
+
+Generic scrollport + sticky header module: [`public/styles/page-shell.css`](public/styles/page-shell.css). Loaded from `instructor-mode.html` for instructor features today; student/admin can link the same file later without renaming classes.
+
+**Exceptions:** Dashboard uses `.dashboard-content-area` / `.dashboard-grid-view` (`dashboard.css`). Flags keeps its own header styles.
+
+### Structure
+
+```text
+.page-frame          optional full-height outer wrapper
+  .page-shell        scrollport (1200px cap, 3rem / 1rem gutters)
+    .page-header     optional sticky title row + bleed
+    (feature content)
+```
+
+Modifiers: `.page-shell--wide` (1680px, Writing Feedback), `.page-shell--column` + `.page-shell-body` (System Prompts editor column).
+
+### Tokens (on `.page-shell`, overridable per instance)
+
+| Token | Desktop | Mobile |
+|-------|---------|--------|
+| `--page-shell-max-width` | `1200px` | — |
+| `--page-shell-pad-x` | `3rem` | `1rem` |
+| `--page-shell-pad-bottom` | `20px` | shell uses `2rem` bottom pad |
+| `--page-header-pad-top` | `1.5rem` | `1.25rem` |
+| `--page-header-pad-bottom` | `1rem` | `0.75rem` |
+| `--page-header-margin-bottom` | `1.75rem` | — |
+| `--page-header-title-size` | `2rem` | title `1.25rem` via instructor mobile rules |
+| `--page-header-title-weight` | `700` | — |
+
+### Sticky header (`.page-header`)
+
+- Bleed: `margin` / `padding` use `--page-shell-pad-x` so the title aligns with body content.
+- `background: var(--chat-bg)` so scrolled content does not peek beside the sticky title.
+- Enter animation: `page-header-in` (`0.45s ease-out`, ends at `transform: none` for sticky).
+
+Instructor hamburger styling stays in [`instructor-mode.css`](public/styles/instructor-mode.css) (`#main-content-area .page-header.mobile-header-bar`).
+
+### Adopting on a new page
+
+1. Link `/styles/page-shell.css`.
+2. Wrap content: `page-frame` > `page-shell` > `page-header` + body.
+3. Override tokens on `.page-shell` if needed (e.g. `--page-shell-max-width: none`).
+
+### `prefers-reduced-motion`
+
+- Header enter animation collapses to `0.01ms` in `page-shell.css`.
 
 ---
 

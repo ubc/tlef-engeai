@@ -111,6 +111,108 @@ export interface GuidedPathwayFlagListPage {
     facets?: GuidedPathwayFlagFacets; // always present on admin list responses; omitted for course lists
 }
 
+/** Must match src/types/shared.ts. Staff identity snapshot on manual flag escalation/review. */
+export interface FlagReportActor {
+    userId: string;
+    name: string;
+}
+
+/** Must match src/types/shared.ts. Student-reported moderation flag. */
+export type ManualFlagType =
+    | 'innacurate_response'
+    | 'harassment'
+    | 'inappropriate'
+    | 'dishonesty'
+    | 'interface bug'
+    | 'other';
+
+export type ManualFlagStatus = 'unresolved' | 'resolved' | 'escalated';
+
+/** Must match src/types/shared.ts. */
+export interface FlagReport {
+    id: string;
+    courseName: string;
+    date: string | Date;
+    flagType: ManualFlagType;
+    reportType: string;
+    chatContent: string;
+    userId: string | number;
+    status: ManualFlagStatus;
+    response?: string;
+    escalatedAt?: string | Date;
+    escalatedBy?: FlagReportActor;
+    adminReviewedAt?: string | Date;
+    adminReviewedBy?: FlagReportActor;
+    createdAt: string | Date;
+    updatedAt: string | Date;
+    userName?: string;
+    userAffiliation?: string;
+}
+
+/** Must match src/types/shared.ts. Safe cross-course manual escalation row for admins. */
+export interface ManualFlagEscalationView {
+    id: string;
+    courseId: string;
+    courseName: string;
+    flagType: ManualFlagType;
+    reportType: string;
+    chatContent: string;
+    status: 'escalated';
+    escalatedAt: string;
+    escalatedByName?: string;
+    adminReviewedAt?: string;
+    adminReviewedByName?: string;
+    createdAt: string;
+}
+
+export interface ManualFlagEscalationListPage {
+    items: ManualFlagEscalationView[];
+    page: number;
+    pageSize: number;
+    total: number;
+}
+
+/** Unified instructor Flag Management workflow tab. */
+export type FlagWorkflowStatus = 'unresolved' | 'resolved' | 'escalated';
+
+/** Unified instructor Flag Management source discriminator. */
+export type FlagSource = 'manual' | 'guided-pathway';
+
+export type FlagPeriodPreset = 'all' | 'last-7d' | 'last-30d' | 'this-term' | 'custom';
+
+export interface FlagManagementFilters {
+    workflowStatus: FlagWorkflowStatus;
+    sources: Set<FlagSource>;
+    manualCategories: Set<ManualFlagType>;
+    /** Pathway library ids plus `others` for GP alert category filtering. */
+    guidedCategories: Set<string>;
+    period: {
+        preset: FlagPeriodPreset;
+        from?: Date;
+        to?: Date;
+        courseCreatedAt?: Date;
+    };
+}
+
+/** Frontend-only normalized row for the unified instructor flag list. */
+export interface UnifiedFlagListItem {
+    id: string;
+    source: FlagSource;
+    workflowStatus: FlagWorkflowStatus;
+    sortDate: Date;
+    titlePrefix: string;
+    titleDetail: string;
+    previewText: string;
+    footerLabel: string;
+    statusBadge: string;
+    collapsed: boolean;
+    editing: boolean;
+    raw: FlagReport | GuidedPathwayFlagView;
+}
+
+/** Admin escalations queue source filter. */
+export type AdminEscalationSource = 'manual' | 'guided-pathway' | 'both';
+
 /**
  * Must match src/types/shared.ts.
  * Persisted turn — plain UI text only (no RAG/struggle tags in MongoDB).
