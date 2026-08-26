@@ -30,7 +30,84 @@ interface AdminCourseSelectionPayload {
 let currentGlobalUser: GlobalUser | null = null;
 let pageData: AdminCourseSelectionPayload | null = null;
 let notificationButtonBound = false;
-let notificationModalOpen = false;
+let escalationsPanelOpen = false;
+let escalationsPanelClosing = false;
+let escalationsController: AdminGuidedPathwayFlagsController | null = null;
+let escalationsModal: ModalOverlay | null = null;
+let escalationsEscapeHandler: ((event: KeyboardEvent) => void) | null = null;
+const ESCALATIONS_CLOSE_MS = 350;
+const COURSE_COL_MIN_PCT = 40;
+const COURSE_COL_MAX_PCT = 60;
+let splitHandleBound = false;
+
+function setSplitHandleVisible(visible: boolean): void {
+    const handle = document.getElementById('admin-split-handle');
+    if (!handle) return;
+    if (visible) {
+        handle.removeAttribute('hidden');
+        handle.removeAttribute('inert');
+    } else {
+        handle.setAttribute('hidden', '');
+        handle.setAttribute('inert', '');
+    }
+}
+
+function courseColPctFromWrapper(wrapper: HTMLElement): number {
+    const raw = wrapper.style.getPropertyValue('--admin-course-col').trim();
+    const parsed = parseFloat(raw);
+    return Number.isFinite(parsed) ? parsed : 50;
+}
+
+function setCourseColPct(wrapper: HTMLElement, pct: number): void {
+    const clamped = Math.min(COURSE_COL_MAX_PCT, Math.max(COURSE_COL_MIN_PCT, pct));
+    wrapper.style.setProperty('--admin-course-col', `${clamped}%`);
+    const handle = document.getElementById('admin-split-handle');
+    handle?.setAttribute('aria-valuenow', String(Math.round(clamped)));
+}
+
+function setupSplitHandle(): void {
+    if (splitHandleBound) return;
+    const handle = document.getElementById('admin-split-handle');
+    const wrapper = document.querySelector<HTMLElement>('.admin-course-selection-wrapper');
+    if (!handle || !wrapper) return;
+    splitHandleBound = true;
+
+    handle.addEventListener('pointerdown', (event) => {
+        if (!escalationsPanelOpen || window.matchMedia('(max-width: 768px)').matches) return;
+        event.preventDefault();
+        handle.setPointerCapture(event.pointerId);
+        wrapper.classList.add('admin-course-selection-wrapper--resizing');
+        const startX = event.clientX;
+        const width = wrapper.getBoundingClientRect().width || 1;
+        const main = wrapper.querySelector('.admin-course-selection-main');
+        const startPct = main
+            ? (main.getBoundingClientRect().width / width) * 100
+            : courseColPctFromWrapper(wrapper);
+
+        const onMove = (moveEvent: PointerEvent) => {
+            setCourseColPct(wrapper, startPct + ((moveEvent.clientX - startX) / width) * 100);
+        };
+        const onUp = () => {
+            wrapper.classList.remove('admin-course-selection-wrapper--resizing');
+            handle.removeEventListener('pointermove', onMove);
+            handle.removeEventListener('pointerup', onUp);
+        };
+        handle.addEventListener('pointermove', onMove);
+        handle.addEventListener('pointerup', onUp);
+    });
+
+    handle.addEventListener('keydown', (event) => {
+        if (!escalationsPanelOpen) return;
+        if (event.key === 'ArrowLeft') {
+            event.preventDefault();
+            setCourseColPct(wrapper, courseColPctFromWrapper(wrapper) - 2);
+        }
+        if (event.key === 'ArrowRight') {
+            event.preventDefault();
+            setCourseColPct(wrapper, courseColPctFromWrapper(wrapper) + 2);
+        }
+    });
+}
 
 async function initializeAdminCourseSelection(): Promise<void> {
     try {
@@ -58,7 +135,8 @@ async function initializeAdminCourseSelection(): Promise<void> {
         setupLogoutButton();
         setupCreatePeriodButton();
         setupNotificationButton();
-        await loadAdminData();
+        setupSplitHandle();
+        await loadAdminData({ promptEscalations: true });
     } catch (error) {
         console.error('[ADMIN-COURSE-SELECTION]', error);
         showLoading(false);
@@ -66,7 +144,7 @@ async function initializeAdminCourseSelection(): Promise<void> {
     }
 }
 
-async function loadAdminData(): Promise<void> {
+async function loadAdminData(options?: { promptEscalations?: boolean }): Promise<void> {
     const response = await fetch('/api/admin/course-selection', { credentials: 'same-origin' });
     if (!response.ok) {
         throw new Error('Failed to load admin course selection');
@@ -78,6 +156,25 @@ async function loadAdminData(): Promise<void> {
     showLoading(false);
     showError(false);
     replaceFeather();
+    if (options?.promptEscalations) {
+        await maybePromptEscalations();
+    }
+}
+
+async function maybePromptEscalations(): Promise<void> {
+    const count = pageData?.guidedPathwayEscalationsAwaitingReview ?? 0;
+    if (count <= 0 || escalationsPanelOpen || escalationsPanelClosing) return;
+
+    const noun = count === 1 ? 'message' : 'messages';
+    const result = await showConfirmModal(
+        'Escalations awaiting review',
+        `You have ${count} unreviewed escalated ${noun}. Open the escalations panel to review them.`,
+        'View escalations',
+        'Not now'
+    );
+    if (result.action === 'view-escalations') {
+        await openEscalationsPanel();
+    }
 }
 
 function renderPeriodSections(): void {
@@ -497,50 +594,202 @@ function updateNotificationCount(count: number): void {
     if (badge) badge.textContent = String(safeCount);
     button?.setAttribute(
         'aria-label',
-        `Open Guided Pathway notifications, ${safeCount} awaiting review`
+        `Open escalations, ${safeCount} awaiting review`
     );
     if (pageData) pageData.guidedPathwayEscalationsAwaitingReview = safeCount;
 }
 
-async function openGuidedPathwayNotifications(): Promise<void> {
-    if (!pageData || notificationModalOpen) return;
-    notificationModalOpen = true;
+function prefersReducedMotion(): boolean {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+function isPhoneEscalationsModal(): boolean {
+    return window.matchMedia('(max-width: 768px)').matches;
+}
+
+function finishEscalationsClose(): void {
+    const panel = document.getElementById('admin-escalations-panel');
     const button = document.getElementById('admin-notification-btn');
+
+    escalationsController?.destroy();
+    escalationsController = null;
+    escalationsPanelClosing = false;
+
+    panel?.classList.remove('admin-escalations-panel--closing');
+    panel?.setAttribute('hidden', '');
+    panel?.setAttribute('inert', '');
+    setSplitHandleVisible(false);
+    button?.focus();
+}
+
+function closeEscalationsPanel(): void {
+    if (escalationsModal) {
+        escalationsModal.close('hide');
+        return;
+    }
+    if (!escalationsPanelOpen || escalationsPanelClosing) return;
+
+    const wrapper = document.querySelector('.admin-course-selection-wrapper');
+    const panel = document.getElementById('admin-escalations-panel');
+    const button = document.getElementById('admin-notification-btn');
+    if (!panel) return;
+
+    escalationsPanelOpen = false;
+    escalationsPanelClosing = true;
+    panel.classList.remove('admin-escalations-panel--open');
+    panel.classList.add('admin-escalations-panel--closing');
+    wrapper?.classList.remove('admin-course-selection-wrapper--split');
+    wrapper?.classList.remove('admin-course-selection-wrapper--resizing');
+    setSplitHandleVisible(false);
+    panel.setAttribute('inert', '');
+
+    button?.classList.remove('admin-notification-btn--active');
+    button?.setAttribute('aria-expanded', 'false');
+
+    if (escalationsEscapeHandler) {
+        document.removeEventListener('keydown', escalationsEscapeHandler);
+        escalationsEscapeHandler = null;
+    }
+
+    if (prefersReducedMotion()) {
+        finishEscalationsClose();
+        return;
+    }
+
+    let finished = false;
+    const complete = () => {
+        if (finished) return;
+        finished = true;
+        panel.removeEventListener('transitionend', onEnd);
+        finishEscalationsClose();
+    };
+    const onEnd = (event: TransitionEvent) => {
+        if (event.target !== panel) return;
+        if (event.propertyName !== 'transform' && event.propertyName !== 'flex-grow' && event.propertyName !== 'opacity') {
+            return;
+        }
+        complete();
+    };
+    panel.addEventListener('transitionend', onEnd);
+    window.setTimeout(complete, ESCALATIONS_CLOSE_MS + 50);
+}
+
+async function openEscalationsPanel(): Promise<void> {
+    if (!pageData || escalationsPanelOpen || escalationsPanelClosing) return;
+    if (isPhoneEscalationsModal()) {
+        await openEscalationsAsModal();
+        return;
+    }
+    await openEscalationsAsSplit();
+}
+
+async function openEscalationsAsModal(): Promise<void> {
+    if (!pageData) return;
+    const button = document.getElementById('admin-notification-btn');
+
+    escalationsPanelOpen = true;
+    button?.classList.add('admin-notification-btn--active');
     button?.setAttribute('aria-expanded', 'true');
 
     const queueRoot = document.createElement('section');
-    queueRoot.setAttribute('aria-label', 'Guided Pathway notifications requiring administrator review');
+    queueRoot.className = 'admin-escalations-modal-root';
     const controller = new AdminGuidedPathwayFlagsController(queueRoot, {
         periods: pageData.periods,
         initialAwaitingReviewCount: pageData.guidedPathwayEscalationsAwaitingReview,
         initialFilters: { status: 'escalated', reviewState: 'needs-review' },
         onAwaitingReviewCountChange: updateNotificationCount,
+        showCloseButton: false,
+        onClose: () => escalationsModal?.close('hide'),
     });
+    escalationsController = controller;
+
+    const modal = new ModalOverlay();
+    escalationsModal = modal;
 
     try {
         await controller.initialize();
-        const modal = new ModalOverlay();
-        const modalClosed = modal.show({
+        const closed = modal.show({
             type: 'custom',
-            title: 'Guided Pathway notifications',
+            title: 'Flag Escalations',
             content: queueRoot,
             showCloseButton: true,
             closeOnOverlayClick: true,
             closeOnEscape: true,
-            maxWidth: '1120px',
-            customClass: 'admin-guided-alerts-modal',
+            maxWidth: 'calc(100vw - 1rem)',
+            customClass: 'admin-escalations-mobile-modal',
         });
         await controller.activate();
-        await modalClosed;
+        replaceFeather();
+        await closed;
     } catch (error) {
         await showErrorModal(
-            'Unable to open notifications',
-            error instanceof Error ? error.message : 'Guided Pathway notifications could not be opened.'
+            'Unable to open escalations',
+            error instanceof Error ? error.message : 'Escalations could not be opened.'
         );
     } finally {
         controller.destroy();
-        notificationModalOpen = false;
+        if (escalationsController === controller) escalationsController = null;
+        escalationsModal = null;
+        escalationsPanelOpen = false;
+        button?.classList.remove('admin-notification-btn--active');
         button?.setAttribute('aria-expanded', 'false');
+        button?.focus();
+    }
+}
+
+async function openEscalationsAsSplit(): Promise<void> {
+    if (!pageData) return;
+
+    const wrapper = document.querySelector('.admin-course-selection-wrapper');
+    const panel = document.getElementById('admin-escalations-panel');
+    const root = document.getElementById('admin-escalations-panel-root');
+    const button = document.getElementById('admin-notification-btn');
+    if (!wrapper || !panel || !root || !button) return;
+
+    escalationsPanelOpen = true;
+    wrapper.classList.add('admin-course-selection-wrapper--split');
+    panel.removeAttribute('hidden');
+    panel.removeAttribute('inert');
+    setSplitHandleVisible(true);
+    requestAnimationFrame(() => panel.classList.add('admin-escalations-panel--open'));
+    button.classList.add('admin-notification-btn--active');
+    button.setAttribute('aria-expanded', 'true');
+
+    escalationsController = new AdminGuidedPathwayFlagsController(root, {
+        periods: pageData.periods,
+        initialAwaitingReviewCount: pageData.guidedPathwayEscalationsAwaitingReview,
+        initialFilters: { status: 'escalated', reviewState: 'needs-review' },
+        onAwaitingReviewCountChange: updateNotificationCount,
+        showCloseButton: true,
+        onClose: closeEscalationsPanel,
+    });
+
+    try {
+        await escalationsController.initialize();
+        await escalationsController.activate();
+        const heading = root.querySelector<HTMLElement>('h1');
+        heading?.focus();
+    } catch (error) {
+        closeEscalationsPanel();
+        await showErrorModal(
+            'Unable to open escalations',
+            error instanceof Error ? error.message : 'Escalations could not be opened.'
+        );
+        return;
+    }
+
+    escalationsEscapeHandler = (event: KeyboardEvent) => {
+        if (event.key === 'Escape') closeEscalationsPanel();
+    };
+    document.addEventListener('keydown', escalationsEscapeHandler);
+    replaceFeather();
+}
+
+function toggleEscalationsPanel(): void {
+    if (escalationsPanelOpen) {
+        closeEscalationsPanel();
+    } else {
+        void openEscalationsPanel();
     }
 }
 
@@ -548,7 +797,7 @@ function setupNotificationButton(): void {
     if (notificationButtonBound) return;
     const button = document.getElementById('admin-notification-btn');
     if (!button) return;
-    button.addEventListener('click', () => void openGuidedPathwayNotifications());
+    button.addEventListener('click', () => toggleEscalationsPanel());
     notificationButtonBound = true;
 }
 

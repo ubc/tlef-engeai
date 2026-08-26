@@ -38,7 +38,7 @@ import { showConfirmModal, showErrorModal } from '../ui/modal-overlay.js';
 const PAGE_SIZE = 20;
 const STATUS_LABELS: Record<GuidedPathwayFlagStatus, string> = {
     pending: 'Pending instructor decision',
-    escalated: 'Escalated to LTIC',
+    escalated: 'Escalated',
     dismissed: 'Dismissed',
 };
 
@@ -59,6 +59,8 @@ export interface AdminGuidedPathwayFlagsOptions {
     initialAwaitingReviewCount?: number;
     initialFilters?: Pick<AdminGuidedPathwayFlagFilters, 'status' | 'reviewState'>;
     showMobileMenuButton?: boolean;
+    showCloseButton?: boolean;
+    onClose?: () => void;
     onAwaitingReviewCountChange?: (count: number) => void;
 }
 
@@ -124,10 +126,17 @@ function replaceSelectOptions(
     if (selected) select.value = selected;
 }
 
-function queueMarkup(showMobileMenuButton: boolean): string {
-    const menuButton = showMobileMenuButton
+function queueMarkup(options: { showMobileMenuButton: boolean; showCloseButton: boolean }): string {
+    const menuButton = options.showMobileMenuButton
         ? `<button class="instructor-mobile-hamburger-btn icon-btn" type="button" title="Open menu" aria-label="Open menu">
                 <i data-feather="menu"></i>
+           </button>`
+        : '';
+
+    const closeButton = options.showCloseButton
+        ? `<button type="button" data-admin-guided-role="close" class="admin-guided-alerts__close" aria-label="Hide escalations panel">
+                <i data-feather="x"></i>
+                Hide
            </button>`
         : '';
 
@@ -136,81 +145,102 @@ function queueMarkup(showMobileMenuButton: boolean): string {
             <div class="admin-guided-alerts__heading-row">
                 ${menuButton}
                 <div class="admin-guided-alerts__title-group">
-                    <h1>Flag Escalations</h1>
+                    <h1 tabindex="-1">Flag Escalations</h1>
                     <span class="admin-guided-alerts__scope">All courses</span>
                 </div>
             </div>
-            <button type="button" data-admin-guided-role="refresh" class="admin-guided-alerts__refresh">
-                <i data-feather="refresh-cw"></i>
-                Refresh
-            </button>
+            <div class="admin-guided-alerts__header-actions">
+                <button type="button" data-admin-guided-role="refresh" class="admin-guided-alerts__refresh">
+                    <i data-feather="refresh-cw"></i>
+                    Refresh
+                </button>
+                ${closeButton}
+            </div>
         </header>
 
-        <aside class="admin-guided-alerts__notices" aria-label="Important alert information">
-            <p class="admin-guided-alerts__notice">
-                <i data-feather="shield"></i>
-                <span>Messages are anonymous by default. Student-written text may still include identifying details.</span>
-            </p>
-            <p class="admin-guided-alerts__notice">
-                <i data-feather="info"></i>
-                <span>Escalation records a decision only; EngE-AI does not notify LTIC.</span>
-            </p>
-        </aside>
-
-        <form data-admin-guided-role="filters" class="admin-guided-alert-filters">
-            <div class="admin-guided-alert-filters__heading">
+        <section
+            class="admin-guided-filters-panel admin-guided-filters-panel--collapsed"
+            data-admin-guided-role="filters-panel"
+            aria-label="Escalation filters"
+        >
+            <button
+                type="button"
+                data-admin-guided-role="filter-toggle"
+                class="admin-guided-filter-toggle-btn"
+                aria-expanded="false"
+                aria-controls="admin-guided-filters-content"
+                title="Show filters"
+                aria-label="Show filters"
+            >
                 <i data-feather="filter"></i>
-                <h2>Filters</h2>
+                <span data-admin-guided-role="filter-badge" class="admin-guided-filter-badge" hidden>0</span>
+            </button>
+            <div id="admin-guided-filters-content" class="admin-guided-filters-panel__content" aria-hidden="true" inert>
+                <div class="admin-guided-filters-panel__content-inner">
+                    <form data-admin-guided-role="filters" class="admin-guided-filters-panel__body">
+                        <label>Source
+                            <select data-admin-guided-role="source" class="admin-guided-filter-control">
+                                <option value="both">Manual and Guided Pathway</option>
+                                <option value="guided-pathway">Guided Pathway only</option>
+                                <option value="manual">Manual only</option>
+                            </select>
+                        </label>
+                        <label>Academic period
+                            <select data-admin-guided-role="period" class="admin-guided-filter-control"><option value="">All periods</option></select>
+                        </label>
+                        <label>Course
+                            <select data-admin-guided-role="course" class="admin-guided-filter-control"><option value="">All courses</option></select>
+                        </label>
+                        <label>Pathway
+                            <select data-admin-guided-role="pathway" class="admin-guided-filter-control"><option value="">All pathways</option></select>
+                        </label>
+                        <label>Decision
+                            <select data-admin-guided-role="status-filter" class="admin-guided-filter-control">
+                                <option value="">All decisions</option>
+                                <option value="pending">Pending</option>
+                                <option value="escalated">Escalated</option>
+                                <option value="dismissed">Dismissed</option>
+                            </select>
+                        </label>
+                        <label>Admin review
+                            <select data-admin-guided-role="review-state" class="admin-guided-filter-control">
+                                <option value="all">All</option>
+                                <option value="needs-review">Needs review</option>
+                                <option value="reviewed">Reviewed</option>
+                            </select>
+                        </label>
+                        <label>Reviewer
+                            <select data-admin-guided-role="reviewer" class="admin-guided-filter-control"><option value="">All reviewers</option></select>
+                        </label>
+                        <label>From
+                            <input type="date" data-admin-guided-role="date-from" class="admin-guided-filter-control">
+                        </label>
+                        <label>To
+                            <input type="date" data-admin-guided-role="date-to" class="admin-guided-filter-control">
+                        </label>
+                    </form>
+                    <div class="admin-guided-filters-panel__footer">
+                        <button
+                            type="button"
+                            data-admin-guided-role="filter-collapse"
+                            class="admin-guided-filter-collapse-btn"
+                            title="Hide filters"
+                            aria-label="Hide filters"
+                        >
+                            <i data-feather="chevron-up"></i>
+                        </button>
+                        <div class="admin-guided-filters-panel__footer-actions">
+                            <button type="button" data-admin-guided-role="clear" class="admin-guided-filter-clear-btn">Clear</button>
+                            <button type="button" data-admin-guided-role="apply" class="admin-guided-filter-apply-btn">Apply filters</button>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <label>Source
-                <select data-admin-guided-role="source">
-                    <option value="both">Manual and Guided Pathway</option>
-                    <option value="guided-pathway">Guided Pathway only</option>
-                    <option value="manual">Manual only</option>
-                </select>
-            </label>
-            <label>Academic period
-                <select data-admin-guided-role="period"><option value="">All periods</option></select>
-            </label>
-            <label>Course
-                <select data-admin-guided-role="course"><option value="">All courses</option></select>
-            </label>
-            <label>Pathway
-                <select data-admin-guided-role="pathway"><option value="">All pathways</option></select>
-            </label>
-            <label>Decision
-                <select data-admin-guided-role="status-filter">
-                    <option value="">All decisions</option>
-                    <option value="pending">Pending</option>
-                    <option value="escalated">Escalated</option>
-                    <option value="dismissed">Dismissed</option>
-                </select>
-            </label>
-            <label>Admin review
-                <select data-admin-guided-role="review-state">
-                    <option value="all">All</option>
-                    <option value="needs-review">Needs review</option>
-                    <option value="reviewed">Reviewed</option>
-                </select>
-            </label>
-            <label>Reviewer
-                <select data-admin-guided-role="reviewer"><option value="">All reviewers</option></select>
-            </label>
-            <label>From
-                <input type="date" data-admin-guided-role="date-from">
-            </label>
-            <label>To
-                <input type="date" data-admin-guided-role="date-to">
-            </label>
-            <div class="admin-guided-alert-filters__actions">
-                <button type="button" data-admin-guided-role="clear">Clear</button>
-                <button type="submit">Apply filters</button>
-            </div>
-        </form>
+        </section>
 
         <p data-admin-guided-role="status" class="admin-guided-alerts__status" role="status" aria-live="polite"></p>
         <div data-admin-guided-role="list" class="admin-guided-alerts__list" aria-live="polite"></div>
-        <nav class="admin-guided-alerts__pagination" aria-label="Admin Guided Pathway alert pages">
+        <nav class="admin-guided-alerts__pagination" aria-label="Admin escalation pages">
             <button type="button" data-admin-guided-role="previous">Previous</button>
             <span data-admin-guided-role="page-summary">Page 1 of 1</span>
             <button type="button" data-admin-guided-role="next">Next</button>
@@ -251,7 +281,10 @@ export class AdminGuidedPathwayFlagsController {
      */
     public async initialize(): Promise<void> {
         this.root.classList.add('admin-guided-alerts');
-        this.root.innerHTML = queueMarkup(this.options.showMobileMenuButton === true);
+        this.root.innerHTML = queueMarkup({
+            showMobileMenuButton: this.options.showMobileMenuButton === true,
+            showCloseButton: this.options.showCloseButton === true,
+        });
         this.bindControls();
 
         let context: AdminGuidedPathwayContextPayload | undefined;
@@ -497,23 +530,27 @@ export class AdminGuidedPathwayFlagsController {
 
     private async refreshAwaitingReviewCount(): Promise<void> {
         try {
-            const [guidedPage, manualPage] = await Promise.all([
-                listAdminGuidedPathwayFlags({
-                    page: 1,
-                    pageSize: 1,
-                    status: 'escalated',
-                    reviewState: 'needs-review',
-                }),
-                listAdminManualFlagEscalations({
-                    page: 1,
-                    pageSize: 1,
-                    reviewState: 'needs-review',
-                }),
-            ]);
-            this.publishAwaitingReviewCount(guidedPage.total + manualPage.total);
+            const context = await loadAdminQueueContext();
+            this.publishAwaitingReviewCount(context.guidedPathwayEscalationsAwaitingReview);
         } catch {
             // Keep the last known badge value; the queue reports actionable request failures.
         }
+    }
+
+    private setFilterPanelExpanded(expanded: boolean): void {
+        const panel = this.element<HTMLElement>('filters-panel');
+        const content = document.getElementById('admin-guided-filters-content');
+        const toggle = this.element<HTMLButtonElement>('filter-toggle');
+        if (!content) return;
+
+        panel.classList.toggle('admin-guided-filters-panel--collapsed', !expanded);
+        panel.classList.toggle('admin-guided-filters-panel--expanded', expanded);
+        content.setAttribute('aria-hidden', String(!expanded));
+        content.inert = !expanded;
+        toggle.setAttribute('aria-expanded', String(expanded));
+        const label = expanded ? 'Hide filters' : 'Show filters';
+        toggle.title = label;
+        toggle.setAttribute('aria-label', label);
     }
 
     private metadataItem(label: string, value: string): HTMLElement {
@@ -623,7 +660,7 @@ export class AdminGuidedPathwayFlagsController {
         sourceBadge.textContent = 'Manual';
         const status = document.createElement('span');
         status.className = 'admin-guided-alert-card__status admin-guided-alert-card__status--escalated';
-        status.textContent = 'Escalated to LTIC';
+        status.textContent = 'Escalated';
         header.append(title, sourceBadge, status);
 
         const metadata = document.createElement('div');
@@ -757,6 +794,15 @@ export class AdminGuidedPathwayFlagsController {
     private bindControls(): void {
         const signal = this.listeners.signal;
         this.element('refresh').addEventListener('click', () => void this.refresh(), { signal });
+        const closeButton = this.root.querySelector<HTMLButtonElement>('[data-admin-guided-role="close"]');
+        closeButton?.addEventListener('click', () => this.options.onClose?.(), { signal });
+        this.element<HTMLButtonElement>('filter-toggle').addEventListener('click', () => {
+            const expanded = this.element<HTMLElement>('filters-panel').classList.contains('admin-guided-filters-panel--expanded');
+            this.setFilterPanelExpanded(!expanded);
+        }, { signal });
+        this.element<HTMLButtonElement>('filter-collapse').addEventListener('click', () => {
+            this.setFilterPanelExpanded(false);
+        }, { signal });
         this.element<HTMLSelectElement>('period').addEventListener('change', () => {
             this.element<HTMLSelectElement>('course').value = '';
             this.populateCourseOptions();
@@ -771,6 +817,10 @@ export class AdminGuidedPathwayFlagsController {
         }, { signal });
         this.element<HTMLFormElement>('filters').addEventListener('submit', (event) => {
             event.preventDefault();
+            this.currentPage = 1;
+            void this.loadQueue();
+        }, { signal });
+        this.element<HTMLButtonElement>('apply').addEventListener('click', () => {
             this.currentPage = 1;
             void this.loadQueue();
         }, { signal });

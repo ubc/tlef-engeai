@@ -46,11 +46,26 @@ const GP_FETCH_PAGE_SIZE = 200;
 
 let activeCourseId = '';
 let canAccessGuidedPathway = false;
-let courseCreatedAt: Date | undefined;
 let allItems: UnifiedFlagListItem[] = [];
 let filters: FlagManagementFilters = defaultFlagManagementFilters();
 let libraryPathwayIds = new Set<string>();
 let listenersBound = false;
+
+function prefersReducedMotion(): boolean {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+function playFlagCardAppear(el: HTMLElement): void {
+    el.classList.add('flag-card--is-appearing');
+    el.addEventListener(
+        'animationend',
+        (event) => {
+            if (event.target !== el || event.animationName !== 'flag-card-appear') return;
+            el.classList.remove('flag-card--is-appearing');
+        },
+        { once: true }
+    );
+}
 
 function getCourseIdFromContext(): string | null {
     if (activeCourseId) return activeCourseId;
@@ -234,7 +249,8 @@ function setFilterPanelExpanded(expanded: boolean): void {
 
     panel.classList.toggle('flag-filters-panel--collapsed', !expanded);
     panel.classList.toggle('flag-filters-panel--expanded', expanded);
-    content.hidden = !expanded;
+    content.setAttribute('aria-hidden', String(!expanded));
+    content.inert = !expanded;
     toggle.setAttribute('aria-expanded', String(expanded));
     const label = expanded ? 'Hide filters' : 'Show filters';
     toggle.title = label;
@@ -247,6 +263,9 @@ function bindFilterPanelToggle(): void {
         const panel = document.getElementById('flag-filters-panel');
         const expanded = panel?.classList.contains('flag-filters-panel--expanded') ?? false;
         setFilterPanelExpanded(!expanded);
+    });
+    document.getElementById('flag-filter-collapse-btn')?.addEventListener('click', () => {
+        setFilterPanelExpanded(false);
     });
 }
 
@@ -269,6 +288,12 @@ function updateNavTiles(): void {
     });
 }
 
+function isExpandableManualItem(item: UnifiedFlagListItem): boolean {
+    if (item.source !== 'manual') return false;
+    const flag = item.raw as FlagReport;
+    return flag.status !== 'escalated';
+}
+
 function workflowEmptyMessage(): string {
     const label =
         filters.workflowStatus === 'unresolved'
@@ -281,11 +306,23 @@ function workflowEmptyMessage(): string {
 }
 
 function createUnifiedFlagCard(item: UnifiedFlagListItem): HTMLElement {
+    const isGuided = item.source === 'guided-pathway';
+    const expandable = isExpandableManualItem(item);
+
     const card = document.createElement('div');
-    card.className = item.collapsed ? 'flag-card' : 'flag-card expanded';
+    card.className = 'flag-card';
     card.classList.add(`flag-card--${item.source}`);
+    if (isGuided) {
+        card.classList.add('flag-card--guided-pathway', 'flag-card--static');
+    } else if (expandable) {
+        card.classList.add('flag-card--manual', 'flag-card--expandable');
+        if (!item.collapsed) card.classList.add('expanded');
+    } else {
+        card.classList.add('flag-card--manual', 'flag-card--static');
+    }
     card.dataset.flagId = item.id;
     card.dataset.source = item.source;
+    card.setAttribute('aria-expanded', expandable ? String(!item.collapsed) : 'false');
 
     const headerRow = document.createElement('div');
     headerRow.className = 'flag-header-row';
@@ -304,8 +341,11 @@ function createUnifiedFlagCard(item: UnifiedFlagListItem): HTMLElement {
     headerRow.append(timeDiv, titleDiv);
 
     const chatDiv = document.createElement('div');
-    chatDiv.className = item.collapsed ? 'chat-content collapsed' : 'chat-content';
-    chatDiv.textContent = `Chat: ${item.previewText}`;
+    chatDiv.className = 'chat-content';
+    if (expandable && item.collapsed) {
+        chatDiv.classList.add('collapsed');
+    }
+    chatDiv.textContent = isGuided ? item.previewText : `Chat: ${item.previewText}`;
 
     const footer = document.createElement('div');
     footer.className = 'flag-footer';
@@ -315,41 +355,35 @@ function createUnifiedFlagCard(item: UnifiedFlagListItem): HTMLElement {
     const statusBadge = document.createElement('div');
     statusBadge.className = 'status-badge';
     statusBadge.textContent = ` ${item.statusBadge}`;
-    const expandArrow = document.createElement('div');
-    expandArrow.className = 'expand-arrow';
-    expandArrow.textContent = item.collapsed ? '▼' : '▲';
-    footer.append(footerLabel, statusBadge, expandArrow);
+    footer.append(footerLabel, statusBadge);
 
-    const expandedContent = document.createElement('div');
-    expandedContent.className = 'expanded-content';
-    expandedContent.appendChild(buildExpandedSection(item));
+    if (expandable) {
+        const expandArrow = document.createElement('div');
+        expandArrow.className = 'expand-arrow';
+        expandArrow.textContent = '▼';
+        expandArrow.setAttribute('aria-hidden', 'true');
+        footer.appendChild(expandArrow);
 
-    card.append(headerRow, chatDiv, footer, expandedContent);
-    return card;
-}
-
-function buildExpandedSection(item: UnifiedFlagListItem): HTMLElement {
-    if (item.source === 'manual') {
-        return buildManualExpandedSection(item);
+        const expandedContent = document.createElement('div');
+        expandedContent.className = 'expanded-content';
+        expandedContent.appendChild(buildManualExpandedSection(item));
+        card.append(headerRow, chatDiv, footer, expandedContent);
+        return card;
     }
-    return buildGuidedExpandedSection(item);
+
+    const guidedActions = isGuided ? buildGuidedPathwayCardActions(item.raw as GuidedPathwayFlagView) : null;
+    if (guidedActions) {
+        card.append(headerRow, chatDiv, footer, guidedActions);
+    } else {
+        card.append(headerRow, chatDiv, footer);
+    }
+    return card;
 }
 
 function buildManualExpandedSection(item: UnifiedFlagListItem): HTMLElement {
     const flag = item.raw as FlagReport;
     const section = document.createElement('div');
     section.className = 'response-section';
-
-    if (flag.status === 'escalated') {
-        const meta = document.createElement('div');
-        meta.className = 'flag-escalation-meta';
-        const escalatedAt = flag.escalatedAt ? new Date(flag.escalatedAt) : null;
-        meta.textContent = `Escalated${flag.escalatedBy?.name ? ` by ${flag.escalatedBy.name}` : ''}${
-            escalatedAt ? ` on ${formatTimestamp(escalatedAt)}` : ''
-        }.${flag.adminReviewedAt ? ' Reviewed by platform administrators.' : ' Awaiting platform administrator review.'}`;
-        section.appendChild(meta);
-        return section;
-    }
 
     const responseHeader = document.createElement('div');
     responseHeader.className = 'response-header';
@@ -402,40 +436,33 @@ function buildManualExpandedSection(item: UnifiedFlagListItem): HTMLElement {
     return section;
 }
 
-function buildGuidedExpandedSection(item: UnifiedFlagListItem): HTMLElement {
-    const flag = item.raw as GuidedPathwayFlagView;
-    const section = document.createElement('div');
-    section.className = 'response-section guided-pathway-expanded';
+function buildGuidedPathwayCardActions(flag: GuidedPathwayFlagView): HTMLElement | null {
+    if (flag.status !== 'pending') return null;
 
-    const meta = document.createElement('div');
-    meta.className = 'flag-escalation-meta';
-    meta.textContent = `Pathway: ${flag.pathwayTitle}${
-        flag.decidedAt ? ` · Decision recorded ${formatTimestamp(new Date(flag.decidedAt))}` : ''
-    }`;
-    section.appendChild(meta);
+    const actions = document.createElement('div');
+    actions.className = 'flag-card__actions';
+    actions.setAttribute('role', 'group');
+    actions.setAttribute('aria-label', 'Guided Pathway alert actions');
 
-    if (flag.status === 'pending') {
-        const actions = document.createElement('div');
-        actions.className = 'response-actions';
-        const dismissButton = document.createElement('button');
-        dismissButton.type = 'button';
-        dismissButton.className = 'guided-dismiss-button';
-        dismissButton.textContent = 'Dismiss';
-        dismissButton.dataset.flagId = flag.id;
-        dismissButton.dataset.action = 'gp-dismiss';
-        const escalateButton = document.createElement('button');
-        escalateButton.type = 'button';
-        escalateButton.className = 'escalate-button';
-        escalateButton.textContent = 'Escalate to Admins';
-        escalateButton.dataset.flagId = flag.id;
-        escalateButton.dataset.action = 'gp-escalate';
-        actions.append(dismissButton, escalateButton);
-        section.appendChild(actions);
-    }
-    return section;
+    const dismissButton = document.createElement('button');
+    dismissButton.type = 'button';
+    dismissButton.className = 'guided-dismiss-button';
+    dismissButton.textContent = 'Dismiss';
+    dismissButton.dataset.flagId = flag.id;
+    dismissButton.dataset.action = 'gp-dismiss';
+
+    const escalateButton = document.createElement('button');
+    escalateButton.type = 'button';
+    escalateButton.className = 'escalate-button';
+    escalateButton.textContent = 'Escalate to Admins';
+    escalateButton.dataset.flagId = flag.id;
+    escalateButton.dataset.action = 'gp-escalate';
+
+    actions.append(dismissButton, escalateButton);
+    return actions;
 }
 
-function renderUnifiedFlags(): void {
+function renderUnifiedFlags(animateEnter = false): void {
     const list = document.getElementById('flags-list');
     if (!list) return;
 
@@ -454,19 +481,30 @@ function renderUnifiedFlags(): void {
         return;
     }
 
-    visible.forEach((item) => list.appendChild(createUnifiedFlagCard(item)));
+    const shouldAnimate = animateEnter && !prefersReducedMotion();
+    visible.forEach((item) => {
+        const card = createUnifiedFlagCard(item);
+        if (shouldAnimate) playFlagCardAppear(card);
+        list.appendChild(card);
+    });
     replaceFeatherIcons();
 }
 
 function toggleCollapse(flagId: string, source: string): void {
     const item = findItem(flagId, source);
-    if (!item) return;
+    if (!item || !isExpandableManualItem(item)) return;
     item.collapsed = !item.collapsed;
-    renderUnifiedFlags();
+    const card = document.querySelector<HTMLElement>(
+        `.flag-card[data-flag-id="${flagId}"][data-source="${source}"]`
+    );
+    if (!card) return;
+    card.classList.toggle('expanded', !item.collapsed);
+    card.setAttribute('aria-expanded', String(!item.collapsed));
+    card.querySelector('.chat-content')?.classList.toggle('collapsed', item.collapsed);
 }
 
 function readFiltersFromForm(): FlagManagementFilters {
-    const next = defaultFlagManagementFilters(courseCreatedAt, libraryPathwayIds);
+    const next = defaultFlagManagementFilters(libraryPathwayIds);
     next.workflowStatus = filters.workflowStatus;
     next.sources.clear();
     if ((document.getElementById('flag-source-manual') as HTMLInputElement | null)?.checked) {
@@ -487,15 +525,10 @@ function readFiltersFromForm(): FlagManagementFilters {
             const category = input.dataset.guidedCategory;
             if (category && input.checked) next.guidedCategories.add(category);
         });
-    const preset = (document.getElementById('flag-period-preset') as HTMLSelectElement | null)?.value as FlagManagementFilters['period']['preset'];
-    next.period.preset = preset ?? 'all';
-    if (preset === 'custom') {
-        const fromValue = (document.getElementById('flag-period-from') as HTMLInputElement | null)?.value;
-        const toValue = (document.getElementById('flag-period-to') as HTMLInputElement | null)?.value;
-        next.period.from = fromValue ? new Date(`${fromValue}T00:00:00`) : undefined;
-        next.period.to = toValue ? new Date(`${toValue}T23:59:59`) : undefined;
-    }
-    next.period.courseCreatedAt = courseCreatedAt;
+    const fromValue = (document.getElementById('flag-period-from') as HTMLInputElement | null)?.value;
+    const toValue = (document.getElementById('flag-period-to') as HTMLInputElement | null)?.value;
+    next.period.from = fromValue ? new Date(`${fromValue}T00:00:00`) : undefined;
+    next.period.to = toValue ? new Date(`${toValue}T23:59:59`) : undefined;
     return next;
 }
 
@@ -517,10 +550,16 @@ function syncFiltersToForm(): void {
     const manualFieldset = document.getElementById('flag-manual-categories-fieldset');
     if (manualFieldset) manualFieldset.toggleAttribute('disabled', !filters.sources.has('manual'));
     updateGuidedCategoryFieldsetVisibility();
-    const presetSelect = document.getElementById('flag-period-preset') as HTMLSelectElement | null;
-    if (presetSelect) presetSelect.value = filters.period.preset;
-    const customWrap = document.getElementById('flag-period-custom');
-    if (customWrap) customWrap.hidden = filters.period.preset !== 'custom';
+    const fromInput = document.getElementById('flag-period-from') as HTMLInputElement | null;
+    const toInput = document.getElementById('flag-period-to') as HTMLInputElement | null;
+    if (fromInput) {
+        fromInput.value = filters.period.from
+            ? filters.period.from.toISOString().slice(0, 10)
+            : '';
+    }
+    if (toInput) {
+        toInput.value = filters.period.to ? filters.period.to.toISOString().slice(0, 10) : '';
+    }
 }
 
 async function handleManualResolve(flagId: string, response?: string): Promise<void> {
@@ -608,9 +647,10 @@ function handleListClick(event: Event): void {
         void handleCardAction(actionButton);
         return;
     }
-    if (target.closest('.response-section')) return;
+    if (target.closest('.response-section') || target.closest('.flag-card__actions')) return;
     const card = target.closest('.flag-card') as HTMLElement | null;
-    if (!card?.dataset.flagId || !card.dataset.source) return;
+    if (!card?.classList.contains('flag-card--expandable')) return;
+    if (!card.dataset.flagId || !card.dataset.source) return;
     toggleCollapse(card.dataset.flagId, card.dataset.source);
 }
 
@@ -635,18 +675,8 @@ function bindListeners(): void {
         setFilterPanelExpanded(false);
     });
     document.getElementById('flag-filter-clear-btn')?.addEventListener('click', () => {
-        filters = defaultFlagManagementFilters(courseCreatedAt, libraryPathwayIds);
-        if (!canAccessGuidedPathway) {
-            filters.sources = new Set(['manual']);
-        }
         syncFiltersToForm();
-        renderUnifiedFlags();
-    });
-
-    document.getElementById('flag-period-preset')?.addEventListener('change', (event) => {
-        const value = (event.target as HTMLSelectElement).value;
-        const customWrap = document.getElementById('flag-period-custom');
-        if (customWrap) customWrap.hidden = value !== 'custom';
+        setFilterPanelExpanded(false);
     });
 
     document.getElementById('flag-source-manual')?.addEventListener('change', () => {
@@ -666,18 +696,16 @@ function bindListeners(): void {
 export async function initializeFlagManagement(options: {
     courseId: string;
     canAccessGuidedPathway: boolean;
-    courseCreatedAt?: string | Date;
 }): Promise<void> {
     activeCourseId = options.courseId;
     canAccessGuidedPathway = options.canAccessGuidedPathway;
-    courseCreatedAt = options.courseCreatedAt ? new Date(options.courseCreatedAt) : undefined;
     libraryPathwayIds = new Set();
 
     if (canAccessGuidedPathway) {
         await loadPathwayLibrary();
     }
 
-    filters = defaultFlagManagementFilters(courseCreatedAt, libraryPathwayIds);
+    filters = defaultFlagManagementFilters(libraryPathwayIds);
     if (!canAccessGuidedPathway) {
         filters.sources = new Set(['manual']);
         filters.guidedCategories = defaultGuidedCategorySet();
@@ -694,7 +722,7 @@ export async function initializeFlagManagement(options: {
 
     try {
         await loadAllFlags();
-        renderUnifiedFlags();
+        renderUnifiedFlags(true);
     } catch (error) {
         setStatusMessage('');
         showErrorToast(error instanceof Error ? error.message : 'Failed to load flags.');

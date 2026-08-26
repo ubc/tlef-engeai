@@ -387,12 +387,14 @@ registered targets under a Mongo-backed lease. See
 [DATA_MIGRATIONS.md](DATA_MIGRATIONS.md#gpf-002-guided-pathway-registered-collection-normalization).
 
 `GET /api/admin/course-selection` also returns
-`data.guidedPathwayEscalationsAwaitingReview`, counting escalated records with no admin review time.
-The course-selection dashboard renders that count as a bell badge between the welcome text and logout.
-Clicking the bell opens the same anonymous admin queue, prefiltered to escalated items needing review;
-the badge refreshes after review actions. Instructor tests are excluded from the queue, all filter
-facets and totals, reviewer facets, and this bell count. There is no polling, email, or external
-notification.
+`data.guidedPathwayEscalationsAwaitingReview`, the combined count of unreviewed escalated **Guided
+Pathway alerts and manual flags** awaiting platform-admin review (GP count plus manual count from
+dedicated Mongo count helpers — no list rows fetched for the badge). Instructor tests are excluded
+from the GP portion of this count. The admin course-selection page renders that count as a bell
+badge between the welcome text and logout. Clicking the bell toggles a side-by-side escalations
+panel (same anonymous admin queue, prefiltered to escalated items needing review); the badge
+refreshes from the same course-selection count after review actions. There is no polling, email, or
+external notification.
 
 #### Monitor (instructor roster; post-period analytics)
 

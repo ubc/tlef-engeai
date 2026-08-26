@@ -63,16 +63,13 @@ function setsEqual(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
     return true;
 }
 
-export function defaultFlagManagementFilters(
-    courseCreatedAt?: Date,
-    libraryPathwayIds: Iterable<string> = []
-): FlagManagementFilters {
+export function defaultFlagManagementFilters(libraryPathwayIds: Iterable<string> = []): FlagManagementFilters {
     return {
         workflowStatus: 'unresolved',
         sources: new Set<FlagSource>(['manual', 'guided-pathway']),
         manualCategories: new Set(ALL_MANUAL_FLAG_TYPES),
         guidedCategories: defaultGuidedCategorySet(libraryPathwayIds),
-        period: { preset: 'all', courseCreatedAt },
+        period: {},
     };
 }
 
@@ -143,23 +140,9 @@ export function normalizeGuidedFlag(flag: GuidedPathwayFlagView): UnifiedFlagLis
 }
 
 function resolvePeriodBounds(filters: FlagManagementFilters): { from?: Date; to?: Date } {
-    const now = new Date();
-    const { preset, from, to, courseCreatedAt } = filters.period;
-    if (preset === 'all') return {};
-    if (preset === 'last-7d') {
-        const start = new Date(now);
-        start.setDate(start.getDate() - 7);
-        return { from: start, to: now };
-    }
-    if (preset === 'last-30d') {
-        const start = new Date(now);
-        start.setDate(start.getDate() - 30);
-        return { from: start, to: now };
-    }
-    if (preset === 'this-term') {
-        return { from: courseCreatedAt ?? new Date(0), to: now };
-    }
-    return { from, to: to ?? now };
+    const { from, to } = filters.period;
+    if (!from && !to) return {};
+    return { from, to };
 }
 
 function isInPeriod(sortDate: Date, bounds: { from?: Date; to?: Date }): boolean {
@@ -240,6 +223,6 @@ export function countActiveAdvancedFilters(
     ) {
         count += 1;
     }
-    if (filters.period.preset !== 'all') count += 1;
+    if (filters.period.from || filters.period.to) count += 1;
     return count;
 }

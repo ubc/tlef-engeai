@@ -898,7 +898,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 await initializeFlagManagement({
                     courseId: currentClass.id,
                     canAccessGuidedPathway: gpEnabled && canManageGuidedPathwayFeatures,
-                    courseCreatedAt: currentClass.date,
                 });
             }
             else if (componentName === 'monitor-instructor') {

@@ -218,6 +218,26 @@ Course Information was removed from the instructor sidebar footer; course code l
 
 ---
 
+## Admin course selection (`admin-course-selection.html`)
+
+Styles: [`public/styles/course-selection.css`](public/styles/course-selection.css) (split layout) and [`public/styles/admin-guided-pathway-flags.css`](public/styles/admin-guided-pathway-flags.css) (escalations queue).
+
+### Desktop
+
+- **Bell**: toggles a **1:1 flex split** of `.admin-course-selection-wrapper` — courses on the left, escalations panel on the right (`flex: 1 1 0` each). Active bell uses palette light brown (`#ECE5DD` / `--background-2`).
+- **Independent scroll**: the page does not scroll as a whole; the course column and the escalations list each scroll in their own overflow region.
+- **Panel**: 1rem gap from the course column; 10px radius; **green header** on a **white** body. Header is a single row — title, All courses pill, compact Refresh / Hide. Bell, **Hide**, or **Escape** closes; focus returns to the bell. Closed panel uses `hidden` + `inert`.
+- **Splitter**: a drag handle between the columns resizes them. Both columns have **min-width 40%**. Arrow keys on the handle nudge by 2%. Hidden on ≤768px.
+- **Period cards**: when split, course containers use **100% of the left column** (not the default 80% page width).
+
+### Mobile (≤768px)
+
+- Escalations open as a **ModalOverlay** (same 768px cutoff as the View Diagram artefact modal). Course list stays full width; no stacked split and no splitter.
+- Overlay X, backdrop click, Escape, or the bell closes it. Nested identity-reveal confirms still stack on top.
+- `prefers-reduced-motion`: desktop split transitions remain disabled.
+
+---
+
 ## Page shell (reusable layout)
 
 Generic scrollport + sticky header module: [`public/styles/page-shell.css`](public/styles/page-shell.css). Loaded from `instructor-mode.html` for instructor features today; student/admin can link the same file later without renaming classes.

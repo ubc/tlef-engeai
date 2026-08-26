@@ -135,43 +135,31 @@
     color: var(--color-chbe-green);
 }
 
-/* Filters sit first in page content (not in the header) */
+/* Collapsed: only the filter toggle. Expanded: card around the existing filter form. */
 .flag-filters-panel {
-    background: var(--chat-bg);
-    border-radius: 10px;
-    border: 1px solid var(--border-color);
-    padding: 16px 20px;
-    margin-bottom: 16px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-}
-
-.flag-filters-panel--collapsed {
-    padding: 12px 16px;
-}
-
-.flag-filters-panel__header {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    margin-bottom: 0;
-    padding-bottom: 0;
-    border-bottom: none;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0;
+    margin-bottom: 16px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    padding: 0;
+    box-shadow: none;
+    transition:
+        background-color 0.2s ease,
+        border-color 0.2s ease,
+        padding 0.2s ease,
+        box-shadow 0.2s ease;
 }
 
-.flag-filters-panel--expanded .flag-filters-panel__header {
-    margin-bottom: 12px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid var(--border-color);
-}
-
-.flag-filters-panel__header h2 {
-    margin: 0;
-    font-size: 13px;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
-    color: var(--text-secondary);
+.flag-filters-panel--expanded {
+    width: 100%;
+    background: var(--chat-bg);
+    border-color: var(--border-color);
+    padding: 16px 20px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
 .flag-filter-toggle-btn {
@@ -188,7 +176,7 @@
     background: var(--chat-bg);
     color: var(--color-chbe-green);
     cursor: pointer;
-    transition: background-color 0.2s ease, border-color 0.2s ease;
+    transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
 }
 
 .flag-filter-toggle-btn:hover {
@@ -196,9 +184,19 @@
     border-color: var(--color-chbe-green);
 }
 
+.flag-filter-toggle-btn:active {
+    transform: scale(0.96);
+}
+
 .flag-filter-toggle-btn:focus-visible {
     outline: 2px solid var(--color-chbe-green);
     outline-offset: 2px;
+}
+
+.flag-filters-panel--expanded .flag-filter-toggle-btn {
+    background: var(--color-chbe-green);
+    border-color: var(--color-chbe-green);
+    color: #fff;
 }
 
 .flag-filter-toggle-btn i,
@@ -211,6 +209,26 @@
     position: absolute;
     top: -4px;
     right: -4px;
+}
+
+.flag-filters-panel__content {
+    display: grid;
+    grid-template-rows: 0fr;
+    width: 100%;
+    transition: grid-template-rows 0.22s ease;
+}
+
+.flag-filters-panel--expanded .flag-filters-panel__content {
+    grid-template-rows: 1fr;
+}
+
+.flag-filters-panel__content-inner {
+    min-height: 0;
+    overflow: hidden;
+}
+
+.flag-filters-panel--expanded .flag-filters-panel__content-inner {
+    padding-top: 12px;
 }
 
 .flag-filters-panel__body {
@@ -236,16 +254,51 @@
 
 .flag-filters-panel__footer {
     display: flex;
-    gap: 0.75rem;
+    justify-content: space-between;
     align-items: center;
+    gap: 0.75rem;
     margin-top: 12px;
     padding-top: 12px;
     border-top: 1px solid var(--border-color);
 }
 
-.flag-filters-panel__footer .flag-filter-apply-btn {
-    flex: 1;
-    width: auto;
+.flag-filters-panel__footer-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-left: auto;
+}
+
+.flag-filter-collapse-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--chat-bg);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+}
+
+.flag-filter-collapse-btn:hover {
+    background: var(--hover-bg);
+    border-color: var(--text-secondary);
+}
+
+.flag-filter-collapse-btn:active {
+    transform: scale(0.96);
+}
+
+.flag-filter-collapse-btn i,
+.flag-filter-collapse-btn svg {
+    width: 16px;
+    height: 16px;
 }
 
 .flag-filter-badge {
@@ -298,13 +351,18 @@
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
-    transition: opacity 0.2s ease;
+    transition: opacity 0.2s ease, transform 0.15s ease;
     flex: 1;
     width: auto;
 }
 
 .flag-filter-apply-btn:hover {
     opacity: 0.9;
+}
+
+.flag-filter-apply-btn:active,
+.flag-filter-clear-btn:active {
+    transform: scale(0.96);
 }
 
 .filter-checkboxes {
@@ -345,7 +403,7 @@
 .flags-list {
     display: flex;
     flex-direction: column;
-    gap: 5px;
+    gap: 1rem;
 }
 
 .flag-card {
@@ -354,17 +412,47 @@
     border: 1px solid var(--border-color);
     padding: 16px 20px;
     cursor: pointer;
-    transition: all 0.2s ease;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     width: 100%;
     box-sizing: border-box;
     overflow: hidden; /* Prevent inner overflow from breaking layout */
 }
 
+.flag-card--expandable {
+    transition:
+        background-color 0.2s ease,
+        box-shadow 0.2s ease,
+        transform 0.2s ease;
+}
+
+@keyframes flag-card-appear {
+    from {
+        opacity: 0;
+        transform: scale(0.96) translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.flag-card--is-appearing {
+    animation: flag-card-appear 0.36s cubic-bezier(0.22, 1, 0.36, 1) both;
+    pointer-events: none;
+}
+
 .flag-card:hover {
     background: var(--hover-bg);
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.flag-card--static {
+    cursor: default;
+}
+
+.flag-card--static:hover {
+    transform: none;
 }
 
 .flag-header-row {
@@ -408,14 +496,25 @@
     white-space: pre-line; /* Preserve line breaks for equations */
 }
 
+/* USER flag: animate preview height + response panel together */
+.flag-card--expandable .chat-content {
+    overflow: hidden;
+    max-height: 480px;
+    transition:
+        max-height 0.38s cubic-bezier(0.22, 1, 0.36, 1),
+        line-height 0.38s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.flag-card--expandable:not(.expanded) .chat-content,
 .chat-content.collapsed {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    line-height: 1.4; /* Normal line height for single line */
+    line-height: 1.4;
     display: block;
     width: 100%;
-    max-width: 100%; /* Ensure it never exceeds parent width */
+    max-width: 100%;
+    max-height: 1.4em;
 }
 
 .flag-footer {
@@ -452,7 +551,11 @@
 .expand-arrow {
     font-size: 16px;
     color: var(--text-secondary);
-    transition: transform 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transform: rotate(0deg);
+    transition: transform 0.38s cubic-bezier(0.22, 1, 0.36, 1);
     flex-shrink: 0; /* Don't shrink arrow */
     margin-left: 8px;
 }
@@ -463,15 +566,32 @@
 
 /* Expanded Content - Show when expanded class is present */
 .expanded-content {
-    max-height: 0;
+    display: grid;
+    grid-template-rows: 0fr;
+    margin-top: 0;
+    transition:
+        grid-template-rows 0.38s cubic-bezier(0.22, 1, 0.36, 1),
+        margin-top 0.38s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.expanded-content > * {
+    min-height: 0;
     overflow: hidden;
-    transition: max-height 0.3s ease;
-    margin-top: 15px;
 }
 
 .flag-card.expanded .expanded-content {
-    max-height: 2000px; /* Increased from 800px to accommodate larger content */
-    overflow: visible;
+    grid-template-rows: 1fr;
+    margin-top: 15px;
+}
+
+.flag-card--expandable .expanded-content > * {
+    opacity: 0;
+    transition: opacity 0.28s ease;
+}
+
+.flag-card--expandable.expanded .expanded-content > * {
+    opacity: 1;
+    transition: opacity 0.32s ease 0.1s;
 }
 
 
@@ -1073,6 +1193,13 @@
 }
 
 /* Unified flag management */
+.flag-card__title {
+    font-size: 14px;
+    line-height: 1.35;
+    color: var(--text-primary);
+    overflow-wrap: anywhere;
+}
+
 .flag-card__title-prefix {
     font-weight: 700;
 }
@@ -1088,6 +1215,40 @@
 
 .flag-card__source--guided .flag-card__title-prefix {
     color: #dc2626;
+}
+
+.flag-card--guided-pathway .chat-content {
+    margin: 0.75rem 0 0;
+    padding: 0.85rem;
+    border-radius: 8px;
+    background: var(--background-2);
+    color: var(--text-primary);
+    line-height: 1.55;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+/* GP pending cards: metadata footer, then a separated action bar */
+.flag-card--guided-pathway .flag-footer {
+    margin-bottom: 0;
+}
+
+.flag-card--guided-pathway .flag-card__actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.6rem;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color);
+}
+
+.flag-card__actions .guided-dismiss-button,
+.flag-card__actions .escalate-button {
+    margin-left: 0;
+    min-height: 28px;
+    padding: 0.6rem 1rem;
+    font-size: 14px;
 }
 
 .flag-filter-fieldset {
@@ -1139,7 +1300,7 @@
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
-    transition: background-color 0.2s ease, border-color 0.2s ease;
+    transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
 }
 
 .flag-filter-clear-btn:hover {
@@ -1165,21 +1326,25 @@
     padding: 8px 14px;
     border-radius: 8px;
     border: 1px solid var(--border-color);
-    background: var(--chat-bg);
     cursor: pointer;
     font-weight: 600;
 }
 
 .escalate-button {
+    background: var(--chat-bg);
     border-color: #dc2626;
     color: #dc2626;
 }
 
-.flag-escalation-meta {
-    font-size: 14px;
-    color: var(--text-secondary);
-    margin-bottom: 0.75rem;
-    line-height: 1.5;
+.guided-dismiss-button {
+    background: var(--color-chbe-green);
+    border-color: var(--color-chbe-green);
+    color: #fff;
+}
+
+.guided-dismiss-button:hover {
+    background: #2d7a2d;
+    border-color: #2d7a2d;
 }
 
 .admin-guided-alert-card__source-badge {
@@ -1272,7 +1437,31 @@
         align-self: flex-start;
     }
 
+    .flag-card--guided-pathway .flag-card__actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
     .flag-period-custom {
         grid-template-columns: 1fr;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .flag-card--is-appearing {
+        animation: none;
+    }
+
+    .expand-arrow,
+    .expanded-content,
+    .flag-card--expandable .chat-content,
+    .flag-card--expandable .expanded-content > *,
+    .flag-filters-panel,
+    .flag-filters-panel__content,
+    .flag-filter-toggle-btn,
+    .flag-filter-collapse-btn,
+    .flag-filter-apply-btn,
+    .flag-filter-clear-btn {
+        transition: none;
     }
 }

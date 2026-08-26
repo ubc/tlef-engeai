@@ -178,8 +178,6 @@ export type FlagWorkflowStatus = 'unresolved' | 'resolved' | 'escalated';
 /** Unified instructor Flag Management source discriminator. */
 export type FlagSource = 'manual' | 'guided-pathway';
 
-export type FlagPeriodPreset = 'all' | 'last-7d' | 'last-30d' | 'this-term' | 'custom';
-
 export interface FlagManagementFilters {
     workflowStatus: FlagWorkflowStatus;
     sources: Set<FlagSource>;
@@ -187,10 +185,8 @@ export interface FlagManagementFilters {
     /** Pathway library ids plus `others` for GP alert category filtering. */
     guidedCategories: Set<string>;
     period: {
-        preset: FlagPeriodPreset;
         from?: Date;
         to?: Date;
-        courseCreatedAt?: Date;
     };
 }
 

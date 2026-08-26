@@ -52,7 +52,7 @@ describe('flag-list-model', () => {
             triggeredAt: '2026-02-11T12:00:00.000Z',
             origin: 'student',
         });
-        const filters = defaultFlagManagementFilters(undefined, ['p1']);
+        const filters = defaultFlagManagementFilters(['p1']);
         filters.manualCategories = new Set(['innacurate_response']);
         const visible = applyFlagFilters([manual, guided], {
             ...filters,
@@ -74,7 +74,7 @@ describe('flag-list-model', () => {
             triggeredAt: '2026-02-11T12:00:00.000Z',
             origin: 'student',
         });
-        const filters = defaultFlagManagementFilters(undefined, ['p1']);
+        const filters = defaultFlagManagementFilters(['p1']);
         filters.guidedCategories = new Set(['p1', GUIDED_CATEGORY_OTHERS]);
         const visible = applyFlagFilters([guided], { ...filters, workflowStatus: 'unresolved' }, {
             libraryPathwayIds: new Set(['p1']),
@@ -94,7 +94,7 @@ describe('flag-list-model', () => {
             triggeredAt: '2026-02-11T12:00:00.000Z',
             origin: 'student',
         });
-        const filters = defaultFlagManagementFilters(undefined, ['p1']);
+        const filters = defaultFlagManagementFilters(['p1']);
         filters.guidedCategories = new Set([GUIDED_CATEGORY_OTHERS]);
         const visible = applyFlagFilters([guided], { ...filters, workflowStatus: 'unresolved' }, {
             libraryPathwayIds: new Set(['p1']),
@@ -116,7 +116,7 @@ describe('flag-list-model', () => {
         });
         expect(guidedCategoryKey('deleted', new Set(['p1']))).toBe(GUIDED_CATEGORY_OTHERS);
 
-        const filters = defaultFlagManagementFilters(undefined, ['p1']);
+        const filters = defaultFlagManagementFilters(['p1']);
         filters.guidedCategories = new Set([GUIDED_CATEGORY_OTHERS]);
         const visible = applyFlagFilters([guided], { ...filters, workflowStatus: 'unresolved' }, {
             libraryPathwayIds: new Set(['p1']),
@@ -134,8 +134,8 @@ describe('flag-list-model', () => {
         expect([...defaultGuidedCategorySet(['a', 'b'])]).toEqual(
             expect.arrayContaining(['a', 'b', GUIDED_CATEGORY_OTHERS])
         );
-        expect(defaultFlagManagementFilters(undefined, ['a']).guidedCategories.has('a')).toBe(true);
-        expect(defaultFlagManagementFilters(undefined, ['a']).manualCategories.size).toBe(
+        expect(defaultFlagManagementFilters(['a']).guidedCategories.has('a')).toBe(true);
+        expect(defaultFlagManagementFilters(['a']).manualCategories.size).toBe(
             ALL_MANUAL_FLAG_TYPES.length
         );
     });
