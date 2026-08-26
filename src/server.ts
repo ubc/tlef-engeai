@@ -30,6 +30,7 @@ import { EngEAI_MongoDB } from './db/enge-ai-mongodb';
 import { initAcademicPeriods } from './helpers/init-academic-periods';
 import { migrateInstructorAllowances } from './helpers/migrate-instructor-allowances';
 import { migrateOnboardingFlags } from './helpers/migrate-onboarding-flags';
+import { migrateInstructorOnboardingStages } from './helpers/migrate-instructor-onboarding-stages';
 import { getCourseSelectionRedirectPath } from './helpers/course-selection-redirect';
 import { resolveAffiliation } from './utils/affiliation';
 import { isAdminUser, isAdminName } from './utils/admin';
@@ -322,6 +323,14 @@ app.listen(port, async () => {
         await migrateOnboardingFlags();
     } catch (err) {
         logger.error('Onboarding migration failed:', err as any);
+    }
+
+    // OB-002: seeds per-user instructor tutorial progress. Must run after OB-001, which is
+    // the source of the `instructorOnboardingCompleted` signal it seeds from.
+    try {
+        await migrateInstructorOnboardingStages();
+    } catch (err) {
+        logger.error('Instructor onboarding stages migration failed:', err as any);
     }
 
     // Guards against two EngE-AI courses claiming the same LMS course, which would make

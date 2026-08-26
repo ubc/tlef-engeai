@@ -7,7 +7,7 @@
  * Mutations here affect **all** courses (enrollment arrays, affiliation reconciliation, etc.).
  */
 
-import type { GlobalUser } from '../../types/shared';
+import type { GlobalUser, InstructorOnboardingProgress } from '../../types/shared';
 import type { MongoDalContext } from './mongo-context';
 import { activeUsersMongoCollection } from './mongo-collections';
 
@@ -56,6 +56,7 @@ export async function findGlobalUserByUserId(
  *
  * Actions:
  * - Default `coursesEnrolled` to `[]`, `status` to `active`, stamp `createdAt` / `updatedAt`.
+ * - Start `instructorOnboarding` with all three tutorials owed.
  */
 export async function createGlobalUser(
     ctx: MongoDalContext,
@@ -70,6 +71,13 @@ export async function createGlobalUser(
         affiliation: userData.affiliation!,
         status: userData.status || 'active',
         isAdmin: userData.isAdmin === true,
+        // Every new user starts owing all three instructor tutorials. A student promoted to
+        // TA later is new to the instructor side, so they must be taught rather than skipped.
+        instructorOnboarding: {
+            contentSetup: false,
+            flagSetup: false,
+            monitorSetup: false
+        },
         createdAt: new Date(),
         updatedAt: new Date()
     };
@@ -130,6 +138,40 @@ export async function updateGlobalUser(
         { returnDocument: 'after' }
     );
     return result as unknown as GlobalUser;
+}
+
+/**
+ * completeInstructorOnboardingStage
+ *
+ * Marks one instructor tutorial stage complete for the user located by `puid`.
+ *
+ * Writes a dotted path rather than going through {@link updateGlobalUser}, whose shallow
+ * `$set` would replace the whole `instructorOnboarding` subdocument and wipe the sibling
+ * stages. Only ever sets `true` — a stage is never un-completed.
+ *
+ * @param ctx - MongoDalContext
+ * @param puid - Global identity key; never leaves this collection
+ * @param stage - Which tutorial stage completed
+ *
+ * @returns Post-image `GlobalUser`, or `null` when no user matches `puid`
+ */
+export async function completeInstructorOnboardingStage(
+    ctx: MongoDalContext,
+    puid: string,
+    stage: keyof InstructorOnboardingProgress
+): Promise<GlobalUser | null> {
+    const collection = activeUsersMongoCollection(ctx.db);
+    const result = await collection.findOneAndUpdate(
+        { puid },
+        {
+            $set: {
+                [`instructorOnboarding.${stage}`]: true,
+                updatedAt: new Date()
+            }
+        },
+        { returnDocument: 'after' }
+    );
+    return (result as unknown as GlobalUser | null) ?? null;
 }
 
 /**

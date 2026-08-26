@@ -161,6 +161,35 @@ not a collection of its own.
 - Sync is add-only: a student whose Canvas enrollment disappears keeps their EngE-AI
   enrollment and chat history. Nothing in this path deletes an enrollment row.
 
+### Instructor onboarding state (`active-users.instructorOnboarding`)
+
+Instructor onboarding is split across two documents, deliberately.
+
+- **`activeCourse.courseSetup`** stays on the course (`active-course-list`). Completing it
+  writes real configuration — `frameType`, `tilesNumber`, `topicOrWeekInstances`,
+  `features` — so a second instructor must not be able to run it again and override the
+  first one's choices.
+- **`GlobalUser.instructorOnboarding`** (`active-users`) holds `{ contentSetup, flagSetup,
+  monitorSetup }`. These three stages are pure tutorials that write nothing to the course,
+  so progress belongs to the person. An instructor new to EngE-AI is taught even when a
+  colleague already set the course up, and a returning instructor is never taught twice.
+
+`activeCourse.contentSetup` / `flagSetup` / `monitorSetup` are **deprecated** and no longer
+read or written. They are left on existing documents (not `$unset`) so the change reverts
+cleanly; `PUT /api/courses/:id` strips them from request bodies so a stale client cannot
+resurrect them.
+
+- Written only by `completeInstructorOnboardingStage` (`global-user-mongo.ts`), which uses a
+  dotted `$set` (`instructorOnboarding.<stage>`). The shallow `$set` in `updateGlobalUser`
+  would replace the whole subdocument and wipe the sibling stages. Only ever sets `true`.
+- Read by `resolveInstructorModeRedirect` (`src/helpers/instructor-onboarding-redirect.ts`),
+  the single choke point for both course-entry routes.
+- `sanitizeGlobalUserForFrontend` (`src/utils/user-utils.ts`) whitelists fields, so the
+  object is coerced there explicitly — a field omitted from that function never reaches the
+  browser.
+- Backfilled by **OB-002** from the coarser `instructorOnboardingCompleted` flag. See
+  [DATA_MIGRATIONS.md](DATA_MIGRATIONS.md).
+
 - **TBD**: One-way deps (example: flags + user enrichment).
 
 ## Tests and coverage
@@ -174,7 +203,7 @@ not a collection of its own.
 
 ## Changelog / migration notes
 
-- **Data migrations registry:** [DATA_MIGRATIONS.md](DATA_MIGRATIONS.md) — SP-001 (system prompts), CM-001 (chat mode), OB-001 (startup backfill), SQ-001 (scenario questions collection), SQ-004 (scenario progress collection).
+- **Data migrations registry:** [DATA_MIGRATIONS.md](DATA_MIGRATIONS.md) — SP-001 (system prompts), CM-001 (chat mode), OB-001 (student onboarding backfill), OB-002 (per-user instructor tutorial progress), SQ-001 (scenario questions collection), SQ-004 (scenario progress collection).
 - Façade delegates live under `src/db/mongo/` (split from monolithic `enge-ai-mongodb.ts`).
 
 ## References

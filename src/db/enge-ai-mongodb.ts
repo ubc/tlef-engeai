@@ -20,6 +20,7 @@ import {
     FlagReport,
     GlobalUser,
     InitialAssistantPrompt,
+    InstructorOnboardingProgress,
     MemoryAgentEntry,
     SystemPromptItem,
     ScenarioMode,
@@ -969,6 +970,12 @@ export class EngEAI_MongoDB {
 
     public updateGlobalUser = async (puid: string, updateData: Partial<GlobalUser>) =>
         GlobalUserMongo.updateGlobalUser(this.ctx(), puid, updateData);
+
+    /** Marks one instructor tutorial stage complete without clobbering its siblings. */
+    public completeInstructorOnboardingStage = async (
+        puid: string,
+        stage: keyof InstructorOnboardingProgress
+    ) => GlobalUserMongo.completeInstructorOnboardingStage(this.ctx(), puid, stage);
 
     public updateGlobalUserAffiliation = async (
         userId: string,
