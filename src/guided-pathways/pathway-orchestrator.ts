@@ -85,11 +85,14 @@ export async function evaluatePathways(input: PathwayEvaluationInput): Promise<P
             const mongo = await EngEAI_MongoDB.getInstance();
             const course = (await mongo.getCourseByName(input.courseName)) as activeCourse | null;
             const modelSelection = ModelSelectionService.getInstance();
+            
             if (course?.id) {
                 await modelSelection.buildFeatureLlmCallOptions(course.id, 'guidedPathway');
-            } else {
+            } 
+            else {
                 modelSelection.buildDefaultProviderOptions('guidedPathway');
             }
+            
             const mock =
                 getMockPathwayEvaluation(input.courseName, pathways) ?? noPathwayTriggerResult();
             appLogger.log(
@@ -98,9 +101,11 @@ export async function evaluatePathways(input: PathwayEvaluationInput): Promise<P
             return mock;
         }
 
-        // Build the schema, system prompt, and user turn
+        // Build the schema, system prompt (course shell + trigger sections), and user turn
+        const mongo = await EngEAI_MongoDB.getInstance();
+        const evaluationPrompt = await mongo.getPathwayEvaluationPrompt(input.courseName);
         const schema = buildPathwayEvaluationSchema(pathways.map((p) => p.id));
-        const systemPrompt = buildPathwayEvaluationSystemPrompt(pathways);
+        const systemPrompt = buildPathwayEvaluationSystemPrompt(pathways, evaluationPrompt.body);
         const userTurn = buildPathwayEvaluationUserTurn(input.message, {
             courseName: input.courseName,
             conversationMode: input.conversationMode,
@@ -114,7 +119,6 @@ export async function evaluatePathways(input: PathwayEvaluationInput): Promise<P
 
         // Send the messages to the LLM
         const llmModule = getLlmModule();
-        const mongo = await EngEAI_MongoDB.getInstance();
         const course = (await mongo.getCourseByName(input.courseName)) as activeCourse | null;
         const modelSelection = ModelSelectionService.getInstance();
         const llmOptions = course?.id

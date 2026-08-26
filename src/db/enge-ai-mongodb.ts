@@ -875,6 +875,15 @@ export class EngEAI_MongoDB {
     public resetPathwaysToDefaults = async (courseName: string) =>
         PathwaysMongo.resetPathwaysToDefaults(this.ctx(), courseName);
 
+    public getPathwayEvaluationPrompt = async (courseName: string) =>
+        PathwaysMongo.getPathwayEvaluationPrompt(this.ctx(), courseName);
+
+    public updatePathwayEvaluationPrompt = async (courseName: string, body: string) =>
+        PathwaysMongo.updatePathwayEvaluationPrompt(this.ctx(), courseName, body);
+
+    public resetPathwayEvaluationPrompt = async (courseName: string) =>
+        PathwaysMongo.resetPathwayEvaluationPrompt(this.ctx(), courseName);
+
     /**
      * #########################################################
      * Course users roster — course-user-mongo.ts

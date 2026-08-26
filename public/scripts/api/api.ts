@@ -39,7 +39,6 @@ export async function sendMessageToServer(text: string): Promise<MessageReply> {
  * chat-window, 
  * flag-history, 
  * profile, 
- * disclaimer, 
  * flag-instructor, 
  * monitor-instructor, 
  * documents-instructor, 
@@ -61,7 +60,6 @@ export async function loadComponentHTML(
                     | 'chat-window' 
                     | 'flag-history'
                     | 'profile'
-                    | 'disclaimer'
                     | 'flag-instructor'
                     | 'monitor-instructor'
                     | 'documents-instructor'
@@ -88,7 +86,6 @@ export async function loadComponentHTML(
         case 'welcome-screen':
         case 'chat-window' :
         case 'flag-history':
-        case 'disclaimer':
             response = await fetch(`/components/chat/${componentName}.html`); 
             break;
         case 'profile':

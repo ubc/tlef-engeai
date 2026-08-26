@@ -10,6 +10,7 @@ import {
 } from '../pathway-schema';
 import { buildPlatformPathwaySeeds } from '../pathway-seed';
 import { buildPathwayEvaluationSystemPrompt } from '../pathway-prompt';
+import { PLATFORM_PATHWAY_EVALUATION_PROMPT_DEFAULT } from '../pathway-evaluation-prompt-default';
 
 describe('pathway-schema', () => {
     const courseName = 'APSC 183';
@@ -52,9 +53,8 @@ describe('pathway-schema', () => {
         expect(result.ctas[0].label).toContain('9-8-8');
     });
 
-    it('maps inappropriate-content and off-topic', () => {
+    it('maps inappropriate-content', () => {
         expect(buildPathwayResult('inappropriate-content', courseName, seeds).triggered).toBe(true);
-        expect(buildPathwayResult('off-topic', 'CHBE 241', seeds).responseText).toContain('CHBE 241');
     });
 
     it('unknown pathway id fails safe', () => {
@@ -69,10 +69,12 @@ describe('pathway-schema', () => {
     });
 
     it('buildPathwayEvaluationSchema includes none and pathway ids', () => {
-        const schema = buildPathwayEvaluationSchema(['mental-health-crisis', 'off-topic']);
+        const schema = buildPathwayEvaluationSchema(['mental-health-crisis', 'inappropriate-content']);
         expect(schema.parse({ pathwayType: 'none' }).pathwayType).toBe('none');
-        expect(schema.parse({ pathwayType: 'off-topic' }).pathwayType).toBe('off-topic');
-        expect(() => schema.parse({ pathwayType: 'inappropriate-content' })).toThrow();
+        expect(schema.parse({ pathwayType: 'inappropriate-content' }).pathwayType).toBe(
+            'inappropriate-content'
+        );
+        expect(() => schema.parse({ pathwayType: 'off-topic' })).toThrow();
     });
 
     it('prompt lists pathway ids and triggers without priority language', () => {
@@ -81,6 +83,23 @@ describe('pathway-schema', () => {
         expect(prompt).toContain('### `mental-health-crisis`');
         expect(prompt).not.toContain('Priority rule');
         expect(prompt).not.toContain('priority 1');
-        expect(prompt).not.toContain('mental-health-crisis > inappropriate-content > off-topic');
+        expect(prompt).not.toContain('off-topic');
+        expect(prompt).toContain('Calibration reminders');
+    });
+
+    it('custom shell replaces pathway_trigger_sections placeholder', () => {
+        const shell = `HEADER\n{{pathway_trigger_sections}}\nFOOTER`;
+        const prompt = buildPathwayEvaluationSystemPrompt(seeds, shell);
+        expect(prompt).toContain('HEADER');
+        expect(prompt).toContain('FOOTER');
+        expect(prompt).toContain('### `mental-health-crisis`');
+        expect(prompt).not.toContain('{{pathway_trigger_sections}}');
+    });
+
+    it('platform default shell includes placeholder and few-shot examples', () => {
+        expect(PLATFORM_PATHWAY_EVALUATION_PROMPT_DEFAULT).toContain('{{pathway_trigger_sections}}');
+        expect(PLATFORM_PATHWAY_EVALUATION_PROMPT_DEFAULT).toContain('## Few-shot');
+        expect(PLATFORM_PATHWAY_EVALUATION_PROMPT_DEFAULT).toContain('pathwayType: none');
+        expect(PLATFORM_PATHWAY_EVALUATION_PROMPT_DEFAULT).toContain('mental-health-crisis');
     });
 });

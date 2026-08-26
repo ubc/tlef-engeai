@@ -2,7 +2,7 @@
  * Onboarding Flags Migration (OB-001)
  *
  * Backfills `studentOnboardingCompleted` on GlobalUser from existing CourseUser data.
- * Runs on every server restart.
+ * Invoked by `npm run migrate` op A (not server start).
  *
  * - Student: true if any CourseUser (across enrolled courses) has userOnboarding=true
  *

@@ -23,7 +23,7 @@
  * Post: every GlobalUser has `instructorOnboarding` with all three stages set.
  *
  * Idempotent: users that already carry the field are skipped without a write, so a
- * restart can never overwrite progress made since the first run.
+ * later CLI apply cannot overwrite progress made since the first run.
  *
  * Rollback: revert the code; the field is additive and ignored by the previous version.
  * `activeCourse.contentSetup` / `flagSetup` / `monitorSetup` are left in place (deprecated,
