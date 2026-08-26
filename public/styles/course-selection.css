@@ -974,6 +974,23 @@
     margin-top: 1.5rem;
 }
 
+/* Connect to Canvas modal — reuses .admin-modal-input / .admin-modal-actions for
+   the select and button row; only the step label and inline error are new. */
+.canvas-connect-step {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: #6b7280;
+    margin-bottom: 0.5rem;
+}
+
+.canvas-connect-error {
+    color: #dc3545;
+    font-size: 0.875rem;
+    margin-top: 0.5rem;
+}
+
 .course-code-submit-btn {
     padding: 0.75rem 2rem;
     background-color: var(--color-chbe-green);

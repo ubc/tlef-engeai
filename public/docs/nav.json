@@ -1,0 +1,40 @@
+{
+  "items": [
+    { "title": "Overview", "path": "overview" },
+    {
+      "title": "Logistics",
+      "children": [
+        { "title": "Get started", "path": "logistics/get-started" },
+        { "title": "Scope", "path": "logistics/scope" },
+        { "title": "Agentic Engineering", "path": "logistics/agentic-engineering" }
+      ]
+    },
+    {
+      "title": "Technical Concepts",
+      "children": [
+        { "title": "Main Architecture", "path": "technical-concepts/main-architecture" },
+        { "title": "AI Assisted Coding Tools", "path": "technical-concepts/ai-assisted-coding-tools" },
+        { "title": "Front End Engineering", "path": "technical-concepts/front-end-engineering" },
+        { "title": "Database", "path": "technical-concepts/database" },
+        { "title": "Vector Database", "path": "technical-concepts/vector-database" },
+        { "title": "Prompt Engineering", "path": "technical-concepts/prompt-engineering" },
+        { "title": "Middleware", "path": "technical-concepts/middleware" },
+        { "title": "AI Agents and tool calling", "path": "technical-concepts/ai-agents-and-tool-calling" }
+      ]
+    },
+    {
+      "title": "Features",
+      "children": [
+        { "title": "Integrated Systems", "path": "features/integrated-systems" },
+        { "title": "Course Setting", "path": "features/course-setting" },
+        { "title": "Conversation", "path": "features/conversation" },
+        { "title": "Migration", "path": "features/migration" },
+        { "title": "Memory Agent", "path": "features/memory-agent" },
+        { "title": "Scenario Generation", "path": "features/scenario-generation" },
+        { "title": "Message Flagging", "path": "features/message-flagging" },
+        { "title": "Guided Pathway", "path": "features/guided-pathway" },
+        { "title": "Editable Prompts", "path": "features/editable-prompts" }
+      ]
+    }
+  ]
+}

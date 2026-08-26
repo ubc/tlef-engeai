@@ -928,6 +928,29 @@
     outline-offset: -2px;
 }
 
+/* Listed for context, not choosable — mirrors .model-feature-row--inactive */
+.model-picker-option--unavailable {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.model-picker-option--unavailable:hover {
+    background-color: transparent;
+}
+
+.model-picker-option-note {
+    margin-left: auto;
+    padding: 0.1rem 0.35rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-color, #d8d8d8);
+    font-size: 0.65rem;
+    font-weight: 600;
+    line-height: 1.4;
+    letter-spacing: 0.01em;
+    color: var(--text-secondary, #5f5f5f);
+    white-space: nowrap;
+}
+
 .model-picker-option-title {
     font-size: 0.8rem;
     font-weight: 600;

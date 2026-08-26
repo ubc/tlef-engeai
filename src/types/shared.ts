@@ -301,6 +301,11 @@ export interface LlmModelDashboardCatalogEntry {
     label: string;
     costTier: 'low' | 'medium' | 'high';
     reasoningOptions: LlmReasoningCatalogOption[];
+    /**
+     * True when the model is listed for context but cannot be chosen — the picker
+     * renders it disabled and PATCH rejects it. Absent means selectable.
+     */
+    unavailable?: boolean;
 }
 
 /** GET `/api/courses/:courseId/llm-model-catalog` response body. */
@@ -318,10 +323,35 @@ export interface UpdateCourseLlmSettingsRequest {
     memoryAgent: FeatureLlmSelection;
 }
 
+/**
+ * Link between an EngE-AI course and the LMS course it was imported from.
+ *
+ * Set once, when an instructor imports a course from their LMS; it is what lets a
+ * student who connects the same LMS land in the right EngE-AI course. A course
+ * created by an admin in EngE-AI has no `lmsLink` and is joined by course code.
+ *
+ * `provider` is stored explicitly because the LMS package's `LmsCourse` dropped its
+ * own `provider` tag in 1.0.0 — ids are provider-scoped, so a bare `courseId` is
+ * ambiguous once more than one LMS is configured.
+ */
+export interface CourseLmsLink {
+    /** Which LMS `courseId` belongs to. Only Canvas imports courses today. */
+    provider: 'canvas';
+    /** The LMS's own course id, as a string (Canvas returns a number). */
+    courseId: string;
+    /** Course title as the LMS reported it at link time; display only, never re-matched on. */
+    name: string;
+    /** Course code as the LMS reported it at link time, e.g. `APSC183-101`. */
+    code: string;
+    linkedAt: Date;
+    /** `GlobalUser.userId` of the instructor who imported it — never a PUID. */
+    linkedBy: string;
+}
+
 export interface activeCourse {
     id : string,
     date : Date,
-    courseSetup : boolean, 
+    courseSetup : boolean,
     contentSetup : boolean,
     flagSetup : boolean,
     monitorSetup : boolean,
@@ -332,6 +362,11 @@ export interface activeCourse {
     tilesNumber: number;
     topicOrWeekInstances: TopicOrWeekInstance[]; // previously content, previously divisions
     courseCode?: string; // 6-character uppercase alphanumeric PIN code for course entry
+    /**
+     * Present only on courses imported from an LMS. Absent on admin-created courses,
+     * which students join with {@link activeCourse.courseCode} instead.
+     */
+    lmsLink?: CourseLmsLink;
     collections?: {
         users: string;
         flags: string;
@@ -1143,4 +1178,41 @@ export interface ScenarioSolutionResponse {
         subQuestions: ScenarioSubQuestion[];
     };
     error?: string;
+}
+
+// ===========================================
+// ========= SESSION IDLE UX ================
+// ===========================================
+
+/** Server idle phase derived from lastActivityAt and env thresholds. */
+export type SessionIdleState = 'active' | 'warning' | 'expired';
+
+/** Per-response client instruction for inactivity UX (not a persisted state). */
+export type SessionIdleUiAction = 'none' | 'show_inactivity_warning' | 'force_logout';
+
+/** Idle snapshot returned on GET/POST /api/user/activity. */
+export interface SessionIdleStatus {
+    serverTime: number; // server epoch ms at computation time
+    lastActivityAt: number; // session anchor epoch ms
+    state: SessionIdleState; // active | warning | expired
+    warningAt: number; // lastActivityAt + idle-before-warning
+    expiresAt: number; // warningAt + grace-after-warning
+    remainingMsUntilWarning: number; // ms until warningAt (0 when past)
+    remainingMsUntilGraceExpiry: number; // ms until expiresAt (0 when past)
+}
+
+/** Client poll/UI directive for one activity API response. */
+export interface SessionIdleClientDirective {
+    pollAfterMs: number; // ms until next GET /api/user/activity (0 = stop)
+    uiAction: SessionIdleUiAction; // modal/logout instruction for this response
+    warningCountdownSec?: number; // when uiAction is show_inactivity_warning
+}
+
+/** GET/POST /api/user/activity response shape. */
+export interface SessionIdleStatusResponse {
+    success: boolean;
+    idle: SessionIdleStatus;
+    client: SessionIdleClientDirective;
+    error?: string;
+    code?: string; // INACTIVITY_EXPIRED on 401
 }

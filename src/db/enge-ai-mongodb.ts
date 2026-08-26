@@ -15,6 +15,7 @@ import {
     Chat,
     ChatMessage,
     PersistedConversationModeId,
+    CourseLmsLink,
     CourseUser,
     FlagReport,
     GlobalUser,
@@ -49,6 +50,7 @@ import * as MonitorConversationsMongo from './mongo/monitor-conversations-mongo'
 import * as ReportPdfMongo from './mongo/report-pdf-mongo';
 import * as AcademicPeriodMongo from './mongo/academic-period-mongo';
 import * as CourseEnrollmentMongo from './mongo/course-enrollment-mongo';
+import * as CourseLmsLinkMongo from './mongo/course-lms-link-mongo';
 import * as CourseRosterMongo from './mongo/course-roster-mongo';
 import * as InstructorPeriodAllowanceMongo from './mongo/instructor-period-allowance-mongo';
 // @rdschrs: Implemented the Writing Feedback persistence façade and delegate boundary.
@@ -1148,6 +1150,23 @@ export class EngEAI_MongoDB {
 
     public enrollInstructorsOnCourse = async (course: activeCourse, instructorUserIds: string[]) =>
         CourseEnrollmentMongo.enrollInstructorsOnCourse(this.ctx(), course, instructorUserIds);
+
+    /**
+     * LMS course links — course-lms-link-mongo.ts
+     */
+    public findCourseByLmsLink = async (provider: CourseLmsLink['provider'], externalCourseId: string) =>
+        CourseLmsLinkMongo.findCourseByLmsLink(this.ctx(), provider, externalCourseId);
+
+    public findCoursesByLmsLinks = async (
+        provider: CourseLmsLink['provider'],
+        externalCourseIds: string[]
+    ) => CourseLmsLinkMongo.findCoursesByLmsLinks(this.ctx(), provider, externalCourseIds);
+
+    public setCourseLmsLink = async (courseId: string, link: CourseLmsLink) =>
+        CourseLmsLinkMongo.setCourseLmsLink(this.ctx(), courseId, link);
+
+    public createCourseLmsLinkIndex = async () =>
+        CourseLmsLinkMongo.createCourseLmsLinkIndex(this.ctx());
 
     /**
      * Instructor period allowances — instructor-period-allowance-mongo.ts

@@ -9,6 +9,7 @@ import { appLogger } from '../utils/logger';
 import { asyncHandlerWithAuth } from '../middleware/async-handler';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { sanitizeGlobalUserForFrontend } from '../utils/user-utils';
+import { respondWithSessionIdleStatus } from '../middleware/session-activity';
 
 const router = express.Router();
 
@@ -167,54 +168,37 @@ router.patch('/onboarding/instructor-completed', asyncHandlerWithAuth(async (req
 }));
 
 /**
+ * GET /activity
+ * Read-only idle poll. Does not bump lastActivityAt.
+ *
+ * @route GET /api/user/activity
+ * @returns {SessionIdleStatusResponse} { success, idle, client }
+ * @response 200 - Success
+ * @response 401 - INACTIVITY_EXPIRED
+ */
+router.get('/activity', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    respondWithSessionIdleStatus(req, res, false);
+}));
+
+/**
  * POST /activity
- * Updates server-side last activity timestamp for cross-tab synchronization. Used by InactivityTracker.
+ * Bumps lastActivityAt when body.userActivity === true; returns idle + client directive.
  *
  * @route POST /api/user/activity
- * @param {number} [lastActivityTime] - Client timestamp (body, optional)
- * @returns {object} { success: boolean, currentTime?: number, serverLastActivityTime?: number, lastActivityTime?: number, error?: string }
+ * @param {boolean} [userActivity] - When true, records user activity on the session
+ * @returns {SessionIdleStatusResponse} { success, idle, client }
  * @response 200 - Success
- * @response 500 - Failed to update activity timestamp
+ * @response 401 - INACTIVITY_EXPIRED
  */
 router.post('/activity', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
-        const { lastActivityTime } = req.body;
-        const currentTime = Date.now();
-        
-        // Update session with last activity time
-        // Use the client's lastActivityTime if provided and recent, otherwise use current server time
-        let serverLastActivityTime: number;
-        
-        if (lastActivityTime && typeof lastActivityTime === 'number') {
-            // Use client's timestamp if it's reasonable (within last 10 minutes)
-            const timeDiff = Math.abs(currentTime - lastActivityTime);
-            if (timeDiff < 10 * 60 * 1000) {
-                serverLastActivityTime = lastActivityTime;
-            } else {
-                // Client timestamp seems off, use server time
-                serverLastActivityTime = currentTime;
-            }
-        } else {
-            // No client timestamp provided, use server time
-            serverLastActivityTime = currentTime;
-        }
-        
-        // Store in session for cross-tab synchronization
-        (req.session as any).lastActivityTime = serverLastActivityTime;
-        
-        // Return current server time and last activity time for client sync
-        return res.json({
-            success: true,
-            currentTime: currentTime,
-            serverLastActivityTime: serverLastActivityTime,
-            lastActivityTime: serverLastActivityTime // Alias for compatibility
-        });
-        
+        const bump = req.body?.userActivity === true;
+        respondWithSessionIdleStatus(req, res, bump);
     } catch (error) {
         appLogger.error('[USER-ACTIVITY] Error:', error);
         return res.status(500).json({
             success: false,
-            error: 'Failed to update activity timestamp'
+            error: 'Failed to update activity timestamp',
         });
     }
 }));

@@ -1831,7 +1831,7 @@ export async function showInactivityWarningModal(
     countdownDisplay.id = 'inactivity-countdown';
     countdownDisplay.style.fontSize = '48px';
     countdownDisplay.style.fontWeight = 'bold';
-    countdownDisplay.style.color = 'var(--color-chbe-green, #4CAF50)';
+    countdownDisplay.style.color = '#f44336';
     countdownDisplay.style.marginBottom = '16px';
     countdownDisplay.textContent = `${countdown}`;
     
@@ -1874,9 +1874,8 @@ export async function showInactivityWarningModal(
         
         // Change color as time runs out
         if (countdown <= 10) {
-            countdownDisplay.style.color = '#f44336'; // Red
-        } else if (countdown <= 30) {
-            countdownDisplay.style.color = '#ff9800'; // Orange
+            countdownDisplay.classList.add('danger');
+            countdownDisplay.style.color = '#f44336';
         }
         
         if (countdown <= 0) {
@@ -1903,6 +1902,7 @@ export async function showInactivityWarningModal(
     try {
         const result = await modal.show({
             type: 'warning',
+            customClass: 'modal-inactivity',
             title: 'Session Timeout Warning',
             content: countdownContainer,
             buttons: [

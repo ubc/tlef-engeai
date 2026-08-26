@@ -20,12 +20,12 @@ import { initializeFlags } from "../feature/flags.js";
 import { initializeMonitorDashboard } from "../feature/monitor.js";
 import { ChatManager } from "../feature/chat.js";
 import { authService } from '../services/auth-service.js';
-import { showConfirmModal, showSkipOnboardingModal, showSimpleErrorModal, showInactivityWarningModal } from '../ui/modal-overlay.js';
+import { showConfirmModal, showSkipOnboardingModal, showSimpleErrorModal } from '../ui/modal-overlay.js';
 import { renderAbout } from '../about/about.js';
 // @rdschrs: Integrated capability-gated Writing Feedback navigation and initialization.
 import { initializeWritingFeedback } from '../feature/writing-feedback.js';
 import { initializeCourseSummary, summonCourseSummary, configureCourseSummaryFabVisibility } from '../feature/course-summary.js';
-import { inactivityTracker } from '../services/inactivity-tracker.js';
+import { startInactivityTracking } from '../services/inactivity-tracker.js';
 import { initializeAssistantPrompts, hasUnsavedPromptChanges, resetUnsavedPromptChanges } from '../feature/assistant-prompts.js';
 import { initializeSystemPrompts, flushSystemPromptOnLeave } from '../feature/system-prompts.js';
 import { initializeScenarioQuestionsInstructor, isScenarioQuestionsMounted, syncScenarioQuestionsFromURL } from '../feature/scenario-questions-instructor.js';
@@ -1827,67 +1827,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 /**
- * initializeInactivityTracking
- * 
- * @returns void
- * Sets up inactivityTracker warning and logout events. Shows modal on warning; calls authService.logout on timeout.
+ * initializeInactivityTracking - start server-directed idle poll loop
  */
 function initializeInactivityTracking(): void {
-    // console.log('[INSTRUCTOR-MODE] 🔍 Initializing inactivity tracking...'); // 🟢 MEDIUM: Initialization logging
-    
-    // Set up event listeners for inactivity tracker
-    inactivityTracker.on('warning', async (data: any) => {
-        // console.log('[INSTRUCTOR-MODE] ⚠️ Inactivity warning triggered'); // 🟢 MEDIUM: Warning notification
-        
-        // Pause tracker while modal is shown
-        inactivityTracker.pause();
-        
-        // Show warning modal with countdown
-        const remainingSeconds = Math.floor((data.remainingTimeUntilLogout || 60000) / 1000);
-        const result = await showInactivityWarningModal(remainingSeconds, () => {
-            // User clicked "Stay Active" - reset tracker
-            // console.log('[INSTRUCTOR-MODE] ✅ User chose to stay active'); // 🟢 MEDIUM: User action logging
-            inactivityTracker.reset();
-        });
-        
-        // Resume tracker after modal closes
-        inactivityTracker.resume();
-        
-        // If timeout occurred, logout will be triggered by logout event
-        if (result.action === 'timeout') {
-            // console.log('[INSTRUCTOR-MODE] ⏱️ Inactivity warning timeout - logout will be triggered'); // 🟢 MEDIUM: Timeout logging
-
-            // MANUALLY TRIGGER LOGOUT HERE since logout timer was cleared
-            inactivityTracker.stop();
-            authService.logout();
-            return; // Stop execution here - logout will be triggered by logout event
-        }
-    });
-    
-    inactivityTracker.on('logout', async (data: any) => {
-        // console.log('[INSTRUCTOR-MODE] 🚪 Inactivity logout triggered'); // 🟢 MEDIUM: Logout trigger logging
-        
-        // Stop tracking
-        inactivityTracker.stop();
-        
-        // Show logout message and redirect
-        try {
-            await showConfirmModal(
-                'Session Expired',
-                'You have been inactive for too long. You will be logged out now.',
-                'OK',
-                ''
-            );
-        } catch (error) {
-            // Modal might fail if already logged out, continue anyway
-            console.warn('[INSTRUCTOR-MODE] ⚠️ Could not show logout modal:', error);
-        }
-        
-        // Logout user
-        authService.logout();
-    });
-
-    // Start tracking
-    inactivityTracker.start();
-    
+    startInactivityTracking();
 }

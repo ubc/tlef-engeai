@@ -233,6 +233,23 @@
     margin-right: 1rem;
 }
 
+/* Inactivity session timeout — red urgency (scoped; other .modal-warning modals stay yellow) */
+.modal-inactivity.modal-warning .modal-title {
+    color: #dc3545;
+}
+
+.modal-inactivity.modal-warning .modal-header {
+    border-bottom-color: #f5c6cb;
+}
+
+.modal-inactivity.modal-warning .modal-icon {
+    color: #dc3545;
+}
+
+.modal-inactivity.modal-warning .modal-container {
+    border-left: 4px solid #dc3545;
+}
+
 /* Warning Modal */
 .modal-warning .modal-title {
     color: #ffc107;
@@ -1104,7 +1121,7 @@ body.modal-open {
 #inactivity-countdown {
     font-size: 48px;
     font-weight: bold;
-    color: var(--color-chbe-green, #4CAF50);
+    color: #f44336;
     margin-bottom: 16px;
     font-family: 'Courier New', monospace;
     transition: color 0.3s ease;
@@ -1114,7 +1131,7 @@ body.modal-open {
 
 /* Countdown color states */
 #inactivity-countdown.warning {
-    color: #ff9800; /* Orange */
+    color: #f44336;
 }
 
 #inactivity-countdown.danger {
