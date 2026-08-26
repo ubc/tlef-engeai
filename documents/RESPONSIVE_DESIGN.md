@@ -190,7 +190,7 @@ The student mode uses a consistent mobile header pattern across welcome screen, 
 
 ## Instructor Flag Management
 
-**Flag Management** (`flag-instructor.html`, `flag-instructor.css`) uses the instructor mobile header pattern (hamburger + title + workflow nav tiles) at **768px**.
+**Flag Management** (`flag-instructor.html`, `flag-instructor.css`) uses the shared **page shell** (`.page-frame` > `.page-shell` > `.page-header`). Workflow nav tiles sit in the page header (outline/green, filled when active). At **768px**, tiles wrap under the title with 44px touch targets.
 
 **Filters** sit in page content, first below the header (not in the header, not a modal). Source, category, and period controls apply with Clear/Apply. Custom date fields stack to one column at ≤768px.
 
@@ -198,20 +198,20 @@ The student mode uses a consistent mobile header pattern across welcome screen, 
 
 ## Instructor Dashboard
 
-The instructor dashboard (`dashboard-instructor.html`, `dashboard.css`) uses a two-column topbar on desktop and stacks on mobile. `.dashboard-page-header` is `position: sticky` inside `.dashboard-grid-view` (the scrollport), with opaque `var(--chat-bg)` chrome and negative margins matching grid padding so cards cannot peek beside it.
+The instructor dashboard (`dashboard-instructor.html`, `dashboard.css`) uses the shared **page shell**. The topbar is `.page-header` plus `.dashboard-topbar` (title + course-code flip). Welcome/date live in the scroll body under the header.
 
 ### Desktop (≥768px)
 
-- **Topbar**: sticky flex row — left column (title, welcome, date) + right column (course-code flip widget, 200px).
+- **Topbar**: sticky flex row — left column (title) + right column (course-code flip widget, 200px).
 - **Advanced Settings**: static section title + divider; three inline accordion cards (Model Settings, Advanced Features, Course Information).
-- **Enter animation**: topbar first, greeting/date at 0.08s, card grid at 0.18s, Advanced Settings section at 0.28s. Topbar keyframes end at `transform: none` so sticky keeps working after the enter anim.
+- **Enter animation**: header via `.page-header`; greeting/date at 0.08s, card grid at 0.18s, Advanced Settings section at 0.28s.
 
 ### Mobile (≤768px)
 
-- **Topbar**: sticky; `flex-direction: column`; course-code flip `align-self: flex-start` (left-aligned under greeting block). Sticky bleed margins match the tighter grid padding (`1.25rem` / `1rem`).
+- **Topbar**: sticky; `flex-direction: column`; course-code flip `align-self: flex-start` (left-aligned under the title).
 - **Advanced Settings**: three inline accordions (Model Settings, Advanced Features, Course Information) expand inside each card with a smooth height transition; `prefers-reduced-motion` collapses instantly.
 - **Feature rows**: Model pickers and Advanced Feature toggles share a wrapping flex layout at every width. Controls stay beside their title where space permits, wrap internally when possible, then move to a right-aligned line below the title.
-- **Hamburger**: shown in title row via `.dashboard-mobile-menu-btn`.
+- **Hamburger**: shown in the title row via `.instructor-mobile-hamburger-btn`.
 - **Accordions**: full-width; toggle min-height 44px for touch.
 
 Course Information was removed from the instructor sidebar footer; course code lives in the dashboard topbar and metadata in the Course Information accordion.
@@ -221,8 +221,6 @@ Course Information was removed from the instructor sidebar footer; course code l
 ## Page shell (reusable layout)
 
 Generic scrollport + sticky header module: [`public/styles/page-shell.css`](public/styles/page-shell.css). Loaded from `instructor-mode.html` for instructor features today; student/admin can link the same file later without renaming classes.
-
-**Exceptions:** Dashboard uses `.dashboard-content-area` / `.dashboard-grid-view` (`dashboard.css`). Flags keeps its own header styles.
 
 ### Structure
 
@@ -244,8 +242,8 @@ Modifiers: `.page-shell--wide` (1680px, Writing Feedback), `.page-shell--column`
 | `--page-shell-pad-bottom` | `20px` | shell uses `2rem` bottom pad |
 | `--page-header-pad-top` | `1.5rem` | `1.25rem` |
 | `--page-header-pad-bottom` | `1rem` | `0.75rem` |
-| `--page-header-margin-bottom` | `1.75rem` | — |
-| `--page-header-title-size` | `2rem` | title `1.25rem` via instructor mobile rules |
+| `--page-header-margin-bottom` | `3rem` | — |
+| `--page-header-title-size` | `2rem` | — |
 | `--page-header-title-weight` | `700` | — |
 
 ### Sticky header (`.page-header`)
