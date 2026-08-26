@@ -241,9 +241,12 @@ export interface activeCourse {
     id : string,
     date : Date,
     courseSetup : boolean, 
-    contentSetup : boolean,
-    flagSetup : boolean,
-    monitorSetup : boolean,
+    /** @deprecated moved to `GlobalUser.instructorOnboarding` (OB-002); retained for rollback only */
+    contentSetup? : boolean,
+    /** @deprecated moved to `GlobalUser.instructorOnboarding` (OB-002); retained for rollback only */
+    flagSetup? : boolean,
+    /** @deprecated moved to `GlobalUser.instructorOnboarding` (OB-002); retained for rollback only */
+    monitorSetup? : boolean,
     courseName: string,
     instructors: InstructorInfo[] | string[]; // Support both old format (string[]) and new format (InstructorInfo[])
     teachingAssistants: InstructorInfo[] | string[]; // Support both old format (string[]) and new format (InstructorInfo[])
@@ -652,6 +655,23 @@ export interface CourseUser {
 }
 
 /**
+ * Per-user instructor tutorial progress.
+ *
+ * A missing or `false` entry means the tutorial is still owed, which is how users who
+ * predate this field are routed through the stages. Progress follows the person rather
+ * than the course, so a new instructor joining an already-set-up course is still taught,
+ * while a returning instructor is never taught the same tutorial twice.
+ *
+ * `courseSetup` is deliberately absent: it writes real course configuration and stays on
+ * {@link activeCourse} so a second instructor cannot override the first one's choices.
+ */
+export interface InstructorOnboardingProgress {
+    contentSetup?: boolean;
+    flagSetup?: boolean;
+    monitorSetup?: boolean;
+}
+
+/**
  * Must match src/types/shared.ts
  * Global user registry
  * Stores core user identity across all courses
@@ -672,6 +692,8 @@ export interface GlobalUser {
     studentOnboardingCompleted?: boolean;
     /** platform admin — all instructor privileges plus admin-only features */
     isAdmin?: boolean;
+    /** Per-user instructor tutorial progress; see {@link InstructorOnboardingProgress}. Backfilled by OB-002. */
+    instructorOnboarding?: InstructorOnboardingProgress;
 }
 
 /**

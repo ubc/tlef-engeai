@@ -195,12 +195,16 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
         const isStaff =
             isCourseStaff(courseData, globalUser) || globalUser.affiliation === 'faculty';
 
+        // Sync session globalUser after enrollment mutations (coursesEnrolled drift fix).
+        // Must precede the instructor redirect, which now reads per-user tutorial progress.
+        const freshGlobalUser = await refreshSessionGlobalUser(req, mongoDB);
+
         if (globalUser.affiliation === 'student' && !isStaff && !(courseUser as any).userOnboarding) {
             redirect = `/course/${courseId}/student/onboarding/student`;
             requiresOnboarding = true;
             appLogger.log(`[COURSE-ENTRY] Redirecting student to onboarding`);
         } else if (isStaff) {
-            const instructorRedirect = resolveInstructorModeRedirect(courseId, courseData);
+            const instructorRedirect = resolveInstructorModeRedirect(courseId, courseData, freshGlobalUser ?? globalUser);
             redirect = instructorRedirect.redirect;
             requiresOnboarding = instructorRedirect.requiresOnboarding;
             appLogger.log(`[COURSE-ENTRY] Redirecting course staff to instructor mode`);
@@ -208,10 +212,7 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
             redirect = `/course/${courseId}/student`;
             appLogger.log(`[COURSE-ENTRY] Redirecting student to chat interface`);
         }
-        
-        // Sync session globalUser after enrollment mutations (coursesEnrolled drift fix)
-        const freshGlobalUser = await refreshSessionGlobalUser(req, mongoDB);
-        
+
         return res.json({
             redirect,
             requiresOnboarding,
@@ -419,12 +420,16 @@ router.post('/enter-by-code', asyncHandlerWithAuth(async (req: Request, res: Res
         const isStaff =
             isCourseStaff(courseData, globalUser) || globalUser.affiliation === 'faculty';
 
+        // Sync session globalUser after enrollment mutations (coursesEnrolled drift fix).
+        // Must precede the instructor redirect, which now reads per-user tutorial progress.
+        const freshGlobalUser = await refreshSessionGlobalUser(req, mongoDB);
+
         if (globalUser.affiliation === 'student' && !isStaff && !(courseUser as any).userOnboarding) {
             redirect = `/course/${courseId}/student/onboarding/student`;
             requiresOnboarding = true;
             appLogger.log(`[COURSE-ENTRY] Redirecting student to onboarding`);
         } else if (isStaff) {
-            const instructorRedirect = resolveInstructorModeRedirect(courseId, courseData);
+            const instructorRedirect = resolveInstructorModeRedirect(courseId, courseData, freshGlobalUser ?? globalUser);
             redirect = instructorRedirect.redirect;
             requiresOnboarding = instructorRedirect.requiresOnboarding;
             appLogger.log(`[COURSE-ENTRY] Redirecting course staff to instructor mode`);
@@ -432,10 +437,7 @@ router.post('/enter-by-code', asyncHandlerWithAuth(async (req: Request, res: Res
             redirect = `/course/${courseId}/student`;
             appLogger.log(`[COURSE-ENTRY] Redirecting student to chat interface`);
         }
-        
-        // Sync session globalUser after enrollment mutations (coursesEnrolled drift fix)
-        const freshGlobalUser = await refreshSessionGlobalUser(req, mongoDB);
-        
+
         return res.json({
             redirect,
             requiresOnboarding,

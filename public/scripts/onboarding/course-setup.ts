@@ -18,7 +18,7 @@
  */
 
 import { loadComponentHTML } from "../api/api.js";
-import { activeCourse } from "../types.js";
+import { activeCourse, InstructorOnboardingProgress } from "../types.js";
 import { showErrorModal, showHelpModal } from "../ui/modal-overlay.js";
 
 type SetupMode = 'create' | 'resume';
@@ -30,21 +30,56 @@ interface OnboardingState {
     isSubmitting: boolean;
 }
 
-/** Mirrors backend resolveInstructorModeRedirect for client-side forward redirects. */
-function getInstructorForwardRedirect(courseId: string, course: activeCourse): string {
+/**
+ * Mirrors backend resolveInstructorModeRedirect for client-side forward redirects.
+ *
+ * `courseSetup` comes from the course; the three tutorials come from the viewer's own
+ * record, so an instructor new to EngE-AI is taught even on a course a colleague set up.
+ */
+function getInstructorForwardRedirect(
+    courseId: string,
+    course: activeCourse,
+    progress: InstructorOnboardingProgress
+): string {
     if (!course.courseSetup) {
         return `/course/${courseId}/instructor/onboarding/course-setup`;
     }
-    if (!course.contentSetup) {
+    if (!progress.contentSetup) {
         return `/course/${courseId}/instructor/onboarding/document-setup`;
     }
-    if (!course.flagSetup) {
+    if (!progress.flagSetup) {
         return `/course/${courseId}/instructor/onboarding/flag-setup`;
     }
-    if (!course.monitorSetup) {
+    if (!progress.monitorSetup) {
         return `/course/${courseId}/instructor/onboarding/monitor-setup`;
     }
     return `/course/${courseId}/instructor/documents`;
+}
+
+/**
+ * Reads the signed-in user's instructor tutorial progress.
+ *
+ * Falls back to all-complete so a failed fetch forwards to the course rather than
+ * trapping the instructor in a tutorial.
+ */
+async function fetchInstructorOnboardingProgress(): Promise<InstructorOnboardingProgress> {
+    try {
+        const response = await fetch('/auth/current-user', { credentials: 'same-origin' });
+        if (response.ok) {
+            const data = await response.json();
+            const progress = data?.globalUser?.instructorOnboarding;
+            if (progress) {
+                return {
+                    contentSetup: progress.contentSetup === true,
+                    flagSetup: progress.flagSetup === true,
+                    monitorSetup: progress.monitorSetup === true
+                };
+            }
+        }
+    } catch (error) {
+        console.error('[COURSE-SETUP] Error loading instructor onboarding progress:', error);
+    }
+    return { contentSetup: true, flagSetup: true, monitorSetup: true };
 }
 
 function applyCourseFields(target: activeCourse, source: activeCourse): void {
@@ -107,7 +142,11 @@ async function resolveSetupMode(
         applyCourseFields(onBoardingCourse, instructorCourse);
 
         if (instructorCourse.courseSetup) {
-            window.location.href = getInstructorForwardRedirect(instructorCourse.id, instructorCourse);
+            window.location.href = getInstructorForwardRedirect(
+                instructorCourse.id,
+                instructorCourse,
+                await fetchInstructorOnboardingProgress()
+            );
             return null;
         }
         return 'resume';
@@ -122,7 +161,11 @@ async function resolveSetupMode(
             Object.assign(instructorCourse, existing);
 
             if (existing.courseSetup) {
-                window.location.href = getInstructorForwardRedirect(existing.id, existing);
+                window.location.href = getInstructorForwardRedirect(
+                    existing.id,
+                    existing,
+                    await fetchInstructorOnboardingProgress()
+                );
                 return null;
             }
             return 'resume';
@@ -608,9 +651,6 @@ async function handleDatabaseSubmission(
                 id: generateUniqueId(),
                 date: new Date(),
                 courseSetup: true,
-                contentSetup: false,
-                flagSetup: false,
-                monitorSetup: false,
                 courseName: onBoardingCourse.courseName,
                 instructors: [],
                 teachingAssistants: [],

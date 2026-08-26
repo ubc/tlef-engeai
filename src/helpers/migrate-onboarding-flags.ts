@@ -1,13 +1,20 @@
 /**
- * Onboarding Flags Migration
+ * Onboarding Flags Migration (OB-001)
  *
- * Backfills instructorOnboardingCompleted and studentOnboardingCompleted on GlobalUser
- * from existing course and CourseUser data. Invoked by `npm run migrate` op A (not server start).
+ * Backfills `studentOnboardingCompleted` on GlobalUser from existing CourseUser data.
+ * Invoked by `npm run migrate` op A (not server start).
  *
- * - Instructor: true if user is in instructors/teachingAssistants of any course with monitorSetup=true, else false
- * - Student: true if any CourseUser (across enrolled courses) has userOnboarding=true, else false
+ * - Student: true if any CourseUser (across enrolled courses) has userOnboarding=true
  *
- * Always sets both flags explicitly (true or false) for every user for clarity. Idempotent.
+ * Only ever promotes a flag to `true`; a user who has completed onboarding is never
+ * downgraded by a later run. Idempotent.
+ *
+ * **Amended 2026-08-25 (OB-002):** the instructor branch was removed. It derived
+ * `instructorOnboardingCompleted` from `activeCourse.monitorSetup`, which is no longer
+ * maintained now that instructor tutorial progress lives on the user record. Left in
+ * place it would have written `false` for every instructor on the next restart, wiping
+ * the signal OB-002 seeds from. `instructorOnboardingCompleted` is now set forward only,
+ * by `PATCH /api/user/onboarding/instructor-completed`.
  *
  * @author: EngE-AI Team
  * @since: 2026-03-18
@@ -18,24 +25,8 @@ import { GlobalUser, activeCourse } from '../types/shared';
 import { appLogger } from '../utils/logger';
 
 /**
- * Checks if userId is in instructors or teachingAssistants array.
- * Handles both InstructorInfo[] ({userId, name}) and string[] formats.
- */
-function isUserInCourseStaff(course: activeCourse, userId: string): boolean {
-    const checkArray = (arr: any[] | undefined): boolean => {
-        if (!arr || !Array.isArray(arr)) return false;
-        return arr.some((item: any) => {
-            if (typeof item === 'string') return item === userId;
-            if (item && typeof item === 'object' && item.userId) return item.userId === userId;
-            return false;
-        });
-    };
-    return checkArray(course.instructors) || checkArray(course.teachingAssistants);
-}
-
-/**
- * Migrates onboarding flags for all GlobalUsers.
- * Sets instructorOnboardingCompleted and studentOnboardingCompleted based on existing data.
+ * Migrates student onboarding flags for all GlobalUsers.
+ * Sets studentOnboardingCompleted where any enrolled CourseUser has completed onboarding.
  */
 export async function migrateOnboardingFlags(): Promise<void> {
     const instance = await EngEAI_MongoDB.getInstance();
@@ -49,16 +40,10 @@ export async function migrateOnboardingFlags(): Promise<void> {
         const { userId, puid, coursesEnrolled } = globalUser;
         if (!userId || !puid) continue;
 
-        let instructorPassed = false;
-        let studentPassed = false;
+        // Already promoted; nothing a later run could add.
+        if (globalUser.studentOnboardingCompleted === true) continue;
 
-        // Instructor: any course where user is instructor/TA and monitorSetup is true
-        for (const course of courses) {
-            if (isUserInCourseStaff(course, userId) && course.monitorSetup === true) {
-                instructorPassed = true;
-                break;
-            }
-        }
+        let studentPassed = false;
 
         // Student: any CourseUser with userOnboarding true (across enrolled courses)
         for (const courseId of coursesEnrolled || []) {
@@ -76,12 +61,12 @@ export async function migrateOnboardingFlags(): Promise<void> {
             }
         }
 
-        await instance.updateGlobalUser(puid, {
-            instructorOnboardingCompleted: instructorPassed,
-            studentOnboardingCompleted: studentPassed,
-        });
+        // Promote only. Never write `false` over an existing value.
+        if (!studentPassed) continue;
+
+        await instance.updateGlobalUser(puid, { studentOnboardingCompleted: true });
         updatedCount++;
     }
 
-    appLogger.log(`[MIGRATE-ONBOARDING] Processed ${globalUsers.length} users, updated ${updatedCount} with onboarding flags`);
+    appLogger.log(`[MIGRATE-ONBOARDING] Processed ${globalUsers.length} users, promoted ${updatedCount} to studentOnboardingCompleted`);
 }

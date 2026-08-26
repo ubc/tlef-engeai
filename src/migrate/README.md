@@ -70,7 +70,7 @@ D  Mongo wins titles; delete Qdrant points with no live parent file
 
 | Step | Op name | Writes on `--apply` | Does not |
 | --- | --- | --- | --- |
-| **A** | `mongo-attribute-check` | Hoist `file` → `fileName`, seed `qdrantChunkIds` from leftover `qdrantId` (one id), strip unknown Mongo keys, IPA-001 + OB-001 | Create missing collections |
+| **A** | `mongo-attribute-check` | Hoist `file` → `fileName`, seed `qdrantChunkIds` from leftover `qdrantId` (one id), strip unknown Mongo keys, IPA-001 + OB-001 + OB-002 | Create missing collections |
 | **B** | `qdrant-attribute-check` | Overwrite payload to the allowlist (drops `learningObjectives`) | Delete points |
 | **C** | `qdrant-resolve` | Set `qdrantChunkIds` to every point whose payload `id` matches a live material | Invent Mongo files for orphans |
 | **D** | `qdrant-validate` | Patch payload titles from Mongo; **delete UNTRACKED points** | Recreate deleted vectors |

@@ -1049,7 +1049,15 @@ router.put('/:id', requireInstructorForCourseAPI(['paramsId']), asyncHandlerWith
     }
     
     // Strip capabilities so this generic instructor update cannot bypass the roster-manager gate.
-    const { features: _ignoredFeatures, ...updateData } = req.body ?? {};
+    // Also strip the three tutorial flags: they moved to `GlobalUser.instructorOnboarding` (OB-002)
+    // and must not be resurrected on the course document by a stale client.
+    const {
+        features: _ignoredFeatures,
+        contentSetup: _ignoredContentSetup,
+        flagSetup: _ignoredFlagSetup,
+        monitorSetup: _ignoredMonitorSetup,
+        ...updateData
+    } = req.body ?? {};
     const updatedCourse = await instance.updateActiveCourse(routeParam(req.params, 'id'), updateData);
     
     res.status(200).json({
@@ -1233,9 +1241,6 @@ router.delete('/:id/restart-onboarding', requireInstructorForCourseAPI(['paramsI
             date: new Date(),
             courseName: courseName, // Preserved from original
             courseSetup: false,
-            contentSetup: false,
-            flagSetup: false,
-            monitorSetup: false,
             instructors: [], // Empty array
             teachingAssistants: [], // Empty array
             frameType: 'byTopic', // Default frame type
@@ -2261,12 +2266,9 @@ router.patch(
 
             if (role === 'ta') {
                 await instance.promoteStudentToTA(courseData, targetUserId, targetName);
-                const targetGlobal = await instance.findGlobalUserByUserId(targetUserId);
-                if (targetGlobal?.puid) {
-                    await instance.updateGlobalUser(targetGlobal.puid, {
-                        instructorOnboardingCompleted: true
-                    });
-                }
+                // Deliberately does NOT mark instructor onboarding complete. Promotion completes
+                // no tutorial, and a new TA is exactly who the instructor tutorials are for —
+                // they now run through them on first entry like any other new course staff.
                 appLogger.log(`[ROSTER] Promoted ${targetUserId} to TA in course ${courseId}`);
             } else {
                 await instance.demoteTAToStudent(courseData, targetUserId);

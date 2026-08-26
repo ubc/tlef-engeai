@@ -6,13 +6,13 @@ Canonical list of schema and data migrations. Implementation details live in the
 
 - **Lazy (request-time):** run when a course or chat is accessed (no startup batch scan).
 - **CLI:** `npm run migrate` — manual Mongo/Qdrant sync (`src/migrate/cli.ts`). Default and `--check` are dry-run; `--apply` writes. Operator how-to: `src/migrate/README.md`.
-- **Startup:** `src/server.ts` only seeds academic periods (`initAcademicPeriods`). IPA-001 and OB-001 no longer run on boot.
+- **Startup:** `src/server.ts` only seeds academic periods (`initAcademicPeriods`). IPA-001, OB-001, and OB-002 no longer run on boot.
 
 ## Sunset policy
 
 Time-bounded schema migrations must have migration **code and legacy read paths removed by end of day 2026-06-30** in **America/Vancouver** (PDT, UTC−07:00).
 
-Operational startup migrations (OB-001) are documented here but are **not** tied to that date unless a future audit says otherwise.
+Operational CLI migrations (OB-001, OB-002) are documented here but are **not** tied to that date unless a future audit says otherwise.
 
 ---
 
@@ -24,7 +24,8 @@ Operational startup migrations (OB-001) are documented here but are **not** tied
 | **SP-002** | System prompt mode backfill | Lazy (request) | `ensureAllModeStates` in `system-prompt-config-mongo.ts` | missing `systemPromptConfig.modes[mode]` → `seedModeState(mode)` for each `CONVERSATION_MODE_IDS` entry | Keep while new modes ship; audit when mode list stabilizes |
 | **SP-003** | Retired conversation-mode state cleanup | Lazy (request) | `stripRetiredModeStates` in `system-prompt-config-mongo.ts` | `systemPromptConfig.modes['scenario-generation']` (and future `RETIRED_CONVERSATION_MODE_IDS`) → removed | Keep while any retired mode key may exist on old course documents |
 | **CM-001** | Chat `conversationMode` backfill | Lazy (restore) | `ChatApp.ensureLegacyChatModePersisted` in `src/chat/chat-app.ts` | missing/invalid → `socratic` or `undeclared` | Optional later; audit before removal |
-| **OB-001** | Onboarding flags backfill | CLI op A | `migrateOnboardingFlags` in `src/helpers/migrate-onboarding-flags.ts` (called from `src/migrate/mongo-attribute-check.ts`) | GlobalUser flags from course/CourseUser data | Operational — keep unless product changes |
+| **OB-001** | Student onboarding flag backfill | CLI op A | `migrateOnboardingFlags` in `src/helpers/migrate-onboarding-flags.ts` (called from `src/migrate/mongo-attribute-check.ts`) | `studentOnboardingCompleted` from CourseUser data | Operational — keep unless product changes. **Amended 2026-08-25**, see [OB-001](#ob-001-student-onboarding-flag-backfill) |
+| **OB-002** | Per-user instructor tutorial progress | CLI op A | `migrateInstructorOnboardingStages` in `src/helpers/migrate-instructor-onboarding-stages.ts` (called from `src/migrate/mongo-attribute-check.ts` after OB-001) | `GlobalUser.instructorOnboardingCompleted` → `GlobalUser.instructorOnboarding` | Operational — keep while any user may predate the field; see [OB-002](#ob-002-per-user-instructor-tutorial-progress) |
 | **AP-001** | Course `academicPeriodId` backfill | Lazy (request) | `lazyMigrateCourseAcademicPeriod` in `src/db/mongo/academic-period-mongo.ts` via `getActiveCourse` / `getAllActiveCourses` | missing `academicPeriodId` → default `2025W2` period; `$addToSet` on period `courseIds` | **Remove by 2026-06-30** — see [AP-001](#ap-001-academic-period-lazy-link) |
 | **IPA-001** | Instructor allow-list period scope | CLI op A | `migrateInstructorAllowances` in `src/helpers/migrate-instructor-allowances.ts` | `instructor-allowed-courses` → `instructor-period-allowances` for `2025W2` | Operational after first successful run |
 | **MIG-A** | Mongo attributeCheck | CLI | `runMongoAttributeCheck` in `src/migrate/mongo-attribute-check.ts` | allowlist walk all known collections; hoist `additionalMaterials.file`; seed `qdrantChunkIds` | Keep |
@@ -240,13 +241,141 @@ See `documentation/ENDPOINT_ARCHITECTURE.md` (lazy restore migration note).
 
 ---
 
-## OB-001: Onboarding flags backfill
+## OB-001: Student onboarding flag backfill
 
-**Status:** Active (CLI op A)
+**Status:** Active (CLI op A, promote-only)
 
-Sets `instructorOnboardingCompleted` and `studentOnboardingCompleted` on `active-users` from existing course and roster data. Idempotent. Trigger: `npm run migrate` op A (`--apply`), not server start.
+**Collection:** `active-users`
+
+Sets `studentOnboardingCompleted: true` for any user with a `CourseUser.userOnboarding === true`
+across their enrolled courses. Idempotent. Trigger: `npm run migrate` op A (`--apply`), not server start.
 
 See `migrateOnboardingFlags` in `src/helpers/migrate-onboarding-flags.ts`.
+
+### Amendment — 2026-08-25 (with OB-002)
+
+The **instructor branch was removed**. It derived `instructorOnboardingCompleted` from
+`activeCourse.monitorSetup`, which is no longer maintained now that instructor tutorial
+progress lives on the user record. Left in place, that derivation would evaluate `false`
+for everyone and — because the original implementation wrote both flags explicitly on every
+restart — would have wiped `instructorOnboardingCompleted` for every instructor on the next
+server start, destroying the signal OB-002 seeds from.
+
+The migration is now **promote-only**: it never writes `false` over an existing value, and
+skips users already marked complete. `instructorOnboardingCompleted` is set forward only, by
+`PATCH /api/user/onboarding/instructor-completed`.
+
+---
+
+## OB-002: Per-user instructor tutorial progress
+
+**Status:** Active (CLI op A, idempotent)
+
+**Collection:** `active-users`
+
+### Why
+
+Instructor onboarding progress used to live on the course document. When one instructor
+finished, every other instructor on that course was routed straight to the dashboard — so an
+instructor new to EngE-AI could never reach the tutorials. The three tutorial stages moved to
+the user; `courseSetup` stayed on the course because it writes real configuration a second
+instructor must not override.
+
+### Behavior
+
+For each `GlobalUser` with no `instructorOnboarding` field:
+
+```
+seed = (affiliation === 'faculty' || affiliation === 'staff')
+       && instructorOnboardingCompleted === true
+$set instructorOnboarding = { contentSetup: seed, flagSetup: seed, monitorSetup: seed }
+```
+
+Among instructor-side users, `instructorOnboardingCompleted` is the only per-user record of
+whether someone has been through instructor onboarding, which makes it the right seed:
+veterans keep skipping, and everyone else — including an instructor sitting on a course a
+colleague set up — is taught.
+
+**Students always seed incomplete**, whatever that flag says, and `createGlobalUser` starts
+every new user with all three stages `false`. Two reasons:
+
+1. The flag is not trustworthy on students. Earlier versions of OB-001 and of the roster role
+   endpoint set it on students who had never seen an instructor tutorial.
+2. More importantly, a student escalated to TA is new to the instructor side. `false` is the
+   only correct starting point, or promotion would silently skip the tutorials they need.
+
+For the seed to stay honest among instructors, the flag must mean what it says. Two writers
+were removed:
+OB-001's instructor branch (see above), and `PATCH /api/courses/:courseId/roster/:userId/role`,
+which set it on TA promotion to suppress the old skip prompt. Promotion completes no tutorial,
+and a newly promoted TA is precisely who the instructor tutorials are for — left in place, that
+write would have made a TA's behaviour depend on whether the server had restarted since their
+promotion. It is now set in one place only: completing monitor setup, via
+`PATCH /api/user/onboarding/instructor-completed`.
+
+### Pre / post conditions
+
+| | Condition |
+|---|-----------|
+| **Pre** | `GlobalUser` may have no `instructorOnboarding` field |
+| **Post** | Every `GlobalUser` has `instructorOnboarding` with all three stages set; every student has all three `false` |
+
+### Idempotency and rollback
+
+Only users missing the field are queried, and the update filter repeats the
+`{ $exists: false }` guard, so a rerun cannot overwrite progress made since the first run.
+
+Rollback is a code revert: the field is additive and ignored by the previous version, and
+`activeCourse.contentSetup` / `flagSetup` / `monitorSetup` are left in place (deprecated, not
+`$unset`) so the old behavior returns without data loss.
+
+### Verification
+
+```js
+// Expect 0 once the migration has run.
+db.getCollection('active-users').countDocuments({ instructorOnboarding: { $exists: false } })
+
+// Expect 0 — no student may start with instructor tutorials marked complete.
+db.getCollection('active-users').countDocuments({
+  affiliation: 'student',
+  'instructorOnboarding.monitorSetup': true
+})
+
+// Spot-check that instructor-side veterans were seeded complete.
+db.getCollection('active-users').find(
+  { affiliation: { $in: ['faculty', 'staff'] }, instructorOnboardingCompleted: true },
+  { userId: 1, instructorOnboarding: 1, _id: 0 }
+)
+```
+
+### Repairing an environment migrated before the student rule landed
+
+An early run of OB-002 seeded students from `instructorOnboardingCompleted` and so marked some
+of them complete. The `$exists` guard means a rerun will not correct them. Reset those rows once,
+by hand:
+
+```js
+db.getCollection('active-users').updateMany(
+  { affiliation: 'student' },
+  { $set: {
+      'instructorOnboarding.contentSetup': false,
+      'instructorOnboarding.flagSetup': false,
+      'instructorOnboarding.monitorSetup': false,
+      updatedAt: new Date()
+  } }
+)
+```
+
+This is deliberately **not** folded into the migration: run on every apply it would also
+reset a student TA who had since completed the tutorials, teaching them again forever.
+
+### Post-sunset checklist (when every user is known migrated)
+
+1. Remove `migrateInstructorOnboardingStages` and its `mongo-attribute-check.ts` call.
+2. `$unset` the deprecated `contentSetup` / `flagSetup` / `monitorSetup` fields from
+   `active-course-list`, and drop them from `activeCourse` in `src/types/shared.ts` and
+   `public/scripts/types.ts`.
+3. Drop the corresponding strip from `PUT /api/courses/:id`.
 
 ---
 

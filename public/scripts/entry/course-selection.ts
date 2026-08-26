@@ -757,9 +757,6 @@ async function redirectToInstructorOnboarding(courseName: string): Promise<void>
         id: '',
         date: new Date().toISOString(),
         courseSetup: false,
-        contentSetup: false,
-        flagSetup: false,
-        monitorSetup: false,
         courseName: trimmedName,
         instructors: [{ userId: currentUser.userId, name: currentUser.name }],
         teachingAssistants: [],
@@ -994,15 +991,13 @@ async function handleCourseCodeSubmit(courseCode: string, inputElement: HTMLInpu
             return;
         }
         
-        // Skip onboarding: if requires onboarding and user has completed before, offer skip
+        // Student skip onboarding: if requires onboarding and the student has completed one before, offer skip.
         // Close course code modal first so skip modal is clearly visible (displayed after code validated)
         const courseId = data.courseId || data.courseUser?.courseId || data.redirect?.match(/\/course\/([^/]+)\//)?.[1];
         const isStudentOnboardingRedirect = data.redirect?.includes('/student/onboarding/');
-        const isInstructorOnboardingRedirect = data.redirect?.includes('/instructor/onboarding/');
         const showStudentSkip = data.requiresOnboarding && data.studentOnboardingCompleted === true && isStudentOnboardingRedirect && currentGlobalUser;
-        const showInstructorSkip = data.requiresOnboarding && data.instructorOnboardingCompleted === true && isInstructorOnboardingRedirect && currentGlobalUser && courseId;
 
-        if ((showStudentSkip || showInstructorSkip) && courseCodeModal) {
+        if (showStudentSkip && courseCodeModal) {
             courseCodeModal.close('success');
         }
 
@@ -1035,36 +1030,9 @@ async function handleCourseCodeSubmit(courseCode: string, inputElement: HTMLInpu
                 );
             }
         }
-        // Instructor skip: requires onboarding + completed instructor onboarding before
-        else if (showInstructorSkip) {
-            const skipResult = await showSkipOnboardingModal(
-                'Skip Setup?',
-                "You've completed instructor setup before. Skip the full setup for this course?"
-            );
-
-            if (skipResult.action === 'skip') {
-                const updateRes = await fetch(`/api/courses/${courseId}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'same-origin',
-                    body: JSON.stringify({
-                        courseSetup: true,
-                        contentSetup: true,
-                        flagSetup: true,
-                        monitorSetup: true
-                    })
-                });
-                const updateData = await updateRes.json();
-                if (updateData.success) {
-                    window.location.href = `/course/${courseId}/instructor/documents`;
-                    return;
-                }
-                await showSimpleErrorModal(
-                    updateData.error || 'Could not update course. Continuing with setup.',
-                    'Skip setup failed'
-                );
-            }
-        }
+        // No instructor skip branch: instructor tutorial progress is per-user, so an
+        // instructor who has already been taught is routed past the tutorials by
+        // `resolveInstructorModeRedirect` and never reaches an onboarding URL.
 
         // Success - redirect to appropriate page
         window.location.href = data.redirect;

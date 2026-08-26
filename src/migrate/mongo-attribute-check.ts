@@ -1,7 +1,7 @@
 /**
  * mongo-attribute-check — migrate op A
  *
- * Walks known collections in catalog-first order, then named backfills IPA-001 / OB-001.
+ * Walks known collections in catalog-first order, then named backfills IPA-001 / OB-001 / OB-002.
  *
  * @author: EngE-AI Team
  * @date: 2026-08-12
@@ -12,6 +12,7 @@
 import type { Collection, Db } from 'mongodb';
 import { migrateInstructorAllowances } from '../helpers/migrate-instructor-allowances';
 import { migrateOnboardingFlags } from '../helpers/migrate-onboarding-flags';
+import { migrateInstructorOnboardingStages } from '../helpers/migrate-instructor-onboarding-stages';
 import {
     ACADEMIC_PERIODS_COLLECTION,
     ACTIVE_COURSE_LIST_COLLECTION,
@@ -98,7 +99,7 @@ async function walkCollection(
 }
 
 /**
- * runMongoAttributeCheck - op A: schema walk + IPA-001 + OB-001.
+ * runMongoAttributeCheck - op A: schema walk + IPA-001 + OB-001 + OB-002.
  *
  * @param db - Connected Mongo database
  * @param apply - Persist when true
@@ -126,7 +127,7 @@ export async function runMongoAttributeCheck(
     const leftover = countMaterialLeftovers(await courseColl.find({}).toArray());
     const courseWalk = await walkCollection(courseColl, activeCourseSchema, apply);
     const catalogBuild = buildCourseCatalogMap(courseWalk.walked);
-    estimated = 1 + 3 + 2 + WRITING_FEEDBACK.length + catalogBuild.map.ordered.length * 7;
+    estimated = 1 + 3 + 3 + WRITING_FEEDBACK.length + catalogBuild.map.ordered.length * 7;
     emit(
         `collection=${ACTIVE_COURSE_LIST_COLLECTION}`,
         `docs=${courseWalk.docs} changed=${courseWalk.changed} errors=${courseWalk.errors}`,
@@ -158,7 +159,7 @@ export async function runMongoAttributeCheck(
     log('');
     log('== Block 2  other globals ==');
     log('');
-    // Periods, instructor allowances, global users, then IPA-001 / OB-001 backfills.
+    // Periods, instructor allowances, global users, then IPA-001 / OB-001 / OB-002 backfills.
     const globals: { name: string; schema: FieldSpec[] }[] = [
         { name: ACADEMIC_PERIODS_COLLECTION, schema: academicPeriodSchema },
         { name: INSTRUCTOR_PERIOD_ALLOWANCES_COLLECTION, schema: instructorPeriodAllowanceSchema },
@@ -193,6 +194,16 @@ export async function runMongoAttributeCheck(
         emit('backfill=OB-001', apply ? 'applied' : 'dry-run', 'CHECKED');
     } catch (error) {
         emit('backfill=OB-001', error instanceof Error ? error.message : 'error', 'FAIL');
+    }
+
+    // OB-002 seeds from instructorOnboardingCompleted, so it must run after OB-001.
+    try {
+        if (apply) {
+            await migrateInstructorOnboardingStages();
+        }
+        emit('backfill=OB-002', apply ? 'applied' : 'dry-run', 'CHECKED');
+    } catch (error) {
+        emit('backfill=OB-002', error instanceof Error ? error.message : 'error', 'FAIL');
     }
 
     log('');

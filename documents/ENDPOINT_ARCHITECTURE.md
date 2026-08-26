@@ -281,7 +281,7 @@ Live Canvas OAuth routes are intentionally absent from this table until the priv
 | GET | `/api/courses/:id` | Yes* | Any | Get course by ID. \*Auth preferred; course staff receive full `features` + `llmSettings`. Students / non-staff / unauthenticated get a projection that **omits** `features` and `llmSettings` (`toStudentCoursePayload`). Same projection applies to `GET /api/courses` (list/by name) and course-selection course cards. |
 | GET | `/api/courses/:courseId/student-capabilities` | Yes | Member | Student-safe booleans only: `{ scenarioGeneration }` — for shell UI; never returns guidedPathway / full features / llmSettings |
 | POST | `/api/courses/:id/complete-course-setup` | Yes | Instructor | Finish course-setup on existing shell (`frameType`, `tilesNumber`); sets `courseSetup: true` |
-| PUT | `/api/courses/:id` | Yes | Instructor | Update course |
+| PUT | `/api/courses/:id` | Yes | Instructor | Update course. Strips `features` (roster-manager gated) and the deprecated `contentSetup` / `flagSetup` / `monitorSetup` flags, which moved to `GlobalUser.instructorOnboarding` (OB-002) |
 | DELETE | `/api/courses/:id` | Yes | Instructor | Delete course |
 | DELETE | `/api/courses/:id/restart-onboarding` | Yes | Instructor | Restart onboarding |
 | DELETE | `/api/courses/:id/remove` | Yes | Instructor | Remove course (soft) |
@@ -472,6 +472,8 @@ Chat metadata is ordered by most recent activity and contains no conversation-le
 |--------|------|------|------|-------------|
 | GET | `/api/user/current` | Yes | Any | Current user info |
 | POST | `/api/user/update-onboarding` | Yes | Any | Update onboarding state |
+| PATCH | `/api/user/onboarding/instructor-completed` | Yes | Any | Set `instructorOnboardingCompleted` on the caller's `GlobalUser` |
+| PATCH | `/api/user/onboarding/instructor-stage` | Yes | Any | Mark one instructor tutorial stage complete on the caller's `GlobalUser`. Body `{ stage: 'contentSetup' \| 'flagSetup' \| 'monitorSetup' }`. Writes only the caller's own record, so no course-scoped RBAC applies |
 | GET | `/api/user/activity` | Yes | Any | Idle poll (read-only; does not bump `lastActivityAt`) |
 | POST | `/api/user/activity` | Yes | Any | Bump activity when `{ userActivity: true }`; same response shape as GET |
 
