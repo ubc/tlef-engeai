@@ -2,8 +2,8 @@
 /**
  * Dashboard — instructor home cards, course-code topbar, and Advanced Settings.
  *
- * Renders curated navigation cards; Writing Feedback and Pathway Library appear
- * only when their course capabilities are enabled. Owns click-to-reveal course
+ * Renders curated navigation cards; Scenario Questions, Writing Feedback, and
+ * Pathway Library appear only when their course capabilities are enabled. Owns click-to-reveal course
  * code for all staff, and Advanced Settings (feature toggles + course metadata)
  * for faculty instructors and platform admins. Extra Feature Save is dirty-gated
  * like Model Settings. Dispatches `course-feature-changed` after successful
@@ -27,7 +27,7 @@ interface DashboardCardDef {
     view: string;
     title: string;
     feather: string;
-    feature?: 'writingFeedback' | 'guidedPathway';
+    feature?: 'writingFeedback' | 'guidedPathway' | 'scenarioGeneration';
     managerOnly?: boolean;
 }
 
@@ -36,11 +36,13 @@ type FeatureKey = keyof CourseFeatures;
 const CARD_DEFS: DashboardCardDef[] = [
     { view: 'documents', title: 'Documents', feather: 'file-text' },
     { view: 'chat', title: 'Chat with EngE-AI', feather: 'message-circle' },
-    { view: 'assistant-prompts', title: 'Initial Assistant Prompt', feather: 'sun' },
-    { view: 'system-prompts', title: 'System Prompt', feather: 'sliders' },
-    { view: 'monitor', title: 'Monitor', feather: 'monitor' },
+    { view: 'scenario-questions', title: 'Scenario Questions', feather: 'clipboard', feature: 'scenarioGeneration' },
     { view: 'writing-feedback', title: 'Writing Feedback', feather: 'edit-3', feature: 'writingFeedback' },
-    { view: 'pathway-library', title: 'Pathway Library', feather: 'git-branch', feature: 'guidedPathway', managerOnly: true }
+    { view: 'pathway-library', title: 'Pathway Library', feather: 'git-branch', feature: 'guidedPathway', managerOnly: true },
+    { view: 'flags', title: 'Flag Management', feather: 'alert-triangle' },
+    { view: 'monitor', title: 'Monitor', feather: 'monitor' },
+    { view: 'assistant-prompts', title: 'Initial Assistant Prompts', feather: 'sun' },
+    { view: 'system-prompts', title: 'System Prompts', feather: 'sliders' }
 ];
 
 const FEATURE_ENDPOINTS: Record<FeatureKey, string> = {
@@ -209,7 +211,7 @@ function syncDashboardCardOrder(
 /**
  * renderDashboardCards - rebuild the card grid from current course features.
  *
- * Optional Writing Feedback / Pathway Library cards animate out when disabled
+ * Optional Scenario Questions / Writing Feedback / Pathway Library cards animate out when disabled
  * and animate in when enabled (skipped when prefers-reduced-motion).
  *
  * @param currentClass - Active course whose features gate optional cards
@@ -547,7 +549,7 @@ async function wireFeatureToggles(currentClass: activeCourse, canManage: boolean
                 );
             }
             persistedFeatures = featureSnapshotFromCourse(currentClass);
-            showSuccessToast('Extra Feature settings saved.');
+            showSuccessToast('Feature settings saved.');
             renderDashboardCards(currentClass, canManage);
             refreshModelSettingsVisibility(currentClass);
         } catch (error) {
@@ -565,8 +567,8 @@ async function wireFeatureToggles(currentClass: activeCourse, canManage: boolean
             );
             showErrorToast(
                 appliedAny
-                    ? 'Some Extra Feature updates may have been applied. Reload and retry.'
-                    : 'Extra Feature settings were not changed.'
+                    ? 'Some feature updates may have been applied. Reload and retry.'
+                    : 'Feature settings were not changed.'
             );
         } finally {
             isSaving = false;

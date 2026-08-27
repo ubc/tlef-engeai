@@ -1189,7 +1189,7 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
         writingAnalysisBtn.addEventListener('click', async () => {
             await clearSelectedChatForTool();
             setStudentToolActive('writing-analysis-btn');
-            void showInfoModal('Writing Analysis', 'Writing analysis is coming soon.');
+            void showInfoModal('Writing Feedback', 'Writing feedback is coming soon.');
         });
     };
 

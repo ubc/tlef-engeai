@@ -747,7 +747,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         writingFeedback: 'Writing Feedback',
         memoryAgent: 'Memory Agent',
         guidedPathway: 'Guided Pathway',
-        scenarioGeneration: 'Scenario Generation'
+        scenarioGeneration: 'Scenario Questions'
     };
     const noticeParams = new URLSearchParams(window.location.search);
     const notice = noticeParams.get('notice');
@@ -854,7 +854,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 navigateToInstructorView('dashboard');
             } else if (view === 'scenario-questions' && currentClass.features?.scenarioGeneration?.enabled !== true) {
                 await showSimpleErrorModal(
-                    'Scenario Generation is not enabled for this course. You can enable it from Advanced Settings on the Dashboard if you have instructor or admin access.',
+                    'Scenario Questions is not enabled for this course. You can enable it from Advanced Settings on the Dashboard if you have instructor or admin access.',
                     'Feature unavailable'
                 );
                 navigateToInstructorView('dashboard');
@@ -1089,7 +1089,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         else if ( currentState === StateEvent.ScenarioQuestions){
             if (currentClass.features?.scenarioGeneration?.enabled !== true) {
                 void showSimpleErrorModal(
-                    'Scenario Generation is not enabled for this course. You can enable it from Advanced Settings on the Dashboard if you have instructor or admin access.',
+                    'Scenario Questions is not enabled for this course. You can enable it from Advanced Settings on the Dashboard if you have instructor or admin access.',
                     'Feature unavailable'
                 );
                 navigateToInstructorView('dashboard');

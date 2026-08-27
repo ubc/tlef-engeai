@@ -44,7 +44,7 @@ interface FeatureCatalogEntry {
 
 const FEATURE_CATALOG: FeatureCatalogEntry[] = [
     { key: 'chat', label: 'Chat' },
-    { key: 'scenarioGeneration', label: 'Scenario Generation', requiresCapability: 'scenarioGeneration' },
+    { key: 'scenarioGeneration', label: 'Scenario Questions', requiresCapability: 'scenarioGeneration' },
     { key: 'writingFeedback', label: 'Writing Feedback', requiresCapability: 'writingFeedback' },
     { key: 'guidedPathway', label: 'Guided Pathway', requiresCapability: 'guidedPathway' },
     { key: 'memoryAgent', label: 'Memory Agent', requiresCapability: 'memoryAgent' },
@@ -100,7 +100,7 @@ let isSaving = false;
  * getAffectedFeaturesCopy — short list of features that consume LLM settings.
  */
 export function getAffectedFeaturesCopy(): string {
-    return 'Chat, Writing Feedback, Scenario Generation, Guided Pathway, and Memory Agent';
+    return 'Chat, Writing Feedback, Scenario Questions, Guided Pathway, and Memory Agent';
 }
 
 /**
