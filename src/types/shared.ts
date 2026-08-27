@@ -356,9 +356,12 @@ export interface activeCourse {
     id : string,
     date : Date,
     courseSetup : boolean,
-    contentSetup : boolean,
-    flagSetup : boolean,
-    monitorSetup : boolean,
+    /** @deprecated moved to `GlobalUser.instructorOnboarding` (OB-002); retained for rollback only */
+    contentSetup? : boolean,
+    /** @deprecated moved to `GlobalUser.instructorOnboarding` (OB-002); retained for rollback only */
+    flagSetup? : boolean,
+    /** @deprecated moved to `GlobalUser.instructorOnboarding` (OB-002); retained for rollback only */
+    monitorSetup? : boolean,
     courseName: string,
     instructors: InstructorInfo[] | string[]; // Support both old format (string[]) and new format (InstructorInfo[])
     teachingAssistants: InstructorInfo[] | string[]; // Support both old format (string[]) and new format (InstructorInfo[])

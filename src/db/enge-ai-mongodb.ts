@@ -1288,23 +1288,6 @@ export class EngEAI_MongoDB {
         CourseLmsLinkMongo.createCourseLmsLinkIndex(this.ctx());
 
     /**
-     * LMS course links — course-lms-link-mongo.ts
-     */
-    public findCourseByLmsLink = async (provider: CourseLmsLink['provider'], externalCourseId: string) =>
-        CourseLmsLinkMongo.findCourseByLmsLink(this.ctx(), provider, externalCourseId);
-
-    public findCoursesByLmsLinks = async (
-        provider: CourseLmsLink['provider'],
-        externalCourseIds: string[]
-    ) => CourseLmsLinkMongo.findCoursesByLmsLinks(this.ctx(), provider, externalCourseIds);
-
-    public setCourseLmsLink = async (courseId: string, link: CourseLmsLink) =>
-        CourseLmsLinkMongo.setCourseLmsLink(this.ctx(), courseId, link);
-
-    public createCourseLmsLinkIndex = async () =>
-        CourseLmsLinkMongo.createCourseLmsLinkIndex(this.ctx());
-
-    /**
      * Instructor period allowances — instructor-period-allowance-mongo.ts
      */
     public getAllowedCourseNamesForInstructor = async (puid: string, academicPeriodId: string) =>
