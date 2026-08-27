@@ -14,12 +14,10 @@
 
 import { randomUUID } from 'crypto';
 import { z } from 'zod';
-import type { A2CriterionId, AnchoredComment, WritingFeedbackRun } from './contracts';
-
-const criterionIds = ['organization', 'content', 'interpersonal_positioning', 'task_constraints'] as const;
+import type { AnchoredComment, WritingFeedbackRun, WritingRubricDefinition } from './contracts';
 
 /** Rubric criterion → matrix function; task constraints have no matrix function. */
-const CRITERION_FUNCTION_TAG: Partial<Record<A2CriterionId, AnchoredComment['functionTag']>> = {
+const CRITERION_FUNCTION_TAG: Partial<Record<string, AnchoredComment['functionTag']>> = {
     organization: 'organizational',
     content: 'content',
     interpersonal_positioning: 'interpersonal'
@@ -30,6 +28,26 @@ const httpUrl = z.string().trim().max(500).url().refine(
     { message: 'Course material links must use http or https' }
 );
 
+const courseMaterialMentionSchema = z.object({
+    id: z.string().trim().min(1).max(120),
+    label: z.string().trim().min(1).max(240),
+    courseId: z.string().trim().min(1).max(120).optional(),
+    topicOrWeekId: z.string().trim().min(1).max(120).optional(),
+    topicOrWeekTitle: z.string().trim().min(1).max(160).optional(),
+    itemId: z.string().trim().min(1).max(120).optional(),
+    itemTitle: z.string().trim().min(1).max(160).optional(),
+    materialId: z.string().trim().min(1).max(120).optional(),
+    materialName: z.string().trim().min(1).max(160).optional(),
+    version: z.string().trim().min(1).max(120).optional()
+});
+
+const glossarySnapshotSchema = z.object({
+    id: z.string().trim().min(1).max(120),
+    term: z.string().trim().min(1).max(80),
+    definition: z.string().trim().min(1).max(600),
+    version: z.number().int().min(1)
+});
+
 /**
  * Validated API shape for one staff-editable anchored comment.
  *
@@ -38,7 +56,7 @@ const httpUrl = z.string().trim().max(500).url().refine(
  */
 export const anchoredCommentInputSchema = z.object({
     id: z.string().trim().min(1).max(64),
-    criterion: z.enum(criterionIds).optional(),
+    criterion: z.string().trim().min(1).max(64).regex(/^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/).optional(),
     // This checksum may represent a deliberate staff span; generated seeds are capped upstream.
     quote: z.string().min(1).max(4000),
     startOffset: z.number().int().min(0),
@@ -46,10 +64,13 @@ export const anchoredCommentInputSchema = z.object({
     comment: z.string().trim().min(1).max(2000),
     howToImprove: z.string().trim().min(1).max(2000).optional(),
     courseMaterialLink: httpUrl.optional(),
+    courseMaterialMention: courseMaterialMentionSchema.optional(),
     glossaryDefinition: z.object({
         term: z.string().trim().min(1).max(80),
         definition: z.string().trim().min(1).max(600)
     }).optional(),
+    glossaryEntryId: z.string().trim().min(1).max(120).optional(),
+    glossarySnapshot: glossarySnapshotSchema.optional(),
     origin: z.enum(['model_seed', 'staff']),
     functionTag: z.enum(['content', 'interpersonal', 'organizational']).optional(),
     levelTag: z.enum(['text', 'section', 'clause_word']).optional(),
@@ -84,9 +105,14 @@ function anchorMatches(comment: AnchoredComment, verifiedText: string): boolean 
  * @param verifiedText - Current staff-verified anchor source
  * @returns Up to 50 transient model seeds in rubric order
  */
-export function seedCommentsFromRun(run: WritingFeedbackRun, verifiedText: string): AnchoredComment[] {
+export function seedCommentsFromRun(
+    run: WritingFeedbackRun,
+    verifiedText: string,
+    rubric?: WritingRubricDefinition
+): AnchoredComment[] {
     const seeds: AnchoredComment[] = [];
     const searchFrom = new Map<string, number>();
+    const functionTags = new Map(rubric?.criteria.map((criterion) => [criterion.id, criterion.functionTag]) ?? []);
     for (const criterion of run.result.criteria) {
         for (const evidence of criterion.evidence) {
             const from = searchFrom.get(evidence.quote) ?? 0;
@@ -104,8 +130,11 @@ export function seedCommentsFromRun(run: WritingFeedbackRun, verifiedText: strin
                 comment: evidence.rationale,
                 howToImprove: criterion.explanation,
                 origin: 'model_seed',
-                ...(CRITERION_FUNCTION_TAG[criterion.criterion]
-                    ? { functionTag: CRITERION_FUNCTION_TAG[criterion.criterion] }
+                ...(evidence.courseMaterialMention ? { courseMaterialMention: evidence.courseMaterialMention } : {}),
+                ...(evidence.glossaryEntryId ? { glossaryEntryId: evidence.glossaryEntryId } : {}),
+                ...(evidence.glossarySnapshot ? { glossarySnapshot: evidence.glossarySnapshot } : {}),
+                ...((functionTags.get(criterion.criterion) ?? CRITERION_FUNCTION_TAG[criterion.criterion])
+                    ? { functionTag: functionTags.get(criterion.criterion) ?? CRITERION_FUNCTION_TAG[criterion.criterion] }
                     : {})
             });
             if (seeds.length >= 50) return seeds;

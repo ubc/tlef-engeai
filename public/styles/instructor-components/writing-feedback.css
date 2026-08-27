@@ -13,13 +13,13 @@
 /* Feature foundation — shared tokens, page bounds, and box sizing */
 
 .wf-page {
-    --chat-bg: #fcfcfc;
-    --border-color: #b8b8b8;
-    --hover-bg: #efefef;
-    --text-primary: #333333;
-    --text-secondary: #6c757d;
+    --chat-bg: rgb(252, 252, 252);
+    --border-color: rgb(184, 184, 184);
+    --hover-bg: rgb(239, 239, 239);
+    --text-primary: rgb(51, 51, 51);
+    --text-secondary: rgb(108, 117, 125);
     --gingham-color: rgba(92, 138, 58, 0.1);
-    --background-2: #ECE5DD;
+    --background-2: rgb(236, 229, 221);
     --pinned-color: var(--color-chbe-green);
     display: flex;
     flex-direction: column;
@@ -75,6 +75,10 @@
     transition: transform 0.22s ease;
 }
 
+.wf-header-btn[hidden] {
+    display: none;
+}
+
 .wf-header-btn:hover {
     transform: scale(1.05);
 }
@@ -107,8 +111,8 @@
 
 .wf-workspace-message[data-tone="warning"] {
     background: rgba(230, 126, 34, 0.1);
-    border-color: #e67e22;
-    color: #a35617;
+    border-color: color-mix(in srgb, var(--color-eng-red) 60%, var(--color-chbe-green));
+    color: color-mix(in srgb, var(--color-eng-red) 65%, var(--text-primary));
 }
 
 .wf-workspace-message[data-tone="error"] {
@@ -142,7 +146,7 @@
 }
 
 .wf-button--primary:hover:not(:disabled) {
-    background: #2d7a2d;
+    background: color-mix(in srgb, var(--color-chbe-green) 80%, black);
 }
 
 .wf-button--secondary {
@@ -177,6 +181,39 @@
 
 .wf-button--danger:hover:not(:disabled) {
     background: rgba(139, 0, 0, 0.08);
+}
+
+/*
+ * Chip button — the documents page's `.content-status` / `.status-add-session` recipe.
+ *
+ * Deliberately not built on `.wf-button`'s own sizing: it overrides the padding, radius,
+ * weight, and gap so that a rubric control sitting in an assignment header reads as the same
+ * kind of affordance as "Add Section", "Draft", and "Delete" one page over.
+ */
+.wf-button--chip {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    gap: 4px;
+    background: rgba(76, 86, 175, 0.1);
+    color: var(--color-navy-blue);
+    border: 1px solid var(--color-navy-blue);
+    transition: all 0.3s ease;
+}
+
+.wf-button--chip:hover:not(:disabled) {
+    background: rgba(76, 86, 175, 0.2);
+    border-color: #4c56af;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(76, 86, 175, 0.3);
+}
+
+.wf-button--chip .feather,
+.wf-button--chip svg {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
 }
 
 .wf-button:disabled {
@@ -279,8 +316,8 @@
 
 .wf-chip--amber {
     background: rgba(230, 126, 34, 0.1);
-    color: #e67e22;
-    border: 1px solid #e67e22;
+    color: color-mix(in srgb, var(--color-eng-red) 60%, var(--color-chbe-green));
+    border: 1px solid color-mix(in srgb, var(--color-eng-red) 60%, var(--color-chbe-green));
 }
 
 .wf-chip--red {
@@ -291,8 +328,8 @@
 
 .wf-chip--purple {
     background: rgba(123, 31, 162, 0.1);
-    color: #7b1fa2;
-    border: 1px solid #7b1fa2;
+    color: var(--color-ubc-blue);
+    border: 1px solid var(--color-ubc-blue);
 }
 
 /* Section titles + cards */
@@ -351,7 +388,7 @@
 
 .wf-callout--warning {
     background: rgba(230, 126, 34, 0.1);
-    border-color: #e67e22;
+    border-color: color-mix(in srgb, var(--color-eng-red) 60%, var(--color-chbe-green));
 }
 
 .wf-callout--success {
@@ -429,13 +466,40 @@
     gap: 10px;
 }
 
+/*
+ * The lab-report hint only speaks after the toggle is used. While empty it is still a flex
+ * item, so the row spends a gap on either side of nothing — leaving twice the space between
+ * the toggle and the buttons as between the buttons themselves.
+ */
+.wf-assignment-controls .wf-help-text:empty {
+    display: none;
+}
+
+.wf-lab-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.wf-lab-toggle input[type="checkbox"] {
+    margin: 0;
+}
+
 .wf-expand-icon {
     display: inline-flex;
     color: var(--text-secondary);
     transition: transform 0.3s ease;
 }
 
-.wf-assignment-header[aria-expanded="true"] .wf-expand-icon {
+[role="button"][aria-expanded="true"] .wf-expand-icon {
     transform: rotate(180deg);
 }
 
@@ -445,7 +509,24 @@
     height: 18px;
 }
 
-.wf-submission-panel[hidden] {
+.wf-disclosure-body {
+    overflow: hidden;
+    opacity: 1;
+    transform: translateY(0);
+    transition:
+        max-height 0.3s ease,
+        opacity 0.3s ease,
+        transform 0.3s ease;
+}
+
+.wf-disclosure-body--enter,
+.wf-disclosure-body--leave {
+    opacity: 0;
+    transform: translateY(-0.35rem);
+    pointer-events: none;
+}
+
+.wf-disclosure-body[hidden] {
     display: none;
 }
 
@@ -461,6 +542,42 @@
 
 .wf-submission-row:first-child {
     border-top: 1px solid var(--border-color);
+}
+
+/* The row opens the submission, so it carries the same interaction cues as the assignment
+   header above it: pointer, hover wash, and a visible focus ring for keyboard users. */
+.wf-submission-row[role='button'] {
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.wf-submission-row[role='button']:hover {
+    background: var(--hover-bg);
+}
+
+.wf-submission-row[role='button']:focus-visible {
+    outline: 2px solid var(--color-chbe-green);
+    outline-offset: -2px;
+}
+
+/* Affordance for the row's own click target, not a control of its own. It slides slightly on
+   hover so the row reads as leading somewhere. */
+.wf-submission-open-icon {
+    display: inline-flex;
+    align-items: center;
+    color: var(--text-secondary);
+    transition: transform 0.2s ease, color 0.2s ease;
+}
+
+.wf-submission-row[role='button']:hover .wf-submission-open-icon {
+    color: var(--text-primary);
+    transform: translateX(2px);
+}
+
+.wf-submission-open-icon .feather,
+.wf-submission-open-icon svg {
+    width: 18px;
+    height: 18px;
 }
 
 .wf-submission-info {
@@ -609,6 +726,13 @@
     margin: 2px 0 6px;
 }
 
+.wf-inline-field-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 4px;
+}
+
 .wf-form-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -666,7 +790,7 @@
 
 .wf-canvas-assignment:has(input:checked) {
     border-color: var(--color-chbe-green);
-    background: var(--gingham-color);
+    background: var(--hover-bg);
 }
 
 .wf-canvas-assignment label {
@@ -706,60 +830,312 @@
 
 /* Rubric page */
 
+.wf-visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.wf-assignment-instructions {
+    margin: 15px 0 20px;
+    background: var(--chat-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+}
+
+.wf-assignment-instructions summary {
+    min-height: 44px;
+    padding: 12px 20px;
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.wf-assignment-instructions__text,
+.wf-assignment-instructions > .wf-muted-note {
+    margin: 0;
+    padding: 0 20px 16px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+}
+
+.wf-rubric-heading-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    padding: 16px 20px 0;
+}
+
+.wf-rubric-heading-row .wf-section-title {
+    flex: 1 1 auto;
+    margin-bottom: 0;
+}
+
+.wf-quiet-note {
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-style: italic;
+}
+
+.wf-rubric-details {
+    margin: 0 0 20px;
+    background: var(--chat-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.wf-rubric-details-status {
+    margin: 6px 20px 0;
+    min-height: 18px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.wf-rubric-details-status[data-tone="success"] {
+    color: var(--color-chbe-green);
+}
+
+.wf-rubric-details-status[data-tone="error"] {
+    color: var(--color-eng-red);
+}
+
+.wf-rubric-details .wf-rubric-details-form {
+    padding: 8px 20px 18px;
+}
+
+.wf-rubric-details .wf-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px 20px;
+    padding: 4px 0 0;
+}
+
+.wf-rubric-details .wf-field {
+    display: block;
+    margin: 0;
+    padding: 0;
+    border-top: 0;
+}
+
+.wf-rubric-details .wf-field label {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 0 0 4px;
+    color: var(--text-secondary);
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.wf-rubric-details .wf-field label .wf-field-count {
+    color: var(--text-secondary);
+    font-weight: 400;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.wf-rubric-details .wf-field input,
+.wf-rubric-details .wf-field textarea {
+    width: 100%;
+    color: var(--text-primary);
+}
+
+.wf-rubric-details .wf-field--wide {
+    grid-column: 1 / -1;
+}
+
+@media (max-width: 768px) {
+    .wf-rubric-details .wf-form-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+.wf-rubric-section {
+    margin: 0 0 20px;
+    background: var(--chat-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.wf-rubric-section__summary {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    min-height: 44px;
+    padding: 12px 20px;
+    color: var(--text-primary);
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.wf-rubric-section__title {
+    flex: 1 1 auto;
+    margin: 0;
+    padding: 0;
+    color: inherit;
+    font-size: inherit;
+    font-weight: inherit;
+    line-height: inherit;
+    border: 0;
+}
+
+.wf-rubric-section__meta {
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 400;
+}
+
+.wf-rubric-section > .wf-rubric-layout {
+    padding: 0 20px 20px;
+}
+
+.wf-rubric-grid-mount {
+    min-width: 0;
+}
+
 .wf-rubric-layout {
     display: grid;
-    grid-template-columns: minmax(0, 1.35fr) minmax(18rem, 0.65fr);
+    grid-template-columns: minmax(0, 1fr);
     align-items: start;
     gap: 20px;
 }
 
-.wf-rubric-editor,
-.wf-rubric-preview {
+.wf-rubric-editor {
     min-width: 0;
 }
 
-.wf-rubric-preview {
-    position: sticky;
-    top: 96px;
+.wf-rubric-tools {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 0 15px;
+}
+
+.wf-rubric-tools .wf-button {
+    min-height: 44px;
+}
+
+.wf-rubric-step {
+    margin: 0 0 20px;
     background: var(--chat-bg);
     border: 1px solid var(--border-color);
-    border-radius: 10px;
-    padding: 20px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+    overflow: hidden;
 }
 
-.wf-rubric-preview h3 {
-    margin: 0 0 10px;
-    color: var(--text-primary);
-    font-size: 16px;
-    font-weight: 600;
+.wf-rubric-step-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 52px;
+    padding: 16px 20px;
+    cursor: pointer;
+    border-left: 4px solid var(--color-chbe-green);
 }
 
-.wf-rubric-preview p,
-.wf-rubric-preview li {
+.wf-rubric-step-header .wf-section-title {
+    flex: 1 1 auto;
+    margin: 0;
+}
+
+.wf-rubric-step-meta {
     color: var(--text-secondary);
     font-size: 13px;
-    line-height: 1.5;
+    white-space: nowrap;
 }
 
-.wf-rubric-grid {
-    display: grid;
-    gap: 15px;
+.wf-rubric-step-body {
+    padding: 0 20px 20px;
 }
 
-.wf-rubric-card {
-    background: var(--chat-bg);
+.wf-rubric-step-body > .wf-rubric-step {
+    margin: 0 0 15px;
+}
+
+.wf-rubric-step-body > .wf-rubric-step:last-child {
+    margin-bottom: 0;
+}
+
+.wf-sfl-box {
+    margin: 16px 0 0;
+    background: var(--background-2);
     border: 1px solid var(--border-color);
-    border-radius: 10px;
-    padding: 16px 20px;
+    border-radius: 8px;
+    overflow: hidden;
 }
 
-.wf-rubric-card h3 {
-    margin: 0 0 8px;
-    color: var(--text-primary);
+.wf-sfl-box-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    padding: 10px 16px;
+    cursor: pointer;
+}
+
+.wf-sfl-box-header .wf-section-title {
+    flex: 1 1 auto;
+    margin: 0;
     font-size: 15px;
-    font-weight: 600;
-    text-transform: capitalize;
+}
+
+.wf-sfl-box-body {
+    padding: 4px 16px 16px;
+}
+
+.wf-sfl-group-label {
+    margin: 14px 0 6px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.wf-sfl-group-label:first-child {
+    margin-top: 0;
+}
+
+.wf-sfl-hint {
+    display: block;
+    margin-top: 4px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.wf-rubric-library-select {
+    min-height: 40px;
+    min-width: min(100%, 16rem);
+    padding: 8px 12px;
+    background: white;
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font: inherit;
+    font-size: 14px;
+}
+
+.wf-rubric-library-select:focus-visible {
+    outline: 2px solid var(--color-chbe-green);
+    outline-offset: 2px;
 }
 
 .wf-locked-value {
@@ -773,10 +1149,217 @@
     line-height: 1.4;
 }
 
-.wf-level-row {
-    display: grid;
-    grid-template-columns: minmax(8rem, 0.7fr) minmax(0, 1.5fr) minmax(6rem, 0.45fr);
-    gap: 12px;
+/* Rubric grid — criteria as rows, performance levels as columns */
+
+.wf-grid-scroll {
+    /* Eight levels will not fit a narrow viewport; the table scrolls, the page does not. */
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-gutter: stable;
+    scrollbar-color: rgba(0, 0, 0, 0.22) transparent;
+}
+
+.wf-grid-scroll::-webkit-scrollbar,
+.wf-grid-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.wf-grid-scroll::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.22);
+    border-radius: 4px;
+}
+
+.wf-grid {
+    /* Auto layout, not fixed: the per-column min-widths below are what push a wide
+       rubric past the viewport and hand the overflow to .wf-grid-scroll. */
+    width: 100%;
+    border-collapse: collapse;
+    color: var(--text-primary);
+    font-size: 13px;
+}
+
+.wf-grid th,
+.wf-grid td {
+    padding: 10px 12px;
+    text-align: left;
+    vertical-align: top;
+    border: 1px solid var(--border-color);
+}
+
+.wf-grid thead th {
+    background: color-mix(in srgb, var(--color-chbe-green) 12%, var(--chat-bg));
+}
+
+.wf-grid-corner,
+.wf-grid-row-head {
+    width: 18rem;
+    min-width: 14rem;
+}
+
+.wf-grid-col-head {
+    min-width: 11rem;
+}
+
+.wf-grid-corner,
+.wf-grid-points-head {
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.wf-grid-points-head,
+.wf-grid-weight {
+    width: 9rem;
+    min-width: 8rem;
+    background: var(--hover-bg);
+}
+
+.wf-grid-head-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+.wf-grid-head-controls {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.wf-grid-label-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 6px 8px;
+    background: white;
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.wf-grid-text {
+    display: block;
+    width: 100%;
+    padding: 6px 8px;
+    background: white;
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font: inherit;
+    font-size: 13px;
+    line-height: 1.4;
+    resize: vertical;
+}
+
+.wf-grid-focus {
+    margin-top: 6px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-style: italic;
+}
+
+.wf-grid-band {
+    width: 100%;
+    margin-bottom: 6px;
+    padding: 6px 8px;
+    background: white;
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.wf-grid-cell .wf-grid-band {
+    color: var(--text-primary);
+}
+
+.wf-grid-cell--empty .wf-grid-text {
+    background: var(--chat-bg);
+    color: var(--text-secondary);
+}
+
+.wf-grid-cell--empty {
+    background: color-mix(in srgb, var(--chat-bg) 80%, var(--hover-bg));
+}
+
+.wf-grid-weight-input {
+    width: 100%;
+    padding: 6px 8px;
+    background: white;
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.wf-grid-warnings:not(:empty) {
+    margin-top: 6px;
+}
+
+.wf-grid-warning {
+    margin: 0 0 4px;
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.35;
+}
+
+.wf-grid-cell-hint {
+    margin: 4px 0 0;
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-style: italic;
+}
+
+.wf-grid-total-label {
+    text-align: right;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 600;
+    background: var(--hover-bg);
+}
+
+.wf-grid-total {
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 600;
+    background: var(--hover-bg);
+}
+
+/*
+ * Remove and reorder controls stay in the layout at all times so they keep their
+ * place in the tab order; they simply fade in on hover, on keyboard focus anywhere
+ * in the row or column, and whenever they themselves take a visible focus ring.
+ */
+
+.wf-grid-affordance {
+    width: 32px;
+    height: 32px;
+    opacity: 0.55;
+    transition: opacity 120ms ease;
+}
+
+.wf-grid-row:hover .wf-grid-affordance,
+.wf-grid-row:focus-within .wf-grid-affordance,
+.wf-grid-col-head:hover .wf-grid-affordance,
+.wf-grid-col-head:focus-within .wf-grid-affordance,
+.wf-grid-affordance:focus-visible,
+.wf-grid-affordance:hover {
+    opacity: 1;
+}
+
+@media (hover: none) {
+    .wf-grid-affordance {
+        width: 44px;
+        height: 44px;
+        opacity: 1;
+    }
 }
 
 /* Review — top bar + layout */
@@ -873,7 +1456,7 @@
 
 .wf-doc-paper {
     position: relative;
-    background: #fffef9;
+    background: color-mix(in srgb, var(--chat-bg) 95%, var(--background-2));
     border: 1px solid var(--border-color);
     border-radius: 10px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
@@ -1183,7 +1766,7 @@ mark.wf-anchor.is-filtered-out,
 }
 
 .wf-annotation-card--stale {
-    border-color: #e67e22;
+    border-color: color-mix(in srgb, var(--color-eng-red) 60%, var(--color-chbe-green));
     background: rgba(230, 126, 34, 0.05);
 }
 
@@ -1299,6 +1882,86 @@ mark.wf-anchor.is-filtered-out,
     font-size: 15px;
     font-weight: 700;
     border-bottom: 1px solid var(--border-color);
+}
+
+.wf-suggested-grading__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.wf-suggested-grading__header h3 {
+    margin-bottom: 4px;
+}
+
+.wf-suggested-grading__scroll {
+    overflow-x: auto;
+    scrollbar-gutter: stable;
+    scrollbar-color: rgba(0, 0, 0, 0.22) transparent;
+}
+
+.wf-suggested-grading__scroll::-webkit-scrollbar,
+.wf-suggested-grading__scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.wf-suggested-grading__scroll::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.22);
+    border-radius: 4px;
+}
+
+.wf-suggested-grading__table {
+    width: 100%;
+    min-width: 560px;
+    border-collapse: collapse;
+    color: var(--text-primary);
+    font-size: 12px;
+}
+
+.wf-suggested-grading__table th,
+.wf-suggested-grading__table td {
+    padding: 8px 10px;
+    border: 1px solid var(--border-color);
+    vertical-align: top;
+}
+
+.wf-suggested-grading__table th {
+    background: var(--background-2);
+    text-align: left;
+    font-weight: 700;
+}
+
+.wf-suggested-grading__band {
+    display: block;
+    color: var(--text-primary);
+}
+
+.wf-suggested-grading__choice {
+    background: var(--hover-bg);
+    box-shadow: inset 3px 0 0 var(--color-chbe-green);
+}
+
+.wf-suggested-grading__tag {
+    display: inline-block;
+    margin-top: 4px;
+    color: var(--color-chbe-green);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.wf-suggested-grading__reason {
+    margin: 4px 0 0;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.wf-suggested-grading__total {
+    margin: 8px 0 0;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 700;
 }
 
 .wf-strength-list {
@@ -1429,14 +2092,14 @@ mark.wf-anchor.is-filtered-out,
 .wf-internal-note {
     padding: 10px 12px;
     background: rgba(230, 126, 34, 0.08);
-    border: 1px solid #e67e22;
+    border: 1px solid color-mix(in srgb, var(--color-eng-red) 60%, var(--color-chbe-green));
     border-radius: 8px;
     font-size: 13px;
 }
 
 .wf-internal-note h3 {
     border: none;
-    color: #a35617;
+    color: color-mix(in srgb, var(--color-eng-red) 65%, var(--text-primary));
     padding-bottom: 0;
 }
 
@@ -1533,9 +2196,9 @@ mark.wf-anchor.is-filtered-out,
     margin: 0;
     padding: 8px 12px;
     background: rgba(230, 126, 34, 0.08);
-    border: 1px solid #e67e22;
+    border: 1px solid color-mix(in srgb, var(--color-eng-red) 60%, var(--color-chbe-green));
     border-radius: 6px;
-    color: #a35617;
+    color: color-mix(in srgb, var(--color-eng-red) 65%, var(--text-primary));
     font-size: 12px;
     line-height: 1.5;
 }
@@ -1560,7 +2223,7 @@ mark.wf-anchor.is-filtered-out,
 }
 
 .wf-matrix-function[data-function='interpersonal'] h4 {
-    color: #7b1fa2;
+    color: var(--color-ubc-blue);
 }
 
 .wf-matrix-function[data-function='content'] h4 {
@@ -1641,13 +2304,11 @@ mark.wf-anchor.is-filtered-out,
 /* Responsive */
 
 @media (max-width: 1180px) {
-    .wf-review-layout,
-    .wf-rubric-layout {
+    .wf-review-layout {
         grid-template-columns: 1fr;
     }
 
-    .wf-feedback-panel,
-    .wf-rubric-preview {
+    .wf-feedback-panel {
         position: static;
         max-height: none;
     }
@@ -1662,6 +2323,11 @@ mark.wf-anchor.is-filtered-out,
 }
 
 @media (max-width: 900px) {
+    .wf-page,
+    .wf-main-content {
+        overflow-x: hidden;
+    }
+
     .wf-form-grid {
         grid-template-columns: 1fr;
     }
@@ -1670,9 +2336,33 @@ mark.wf-anchor.is-filtered-out,
         grid-column: auto;
     }
 
-    .wf-level-row {
-        grid-template-columns: 1fr;
-        gap: 0;
+    .wf-rubric-heading-row {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .wf-rubric-heading-row .wf-button {
+        width: 100%;
+    }
+
+    .wf-grid {
+        min-width: 760px;
+    }
+
+    .wf-grid-corner,
+    .wf-grid-row-head {
+        position: sticky;
+        left: 0;
+        z-index: 2;
+        width: 12rem;
+        min-width: 12rem;
+        background: var(--chat-bg);
+        box-shadow: 1px 0 0 var(--border-color);
+    }
+
+    .wf-grid-corner {
+        z-index: 3;
+        background: color-mix(in srgb, var(--color-chbe-green) 12%, var(--chat-bg));
     }
 
     .wf-doc-paper {
@@ -1708,6 +2398,16 @@ mark.wf-anchor.is-filtered-out,
         width: 100%;
     }
 
+    .wf-rubric-tools {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .wf-rubric-library-select,
+    .wf-rubric-tools .wf-button {
+        width: 100%;
+    }
+
     .wf-download-menu {
         margin-left: 0;
     }
@@ -1722,3 +2422,98 @@ mark.wf-anchor.is-filtered-out,
         animation-duration: 0.01ms !important;
     }
 }
+
+.wf-canvas-brief {
+    margin: 0 0 16px;
+    padding: 10px 16px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 13px;
+}
+
+.wf-canvas-brief summary {
+    cursor: pointer;
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.wf-canvas-brief-body {
+    margin: 8px 0 0;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    white-space: pre-wrap;
+}
+
+/* In-place cell controls — text until touched, a field once it is */
+
+.wf-quiet-field {
+    width: 100%;
+    min-width: 0;
+    padding: 6px 8px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 14px;
+    line-height: 1.45;
+}
+
+.wf-quiet-field--title {
+    font-weight: 600;
+}
+
+.wf-quiet-field--rating {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.wf-quiet-field--multiline {
+    display: block;
+    overflow: hidden;
+    color: var(--text-secondary);
+    font-size: 13px;
+    resize: none;
+}
+
+.wf-quiet-field:hover:not(:read-only) {
+    border-color: var(--border-color);
+    background: white;
+}
+
+.wf-quiet-field:focus {
+    outline: none;
+    border-color: var(--pinned-color);
+    background: white;
+}
+
+/* A field with no resting border needs more than a border-colour swap to announce focus,
+   so keyboard focus also gets the page's standard ring. */
+.wf-quiet-field:focus-visible {
+    outline: 2px solid var(--color-chbe-green);
+    outline-offset: 1px;
+}
+
+.wf-quiet-field:read-only {
+    cursor: default;
+}
+
+.wf-quiet-field::placeholder {
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+@media (max-width: 900px) {
+    /* Comfortable targets once the pointer is likely a finger. */
+    .wf-quiet-field {
+        min-height: 44px;
+        border-color: var(--border-color);
+        background: white;
+    }
+
+    /* Bordered fields read as editable, so a read-only import must not borrow that look. */
+    .wf-quiet-field:read-only {
+        background: var(--hover-bg);
+    }
+
+    }

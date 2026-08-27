@@ -7,6 +7,7 @@
  * @description: Singleton MongoDB access layer for EngE-AI — façade delegates into `mongo/` (`./mongo/course-mongo`, `./mongo/flag-mongo`, `./mongo/chat-mongo`, …).
  */
 
+import type { ImportedRubricShape } from '../writing-feedback/rubric-seed';
 import { MongoClient, Db } from 'mongodb';
 import * as dotenv from 'dotenv';
 import {
@@ -65,8 +66,13 @@ import * as InstructorPeriodAllowanceMongo from './mongo/instructor-period-allow
 // @rdschrs: Implemented the Writing Feedback persistence façade and delegate boundary.
 import * as WritingFeedbackMongo from './mongo/writing-feedback-mongo';
 import type {
+    CanvasAssignmentDetails,
+    CanvasImportedRubric,
+    CanvasRubricRow,
     StaffReviewRevision,
+    WritingFeedbackLens,
     WritingFeedbackRun,
+    WritingGlossaryEntry,
     WritingJob,
     WritingRelease,
     WritingRubricDefinition,
@@ -187,16 +193,7 @@ export class EngEAI_MongoDB {
         CourseMongo.deleteActiveCourse(this.ctx(), course);
 
     /**
-     * ensureA2WritingAssignment — returns or seeds the course's canonical A2 assignment.
-     *
-     * @param courseId - Owning course id
-     * @returns Existing, migrated, or newly seeded assignment
-     */
-    public ensureA2WritingAssignment = async (courseId: string) =>
-        WritingFeedbackMongo.ensureA2WritingAssignment(this.ctx(), courseId);
-
-    /**
-     * listWritingAssignments — lists course assignments after ensuring the A2 seed.
+     * listWritingAssignments — lists course assignments without implicit record creation.
      *
      * @param courseId - Owning course id
      * @returns Assignments in creation order
@@ -230,26 +227,60 @@ export class EngEAI_MongoDB {
      * @param courseId - Owning course id
      * @param canvasAssignmentId - Stable Canvas assignment identifier
      * @param title - Imported assignment title
+     * @param instructions - Optional imported assignment directions
      * @param dueAt - Optional imported deadline
+     * @param canvasRubric - Canvas rubric grid seeding the draft, when one could be mapped
      * @returns Newly created or concurrently existing assignment
      */
     public createCanvasWritingAssignment = async (
         courseId: string,
         canvasAssignmentId: string,
         title: string,
-        dueAt?: Date
-    ) => WritingFeedbackMongo.createCanvasWritingAssignment(this.ctx(), courseId, canvasAssignmentId, title, dueAt);
+        instructions?: string,
+        dueAt?: Date,
+        canvasRubric?: ImportedRubricShape
+    ) => WritingFeedbackMongo.createCanvasWritingAssignment(
+        this.ctx(),
+        courseId,
+        canvasAssignmentId,
+        title,
+        instructions,
+        dueAt,
+        canvasRubric
+    );
+
+    /**
+     * saveCanvasAssignmentDetails — stores the assignment brief imported from Canvas.
+     *
+     * The Canvas rubric is not stored here; it seeds the assignment's first rubric draft at
+     * creation. This never alters the approved rubric or an existing draft.
+     *
+     * @param courseId - Owning course id
+     * @param assignmentId - Local assignment id
+     * @param details - Imported assignment brief
+     * @returns Updated assignment or `null`
+     */
+    public saveCanvasAssignmentDetails = async (
+        courseId: string,
+        assignmentId: string,
+        details: CanvasAssignmentDetails
+    ) => WritingFeedbackMongo.saveCanvasAssignmentDetails(this.ctx(), courseId, assignmentId, details);
 
     /**
      * createManualWritingAssignment — persists a staff-created local assignment.
      *
      * @param courseId - Owning course id
      * @param title - Validated display title
+     * @param instructions - Optional raw assignment directions
      * @param dueAt - Optional deadline
      * @returns Newly created assignment
      */
-    public createManualWritingAssignment = async (courseId: string, title: string, dueAt?: Date) =>
-        WritingFeedbackMongo.createManualWritingAssignment(this.ctx(), courseId, title, dueAt);
+    public createManualWritingAssignment = async (
+        courseId: string,
+        title: string,
+        instructions?: string,
+        dueAt?: Date
+    ) => WritingFeedbackMongo.createManualWritingAssignment(this.ctx(), courseId, title, instructions, dueAt);
 
     /**
      * countWritingSubmissionsByAssignment — aggregates queue counts for a course.
@@ -266,23 +297,26 @@ export class EngEAI_MongoDB {
      * @param courseId - Owning course id
      * @param assignmentId - Assignment receiving the draft
      * @param draft - Validated rubric draft
+     * @param lens - Feedback lens the draft belongs to; defaults to `'linguistic'`
      * @returns Updated assignment or `null`
      */
     public saveWritingRubricDraft = async (
         courseId: string,
         assignmentId: string,
-        draft: WritingRubricDefinition
-    ) => WritingFeedbackMongo.saveWritingRubricDraft(this.ctx(), courseId, assignmentId, draft);
+        draft: WritingRubricDefinition,
+        lens?: WritingFeedbackLens
+    ) => WritingFeedbackMongo.saveWritingRubricDraft(this.ctx(), courseId, assignmentId, draft, lens);
 
     /**
      * discardWritingRubricDraft — removes only the editable rubric draft.
      *
      * @param courseId - Owning course id
      * @param assignmentId - Assignment whose draft is removed
+     * @param lens - Feedback lens whose draft is discarded; defaults to `'linguistic'`
      * @returns Updated assignment or `null`
      */
-    public discardWritingRubricDraft = async (courseId: string, assignmentId: string) =>
-        WritingFeedbackMongo.discardWritingRubricDraft(this.ctx(), courseId, assignmentId);
+    public discardWritingRubricDraft = async (courseId: string, assignmentId: string, lens?: WritingFeedbackLens) =>
+        WritingFeedbackMongo.discardWritingRubricDraft(this.ctx(), courseId, assignmentId, lens);
 
     /**
      * approveWritingRubricDraft — atomically promotes the expected draft version.
@@ -290,15 +324,17 @@ export class EngEAI_MongoDB {
      * @param courseId - Owning course id
      * @param assignmentId - Assignment whose draft is approved
      * @param rubric - Approved rubric derived from the current draft
-     * @param gradeMapping - Optional instructor-approved numeric mapping
+     * @param gradeMapping - Optional instructor-approved numeric mapping (linguistic lens only)
+     * @param lens - Feedback lens being approved; defaults to `'linguistic'`
      * @returns Updated assignment or `null` for missing/stale state
      */
     public approveWritingRubricDraft = async (
         courseId: string,
         assignmentId: string,
         rubric: WritingRubricDefinition,
-        gradeMapping?: Partial<Record<'emerging' | 'developing' | 'competent' | 'strong', number>>
-    ) => WritingFeedbackMongo.approveWritingRubricDraft(this.ctx(), courseId, assignmentId, rubric, gradeMapping);
+        gradeMapping?: Record<string, number>,
+        lens?: WritingFeedbackLens
+    ) => WritingFeedbackMongo.approveWritingRubricDraft(this.ctx(), courseId, assignmentId, rubric, gradeMapping, lens);
 
     /**
      * mapWritingAssignmentToCanvas — attaches a unique Canvas mapping.
@@ -372,13 +408,58 @@ export class EngEAI_MongoDB {
         WritingFeedbackMongo.createWritingFeedbackRun(this.ctx(), input);
 
     /**
-     * getLatestWritingFeedbackRun — retrieves the newest run for a submission.
+     * getLatestWritingFeedbackRun — retrieves the newest run for a submission and lens.
      *
      * @param submissionId - Submission whose generation history is queried
+     * @param lens - Feedback lens whose latest run is requested; defaults to `'linguistic'`
      * @returns Latest run or `null`
      */
-    public getLatestWritingFeedbackRun = async (submissionId: string) =>
-        WritingFeedbackMongo.getLatestWritingFeedbackRun(this.ctx(), submissionId);
+    public getLatestWritingFeedbackRun = async (submissionId: string, lens?: WritingFeedbackLens) =>
+        WritingFeedbackMongo.getLatestWritingFeedbackRun(this.ctx(), submissionId, lens);
+
+    /**
+     * countWritingFeedbackRunsByLens — reports whether one lens has ever produced a run for an assignment.
+     *
+     * @param courseId - Owning course id
+     * @param assignmentId - Assignment being inspected
+     * @param lens - Lens whose runs are counted
+     * @returns Number of stored runs for that assignment and lens
+     */
+    public countWritingFeedbackRunsByLens = async (courseId: string, assignmentId: string, lens: WritingFeedbackLens) =>
+        WritingFeedbackMongo.countWritingFeedbackRunsByLens(this.ctx(), courseId, assignmentId, lens);
+
+    /**
+     * listWritingGlossaryEntries — lists reusable Writing Feedback glossary definitions.
+     *
+     * @param courseId - Owning course id
+     * @param search - Optional term/definition search text
+     * @returns Course-scoped glossary entries
+     */
+    public listWritingGlossaryEntries = async (courseId: string, search?: string): Promise<WritingGlossaryEntry[]> =>
+        WritingFeedbackMongo.listWritingGlossaryEntries(this.ctx(), courseId, search);
+
+    /**
+     * createWritingGlossaryEntry — creates a reusable course glossary definition.
+     *
+     * @param input - Course, term, definition, and actor
+     * @returns Newly persisted entry
+     */
+    public createWritingGlossaryEntry = async (input: { courseId: string; term: string; definition: string; actorUserId: string }) =>
+        WritingFeedbackMongo.createWritingGlossaryEntry(this.ctx(), input);
+
+    /**
+     * updateWritingGlossaryEntry — version-checked reusable glossary update.
+     *
+     * @param courseId - Owning course id
+     * @param entryId - Entry being updated
+     * @param update - New value, expected version, and actor
+     * @returns Updated entry or `null`
+     */
+    public updateWritingGlossaryEntry = async (
+        courseId: string,
+        entryId: string,
+        update: { term: string; definition: string; expectedVersion: number; actorUserId: string }
+    ) => WritingFeedbackMongo.updateWritingGlossaryEntry(this.ctx(), courseId, entryId, update);
 
     /**
      * appendWritingReview — appends an immutable staff revision and invalidates approval.
@@ -446,6 +527,17 @@ export class EngEAI_MongoDB {
         WritingFeedbackMongo.enqueueWritingJob(this.ctx(), job);
 
     /**
+     * findActiveWritingJob — resolves queued or leased work for a submission.
+     *
+     * @param courseId - Owning course id
+     * @param submissionId - Submission pointer stored in the job payload
+     * @param type - Worker handler type
+     * @returns Active job or `null`
+     */
+    public findActiveWritingJob = async (courseId: string, submissionId: string, type: WritingJob['type']) =>
+        WritingFeedbackMongo.findActiveWritingJob(this.ctx(), courseId, submissionId, type);
+
+    /**
      * leaseNextWritingJob — atomically claims the oldest runnable job.
      *
      * @param leaseMs - Optional lease duration before work can be reclaimed
@@ -482,6 +574,17 @@ export class EngEAI_MongoDB {
      */
     public deleteWritingAssignment = async (courseId: string, assignmentId: string) =>
         WritingFeedbackMongo.deleteWritingAssignment(this.ctx(), courseId, assignmentId);
+
+    /**
+     * setWritingAssignmentLabReport — marks or clears an assignment as a lab report.
+     *
+     * @param courseId - Owning course id
+     * @param assignmentId - Assignment being marked
+     * @param isLabReport - Whether the assignment receives technical feedback
+     * @returns Updated assignment or `null`
+     */
+    public setWritingAssignmentLabReport = async (courseId: string, assignmentId: string, isLabReport: boolean) =>
+        WritingFeedbackMongo.setWritingAssignmentLabReport(this.ctx(), courseId, assignmentId, isLabReport);
 
     /**
      * deleteWritingSubmission — removes a scoped submission and dependent workflow records.

@@ -40,7 +40,7 @@ Repository evidence and current official course material override historical sum
 ## Writing Feedback invariants
 
 - Writing Feedback is opt-in per course. Disabled courses must not expose UI or operational APIs.
-- Instructors/admins configure the capability; instructors and TAs operate it once enabled.
+- Instructors/admins enable or disable the capability for a course. Once enabled, instructors, admins, and TAs all have full workspace parity — assignments, rubrics, review, approval, and release (D-049).
 - Model results are drafts. A human must approve before any release.
 - Rubric judgments require exact evidence from verified submission text; never invent weights.
 - OCR text must be staff-verified before feedback generation.

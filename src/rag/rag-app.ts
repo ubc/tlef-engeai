@@ -224,6 +224,74 @@ export class RAGApp {
     }
 
     /**
+     * Retrieves published course-material chunks for Writing Feedback V2.
+     *
+     * The query must be built from assignment/profile metadata and analyzer rule
+     * labels, never from verified student text or evidence quotations. This method
+     * intentionally avoids logging retrieved chunk content because Writing Feedback
+     * runs may carry sensitive assessment context.
+     *
+     * @param query - Student-text-free search query
+     * @param courseId - Stable active-course id
+     * @param options - Retrieval limit/threshold and optional topic filter
+     * @returns Published retrieved chunks, or an empty list when retrieval is unavailable
+     */
+    public async retrieveForWritingFeedback(
+        query: string,
+        courseId: string,
+        options: RetrieveForChatOptions = {}
+    ): Promise<RetrievedChunk[]> {
+        const limit = options.limit ?? DEFAULT_RETRIEVE_LIMIT;
+        const scoreThreshold = options.scoreThreshold ?? DEFAULT_RETRIEVE_SCORE_THRESHOLD;
+
+        if (isMockResponse()) {
+            return [];
+        }
+
+        if (!this.rag || typeof this.rag.retrieveContext !== 'function') {
+            appLogger.warn('RAG module not available, skipping Writing Feedback course-material retrieval');
+            return [];
+        }
+
+        try {
+            const mongoDB = await EngEAI_MongoDB.getInstance();
+            const course = await mongoDB.getActiveCourse(courseId);
+            if (!course) return [];
+
+            const publishedItems: Array<{ topicId: string; topicTitle: string; itemId: string; itemTitle: string }> = [];
+            (course.topicOrWeekInstances ?? [])
+                .filter((instanceTopicOrWeek: TopicOrWeekInstance) => instanceTopicOrWeek.published === true)
+                .filter((instanceTopicOrWeek: TopicOrWeekInstance) => !options.topicOrWeekId || instanceTopicOrWeek.id === options.topicOrWeekId)
+                .forEach((instanceTopicOrWeek: TopicOrWeekInstance) => {
+                    (instanceTopicOrWeek.items ?? []).forEach((item: TopicOrWeekItem) => {
+                        const itemTitle = item.itemTitle || (item as { title?: string }).title || '';
+                        if (!itemTitle) return;
+                        publishedItems.push({
+                            topicId: instanceTopicOrWeek.id,
+                            topicTitle: instanceTopicOrWeek.title,
+                            itemId: item.id,
+                            itemTitle
+                        });
+                    });
+                });
+
+            if (publishedItems.length === 0) return [];
+
+            const filter: Record<string, unknown> = {
+                must: [
+                    { key: 'courseName', match: { value: course.courseName } },
+                    { key: 'itemTitle', match: { any: publishedItems.map((item) => item.itemTitle) } },
+                ],
+            };
+
+            return await this.rag.retrieveContext(` ${query}`, { limit, scoreThreshold, filter });
+        } catch (error) {
+            appLogger.warn('Writing Feedback course-material retrieval failed', { error: error as Error });
+            return [];
+        }
+    }
+
+    /**
      * Parse a document to extract text without uploading to RAG.
      * Used for preview before final submission.
      *
@@ -416,6 +484,9 @@ export class RAGApp {
                 date: fullDocument.date.toISOString(),
                 name: fullDocument.name,
                 courseName: fullDocument.courseName,
+                ...(fullDocument.courseId ? { courseId: fullDocument.courseId } : {}),
+                ...(fullDocument.topicOrWeekId ? { topicOrWeekId: fullDocument.topicOrWeekId } : {}),
+                ...(fullDocument.itemId ? { itemId: fullDocument.itemId } : {}),
                 topicOrWeekTitle: fullDocument.topicOrWeekTitle,
                 itemTitle: fullDocument.itemTitle,
                 sourceType: fullDocument.sourceType,

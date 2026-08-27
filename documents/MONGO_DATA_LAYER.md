@@ -102,19 +102,94 @@
 <!-- @rdschrs: Implemented Writing Feedback persistence and lifecycle records. -->
 ### Writing feedback collections
 
-`writing-feedback-mongo.ts` owns fixed, course-keyed collections: `canvas-connections`, `writing-assignments`, `writing-submissions`, `writing-feedback-runs`, `writing-releases`, and `writing-jobs`.
+`writing-feedback-mongo.ts` owns fixed, course-keyed collections: `canvas-connections`, `writing-assignments`, `writing-submissions`, `writing-feedback-runs`, `writing-releases`, `writing-jobs`, and `writing-glossary-entries`.
 
-- Unique indexes protect Canvas course/assignment mappings, course/assignment/student/attempt submissions, and release payload fingerprints.
-- Queue reads use course, assignment, status, and update time. Job state/lease indexes support the planned Mongo-leased worker; `retentionAt` is the only TTL field and is set only when retention policy permits cleanup.
+- A unique partial index protects `{ courseId, canvasAssignmentId }` only when `canvasAssignmentId` is a string. Startup reconciles the legacy compound `sparse` index, whose always-present `courseId` accidentally limited each course to one manual assignment. Submission attempts and release payload fingerprints retain their own unique indexes.
+- Queue reads use course, assignment, status, and update time. Job state/lease indexes support the Mongo-leased worker; generation jobs are deduplicated by `{ courseId, type, payload.submissionId, state }` for active states before enqueue. `retentionAt` is the only TTL field and is set only when retention policy permits cleanup.
 - Writing records never store PUIDs. Submission text stays outside Qdrant/RAG. A future `writing-source-files` GridFS bucket is limited to staff-uploaded scans needed for transcription review; Canvas originals remain externally referenced.
-- `writing-assignments` stores the current approved `rubric`, an optional `rubricDraft`, immutable prior versions in `rubricHistory`, `profileVersion`, `rubricSource`, optional `canvasAssignmentId`, and optional `dueAt` (Canvas due date or manual deadline). The A2 ensure path lazily adds approved version 1 to pre-rubric local records. `createManualWritingAssignment` seeds a manual assignment from the A2 profile; `countWritingSubmissionsByAssignment` aggregates per-assignment submission counts for the landing view.
-- Staff review revisions (`writing-submissions.reviews[]`) optionally snapshot `comments`: anchored specific-feedback comments (`quote` + UTF-16 offsets into the verified text, comment body, optional how-to-improve/link/glossary, `origin: model_seed|staff`, optional staff-facing `functionTag`/`levelTag`/`priority` matrix taxonomy tags, server-stamped `authorName` for staff-authored comments (carried forward across revisions by comment id, never client-controlled), ≤50 per revision). Revisions remain append-only; editing or deleting a comment appends a new revision, and offsets are re-validated against the verified text before every write. Document growth stays bounded by the 30k-character text limit and the 50-comment cap.
-- Rubric draft saves write only `rubricDraft` with a higher version and actor/time metadata. Explicit instructor/admin approval moves the former active rubric to `rubricHistory` and promotes the validated draft. `writing-feedback-runs.rubricVersion` and `writing-releases.rubricVersion` retain the approved version used by assessment/release.
-- Optional level points derive `gradeMapping` only when every supported level has a value. Partial points are retained in the draft for editing but cannot create a partial numeric release mapping.
-- Local demo Canvas import creates no `canvas-connections` token record. A future live connection may persist only institutionally approved connection metadata plus an encrypted refresh token; access tokens remain memory-only and are never returned through the API.
-- Canvas import is idempotent at course/assignment/student/attempt. A repeated import reports skipped/reconciled records and does not append another submission. Import never mutates Canvas and never writes to a RAG/Qdrant collection.
+- `writing-assignments` stores the current linguistic rubric plus `sflContext` profile (an unapproved draft for a new assignment, then the active approved version), optional `rubricDraft`, immutable prior approved versions in `rubricHistory`, assignment `instructions`, template `profileVersion`, `rubricSource`, optional `canvasAssignmentId`, and optional `dueAt`. Listing has no write side effect: empty courses remain empty. Manual and Canvas creation use a neutral three-criterion/four-level draft and placeholder SFL profile requiring staff approval. Read-boundary normalization supplies missing level `rank` values from legacy array order across current, draft, and history values without rewriting stored documents. `countWritingSubmissionsByAssignment` aggregates landing-view counts.
+- `writing-feedback-runs` stores the student-facing `result` plus optional lens. V2 linguistic runs additionally store schema/foundation/analyzer-prompt/writer-prompt/model versions, validated `sflAnalysis`, resolved `courseMaterialMentions`, `courseSourceVersion`, and glossary entry versions. Prompt bodies and student text are not stored in run provenance. Failed analyzer/writer attempts do not persist partial runs.
+- `writing-glossary-entries` stores course-scoped reusable terms with `{ id, courseId, term, normalizedTerm, definition, version, createdAt, createdBy, updatedAt, updatedBy }`. A unique index on `{ courseId, normalizedTerm }` prevents duplicate normalized terms. Updates are version-checked and increment `version`; annotation snapshots keep historical PDFs stable after later definition changes.
+- Staff review revisions (`writing-submissions.reviews[]`) optionally snapshot `comments`: anchored specific-feedback comments (`quote` + UTF-16 offsets into the verified text, comment body, optional how-to-improve/link/course-material mention/glossary snapshot, `origin: model_seed|staff`, optional staff-facing `functionTag`/`levelTag`/`priority` matrix taxonomy tags, server-stamped `authorName` for staff-authored comments (carried forward across revisions by comment id, never client-controlled), ≤50 per revision). Revisions remain append-only; editing or deleting a comment appends a new revision, and offsets are re-validated against the verified text before every write. Document growth stays bounded by the 30k-character text limit and the 50-comment cap.
+- Rubric draft saves write only `rubricDraft` with actor/time metadata. First approval promotes the initial draft without archiving it; later approvals archive the former active rubric and promote the validated higher version. `writing-feedback-runs.rubricVersion` and `writing-releases.rubricVersion` retain the approved version used by assessment/release.
+- `WritingRubricCriterion.points` and `WritingRubricCriterion.cells` are optional. `points` is the criterion row weight; `cells` is a sparse map keyed by level id with `{ min, max, descriptor? }` for per-level point bands and descriptors. Both are additive fields with no migration: older ordinal rubrics remain valid. Criteria and levels may now be added or removed after approval because runs resolve against their stored `rubricVersion` through `rubricHistory`; only reuse of a retired id is refused, since anchored comments store a bare criterion id without a version.
+- Optional level points derive `gradeMapping` only when every supported level has a value. The approval path is its only writer and replaces the mapping wholesale, or unsets it wholesale for an ordinal rubric, so removed/stale keys cannot survive.
+- `writing-assignments.canvasDetails` holds the assignment brief imported from Canvas (`descriptionHtml`, plain-text rendering, points, due date). The Canvas *rubric* is not stored: it seeds the assignment's first rubric draft at creation via `canvasRubricToSeedShape` + `seedRubricForLens`, so an assignment carries exactly one rubric. `saveCanvasAssignmentDetails` refreshes only the brief and never touches `rubric` or `rubricDraft`.
+- `canvas-connections` remains unused. Live Canvas OAuth tokens are persisted per user by the LMS package's own Mongo token store in `canvas_tokens` (keyed by `GlobalUser.userId`, never a PUID) and configured once in `src/lms/canvas-config.ts` — a second config would key a second collection and split each user's credential in two. Neither Writing Feedback nor the demo adapter writes a token record of its own, and no access token is returned through the API.
+- Canvas import is idempotent at course/assignment/student/attempt in every mode. A repeated import reports skipped/reconciled records and does not append another submission; a submission whose download or parse failed is simply retried by importing again. Import never mutates Canvas and never writes to a RAG/Qdrant collection.
+- `writing-submissions.studentId` is always a one-way SHA-256 digest, domain-separated per integration so a synthetic demo record and a live Canvas record can never collide and each row's provenance is readable from its prefix (`canvas-demo-…` vs `canvas-…`).
+- `writing-submissions.canvasUserId` is present only on live Canvas imports. It holds Canvas's own numeric `user_id` — a provider-scoped identifier of the same class as `activeCourse.lmsLink.courseId` — and exists because `studentId` is irreversible while Canvas addresses a submission by user id on write-back. It appears in staff-facing responses only — Writing Feedback is gated to course staff for every route, and those payloads already carry the student's real name in `studentLabel`, a more direct identifier than a provider-scoped integer. It never reaches a student, never appears in the feedback PDF, and is never logged; the Canvas import preview strips it regardless, since that response also carries attachment download URLs. `integration_id` (the PUID), `sis_user_id` (the student number), and `login_id` (the CWL) are never requested from Canvas, never stored, and never logged; the submissions read passes `include[]=user` alone, so Canvas does not serialize them at all.
+- `writing-submissions.studentLabel` holds the student's Canvas display name for live imports. It is staff-only and is never returned to students.
+- Live-import intake state depends on how the text was obtained. Canvas text entries store `sourceType: canvas_text` with `verifiedText` set and `status: imported`. Downloaded attachments store `sourceType: digital_file` with no `verifiedText`, `requiresVerification: true`, and `status: verification_needed`, because text parsed from bytes must be staff-confirmed before it can reach feedback generation.
 - UI-only states such as loading, dirty form, and recoverable error are not persisted. Durable states are the saved rubric draft, approved rubric version, submission status, append-only staff revision, release preview/release, and sanitized job failure.
 - `deleteWritingAssignment(ctx, courseId, assignmentId)` refuses to delete (returns `{ deleted: false, submissionCount }`) while any `writing-submissions` row references the assignment; staff must delete those first. `deleteWritingSubmission(ctx, courseId, submissionId)` deletes a submission at any status and cascades a delete of its `writing-feedback-runs`, `writing-releases`, and queued `writing-jobs` rows (matched on `payload.submissionId`); reviews live embedded in the submission document, so no separate cleanup is needed for those.
+- **Lab report technical lens (two rubrics per assignment).** `writing-assignments` gained optional fields `isLabReport`, `technicalRubric` (approved), `technicalRubricDraft`, and `technicalRubricHistory` — the same draft/approved/history shape as the linguistic `rubric`/`rubricDraft`/`rubricHistory`, but scoped to the technical lens. All four are optional with no backfill: an absent `isLabReport` behaves as `false`, and an assignment never marked as a lab report simply has no technical rubric fields. `rubric-lens.ts` (`rubricFieldPaths`, `selectRubric`) is the single place that maps a `WritingFeedbackLens` (`'linguistic' | 'technical'`) to its three field names, so no caller hardcodes them. `WritingRubricDefinition` also gained an optional `labContext` (trimmed, max 12,000 characters) carrying the instructor-approved lab handout text used as generation context.
+- **Lens-scoped rubric delegates.** `saveWritingRubricDraft`, `discardWritingRubricDraft`, `approveWritingRubricDraft`, and `getLatestWritingFeedbackRun` each take an optional trailing `lens: WritingFeedbackLens` parameter defaulting to `'linguistic'`, so every pre-existing call site is source-compatible. `approveWritingRubricDraft`'s optional `gradeMapping` write is linguistic-only regardless of lens; a never-approved lens (a freshly toggled lab report's technical rubric) has no prior-approved-version predicate to guard until its first approval exists.
+- **`writing-feedback-runs.lens`** (optional `WritingFeedbackLens`) records which lens produced a run. Absent means `'linguistic'` — `getLatestWritingFeedbackRun` treats `{ lens: 'linguistic' }` and `{ lens: { $exists: false } }` as the same query for the linguistic lens, so pre-existing runs written before the technical lens shipped keep surfacing as the latest linguistic run with no migration required.
+- **New delegates:** `setWritingAssignmentLabReport(ctx, courseId, assignmentId, isLabReport)` performs the scoped `isLabReport` write only; seeding a technical draft on marking and refusing to unmark an approved/run-backed technical rubric are service/route-level decisions, not this delegate's. `countWritingFeedbackRunsByLens(ctx, courseId, assignmentId, lens)` counts stored runs across every submission under an assignment for one lens — an assignment-scoped answer `getLatestWritingFeedbackRun` (per-submission) cannot give — and backs the unmark-refusal check.
+
+### LMS integration token collections
+
+`canvas_tokens` and `moodle_tokens` hold per-user LMS credentials. They are owned by
+`@ubc/ubc-genai-toolkit-lms-integration`'s `createMongoTokenStore`, **not** by a
+`src/db/mongo/` delegate, and are wired in `src/routes/route-lms.ts`. Collection
+names are overridable via `CANVAS_TOKEN_COLLECTION_NAME` / `MOODLE_TOKEN_COLLECTION_NAME`.
+
+- **Separate collection per provider, always.** The store keys documents solely by
+  `userKey`, with no provider discriminator — a shared collection would have each
+  provider silently overwrite the other's tokens.
+- **`userKey` is `GlobalUser.userId`, never a PUID.** `resolveUserKey` in
+  `route-lms.ts` resolves the signed-in user's PUID to their internal `userId` via
+  `findGlobalUserByPUID` before any write, preserving the invariant that
+  `active-users` is the only collection storing a PUID at rest. The lookup is
+  asynchronous; the package accepts `getUserKey: (req) => string | Promise<string>`.
+- Document shape is `{ _id, userKey, tokens }`. A unique index on `userKey` is
+  created lazily on first use and memoized, so it is safe under multi-worker
+  startup. Canvas stores an access/refresh pair with `expiresAt` and `canvasUserId`;
+  Moodle stores the `wstoken` and `moodleUserId` (no expiry, no refresh).
+- Token values are never logged, never returned through the API, and never placed
+  in error messages. `GET /api/lms/status` reports configuration presence only.
+- These collections are **not** course-scoped and carry no course association.
+  Disconnecting deletes the local row; for Moodle it does not revoke the token
+  in Moodle itself.
+- Distinct from `canvas-connections` (see writing feedback above), which is a
+  reserved, currently unused collection for a future course-level Canvas
+  connection and is unrelated to these per-user token stores.
+
+### LMS course links (`active-course-list.lmsLink`)
+
+`course-lms-link-mongo.ts` owns the pointer from an EngE-AI course to the LMS course it
+was imported from. It is a field on the existing `active-course-list` catalog document,
+not a collection of its own.
+
+- Shape is `{ provider, courseId, name, code, linkedAt, linkedBy }`. `provider` is stored
+  explicitly because the LMS package dropped `provider` from `LmsCourse` in 1.0.0 — its
+  ids are provider-scoped, so a bare `courseId` is ambiguous once a second LMS exists.
+  `linkedBy` is a `GlobalUser.userId`, never a PUID.
+- Present only on **Canvas-imported** courses. Admin-created courses have no `lmsLink`
+  and are joined with `courseCode`; both kinds coexist permanently.
+- `lms_link_provider_course_unique` is a **unique partial** index on
+  `(lmsLink.provider, lmsLink.courseId)`, filtered on `lmsLink.courseId: { $exists: true }`.
+  Partial because most courses carry no link and a plain unique index would treat every
+  missing value as a duplicate. Unique because two EngE-AI courses claiming one Canvas
+  course would make student matching ambiguous — whichever row was read first would win.
+- The index name and its `partialFilterExpression` are a matched pair: MongoDB rejects an
+  index whose filter changed under an existing name. Changing this definition requires an
+  explicit reviewed migration, not an in-place edit. Created best-effort at startup in
+  `server.ts`; `setCourseLmsLink` checks for a conflicting claim before writing, so the
+  index is a safety net rather than the primary guard.
+- **Enrollment is resolved per user, not by roster matching.** Each person authorizes
+  Canvas as themselves, so the link plus the caller's own Canvas enrollments is enough to
+  place them — no Canvas-user-to-EngE-AI-account matching table exists.
+- **One roster read does happen, and it stores nothing.** Instructor import verifies the
+  Canvas `integration_id` against the CWL PUID, which Canvas only exposes to a teacher in
+  a course context. That read is the teacher roster of the course being imported
+  (`enrollmentTypes: ['teacher']`), performed once, compared in memory, and discarded.
+  No `integration_id` — the importer's or any co-instructor's — is written to any
+  collection or log. The student join path performs no roster read at all.
+  `active-users` remains the only collection storing a PUID at rest.
+- Sync is add-only: a student whose Canvas enrollment disappears keeps their EngE-AI
+  enrollment and chat history. Nothing in this path deletes an enrollment row.
 
 ### LMS integration token collections
 

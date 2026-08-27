@@ -19,25 +19,71 @@ import { showConfirmModal, showErrorModal } from '../ui/modal-overlay.js';
 /** Lifecycle state displayed in staff queues and enforced by server transitions. */
 export type SubmissionStatus = 'imported' | 'verification_needed' | 'generating' | 'draft_ready' | 'approved' | 'released' | 'failed';
 
-/** Fixed A2/SFL criterion identifiers shared by rubric and feedback responses. */
-export type A2CriterionId = 'organization' | 'content' | 'interpersonal_positioning' | 'task_constraints';
+/** Which feedback lens a rubric or run belongs to. */
+export type WritingFeedbackLens = 'linguistic' | 'technical';
 
-/** Ordered qualitative levels supported by the Writing Feedback rubric. */
-export type A2Level = 'emerging' | 'developing' | 'competent' | 'strong';
+/** Instructor-authored criterion slug, frozen after its first rubric approval. */
+export type WritingCriterionId = string;
+
+/** Instructor-authored performance-level slug, frozen after its first approval. */
+export type WritingLevelId = string;
+
+/** Staff-reviewed genre/register state used by SFL-founded feedback. */
+export type SflGenreProfileState = 'declared' | 'staff_confirmed' | 'custom' | 'composite' | 'needs_staff_input';
+
+/** One staff-approved stage or move in the assignment profile. */
+export interface SflStage {
+    id: string; // stable stage key inside the rubric version
+    label: string; // staff-facing stage name
+    purpose: string; // communicative work expected of the stage
+    required?: boolean; // whether absence can matter for feedback
+    order?: number; // optional expected sequence
+}
+
+/** Staff-reviewed assignment context used by the V2 linguistic pipeline. */
+export interface SflContextProfile {
+    genreId?: string; // known SFL profile id or custom/composite label
+    genreLabel: string; // plain-language genre or document type
+    genreState: SflGenreProfileState; // confirmation state reviewed with the rubric
+    task: string; // assignment task profile
+    purpose: string; // communicative purpose profile
+    audience: string; // intended reader profile
+    field: string; // disciplinary subject/activity
+    tenor: string; // writer-reader relationship and stance
+    mode: string; // medium/format/production mode
+    actualEvaluator: string; // who reviews the work
+    productionConditions: string; // timed/take-home/resource/collaboration conditions
+    stages: SflStage[]; // confirmed stages or moves
+    embeddedGenres: string[]; // nested genres such as data commentary
+    taskRequirements: string[]; // explicit task objects
+    learningOutcomes: string[]; // outcomes the analyzer may connect to
+    approvedGlossaryTerms?: string[]; // optional terms relevant to the assignment
+}
+
+/** Mirror of WritingRubricCell. Points band and descriptor for one grid cell. */
+export interface RubricCell {
+    min: number;
+    max: number;
+    descriptor?: string;
+}
 
 /** One instructor-visible criterion in an approved or draft rubric definition. */
 export interface RubricCriterion {
-    id: A2CriterionId; // stable key used to join rubric criteria to model feedback
+    id: WritingCriterionId; // stable key used to join rubric criteria to model feedback
     label: string; // student-facing criterion name editable by authorized staff
     description: string; // assignment-specific expectations supplied to generation
-    sflDimension: string; // locked linguistic lens enforced by the A2 profile
+    functionTag?: WfFunctionTag; // optional Academic Writing Matrix function
+    sflDimension?: string; // optional instructor-authored linguistic lens
+    points?: number; // maximum points this criterion contributes
+    cells?: Record<string, RubricCell>; // sparse per-level bands, keyed by level id
 }
 
 /** One ordinal performance level, optionally participating in numeric release mapping. */
 export interface RubricLevel {
-    id: A2Level; // stable qualitative value emitted by structured feedback
+    id: WritingLevelId; // stable qualitative value emitted by structured feedback
     label: string; // student-facing name shown in rubric and PDF views
     description: string; // instructor-authored performance expectation
+    rank: number; // explicit worst-to-best order, contiguous from one
     points?: number; // present for every level or none; partial mappings are invalid
 }
 
@@ -52,9 +98,11 @@ export interface RubricDefinition {
     constraints: string[]; // explicit task requirements; never inferred by the model
     learningOutcomes: string[]; // instructor-approved outcomes governing feedback
     gradingIntent: string; // states formative/summative intent and grading boundaries
-    criteria: RubricCriterion[]; // fixed supported criteria with editable descriptions
+    sflContext?: SflContextProfile; // V2 linguistic genre/register profile approved with the rubric
+    criteria: RubricCriterion[]; // assignment-specific criteria and optional SFL lenses
     levels: RubricLevel[]; // complete ordinal scale and optional point mapping
     updatedAt: string; // server timestamp shown in rubric provenance/history
+    labContext?: string; // instructor-approved lab handout context supplied to the technical lens
 }
 
 /** Assignment summary used by the landing queue and current rubric context. */
@@ -63,9 +111,15 @@ export interface Assignment {
     title: string; // queue and review heading
     canvasAssignmentId?: string; // external key retained only for Canvas-linked intake/release
     rubricSource: 'internal_profile' | 'canvas'; // provenance label; import never implies approval
-    gradeMapping?: Partial<Record<A2Level, number>>; // numeric release mapping derived from approved levels
-    rubric: RubricDefinition; // current approved definition used by generation
+    instructions?: string; // instructor-approved assignment directions shown beside rubric setup
+    gradeMapping?: Record<WritingLevelId, number>; // numeric release mapping derived from approved levels
+    rubric: RubricDefinition; // current rubric; new assignments begin with a draft
     rubricDraft?: RubricDefinition; // inactive staff draft, when one exists
+    rubricHistory?: RubricDefinition[]; // immutable prior approved versions used for review labels
+    isLabReport?: boolean; // whether this assignment also receives technical (lab-report) feedback
+    technicalRubric?: RubricDefinition; // approved technical rubric; absent until first approval
+    technicalRubricDraft?: RubricDefinition; // editable staff draft of the technical rubric
+    technicalRubricHistory?: RubricDefinition[]; // immutable prior approved technical versions used for review labels
     dueAt?: string; // optional deadline used only for queue late-status display
     createdAt: string; // assignment creation timestamp for staff context
     submissionCount?: number; // summary count used before submissions are expanded
@@ -73,9 +127,16 @@ export interface Assignment {
 
 /** Structured model judgment for one supported rubric criterion. */
 export interface CriterionFeedback {
-    criterion: A2CriterionId; // joins the result to the approved rubric criterion
-    suggestedLevel: A2Level; // model draft level requiring human review
-    evidence: Array<{ quote: string; rationale: string }>; // exact verified-text quote and the model's rationale for citing it
+    criterion: WritingCriterionId; // joins the result to the approved rubric criterion
+    suggestedLevel: WritingLevelId; // model draft level requiring human review
+    evidence: Array<{
+        quote: string;
+        rationale: string;
+        sflFindingIds?: string[];
+        courseMaterialMention?: CourseMaterialMention;
+        glossaryEntryId?: string;
+        glossarySnapshot?: GlossarySnapshot;
+    }>; // exact verified-text quote and the model's rationale for citing it
     explanation: string; // criterion-level formative explanation
     confidence: number; // staff-only diagnostic excluded from student output
 }
@@ -84,13 +145,52 @@ export interface CriterionFeedback {
 export interface FeedbackRun {
     id: string; // provenance key attached to subsequent staff revisions
     rubricVersion?: number; // approved rubric version used to detect stale runs
+    lens?: WritingFeedbackLens; // which feedback lens produced this run
     createdAt: string; // generation timestamp shown in review provenance
     result: {
+        schemaVersion?: string; // V2 result schema, absent on older runs
         criteria: CriterionFeedback[]; // supported criterion judgments with exact evidence
         strengths: string[]; // positive observations included in student-facing output
         revisionGoals: Array<{ skillTag: string; goal: string; guidedQuestion: string }>; // up to three actionable, Socratic priorities
         internalFlags: string[]; // staff-only warnings excluded from PDF/release payloads
+        courseMaterialMentions?: CourseMaterialMention[]; // deduplicated useful course resources
     }; // validated structured result; never edited in place by the browser
+}
+
+/** Server-resolved course material label safe for student-facing feedback. */
+export interface CourseMaterialMention {
+    id: string; // deterministic mention identity
+    label: string; // display label, e.g. Week · Item · Resource
+    courseId?: string;
+    topicOrWeekId?: string;
+    topicOrWeekTitle?: string;
+    itemId?: string;
+    itemTitle?: string;
+    materialId?: string;
+    materialName?: string;
+    version?: string;
+}
+
+/** Reusable course glossary entry returned by glossary endpoints. */
+export interface WritingGlossaryEntry {
+    id: string; // glossary entry id
+    courseId: string; // owning course
+    term: string; // display term
+    normalizedTerm: string; // uniqueness key
+    definition: string; // plain-language definition
+    version: number; // increments on update
+    createdAt: string; // server timestamp
+    createdBy: string; // internal actor
+    updatedAt: string; // server timestamp
+    updatedBy: string; // internal actor
+}
+
+/** Historical glossary snapshot stored on an annotation. */
+export interface GlossarySnapshot {
+    id: string; // glossary entry id
+    term: string; // term at selection time
+    definition: string; // definition at selection time
+    version: number; // selected glossary version
 }
 
 /** Academic Writing Matrix function used to categorize staff annotations. */
@@ -105,14 +205,17 @@ export type WfPriority = 'high' | 'medium' | 'low';
 /** Exact verified-text annotation stored in model seeds and staff revision snapshots. */
 export interface AnchoredComment {
     id: string; // stable identity used to diff comments across review revisions
-    criterion?: A2CriterionId; // optional rubric link retained from a model seed
+    criterion?: WritingCriterionId; // optional rubric link retained from a model seed
     quote: string; // exact substring copied from the verified submission text
     startOffset: number; // inclusive UTF-16 offset into the verified text snapshot
     endOffset: number; // exclusive UTF-16 offset paired with the exact quote
     comment: string; // feedback exposed to the student after approval/release
     howToImprove?: string; // optional concrete revision direction
     courseMaterialLink?: string; // optional staff-selected learning resource
+    courseMaterialMention?: CourseMaterialMention; // resolved course-material label preferred for V2
     glossaryDefinition?: { term: string; definition: string }; // optional disciplinary-language support
+    glossaryEntryId?: string; // selected glossary entry id
+    glossarySnapshot?: GlossarySnapshot; // definition retained for historical PDFs
     origin: 'model_seed' | 'staff'; // provenance label preserved in review history
     /** Server-stamped display name of the staff comment author; unset for model seeds. */
     authorName?: string;
@@ -155,8 +258,8 @@ export interface ReviewRevision {
 }
 
 const DIFF_FIELDS: Array<keyof AnchoredComment> = [
-    'quote', 'comment', 'howToImprove', 'courseMaterialLink', 'glossaryDefinition',
-    'functionTag', 'levelTag', 'priority'
+    'quote', 'comment', 'howToImprove', 'courseMaterialLink', 'courseMaterialMention',
+    'glossaryDefinition', 'glossaryEntryId', 'glossarySnapshot', 'functionTag', 'levelTag', 'priority'
 ];
 
 function commentsDiffer(a: AnchoredComment, b: AnchoredComment): boolean {
@@ -206,27 +309,30 @@ export interface Submission {
 export interface SubmissionDetail {
     submission: Submission; // current server-authoritative submission and reviews
     feedbackRun: FeedbackRun | null; // latest immutable model result, if generated
+    technicalFeedbackRun: FeedbackRun | null; // latest immutable technical (lab-report) model result, if generated
     comments: AnchoredComment[]; // newest saved staff comment snapshot
     seedComments: AnchoredComment[]; // model-derived fallback used before the first save
 }
 
 /** Canvas integration truth shown before any import or release action is offered. */
 export interface CanvasStatus {
-    mode: 'demo' | 'not_configured'; // visibly separates synthetic data from unavailable live OAuth
-    integration: 'mock_canvas' | 'none'; // adapter identity reported by the backend
+    mode: 'demo' | 'live' | 'not_configured'; // visibly separates synthetic data from a real Canvas course
+    integration: 'mock_canvas' | 'canvas' | 'none'; // adapter identity reported by the backend
     connected: boolean; // whether the current adapter has an active connection
     canImport: boolean; // authoritative UI gate for import/preview operations
     syntheticDataOnly: boolean; // prevents demo data from being described as production Canvas
     label: string; // concise mode heading for staff
     message: string; // durable explanation shown in workspace/import panels
     nextStep?: string; // configuration guidance when import is unavailable
+    connectUrl?: string; // Canvas authorization entry point when that is the only blocker
 }
 
 /** Assignment candidate returned by the Canvas preview/list adapter. */
 export interface CanvasAssignment {
     canvasAssignmentId: string; // external selection key submitted to the import endpoint
     title: string; // Canvas-provided assignment label shown before import
-    submissionCount: number; // eligible candidate count shown in the picker
+    description?: string; // Canvas-provided directions carried into local assignment context
+    submissionCount?: number; // eligible candidate count when the source reports one without a round trip
     pointsPossible?: number; // informational Canvas value; never inferred as rubric mapping
     dueAt?: string; // external due date preview
     rubricState: 'canvas_rubric' | 'no_canvas_rubric'; // provenance notice; no silent rubric import
@@ -241,10 +347,28 @@ export interface WorkspaceContext {
 
 /** Approved/draft rubric pair and history returned to the rubric page. */
 export interface RubricResponse {
-    approved: RubricDefinition; // active rubric used by generation and release
-    draft?: RubricDefinition; // inactive editable candidate, when present
+    lens: WritingFeedbackLens; // feedback lens this rubric response governs
+    approved?: RubricDefinition; // active rubric used by generation and release after first approval
+    draft?: RubricDefinition; // editable candidate; always present before the first approval
     history: RubricDefinition[]; // immutable prior versions available for provenance
+    library: RubricCriterion[]; // optional criteria available for explicit instructor addition
     permissions: { canEdit: boolean }; // server-derived mutation permission for the current staff user
+}
+
+/** One submission shown in the pre-import preview, with no source identifiers or file URLs. */
+export interface CanvasPreviewSubmission {
+    studentLabel: string; // staff-only display label used to recognise the submission
+    attempt: number; // attempt number participating in import idempotency
+    submittedAt: string; // source submission timestamp
+    contentKind: 'text_entry' | 'file_upload' | 'unsupported'; // intake path this submission will take
+    attachmentNames: string[]; // file names to be downloaded and parsed, for uploads
+    synthetic: boolean; // marks local demo records as non-production data
+}
+
+/** Read-only preview returned before any local record is written. */
+export interface CanvasPreview {
+    assignment: CanvasAssignment; // source assignment the previewed submissions belong to
+    submissions: CanvasPreviewSubmission[]; // candidates, including ones import will skip
 }
 
 /** Result of an explicit idempotent Canvas-to-local assignment import. */
@@ -253,9 +377,27 @@ export interface CanvasImportResult {
     targetAssignment: Assignment; // local assignment created or reused by import
     importedCount: number; // new local attempts created
     skippedCount: number; // unchanged attempts omitted by idempotency checks
+    unsupportedCount: number; // submissions with no extractable text, or text past the 30,000-character limit
+    failedCount: number; // submissions whose download or parse failed and can be retried
     submissions: Submission[]; // resulting local submission summaries
-    rubricImport: 'not_imported'; // explicit guarantee that Canvas rubric data was not activated
+    /**
+     * How the Canvas rubric was treated. `seeded_draft`: it became this assignment's unapproved
+     * rubric draft. `unrepresentable`: Canvas held a rubric outside the grid contract, so the
+     * built-in profile seeded the draft instead. `existing_assignment`: the assignment already
+     * existed and its rubric was left alone.
+     */
+    rubricImport: 'seeded_draft' | 'unrepresentable' | 'no_canvas_rubric' | 'existing_assignment';
 }
+
+/** Assignment brief imported from Canvas; reference material for staff. */
+export interface CanvasAssignmentDetails {
+    descriptionHtml?: string; // Canvas rich-editor HTML as delivered
+    descriptionText?: string; // plain-text rendering shown to staff
+    pointsPossible?: number; // Canvas assignment points
+    dueAt?: string; // Canvas due date at import time
+    importedAt: string; // when the brief was pulled
+}
+
 
 /** Staff-facing text for each submission lifecycle state. */
 export const STATUS_LABELS: Record<SubmissionStatus, string> = {
@@ -414,9 +556,28 @@ export function setView(view: WfViewName): void {
  * @returns The typed `data` member from a successful API envelope
  * @throws Error when transport status or the API success flag indicates failure
  */
+/**
+ * Raised when Canvas refuses a call because this staff member has not authorized it.
+ *
+ * Distinct from a generic failure because the remedy is a specific link, not a retry. The
+ * server sends it as a `401` carrying `connectUrl`, which is the only shape that arrives
+ * without an `error` message to display.
+ */
+export class CanvasAuthRequiredError extends Error {
+    constructor(readonly connectUrl: string) {
+        super('Connect your Canvas account to continue.');
+        this.name = 'CanvasAuthRequiredError';
+    }
+}
+
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const response = await fetch(`${baseUrl()}${path}`, { credentials: 'same-origin', ...init });
     const body = await response.json().catch(() => ({}));
+    // The LMS package answers an unauthorized Canvas call with `connectUrl` and no `error`,
+    // so this must be recognised before the generic failure path swallows it.
+    if (response.status === 401 && typeof body.connectUrl === 'string') {
+        throw new CanvasAuthRequiredError(body.connectUrl);
+    }
     if (!response.ok || !body.success) throw new Error(body.error || 'Writing Feedback request failed');
     return body.data as T;
 }
@@ -429,7 +590,7 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
  * @param body - Optional value serialized as JSON
  * @returns Typed API response data
  */
-export function jsonRequest<T>(path: string, method: 'POST' | 'PUT' | 'DELETE', body?: unknown): Promise<T> {
+export function jsonRequest<T>(path: string, method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', body?: unknown): Promise<T> {
     return request<T>(path, {
         method,
         headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
@@ -480,6 +641,22 @@ export function queryState(key: 'wfAssignment' | 'wfSubmission' | 'wfView'): str
  * @param withTime - Whether to include localized time
  * @returns Localized text, or an em dash for missing/invalid input
  */
+/**
+ * assignmentOriginText - where an assignment came from, and when it arrived
+ *
+ * Shared between the assignment list and the rubric page header so the two cannot drift
+ * apart in wording — they already did once, one saying "Created" while the other named the
+ * source. A record is created at the moment it is imported, so `createdAt` answers both.
+ *
+ * @param assignment - Assignment whose provenance is wanted
+ * @returns One staff-facing sentence naming the source and the date
+ */
+export function assignmentOriginText(assignment: Assignment): string {
+    return assignment.canvasAssignmentId
+        ? `Imported from Canvas ${formatDate(assignment.createdAt)}`
+        : `Created manually ${formatDate(assignment.createdAt)}`;
+}
+
 export function formatDate(value?: string, withTime = false): string {
     if (!value) return '—';
     const date = new Date(value);
@@ -515,14 +692,27 @@ export function createText(tag: keyof HTMLElementTagNameMap, text: string, class
  */
 export function createButton(
     label: string,
-    variant: 'primary' | 'secondary' | 'quiet' | 'danger',
+    variant: 'primary' | 'secondary' | 'quiet' | 'danger' | 'chip',
     action: (button: HTMLButtonElement) => Promise<void>,
-    disabled = false
+    disabled = false,
+    iconName?: string
 ): HTMLButtonElement {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = `wf-button wf-button--${variant}`;
-    button.textContent = label;
+    if (iconName) {
+        // Matches the documents header badges: a feather glyph ahead of its label, with the
+        // text in its own span so the icon cannot inherit the label's line box.
+        const icon = document.createElement('i');
+        icon.setAttribute('data-feather', iconName);
+        icon.setAttribute('aria-hidden', 'true');
+        const text = document.createElement('span');
+        text.className = 'wf-button-text';
+        text.textContent = label;
+        button.append(icon, text);
+    } else {
+        button.textContent = label;
+    }
     button.disabled = disabled;
     button.addEventListener('click', () => void runButtonAction(button, action));
     return button;
@@ -749,4 +939,132 @@ export async function handleActionError(error: unknown): Promise<void> {
     const message = error instanceof Error ? error.message : 'The action could not be completed.';
     setWorkspaceMessage(message, 'error');
     await showErrorModal('Writing Feedback action failed', message);
+}
+
+const DISCLOSURE_TRANSITION_TIMEOUT_MS = 380;
+const disclosureTransitions = new WeakMap<HTMLElement, { finish: () => void }>();
+
+/** Completes the current disclosure transition once, including its timeout fallback. */
+function waitForDisclosureTransition(panel: HTMLElement, settle: () => void): Promise<void> {
+    disclosureTransitions.get(panel)?.finish();
+    return new Promise((resolve) => {
+        let finished = false;
+        const finish = (): void => {
+            if (finished) return;
+            finished = true;
+            window.clearTimeout(timer);
+            panel.removeEventListener('transitionend', onTransitionEnd);
+            disclosureTransitions.delete(panel);
+            settle();
+            resolve();
+        };
+        const onTransitionEnd = (event: TransitionEvent): void => {
+            if (event.target === panel && event.propertyName === 'max-height') finish();
+        };
+        const timer = window.setTimeout(finish, DISCLOSURE_TRANSITION_TIMEOUT_MS);
+        disclosureTransitions.set(panel, { finish });
+        panel.addEventListener('transitionend', onTransitionEnd);
+    });
+}
+
+/**
+ * expandDisclosure - reveals a collapsible panel with the shared height/opacity animation.
+ *
+ * Shared by the assignment submission panel and every rubric-page collapsible
+ * section so the page has exactly one open/close animation, not one per section.
+ *
+ * @param panel - Element carrying the `wf-disclosure-body` class
+ */
+export async function expandDisclosure(panel: HTMLElement): Promise<void> {
+    disclosureTransitions.get(panel)?.finish();
+    panel.hidden = false;
+    panel.classList.remove('wf-disclosure-body--leave');
+    panel.classList.add('wf-disclosure-body--enter');
+    panel.style.maxHeight = '0px';
+    const targetHeight = panel.scrollHeight;
+    const completion = waitForDisclosureTransition(panel, () => {
+        panel.classList.remove('wf-disclosure-body--enter');
+        panel.style.maxHeight = 'none';
+    });
+    void panel.offsetHeight;
+    panel.classList.remove('wf-disclosure-body--enter');
+    panel.style.maxHeight = `${targetHeight}px`;
+    await completion;
+}
+
+/**
+ * collapseDisclosure - hides a collapsible panel with the shared height/opacity animation.
+ *
+ * @param panel - Element carrying the `wf-disclosure-body` class
+ */
+export async function collapseDisclosure(panel: HTMLElement): Promise<void> {
+    disclosureTransitions.get(panel)?.finish();
+    if (panel.hidden) return;
+    panel.style.maxHeight = `${panel.scrollHeight}px`;
+    panel.classList.remove('wf-disclosure-body--enter');
+    void panel.offsetHeight;
+    const completion = waitForDisclosureTransition(panel, () => {
+        panel.hidden = true;
+        panel.classList.remove('wf-disclosure-body--leave');
+        panel.style.removeProperty('max-height');
+    });
+    panel.classList.add('wf-disclosure-body--leave');
+    panel.style.maxHeight = '0px';
+    await completion;
+}
+
+/**
+ * disclosureHeader - builds a clickable header that expands/collapses a panel.
+ *
+ * Mirrors the assignment card's expand control (role=button, tabindex=0,
+ * aria-expanded, aria-controls, Enter/Space activation) so every collapsible
+ * section on the page behaves identically to keyboard and screen-reader users.
+ *
+ * @param content - Elements placed inside the header, before the chevron
+ * @param panel - Body element this header expands and collapses; mutated (id, class, hidden)
+ * @param panelId - Id assigned to `panel` for `aria-controls`
+ * @param initiallyOpen - Whether the panel starts expanded
+ * @param className - Header class name, e.g. `wf-rubric-step-header`
+ * @returns Detached header; caller appends both the header and `panel` into the DOM
+ */
+export function disclosureHeader(
+    content: HTMLElement[],
+    panel: HTMLElement,
+    panelId: string,
+    initiallyOpen: boolean,
+    className: string
+): HTMLElement {
+    panel.id = panelId;
+    panel.classList.add('wf-disclosure-body');
+    panel.hidden = !initiallyOpen;
+    if (initiallyOpen) panel.style.maxHeight = 'none';
+
+    const header = document.createElement('div');
+    header.className = className;
+    header.setAttribute('role', 'button');
+    header.setAttribute('tabindex', '0');
+    header.setAttribute('aria-expanded', String(initiallyOpen));
+    header.setAttribute('aria-controls', panelId);
+    header.append(...content);
+
+    const icon = document.createElement('span');
+    icon.className = 'wf-expand-icon';
+    icon.innerHTML = '<i data-feather="chevron-down" aria-hidden="true"></i>';
+    header.append(icon);
+
+    const toggle = (): void => {
+        const nextOpen = header.getAttribute('aria-expanded') !== 'true';
+        header.setAttribute('aria-expanded', String(nextOpen));
+        void (nextOpen ? expandDisclosure(panel) : collapseDisclosure(panel));
+    };
+    header.addEventListener('click', toggle);
+    header.addEventListener('keydown', (event) => {
+        if (event.target !== header) return;
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            toggle();
+        }
+    });
+
+    return header;
 }

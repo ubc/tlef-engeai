@@ -10,6 +10,7 @@ import ragAppRoutes from './routes/route-rag';
 import mongodbRoutes from './routes/route-mongo';
 // @rdschrs: Implemented the Writing Feedback API router mount.
 import writingFeedbackRoutes from './routes/route-writing-feedback';
+import { startWritingFeedbackWorker } from './writing-feedback/worker';
 import healthRoutes from './routes/route-health';
 import versionRoutes from './routes/route-version';
 import onboardingRoutes from './routes/route-onboarding';
@@ -327,6 +328,17 @@ app.listen(port, async () => {
     // must not stop the server, and the import path checks for a conflict before writing.
     try {
         await (await EngEAI_MongoDB.getInstance()).createCourseLmsLinkIndex();
+    } catch (err) {
+        logger.error('Failed to create LMS course-link index:', err as any);
+    }
+
+    // Guards against two EngE-AI courses claiming the same LMS course, which would make
+    // student enrollment sync ambiguous. Best-effort inside the helper — a failure here
+    // must not stop the server, and the import path checks for a conflict before writing.
+    try {
+        const mongo = await EngEAI_MongoDB.getInstance();
+        await mongo.createCourseLmsLinkIndex();
+        startWritingFeedbackWorker(mongo);
     } catch (err) {
         logger.error('Failed to create LMS course-link index:', err as any);
     }

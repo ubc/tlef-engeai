@@ -9,6 +9,10 @@
  * whenever the answer is already yes. An instructor who connected last week should open this on
  * the course list, not on a button they have no reason to press.
  *
+ * Hosted by both course lists — the instructor/student page and the admin page — which is why
+ * the OAuth return path is captured from the host page rather than fixed here. See
+ * {@link returnBasePath}.
+ *
  * Both roles drive the same three steps; only the wording differs. An instructor imports a course
  * they teach into EngE-AI, a student joins one their instructor already imported, and the server
  * decides which of those happened from the caller's Canvas enrollment. Nothing here decides
@@ -51,6 +55,16 @@ const RETURN_MARKER_VALUE = 'connected';
 const RETURN_PERIOD_PARAM = 'canvasPeriod';
 
 /**
+ * The page Canvas should hand the browser back to. Captured on load, not hardcoded.
+ *
+ * Returning every user to `/course-selection` would silently break the admin page: the server
+ * redirects an admin off that path to `/admin/course-selection`, and a redirect drops the query
+ * string with it. The marker and the period would be gone by the time the page ran, so the picker
+ * would never reopen and the round trip would look like it had simply failed.
+ */
+let returnBasePath = '/course-selection';
+
+/**
  * Builds the path Canvas should return the browser to after authorization.
  *
  * The academic period is carried across the round trip because it is only known to the button
@@ -62,7 +76,7 @@ function buildReturnPath(academicPeriodId?: string): string {
     if (academicPeriodId) {
         params.set(RETURN_PERIOD_PARAM, academicPeriodId);
     }
-    return `/course-selection?${params.toString()}`;
+    return `${returnBasePath}?${params.toString()}`;
 }
 
 /** Whether this deployment has Canvas configured at all. Resolved once, on load. */
@@ -83,6 +97,8 @@ let reloadCourses: (() => Promise<void>) | null = null;
  */
 export async function initCanvasConnect(onConnected: () => Promise<void>): Promise<boolean> {
     reloadCourses = onConnected;
+    // Same-origin by construction — `pathname` is this page's own path, never user input.
+    returnBasePath = window.location.pathname || returnBasePath;
 
     try {
         const response = await fetch('/api/lms/status', { credentials: 'same-origin' });
@@ -100,7 +116,7 @@ export async function initCanvasConnect(onConnected: () => Promise<void>): Promi
         const academicPeriodId =
             new URLSearchParams(window.location.search).get(RETURN_PERIOD_PARAM) ?? undefined;
         // Drop the marker before reopening so a later refresh does not reopen the modal again.
-        window.history.replaceState({}, '', '/course-selection');
+        window.history.replaceState({}, '', returnBasePath);
         void openCanvasConnectModal(academicPeriodId);
     }
 

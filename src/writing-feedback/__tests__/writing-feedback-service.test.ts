@@ -10,17 +10,58 @@
  * @description: Regression coverage for the human-in-the-loop feedback lifecycle.
  */
 
-import { buildA2Assignment } from '../a2-profile';
-import type { A2FeedbackResult, AnchoredComment, StaffReviewRevision, WritingFeedbackRun, WritingSubmission } from '../contracts';
+import { ModelSelectionService } from '../../dashboard-setting/model-selection-service';
+import { buildDefaultWritingAssignment } from '../default-rubric-profile';
+import { approveRubricDraft } from '../rubric-schema';
+import type {
+    AnchoredComment,
+    StaffReviewRevision,
+    WritingAssignment,
+    WritingFeedbackLens,
+    WritingFeedbackResult,
+    WritingFeedbackRun,
+    WritingSubmission
+} from '../contracts';
 import { WritingFeedbackService } from '../writing-feedback-service';
 import type { EngEAI_MongoDB } from '../../db/enge-ai-mongodb';
 
-const result: A2FeedbackResult = {
+const result: WritingFeedbackResult = {
     criteria: [],
     strengths: [],
     revisionGoals: [],
     internalFlags: []
 };
+
+function approvedAssignment(version = 1): WritingAssignment {
+    const assignment = buildDefaultWritingAssignment(
+        'course-1',
+        'assignment-1',
+        'Local writing assignment'
+    );
+    assignment.rubric = approveRubricDraft(
+        {
+            ...assignment.rubric,
+            version,
+            sflContext: assignment.rubric.sflContext
+                ? {
+                    ...assignment.rubric.sflContext,
+                    genreLabel: 'Local writing assignment genre',
+                    genreState: 'custom',
+                    task: 'Write a short response to the assignment prompt.',
+                    purpose: 'Explain the requested finding to the reader.',
+                    audience: 'A course instructor familiar with the assignment.',
+                    field: 'Undergraduate coursework for this assignment.',
+                    tenor: 'Student reporting findings to an evaluating instructor.',
+                    mode: 'A written take-home response submitted after the assignment period.',
+                    productionConditions: 'Take-home, individually written, open resources.'
+                }
+                : assignment.rubric.sflContext
+        },
+        'instructor-1',
+        new Date('2026-01-01T00:00:00.000Z')
+    );
+    return assignment;
+}
 
 function submission(status: WritingSubmission['status'] = 'imported'): WritingSubmission {
     return {
@@ -39,10 +80,91 @@ function submission(status: WritingSubmission['status'] = 'imported'): WritingSu
     };
 }
 
+/** Options controlling the lab-report/technical-lens shape of a `buildService` fixture. */
+interface BuildServiceOptions {
+    isLabReport?: boolean; // whether the assignment requires the technical lens
+    technicalApproved?: boolean; // whether an approved technical rubric exists
+    technicalRun?: WritingFeedbackRun | null; // explicit override; null simulates "no technical run yet"
+    technicalRubricVersion?: number; // approved technical rubric version
+    technicalRunRubricVersion?: number; // rubric version stamped on the existing technical run
+}
+
+function labReportAssignment(options: BuildServiceOptions): WritingAssignment {
+    const assignment = approvedAssignment(1);
+    assignment.isLabReport = options.isLabReport ?? false;
+    if (options.technicalApproved) {
+        assignment.technicalRubric = approveRubricDraft(
+            { ...assignment.rubric, version: options.technicalRubricVersion ?? 1 },
+            'instructor-1',
+            new Date('2026-01-01T00:00:00.000Z')
+        );
+    }
+    return assignment;
+}
+
+function feedbackRun(lens: WritingFeedbackLens, rubricVersion: number): WritingFeedbackRun {
+    return {
+        id: `run-${lens}`,
+        courseId: 'course-1',
+        assignmentId: 'assignment-1',
+        submissionId: 'submission-1',
+        profileVersion: 'test-profile',
+        rubricVersion,
+        lens,
+        result,
+        createdAt: new Date(),
+        modelMetadata: { engine: 'test', promptVersion: 'test' }
+    };
+}
+
+/**
+ * buildService - assembles a `WritingFeedbackService` with jest-double collaborators.
+ *
+ * Reused by the two-lens generation and approval suites so each test only states
+ * the lab-report/technical-rubric shape it needs rather than re-wiring mocks.
+ *
+ * @param options - Lab-report and technical-rubric/run shape for this fixture
+ * @returns The constructed service plus every double, for call-shape assertions
+ */
+function buildService(options: BuildServiceOptions = {}) {
+    const assignment = labReportAssignment(options);
+    const technicalRunRubricVersion = options.technicalRunRubricVersion
+        ?? options.technicalRubricVersion
+        ?? 1;
+    const runsByLens: Partial<Record<WritingFeedbackLens, WritingFeedbackRun | null>> = {
+        linguistic: feedbackRun('linguistic', assignment.rubric.version),
+        technical: options.technicalRun === null
+            ? null
+            : (options.technicalRun ?? (options.technicalApproved
+                ? feedbackRun('technical', technicalRunRubricVersion)
+                : null))
+    };
+
+    // Kept as a plain object (not cast) so tests can assert on `.mock.calls` directly.
+    const mongo = {
+        getWritingSubmission: jest.fn(async () => submission('draft_ready')),
+        getWritingAssignment: jest.fn(async () => assignment),
+        setWritingSubmissionStatus: jest.fn(async () => null),
+        createWritingFeedbackRun: jest.fn(async (input) => ({ ...input, id: `run-${input.lens}`, createdAt: new Date() })),
+        getLatestWritingFeedbackRun: jest.fn(async (_submissionId: string, lens: WritingFeedbackLens = 'linguistic') =>
+            runsByLens[lens] ?? null),
+        approveWritingSubmission: jest.fn(async () => submission('approved'))
+    };
+
+    const engine = { generate: jest.fn(async () => result) };
+    const technicalEngine = { generate: jest.fn(async () => result) };
+    const pdfService = { render: jest.fn(async () => Buffer.from('pdf')) };
+    // Feature-flag/model-config lookup is not under test here; stub it directly rather
+    // than restoring a spy, since these describes run only at the end of this file.
+    ModelSelectionService.getInstance().buildFeatureLlmCallOptions = jest.fn(async () => ({}));
+
+    const service = new WritingFeedbackService(mongo as unknown as EngEAI_MongoDB, engine, pdfService, technicalEngine);
+    return { service, mongo, engine, technicalEngine, pdfService, assignment };
+}
+
 describe('WritingFeedbackService rubric provenance', () => {
     it('stamps the active approved rubric version on each generated run', async () => {
-        const assignment = buildA2Assignment('course-1', 'assignment-1');
-        assignment.rubric.version = 3;
+        const assignment = approvedAssignment(3);
         const createRun = jest.fn(async (input) => ({ ...input, id: 'run-1', createdAt: new Date() }));
         const mongo = {
             getWritingSubmission: jest.fn(async () => submission()),
@@ -51,15 +173,20 @@ describe('WritingFeedbackService rubric provenance', () => {
             createWritingFeedbackRun: createRun
         } as unknown as EngEAI_MongoDB;
         const engine = { generate: jest.fn(async () => result) };
+        const modelOptions = jest.spyOn(ModelSelectionService.getInstance(), 'buildFeatureLlmCallOptions')
+            .mockResolvedValue({});
 
-        await new WritingFeedbackService(mongo, engine).generate('course-1', 'submission-1');
+        try {
+            await new WritingFeedbackService(mongo, engine).generate('course-1', 'submission-1');
+        } finally {
+            modelOptions.mockRestore();
+        }
 
         expect(createRun).toHaveBeenCalledWith(expect.objectContaining({ rubricVersion: 3 }));
     });
 
     it('blocks approval when feedback was generated against an older rubric', async () => {
-        const assignment = buildA2Assignment('course-1', 'assignment-1');
-        assignment.rubric.version = 2;
+        const assignment = approvedAssignment(2);
         const run: WritingFeedbackRun = {
             id: 'run-1',
             courseId: 'course-1',
@@ -84,10 +211,49 @@ describe('WritingFeedbackService rubric provenance', () => {
             .rejects.toThrow('Rubric changed after feedback generation');
         expect(approve).not.toHaveBeenCalled();
     });
+
+    it('queues generation with IDs only and reuses an active job', async () => {
+        const assignment = approvedAssignment(1);
+        const queuedJob = {
+            id: 'job-1',
+            courseId: 'course-1',
+            type: 'generate' as const,
+            state: 'queued' as const,
+            attempts: 0,
+            maxAttempts: 3,
+            payload: { submissionId: 'submission-1' },
+            createdAt: new Date(),
+            updatedAt: new Date()
+        };
+        const mongo = {
+            getWritingSubmission: jest.fn(async () => submission('imported')),
+            getWritingAssignment: jest.fn(async () => assignment),
+            findActiveWritingJob: jest.fn()
+                .mockResolvedValueOnce(null)
+                .mockResolvedValueOnce(queuedJob),
+            setWritingSubmissionStatus: jest.fn(async () => null),
+            enqueueWritingJob: jest.fn(async (job) => ({ ...job, id: 'job-1', attempts: 0, createdAt: new Date(), updatedAt: new Date() }))
+        } as unknown as EngEAI_MongoDB;
+
+        const service = new WritingFeedbackService(mongo, { generate: jest.fn(async () => result) });
+        const created = await service.enqueueGeneration('course-1', 'submission-1');
+        const reused = await service.enqueueGeneration('course-1', 'submission-1');
+
+        expect(created.payload).toEqual({ submissionId: 'submission-1' });
+        expect(reused.id).toBe('job-1');
+        expect((mongo as any).enqueueWritingJob).toHaveBeenCalledTimes(1);
+        expect((mongo as any).enqueueWritingJob).toHaveBeenCalledWith(expect.objectContaining({
+            courseId: 'course-1',
+            type: 'generate',
+            state: 'queued',
+            payload: { submissionId: 'submission-1' }
+        }));
+    });
 });
 
 describe('WritingFeedbackService anchored comments', () => {
     const engine = { generate: jest.fn(async () => result) };
+    const assignment = approvedAssignment();
 
     function runFor(sub: WritingSubmission): WritingFeedbackRun {
         return {
@@ -100,7 +266,7 @@ describe('WritingFeedbackService anchored comments', () => {
             result: {
                 criteria: [{
                     criterion: 'organization',
-                    suggestedLevel: 'competent',
+                    suggestedLevel: 'proficient',
                     evidence: [{ quote: 'Verified student text.', rationale: 'Anchors the description.' }],
                     explanation: 'Sequencing is clear.',
                     confidence: 0.8
@@ -130,6 +296,7 @@ describe('WritingFeedbackService anchored comments', () => {
         const sub = submission('draft_ready');
         const mongo = {
             getWritingSubmission: jest.fn(async () => sub),
+            getWritingAssignment: jest.fn(async () => assignment),
             getLatestWritingFeedbackRun: jest.fn(async () => runFor(sub))
         } as unknown as EngEAI_MongoDB;
 
@@ -150,6 +317,7 @@ describe('WritingFeedbackService anchored comments', () => {
         };
         const mongo = {
             getWritingSubmission: jest.fn(async () => ({ ...sub, reviews: [review] })),
+            getWritingAssignment: jest.fn(async () => assignment),
             getLatestWritingFeedbackRun: jest.fn(async () => runFor(sub))
         } as unknown as EngEAI_MongoDB;
 
@@ -242,7 +410,6 @@ describe('WritingFeedbackService anchored comments', () => {
             ],
             createdAt: new Date('2026-07-26T10:00:00Z')
         };
-        const assignment = buildA2Assignment('course-1', 'assignment-1');
         const mongo = {
             getWritingSubmission: jest.fn(async () => ({ ...sub, reviews: [firstCycle, secondCycle] })),
             getWritingAssignment: jest.fn(async () => assignment),
@@ -267,7 +434,6 @@ describe('WritingFeedbackService anchored comments', () => {
             id: 'review-1', submissionId: sub.id, feedbackRunId: 'run-1', staffUserId: 'instructor-1',
             studentFeedback: 'Nice work.', comments: [storedComment(), drifted], createdAt: new Date()
         };
-        const assignment = buildA2Assignment('course-1', 'assignment-1');
         const mongo = {
             getWritingSubmission: jest.fn(async () => ({ ...sub, reviews: [review] })),
             getWritingAssignment: jest.fn(async () => assignment),
@@ -281,5 +447,82 @@ describe('WritingFeedbackService anchored comments', () => {
             include: 'both',
             comments: [expect.objectContaining({ id: 'comment-1' })]
         }));
+    });
+});
+
+describe('two-lens generation', () => {
+    it('generates only linguistic feedback for an ordinary assignment', async () => {
+        const { service, technicalEngine } = buildService({ isLabReport: false });
+        const result = await service.generate('course-1', 'submission-1');
+        expect(result.linguistic).toBeDefined();
+        expect(result.technical).toBeUndefined();
+        expect(technicalEngine.generate).not.toHaveBeenCalled();
+    });
+
+    it('generates both lenses for a lab report with an approved technical rubric', async () => {
+        const { service, mongo } = buildService({ isLabReport: true, technicalApproved: true });
+        const result = await service.generate('course-1', 'submission-1');
+        expect(result.linguistic).toBeDefined();
+        expect(result.technical).toBeDefined();
+        const lenses = mongo.createWritingFeedbackRun.mock.calls.map(([input]: [{ lens: string }]) => input.lens);
+        expect(lenses).toEqual(['linguistic', 'technical']);
+    });
+
+    it('skips the technical lens when its rubric is not yet approved', async () => {
+        const { service, technicalEngine } = buildService({ isLabReport: true, technicalApproved: false });
+        const result = await service.generate('course-1', 'submission-1');
+        expect(result.linguistic).toBeDefined();
+        expect(result.technical).toBeUndefined();
+        expect(technicalEngine.generate).not.toHaveBeenCalled();
+    });
+
+    it('keeps linguistic feedback when the technical lens fails', async () => {
+        const { service, technicalEngine, mongo } = buildService({ isLabReport: true, technicalApproved: true });
+        technicalEngine.generate.mockRejectedValueOnce(new Error('model unavailable'));
+        const result = await service.generate('course-1', 'submission-1');
+        expect(result.linguistic).toBeDefined();
+        expect(result.technical).toBeUndefined();
+        // A partial failure is still a reviewable draft, not a dead submission.
+        expect(mongo.setWritingSubmissionStatus).toHaveBeenLastCalledWith('course-1', 'submission-1', 'draft_ready');
+    });
+
+    it('fails the submission when the linguistic lens fails', async () => {
+        const { service, engine, mongo } = buildService({ isLabReport: true, technicalApproved: true });
+        engine.generate.mockRejectedValueOnce(new Error('model unavailable'));
+        await expect(service.generate('course-1', 'submission-1')).rejects.toThrow('model unavailable');
+        expect(mongo.setWritingSubmissionStatus).toHaveBeenLastCalledWith('course-1', 'submission-1', 'failed');
+    });
+
+    it('stamps the technical prompt version on the technical run', async () => {
+        const { service, mongo } = buildService({ isLabReport: true, technicalApproved: true });
+        await service.generate('course-1', 'submission-1');
+        const technicalRun = mongo.createWritingFeedbackRun.mock.calls
+            .map(([input]: [{ lens: string; modelMetadata: { promptVersion: string } }]) => input)
+            .find((input) => input.lens === 'technical');
+        expect(technicalRun?.modelMetadata.promptVersion).toBe('lab-report-technical-v1');
+    });
+});
+
+describe('two-lens approval', () => {
+    it('refuses approval when a lab report has no technical run', async () => {
+        const { service } = buildService({ isLabReport: true, technicalApproved: true, technicalRun: null });
+        await expect(service.approve('course-1', 'submission-1', 'user-1'))
+            .rejects.toThrow('Generate technical feedback before staff approval');
+    });
+
+    it('refuses approval when the technical rubric changed after generation', async () => {
+        const { service } = buildService({
+            isLabReport: true,
+            technicalApproved: true,
+            technicalRubricVersion: 3,
+            technicalRunRubricVersion: 2
+        });
+        await expect(service.approve('course-1', 'submission-1', 'user-1'))
+            .rejects.toThrow('Technical rubric changed after feedback generation');
+    });
+
+    it('approves when both lenses are current', async () => {
+        const { service } = buildService({ isLabReport: true, technicalApproved: true });
+        await expect(service.approve('course-1', 'submission-1', 'user-1')).resolves.toBeDefined();
     });
 });

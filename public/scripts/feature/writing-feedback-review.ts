@@ -17,17 +17,21 @@
  */
 
 import { showConfirmModal } from '../ui/modal-overlay.js';
-import { showSuccessToast } from '../ui/toast-notification.js';
+import { showErrorToast, showSuccessToast } from '../ui/toast-notification.js';
 import {
-    A2CriterionId,
     AnchoredComment,
     Assignment,
+    CriterionFeedback,
+    FeedbackRun,
+    FUNCTION_TAG_LABELS,
     ReviewRevision,
+    RubricDefinition,
     SOURCE_LABELS,
     STATUS_LABELS,
     STATUS_TONES,
     Submission,
     SubmissionDetail,
+    WritingFeedbackLens,
     baseUrl,
     chip,
     confirmDiscardDirty,
@@ -48,6 +52,7 @@ import {
     views
 } from './writing-feedback-shared.js';
 import { getWorkingComments, initAnchorWorkingSet, renderAnnotations } from './writing-feedback-anchors.js';
+import { formatBand, resolveBand, totalRubricPoints } from './writing-feedback-grid.js';
 
 type AcademicWritingLevelId = 'text' | 'section' | 'clause_word';
 
@@ -155,21 +160,181 @@ const ACADEMIC_WRITING_MATRIX: AcademicWritingFunction[] = [
     }
 ];
 
-/** SFL presentation order for the summary tab. */
-const SFL_SECTION_ORDER: Array<{ id: A2CriterionId; sflLabel: string }> = [
-    { id: 'organization', sflLabel: 'Organization — textual meaning' },
-    { id: 'content', sflLabel: 'Content — ideational meaning' },
-    { id: 'interpersonal_positioning', sflLabel: 'Interpersonal Positioning — interpersonal meaning' },
-    { id: 'task_constraints', sflLabel: 'Task Constraints — task realization' }
-];
-
 function latestReview(submission: Submission): ReviewRevision | undefined {
     return submission.reviews?.[submission.reviews.length - 1];
 }
 
-function criterionLabel(assignment: Assignment | null, id: A2CriterionId): string {
-    return assignment?.rubric.criteria.find((criterion) => criterion.id === id)?.label
-        ?? id.replace(/_/g, ' ');
+/** Resolves labels against the immutable rubric version used by this model run, for the given lens. */
+function rubricForRun(assignment: Assignment | null, run: FeedbackRun, lens: WritingFeedbackLens = 'linguistic'): RubricDefinition | undefined {
+    if (!assignment) return undefined;
+    const current = lens === 'technical' ? assignment.technicalRubric : assignment.rubric;
+    const history = lens === 'technical' ? assignment.technicalRubricHistory : assignment.rubricHistory;
+    const draft = lens === 'technical' ? assignment.technicalRubricDraft : assignment.rubricDraft;
+    const candidates = [current, ...(history ?? []), draft]
+        .filter((rubric): rubric is RubricDefinition => Boolean(rubric));
+    if (run.rubricVersion === undefined) return current;
+    return candidates.find((rubric) => rubric.version === run.rubricVersion);
+}
+
+function criterionLabel(rubric: RubricDefinition | undefined, id: string): string {
+    return rubric?.criteria.find((criterion) => criterion.id === id)?.label ?? 'Removed criterion';
+}
+
+function criterionTitle(rubric: RubricDefinition | undefined, id: string): string | undefined {
+    if (rubric?.criteria.some((criterion) => criterion.id === id)) return undefined;
+    return `This criterion was removed after rubric v${rubric?.version ?? 'unknown'}. Existing feedback still uses that saved rubric version.`;
+}
+
+function levelLabel(rubric: RubricDefinition | undefined, id: string): string {
+    return rubric?.levels.find((level) => level.id === id)?.label ?? id;
+}
+
+function orderedCriterionIds(rubric: RubricDefinition | undefined, feedback: CriterionFeedback[]): string[] {
+    const ids = rubric?.criteria.map((criterion) => criterion.id) ?? [];
+    feedback.forEach((criterion) => {
+        if (!ids.includes(criterion.criterion)) ids.push(criterion.criterion);
+    });
+    return ids;
+}
+
+/** One criterion's suggested points band and staff-only reason. */
+interface SuggestedCriterionGrade {
+    criterionId: string;
+    label: string;
+    levelLabel: string;
+    min: number;
+    max: number;
+    reason: string;
+}
+
+/** Staff-only suggestion derived from one model run and never persisted. */
+interface SuggestedGrading {
+    criteria: SuggestedCriterionGrade[];
+    totalMin: number;
+    totalMax: number;
+}
+
+/**
+ * Frontend mirror of `src/writing-feedback/suggested-grading.ts`.
+ *
+ * The review page cannot import from `src/`, so this mirrors the pure derivation
+ * against the rubric version returned by `rubricForRun`. Suggested grading is
+ * staff-only display state: it is never written to a release payload or PDF.
+ */
+function deriveSuggestedGrading(run: FeedbackRun, rubric: RubricDefinition): SuggestedGrading {
+    const criteria: SuggestedCriterionGrade[] = [];
+
+    run.result.criteria.forEach((feedback) => {
+        const definition = rubric.criteria.find((criterion) => criterion.id === feedback.criterion);
+        if (!definition) return;
+        const band = resolveBand(definition, feedback.suggestedLevel, rubric.levels);
+        if (!band) return;
+        const level = rubric.levels.find((entry) => entry.id === feedback.suggestedLevel);
+
+        criteria.push({
+            criterionId: definition.id,
+            label: definition.label,
+            levelLabel: level?.label ?? feedback.suggestedLevel,
+            min: band.min,
+            max: band.max,
+            reason: feedback.explanation
+        });
+    });
+
+    return {
+        criteria,
+        totalMin: criteria.reduce((total, entry) => total + entry.min, 0),
+        totalMax: criteria.reduce((total, entry) => total + entry.max, 0)
+    };
+}
+
+function hasSuggestedGrading(rubric: RubricDefinition | undefined): rubric is RubricDefinition {
+    return Boolean(rubric?.criteria.some((criterion) => criterion.points !== undefined || Object.keys(criterion.cells ?? {}).length));
+}
+
+function renderSuggestedGrading(run: FeedbackRun, rubric: RubricDefinition): HTMLElement | null {
+    const grading = deriveSuggestedGrading(run, rubric);
+    if (!grading.criteria.length) return null;
+
+    const section = document.createElement('section');
+    section.className = 'wf-feedback-section wf-suggested-grading';
+    const header = document.createElement('div');
+    header.className = 'wf-suggested-grading__header';
+    header.append(
+        createText('h3', 'Suggested grading'),
+        createText('p', 'A suggestion for you, not a grade. Nothing here is sent to Canvas.', 'wf-muted-note')
+    );
+
+    const panel = document.createElement('div');
+    panel.className = 'wf-suggested-grading__panel';
+    panel.hidden = true;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'wf-button wf-button--secondary';
+    button.textContent = 'Show suggested grading';
+    button.addEventListener('click', () => {
+        panel.hidden = !panel.hidden;
+        button.textContent = panel.hidden ? 'Show suggested grading' : 'Hide suggested grading';
+    });
+    header.append(button);
+
+    const scroll = document.createElement('div');
+    scroll.className = 'wf-suggested-grading__scroll';
+    const table = document.createElement('table');
+    table.className = 'wf-suggested-grading__table';
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    const corner = createText('th', 'Criterion');
+    corner.setAttribute('scope', 'col');
+    headRow.append(corner);
+    rubric.levels
+        .slice()
+        .sort((left, right) => left.rank - right.rank)
+        .forEach((level) => {
+            const heading = createText('th', level.label);
+            heading.setAttribute('scope', 'col');
+            headRow.append(heading);
+        });
+    thead.append(headRow);
+    table.append(thead);
+
+    const tbody = document.createElement('tbody');
+    const feedbackByCriterion = new Map(run.result.criteria.map((feedback) => [feedback.criterion, feedback]));
+    rubric.criteria.forEach((criterion) => {
+        const feedback = feedbackByCriterion.get(criterion.id);
+        if (!feedback) return;
+        const row = document.createElement('tr');
+        const rowHeading = createText('th', criterion.label);
+        rowHeading.setAttribute('scope', 'row');
+        row.append(rowHeading);
+        rubric.levels
+            .slice()
+            .sort((left, right) => left.rank - right.rank)
+            .forEach((level) => {
+                const cell = document.createElement('td');
+                const band = resolveBand(criterion, level.id, rubric.levels);
+                if (band) cell.append(createText('strong', formatBand(band), 'wf-suggested-grading__band'));
+                if (feedback.suggestedLevel === level.id) {
+                    cell.classList.add('wf-suggested-grading__choice');
+                    cell.append(
+                        createText('span', 'Suggested', 'wf-suggested-grading__tag'),
+                        createText('p', feedback.explanation, 'wf-suggested-grading__reason')
+                    );
+                }
+                row.append(cell);
+            });
+        tbody.append(row);
+    });
+    table.append(tbody);
+    scroll.append(table);
+
+    const total = totalRubricPoints(rubric.criteria);
+    const totalText = grading.totalMin === grading.totalMax
+        ? `${grading.totalMax} of ${total}`
+        : `${grading.totalMin} – ${grading.totalMax} of ${total}`;
+    panel.append(scroll, createText('p', totalText, 'wf-suggested-grading__total'));
+    section.append(header, panel);
+    return section;
 }
 
 /**
@@ -301,6 +466,31 @@ async function refreshReview(submissionId: string): Promise<void> {
     await openReview(submissionId);
 }
 
+function delay(ms: number): Promise<void> {
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+// The worker retries a failed attempt up to maxAttempts (3) with up to a 60s lease
+// each, so a job that fails once and succeeds on retry can legitimately take past
+// two minutes. This ceiling stays comfortably above that worst case, and matches
+// the server's default idle-session window (5 minutes) so a submission that is
+// still generating when this loop gives up has, in practice, already logged the
+// user out rather than doing so silently after this promise settles.
+const GENERATION_POLL_TIMEOUT_MS = 300_000;
+
+async function waitForGeneration(submissionId: string): Promise<SubmissionDetail> {
+    const deadline = Date.now() + GENERATION_POLL_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+        const detail = await request<SubmissionDetail>(`/submissions/${encodeURIComponent(submissionId)}`);
+        if (detail.submission.status === 'draft_ready') return detail;
+        if (detail.submission.status === 'failed') {
+            throw new Error('Feedback generation failed. Check the rubric/profile and try again.');
+        }
+        await delay(2000);
+    }
+    throw new Error('Feedback generation is taking longer than expected. It may still finish — refresh this submission in a moment to check.');
+}
+
 function renderReviewView(root: HTMLDivElement, detail: SubmissionDetail): void {
     const { submission, feedbackRun } = detail;
     const assignment = state.currentAssignment;
@@ -344,14 +534,37 @@ function renderReviewView(root: HTMLDivElement, detail: SubmissionDetail): void 
         root.append(warning);
     }
 
+    // The technical lens can drift (or be missing) independently of the linguistic
+    // run above; approval/release/PDF all require it once the assignment is a lab
+    // report with an approved technical rubric, so surface that gap here too.
+    const technicalStale = Boolean(
+        assignment?.isLabReport
+        && assignment.technicalRubric?.status === 'approved'
+        && (!detail.technicalFeedbackRun
+            || (detail.technicalFeedbackRun.rubricVersion ?? 1) !== assignment.technicalRubric.version)
+    );
+    if (technicalStale) {
+        const warning = createText(
+            'div',
+            detail.technicalFeedbackRun
+                ? `The approved technical rubric is now v${assignment?.technicalRubric?.version}. Regenerate this feedback before approval or release.`
+                : 'The technical rubric is approved but no technical feedback has been generated. Regenerate feedback before approval or release.',
+            'wf-workspace-message'
+        );
+        warning.dataset.tone = 'warning';
+        root.append(warning);
+    }
+
     const layout = document.createElement('div');
     layout.className = 'wf-review-layout';
     const storedWidth = window.localStorage.getItem('wf-panel-width');
     if (storedWidth) layout.style.setProperty('--wf-panel-width', `${storedWidth}px`);
     layout.append(
+        // Doc-pane annotations are anchored to the linguistic run only; keep this
+        // gate on staleRubric alone regardless of technical lens state.
         renderDocPane(submission, feedbackRun !== null && !staleRubric),
         createPanelResizeHandle(layout),
-        renderFeedbackPanel(detail, assignment, staleRubric)
+        renderFeedbackPanel(detail, assignment, staleRubric || technicalStale)
     );
     root.append(layout);
 }
@@ -519,13 +732,37 @@ function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assignment | 
                     ? 'Confirm the transcript first. The model will only evaluate verified text.'
                     : 'The draft produces summary guidance with guiding questions plus annotations anchored to the text. Everything remains staff-only until it is reviewed and approved.',
                 'wf-muted-note'
-            ),
+            )
+        );
+        // Name the technical rubric explicitly when it — not the linguistic run —
+        // is what is stuck, so staff know which lens the regenerate call must fix.
+        if (feedbackRun && assignment?.isLabReport && assignment.technicalRubric?.status === 'approved') {
+            const technicalRunStale = !detail.technicalFeedbackRun
+                || (detail.technicalFeedbackRun.rubricVersion ?? 1) !== assignment.technicalRubric.version;
+            if (technicalRunStale) {
+                card.append(createText(
+                    'p',
+                    detail.technicalFeedbackRun
+                        ? `The technical rubric is now v${assignment.technicalRubric.version}; the technical feedback run is out of date.`
+                        : 'The technical rubric is approved but no technical feedback has been generated yet.',
+                    'wf-muted-note'
+                ));
+            }
+        }
+        card.append(
             createButton(
                 staleRubric ? 'Regenerate with approved rubric' : 'Generate feedback',
                 'primary',
                 async () => {
-                    await jsonRequest(`/submissions/${encodeURIComponent(submission.id)}/generate`, 'POST');
-                    showSuccessToast('Feedback draft generated for staff review.');
+                    await jsonRequest<{ status: 'queued'; jobId: string; submissionId: string }>(
+                        `/submissions/${encodeURIComponent(submission.id)}/generate`,
+                        'POST'
+                    );
+                    showSuccessToast('Feedback generation queued. This page will refresh when it is ready.');
+                    const settled = await waitForGeneration(submission.id);
+                    if (assignment?.isLabReport && assignment.technicalRubric?.status === 'approved' && !settled.technicalFeedbackRun) {
+                        showErrorToast('Technical feedback was not generated. Check that the technical rubric is approved, then generate again.');
+                    } else showSuccessToast('Feedback draft generated for staff review.');
                     await refreshReview(submission.id);
                 },
                 submission.requiresVerification
@@ -552,10 +789,17 @@ function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assignment | 
     summaryBody.id = 'wf-tab-panel-summary';
     summaryBody.setAttribute('role', 'tabpanel');
     summaryBody.hidden = true;
+    const technicalBody = document.createElement('div');
+    technicalBody.className = 'wf-panel-body';
+    technicalBody.id = 'wf-tab-panel-technical';
+    technicalBody.setAttribute('role', 'tabpanel');
+    technicalBody.hidden = true;
 
     const tabs: Array<{ id: string; label: string; panel: HTMLElement }> = [
         { id: 'annotations', label: 'Annotations', panel: annotationsBody },
-        { id: 'summary', label: 'Summary', panel: summaryBody }
+        { id: 'summary', label: 'Summary', panel: summaryBody },
+        // The technical tab only exists for a lab report whose technical lens has run.
+        ...(detail.technicalFeedbackRun ? [{ id: 'technical', label: 'Technical', panel: technicalBody }] : [])
     ];
     const buttons: HTMLButtonElement[] = [];
     const selectTab = (selected: number) => {
@@ -615,6 +859,13 @@ function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assignment | 
     const internalNote = summaryContent.internalNote;
 
     panel.append(annotationsBody, summaryBody);
+
+    // Technical tab — read-only technical (lab-report) draft. Approval and
+    // release remain whole-submission actions on the Summary tab.
+    if (detail.technicalFeedbackRun) {
+        technicalBody.append(...renderTechnicalTab(detail.technicalFeedbackRun, assignment));
+        panel.append(technicalBody);
+    }
 
     // One explicit save snapshots both summary fields and the annotation working
     // set as an append-only staff revision; editing never overwrites model provenance.
@@ -680,6 +931,100 @@ function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assignment | 
     return panel;
 }
 
+/**
+ * renderTechnicalTab - renders the read-only technical (lab-report) draft
+ *
+ * The technical run judges argument consistency and evidence support against
+ * the approved technical rubric and lab context; it never judges agreement
+ * with theory. Approval and release stay whole-submission actions on the
+ * Summary tab, so this tab only displays the draft for staff review.
+ *
+ * @param run - Latest immutable technical model result
+ * @param assignment - Parent assignment supplying the technical rubric used to label criteria
+ * @returns Detached section nodes ready for insertion into the technical tab panel
+ */
+function renderTechnicalTab(run: FeedbackRun, assignment: Assignment | null): HTMLElement[] {
+    const children: HTMLElement[] = [];
+
+    children.push(createText(
+        'p',
+        'Read-only technical draft from the lab-report engine. Approve and release from the Summary tab apply to the whole submission.',
+        'wf-muted-note'
+    ));
+
+    const strengths = document.createElement('section');
+    strengths.className = 'wf-feedback-section';
+    strengths.append(createText('h3', 'What works (technical)'));
+    const strengthList = document.createElement('ul');
+    strengthList.className = 'wf-strength-list';
+    run.result.strengths.forEach((strength) => strengthList.append(createText('li', strength)));
+    strengths.append(strengthList);
+    children.push(strengths);
+
+    const rubric = rubricForRun(assignment, run, 'technical');
+    const rubricSection = document.createElement('section');
+    rubricSection.className = 'wf-feedback-section';
+    rubricSection.append(createText('h3', 'Feedback by technical rubric criterion'));
+    const criterionList = document.createElement('div');
+    criterionList.className = 'wf-criterion-list';
+    orderedCriterionIds(rubric, run.result.criteria).forEach((criterionId) => {
+        const criterion = run.result.criteria.find((item) => item.criterion === criterionId);
+        const item = document.createElement('article');
+        item.className = 'wf-criterion';
+        const criterionHeader = document.createElement('div');
+        criterionHeader.className = 'wf-criterion-header';
+        const heading = createText('h4', criterionLabel(rubric, criterionId));
+        const title = criterionTitle(rubric, criterionId);
+        if (title) heading.title = title;
+        criterionHeader.append(heading);
+        if (criterion) criterionHeader.append(chip(levelLabel(rubric, criterion.suggestedLevel), 'neutral'));
+        item.append(criterionHeader);
+        if (!criterion) {
+            item.append(createText('p', 'No stored feedback was found for this rubric criterion.', 'wf-muted-note'));
+            criterionList.append(item);
+            return;
+        }
+        item.append(createText('p', criterion.explanation));
+        criterion.evidence.forEach((evidence) => {
+            item.append(createText('blockquote', `“${evidence.quote}”`, 'wf-evidence'));
+        });
+        criterionList.append(item);
+    });
+    rubricSection.append(criterionList);
+    children.push(rubricSection);
+
+    const goalsSection = document.createElement('section');
+    goalsSection.className = 'wf-feedback-section';
+    goalsSection.append(
+        createText('h3', 'Priority technical revision goals'),
+        createText('p', 'At most three high-impact goals, each posed as a guiding question rather than a corrected answer.', 'wf-muted-note')
+    );
+    run.result.revisionGoals.slice(0, 3).forEach((goal) => {
+        const goalCard = document.createElement('article');
+        goalCard.className = 'wf-goal-card';
+        goalCard.append(
+            createText('strong', goal.goal),
+            createText('p', `Guiding question: ${goal.guidedQuestion}`, 'wf-guided-question'),
+            chip(goal.skillTag, 'neutral')
+        );
+        goalsSection.append(goalCard);
+    });
+    children.push(goalsSection);
+
+    // Internal flags stay in the staff workspace only, matching the Summary tab.
+    if (run.result.internalFlags.length) {
+        const flags = document.createElement('section');
+        flags.className = 'wf-feedback-section wf-internal-note';
+        flags.append(
+            createText('h3', 'Internal review flags'),
+            createText('p', run.result.internalFlags.join(', '))
+        );
+        children.push(flags);
+    }
+
+    return children;
+}
+
 interface SummaryContent {
     children: HTMLElement[];
     studentFeedback: HTMLTextAreaElement;
@@ -704,34 +1049,45 @@ function renderSummaryTab(
     strengths.append(strengthList);
     children.push(strengths);
 
-    const sflSection = document.createElement('section');
-    sflSection.className = 'wf-feedback-section';
-    sflSection.append(createText('h3', 'Feedback by SFL section'));
+    const rubric = rubricForRun(assignment, feedbackRun);
+    const suggestedGrading = hasSuggestedGrading(rubric)
+        ? renderSuggestedGrading(feedbackRun, rubric)
+        : null;
+    if (suggestedGrading) children.push(suggestedGrading);
+    const rubricSection = document.createElement('section');
+    rubricSection.className = 'wf-feedback-section';
+    rubricSection.append(createText('h3', 'Feedback by rubric criterion'));
     const criterionList = document.createElement('div');
     criterionList.className = 'wf-criterion-list';
-    SFL_SECTION_ORDER.forEach((section) => {
-        const criterion = feedbackRun.result.criteria.find((item) => item.criterion === section.id);
-        if (!criterion) return;
+    orderedCriterionIds(rubric, feedbackRun.result.criteria).forEach((criterionId) => {
+        const criterion = feedbackRun.result.criteria.find((item) => item.criterion === criterionId);
+        const definition = rubric?.criteria.find((item) => item.id === criterionId);
         const item = document.createElement('article');
         item.className = 'wf-criterion';
         const criterionHeader = document.createElement('div');
         criterionHeader.className = 'wf-criterion-header';
-        criterionHeader.append(
-            createText('h4', criterionLabel(assignment, criterion.criterion)),
-            chip(criterion.suggestedLevel, 'neutral')
-        );
-        item.append(
-            criterionHeader,
-            createText('p', section.sflLabel, 'wf-sfl-label'),
-            createText('p', criterion.explanation)
-        );
+        const heading = createText('h4', criterionLabel(rubric, criterionId));
+        const title = criterionTitle(rubric, criterionId);
+        if (title) heading.title = title;
+        criterionHeader.append(heading);
+        if (criterion) criterionHeader.append(chip(levelLabel(rubric, criterion.suggestedLevel), 'neutral'));
+        item.append(criterionHeader);
+        const lens = definition?.sflDimension
+            ?? (definition?.functionTag ? `${FUNCTION_TAG_LABELS[definition.functionTag]} function` : undefined);
+        if (lens) item.append(createText('p', lens, 'wf-sfl-label'));
+        if (!criterion) {
+            item.append(createText('p', 'No stored feedback was found for this rubric criterion.', 'wf-muted-note'));
+            criterionList.append(item);
+            return;
+        }
+        item.append(createText('p', criterion.explanation));
         criterion.evidence.forEach((evidence) => {
             item.append(createText('blockquote', `“${evidence.quote}”`, 'wf-evidence'));
         });
         criterionList.append(item);
     });
-    sflSection.append(criterionList);
-    children.push(sflSection);
+    rubricSection.append(criterionList);
+    children.push(rubricSection);
 
     const goalsSection = document.createElement('section');
     goalsSection.className = 'wf-feedback-section';
@@ -750,6 +1106,18 @@ function renderSummaryTab(
         goalsSection.append(goalCard);
     });
     children.push(goalsSection);
+
+    const mentions = feedbackRun.result.courseMaterialMentions ?? [];
+    if (mentions.length) {
+        const materialsSection = document.createElement('section');
+        materialsSection.className = 'wf-feedback-section';
+        materialsSection.append(createText('h3', 'Useful course materials to revisit'));
+        const materialList = document.createElement('ul');
+        materialList.className = 'wf-strength-list';
+        mentions.forEach((mention) => materialList.append(createText('li', mention.label)));
+        materialsSection.append(materialList);
+        children.push(materialsSection);
+    }
 
     const reviewSection = document.createElement('section');
     reviewSection.className = 'wf-feedback-section';
@@ -862,6 +1230,31 @@ function renderReleaseCard(submission: Submission, assignment: Assignment | null
     const card = document.createElement('section');
     card.className = 'wf-release-card';
     const workspace = state.workspace!;
+
+    // A live Canvas course reads submissions but cannot write feedback back: the release path
+    // is still the local mock, and the server refuses it outright for the `canvas` integration.
+    // The generic branch below would enable "Release to Canvas" as soon as the rubric gained a
+    // points mapping, producing a button that can only ever fail — so live renders the honest
+    // state and no action at all, pointing at the PDF that is the actual return path.
+    if (workspace.canvas.mode === 'live') {
+        card.append(
+            createText('h3', 'Return feedback to the student'),
+            createText(
+                'p',
+                'Feedback is not written back to Canvas. Download the approved feedback PDF from the review header and return it to the student yourself.'
+            )
+        );
+        const liveState = document.createElement('div');
+        liveState.className = 'wf-release-state';
+        liveState.setAttribute('role', 'status');
+        liveState.setAttribute('aria-live', 'polite');
+        liveState.textContent = submission.status === 'approved'
+            ? 'Approved. The student feedback PDF is ready to download.'
+            : 'Approve the staff-reviewed feedback to enable the student PDF.';
+        card.append(liveState);
+        return card;
+    }
+
     const isDemo = workspace.canvas.mode === 'demo';
     const hasNumericMapping = Boolean(assignment?.gradeMapping);
     // Release remains unavailable until human approval, a complete numeric

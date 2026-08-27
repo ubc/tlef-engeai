@@ -33,17 +33,18 @@ import { randomUUID } from 'crypto';
 import PDFDocument from 'pdfkit';
 import type {
     WritingFeedbackPdfService,
-    A2FeedbackResult,
+    WritingFeedbackResult,
     AnchoredComment,
     FeedbackPdfInclude,
     WritingAssignment,
+    WritingRubricDefinition,
     WritingSubmission
-} from './contracts';
+} from '../writing-feedback/contracts';
 import {
     layoutVerifiedText,
     highlightRectsForSpan,
     type HighlightRect
-} from './annotated-text-layout';
+} from './writing-feedback-layout';
 
 const PAGE_MARGIN = 64;
 const BODY_SIZE = 11;
@@ -76,12 +77,14 @@ export class StudentWritingFeedbackPdfService implements WritingFeedbackPdfServi
     async render(input: {
         assignment: WritingAssignment;
         submission: WritingSubmission;
-        feedback: A2FeedbackResult;
+        feedback: WritingFeedbackResult;
         grade?: number;
         staffFeedback?: string;
         comments?: AnchoredComment[];
         include?: FeedbackPdfInclude;
         annotationAuthor?: string;
+        technicalFeedback?: WritingFeedbackResult;
+        technicalRubric?: WritingRubricDefinition;
     }): Promise<Buffer> {
         const include = input.include ?? 'general';
         return new Promise((resolve, reject) => {
@@ -101,6 +104,10 @@ export class StudentWritingFeedbackPdfService implements WritingFeedbackPdfServi
                 renderHeader(doc, input.assignment, input.grade);
                 if (include === 'general' || include === 'both') {
                     renderGeneralSections(doc, input.assignment, input.feedback, input.staffFeedback);
+                    if (input.technicalFeedback && input.technicalRubric) {
+                        doc.addPage();
+                        renderTechnicalSections(doc, input.technicalRubric, input.technicalFeedback);
+                    }
                 }
                 if (include === 'annotated' || include === 'both') {
                     if (include === 'both') doc.addPage();
@@ -152,17 +159,40 @@ function bullet(doc: PDFKit.PDFDocument, text: string): void {
 function renderGeneralSections(
     doc: PDFKit.PDFDocument,
     assignment: WritingAssignment,
-    feedback: A2FeedbackResult,
+    feedback: WritingFeedbackResult,
     staffFeedback?: string
 ): void {
     sectionHeading(doc, 'What you did well');
     feedback.strengths.forEach((strength) => bullet(doc, strength));
 
+    renderCriteriaAndGoals(doc, assignment.rubric, feedback);
+
+    if (staffFeedback?.trim()) {
+        sectionHeading(doc, 'Feedback from your teaching team');
+        body(doc).text(staffFeedback.trim(), { lineGap: 3 });
+    }
+
+    sectionHeading(doc, 'Carry forward');
+    body(doc).text('Use these goals when you plan and revise your next writing assignment.', { lineGap: 3 });
+}
+
+/**
+ * Rubric-labeled criteria evidence and prioritized revision goals for one feedback lens.
+ *
+ * Shared by the general (linguistic) and technical sections so a lens's evidence
+ * always resolves its criterion/level labels from that lens's own rubric rather
+ * than one hard-coded to the assignment's linguistic rubric.
+ */
+function renderCriteriaAndGoals(
+    doc: PDFKit.PDFDocument,
+    rubric: WritingRubricDefinition,
+    feedback: WritingFeedbackResult
+): void {
     sectionHeading(doc, 'Evidence from your writing');
     feedback.criteria.forEach((criterion, index) => {
-        const label = assignment.rubric.criteria.find((item) => item.id === criterion.criterion)?.label
+        const label = rubric.criteria.find((item) => item.id === criterion.criterion)?.label
             ?? criterion.criterion;
-        const level = assignment.rubric.levels.find((item) => item.id === criterion.suggestedLevel)?.label
+        const level = rubric.levels.find((item) => item.id === criterion.suggestedLevel)?.label
             ?? criterion.suggestedLevel;
         if (index > 0) doc.moveDown(0.6);
         doc.font(BOLD_FONT).fontSize(11.5).fillColor(TEXT_COLOR).text(`${label} — ${level}`);
@@ -185,14 +215,18 @@ function renderGeneralSections(
             .text(`Ask yourself: ${goal.guidedQuestion}`, { indent: 14, lineGap: 2, paragraphGap: 6 });
         doc.fillColor(TEXT_COLOR);
     });
+}
 
-    if (staffFeedback?.trim()) {
-        sectionHeading(doc, 'Feedback from your teaching team');
-        body(doc).text(staffFeedback.trim(), { lineGap: 3 });
-    }
-
-    sectionHeading(doc, 'Carry forward');
-    body(doc).text('Use these goals when you plan and revise your next writing assignment.', { lineGap: 3 });
+/** Technical sections for a lab report: strengths, per-criterion evidence, and revision goals. */
+function renderTechnicalSections(
+    doc: PDFKit.PDFDocument,
+    rubric: WritingRubricDefinition,
+    feedback: WritingFeedbackResult
+): void {
+    sectionHeading(doc, 'Technical feedback');
+    feedback.strengths.forEach((strength) => bullet(doc, strength));
+    // Confidence and internal flags are staff-only and never reach a student document.
+    renderCriteriaAndGoals(doc, rubric, feedback);
 }
 
 /**
@@ -348,8 +382,14 @@ function renderAnnotatedText(
 function popupText(comment: AnchoredComment): string {
     const parts = [comment.comment.trim()];
     if (comment.howToImprove?.trim()) parts.push(`How to improve: ${comment.howToImprove.trim()}`);
-    if (comment.courseMaterialLink) parts.push(`See: ${comment.courseMaterialLink}`);
-    if (comment.glossaryDefinition) {
+    if (comment.courseMaterialMention) {
+        parts.push(`Review: ${comment.courseMaterialMention.label}`);
+    } else if (comment.courseMaterialLink) {
+        parts.push(`See: ${comment.courseMaterialLink}`);
+    }
+    if (comment.glossarySnapshot) {
+        parts.push(`Glossary — ${comment.glossarySnapshot.term}: ${comment.glossarySnapshot.definition}`);
+    } else if (comment.glossaryDefinition) {
         parts.push(`Glossary — ${comment.glossaryDefinition.term}: ${comment.glossaryDefinition.definition}`);
     }
     return parts.join('\n\n');

@@ -14,7 +14,7 @@ import {
     layoutVerifiedText,
     highlightRectsForSpan,
     type AnnotatedLayoutOptions
-} from '../annotated-text-layout';
+} from '../writing-feedback-layout';
 
 /** Keep layout assertions deterministic by assigning every UTF-16 code unit a 10pt width. */
 const measure = (segment: string): number => segment.length * 10;

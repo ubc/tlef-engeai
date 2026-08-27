@@ -11,9 +11,15 @@
  */
 
 import zlib from 'zlib';
-import { StudentWritingFeedbackPdfService } from '../pdf-service';
-import { buildA2Assignment } from '../a2-profile';
-import type { A2FeedbackResult, AnchoredComment, WritingSubmission } from '../contracts';
+import { buildDefaultWritingAssignment } from '../../writing-feedback/default-rubric-profile';
+import type {
+    AnchoredComment,
+    WritingAssignment,
+    WritingFeedbackResult,
+    WritingRubricCriterion,
+    WritingSubmission
+} from '../../writing-feedback/contracts';
+import { StudentWritingFeedbackPdfService } from '../writing-feedback-report';
 
 /**
  * Convert raw bytes, inflatable object streams, and PDFKit's split hex text runs
@@ -52,7 +58,7 @@ function submission(overrides: Partial<WritingSubmission> = {}): WritingSubmissi
         assignmentId: 'assignment-1',
         studentId: 'student-1',
         attempt: 1,
-        sourceType: 'manual_text',
+        sourceType: 'manual',
         originalText: verifiedText,
         verifiedText,
         requiresVerification: false,
@@ -63,15 +69,18 @@ function submission(overrides: Partial<WritingSubmission> = {}): WritingSubmissi
     } as WritingSubmission;
 }
 
-function feedback(): A2FeedbackResult {
+function feedback(
+    criteria: WritingRubricCriterion[] = assignment.rubric.criteria,
+    suggestedLevel: string = 'proficient'
+): WritingFeedbackResult {
     return {
-        criteria: [{
-            criterion: 'organization',
-            suggestedLevel: 'competent',
+        criteria: criteria.map((criterion) => ({
+            criterion: criterion.id,
+            suggestedLevel,
             evidence: [{ quote: 'The impeller accelerates the fluid outward', rationale: 'Signals process staging.' }],
-            explanation: 'The description follows the flow path in a consistent order.',
+            explanation: `The description provides evidence for ${criterion.label}.`,
             confidence: 0.82
-        }],
+        })),
         strengths: ['Consistent technical vocabulary throughout the description.'],
         revisionGoals: [{
             skillTag: 'organization',
@@ -97,9 +106,69 @@ function comment(overrides: Partial<AnchoredComment> = {}): AnchoredComment {
 }
 
 const service = new StudentWritingFeedbackPdfService();
-const assignment = buildA2Assignment('course-1', 'assignment-1');
+const assignment = buildDefaultWritingAssignment('course-1', 'assignment-1', 'Technical description');
+
+/** Builds a report fixture with assignment-authored criterion and ranked level collections. */
+function assignmentWithCriteria(count: number): WritingAssignment {
+    const dynamicAssignment = buildDefaultWritingAssignment(
+        'course-1',
+        `assignment-${count}`,
+        `${count}-criterion writing task`
+    );
+    const criteria = Array.from({ length: count }, (_, index): WritingRubricCriterion => ({
+        id: `criterion_${index + 1}`,
+        label: `Criterion ${index + 1}`,
+        description: `Assignment-specific criterion ${index + 1}.`
+    }));
+    return {
+        ...dynamicAssignment,
+        rubric: {
+            ...dynamicAssignment.rubric,
+            criteria,
+            // Deliberately store the levels out of rank order: ids and explicit ranks are authoritative.
+            levels: [
+                { id: 'advanced', label: 'Advanced', description: 'Fully demonstrated.', rank: 2 },
+                { id: 'initial', label: 'Initial', description: 'Not yet demonstrated.', rank: 1 }
+            ]
+        }
+    };
+}
 
 describe('StudentWritingFeedbackPdfService', () => {
+    it.each([3, 6])('renders all %i assignment-authored criteria', async (criterionCount) => {
+        const dynamicAssignment = assignmentWithCriteria(criterionCount);
+        const pdf = await service.render({
+            assignment: dynamicAssignment,
+            submission: submission({ assignmentId: dynamicAssignment.id }),
+            feedback: feedback(dynamicAssignment.rubric.criteria, 'advanced'),
+            include: 'general'
+        });
+        const text = searchableText(pdf);
+
+        for (let index = 1; index <= criterionCount; index += 1) {
+            expect(text).toContain(`Criterion ${index}`);
+        }
+        expect(text).toContain('Advanced');
+    });
+
+    it('renders unknown criterion and level ids as their raw slugs', async () => {
+        const unknownCriterion: WritingRubricCriterion = {
+            id: 'unexpected_criterion_slug',
+            label: 'Unused fixture label',
+            description: 'Represents a stale or externally supplied criterion reference.'
+        };
+        const pdf = await service.render({
+            assignment,
+            submission: submission(),
+            feedback: feedback([unknownCriterion], 'unexpected_level_slug'),
+            include: 'general'
+        });
+        const text = searchableText(pdf);
+
+        expect(text).toContain('unexpected_criterion_slug');
+        expect(text).toContain('unexpected_level_slug');
+    });
+
     it('renders a general PDF with the reformatted summary sections and no highlights', async () => {
         const pdf = await service.render({
             assignment,
@@ -338,5 +407,52 @@ describe('StudentWritingFeedbackPdfService', () => {
         const text = searchableText(pdf);
         expect(text).toContain('What you did well');
         expect(text).not.toContain('/Highlight');
+    });
+});
+
+describe('technical section', () => {
+    const technicalAssignment = assignmentWithCriteria(2);
+    const technicalRubric = technicalAssignment.rubric;
+    const technicalResult = feedback(technicalRubric.criteria, 'advanced');
+
+    it('renders a technical section when technical feedback is supplied', async () => {
+        const pdf = await service.render({
+            assignment,
+            submission: submission(),
+            feedback: feedback(),
+            technicalFeedback: technicalResult,
+            technicalRubric,
+            include: 'general'
+        });
+        const text = searchableText(pdf);
+        expect(text).toContain('Technical feedback');
+        // Guards against labelling the technical section against `assignment.rubric`
+        // instead of the supplied `technicalRubric` — a regression that would still
+        // pass the assertion above but fall back to the raw id ("criterion_1").
+        expect(text).toContain('Criterion 1');
+    });
+
+    it('omits the technical section when none is supplied', async () => {
+        const pdf = await service.render({
+            assignment,
+            submission: submission(),
+            feedback: feedback(),
+            include: 'general'
+        });
+        expect(searchableText(pdf)).not.toContain('Technical feedback');
+    });
+
+    it('never prints internal flags or confidence from either lens', async () => {
+        const pdf = await service.render({
+            assignment,
+            submission: submission(),
+            feedback: feedback(),
+            technicalFeedback: technicalResult,
+            technicalRubric,
+            include: 'general'
+        });
+        const text = searchableText(pdf);
+        expect(text).not.toContain('confidence');
+        expect(text).not.toContain('needs_review');
     });
 });
