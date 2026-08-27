@@ -236,7 +236,11 @@ export interface CourseFeatures {
 }
 
 /** UI catalog ids for course-wide LLM model selection. */
-export type CourseLlmModelId = 'gpt-5.6-luna' | 'gpt-5.4-mini' | 'gpt-4o-mini';
+export type CourseLlmModelId =
+    | 'gpt-5.6-luna'
+    | 'qwen3.8-27b'
+    | 'qwen3.6-35b-a3b'
+    | 'gpt-4.1-mini-engeai-local';
 
 /** Official provider reasoning effort values — aligned with ubc-genai-toolkit-llm `ReasoningEffort`. */
 export type ProviderReasoningLevel =

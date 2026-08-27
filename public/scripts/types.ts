@@ -151,7 +151,11 @@ export interface CourseFeatures {
 }
 
 /** UI catalog ids for course-wide LLM model selection (API contract). */
-export type CourseLlmModelId = 'gpt-5.6-luna' | 'gpt-5.4-mini' | 'gpt-4o-mini';
+export type CourseLlmModelId =
+    | 'gpt-5.6-luna'
+    | 'qwen3.8-27b'
+    | 'qwen3.6-35b-a3b'
+    | 'gpt-4.1-mini-engeai-local';
 
 /** App UI + persisted reasoning from dashboard catalog / PATCH (API contract). */
 export type AppReasoningLevel = 'none' | 'low' | 'medium' | 'high';

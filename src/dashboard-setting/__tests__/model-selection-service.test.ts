@@ -17,6 +17,8 @@ import type {
 } from '../../types/shared';
 import {
     APP_REASONING_LEVELS,
+    appReasoningOptionsForEntry,
+    DEFAULT_FEATURE_SELECTION,
     SELECTABLE_MODEL_CATALOG,
     TEMPORARILY_UNAVAILABLE_MODEL_IDS,
 } from '../model-selection-list';
@@ -92,14 +94,15 @@ describe('ModelSelectionService', () => {
                 'xhigh',
                 'max',
             ]);
-            expect(catalog.find((e) => e.id === 'gpt-5.4-mini')?.supportedReasoningLevels).toEqual([
-                'none',
-                'low',
-                'medium',
-                'high',
-                'xhigh',
-            ]);
-            expect(catalog.find((e) => e.id === 'gpt-4o-mini')?.supportedReasoningLevels).toEqual([]);
+            // Qwen3 ignores reasoning_effort (thinking is a chat-template flag), and the
+            // pinned toolkit throws 400 if we send it for a non-gpt-5 id — so: empty.
+            expect(catalog.find((e) => e.id === 'qwen3.8-27b')?.supportedReasoningLevels).toEqual([]);
+            expect(catalog.find((e) => e.id === 'qwen3.6-35b-a3b')?.supportedReasoningLevels).toEqual(
+                []
+            );
+            expect(
+                catalog.find((e) => e.id === 'gpt-4.1-mini-engeai-local')?.supportedReasoningLevels
+            ).toEqual([]);
             for (const entry of catalog) {
                 expect(entry.label.length).toBeGreaterThan(0);
                 expect(['low', 'medium', 'high']).toContain(entry.costTier);
@@ -241,10 +244,83 @@ describe('ModelSelectionService', () => {
             ).toEqual(DEFAULT_COURSE_LLM_SETTINGS.memoryAgent);
         });
 
+        it('offers no reasoning row for a model whose thinking is not an effort scale', () => {
+            const qwen = service.getDashboardCatalog().models.find((m) => m.id === 'qwen3.8-27b');
+            expect(qwen?.reasoningOptions).toEqual([]);
+        });
+
+        it('flags exactly the withheld ids as unavailable in the dashboard catalog', () => {
+            // Derived from the list, so this holds whether or not models are withheld
+            for (const row of service.getDashboardCatalog().models) {
+                const withheld = TEMPORARILY_UNAVAILABLE_MODEL_IDS.includes(row.id);
+                expect(row.unavailable ?? false).toBe(withheld);
+            }
+        });
+
+        it('omits reasoningEffort entirely from Qwen provider options', () => {
+            // Regression guard: ubc-genai-toolkit-llm@0.5.0 throws APIError 400 client-side
+            // if reasoningEffort is sent for any id outside gpt-5 / o1 / o3 / o4-mini, so
+            // this must stay absent however the stored reasoningLevel got there.
+            const options = service.buildProviderOptions('chat', {
+                ...DEFAULT_COURSE_LLM_SETTINGS,
+                chat: { modelId: 'qwen3.8-27b', reasoningLevel: 'high' },
+            });
+            expect(options.model).toBe('qwen3.8-27b');
+            expect(options.reasoningEffort).toBeUndefined();
+        });
+
+        it('resolves a stored Qwen row according to whether Qwen is currently withheld', () => {
+            // Withheld: the model id fails validation and the whole row falls back to the
+            // platform default. Available: the id survives. Asserting both keeps this test
+            // honest while TEMPORARILY_UNAVAILABLE_MODEL_IDS is being flipped for testing.
+            const settings = service.normalizeStoredSettings({
+                chat: { modelId: 'qwen3.8-27b', reasoningLevel: 'none' },
+            });
+
+            if (TEMPORARILY_UNAVAILABLE_MODEL_IDS.includes('qwen3.8-27b')) {
+                expect(settings.chat).toEqual(DEFAULT_FEATURE_SELECTION);
+            } else {
+                expect(settings.chat.modelId).toBe('qwen3.8-27b');
+            }
+        });
+
+        it('accepts a Qwen PATCH only while Qwen is selectable', () => {
+            const result = service.parseUpdateRequest(
+                fullBody({ modelId: 'qwen3.8-27b', reasoningLevel: 'low' })
+            );
+            expect(result.ok).toBe(!TEMPORARILY_UNAVAILABLE_MODEL_IDS.includes('qwen3.8-27b'));
+        });
+
+        it('never advertises an app reasoning level the provider does not list', () => {
+            for (const entry of LLM_MODEL_CATALOG) {
+                for (const option of appReasoningOptionsForEntry(entry)) {
+                    expect(entry.supportedReasoningLevels).toContain(option.id);
+                }
+            }
+        });
+
+        it('only claims reasoning for ids the pinned toolkit treats as reasoning-capable', () => {
+            // Mirrors getOpenAIReasoningCapability in ubc-genai-toolkit-llm@0.5.0
+            // (providers/openai-compat-mapping), shared by the openai and ubc-llm-sandbox
+            // providers: any other id + a reasoningEffort throws APIError 400 before the
+            // request is sent. Revisit this rule when the toolkit is upgraded.
+            const toolkitReasoningCapable = (id: string) =>
+                ['gpt-5', 'o1', 'o3', 'o4-mini'].some((p) => id.toLowerCase().startsWith(p));
+
+            for (const entry of LLM_MODEL_CATALOG) {
+                if (entry.supportedReasoningLevels.length > 0) {
+                    expect(toolkitReasoningCapable(entry.id)).toBe(true);
+                }
+            }
+        });
+
         it('maps catalog model ids directly to provider model strings', () => {
             expect(service.mapModelIdToProviderModel('gpt-5.6-luna')).toBe('gpt-5.6-luna');
-            expect(service.mapModelIdToProviderModel('gpt-5.4-mini')).toBe('gpt-5.4-mini');
-            expect(service.mapModelIdToProviderModel('gpt-4o-mini')).toBe('gpt-4o-mini');
+            expect(service.mapModelIdToProviderModel('qwen3.8-27b')).toBe('qwen3.8-27b');
+            expect(service.mapModelIdToProviderModel('qwen3.6-35b-a3b')).toBe('qwen3.6-35b-a3b');
+            expect(service.mapModelIdToProviderModel('gpt-4.1-mini-engeai-local')).toBe(
+                'gpt-4.1-mini-engeai-local'
+            );
         });
 
         it('emits reasoningEffort only for models that support native reasoning', () => {
@@ -258,7 +334,7 @@ describe('ModelSelectionService', () => {
 
             const withoutEffort = service.buildProviderOptions('writingFeedback', {
                 ...DEFAULT_COURSE_LLM_SETTINGS,
-                writingFeedback: { modelId: 'gpt-4o-mini', reasoningLevel: 'low' },
+                writingFeedback: { modelId: 'gpt-4.1-mini-engeai-local', reasoningLevel: 'low' },
             });
             expect(withoutEffort.reasoningEffort).toBeUndefined();
             expect(withoutEffort.temperature).toBeUndefined();
@@ -306,12 +382,12 @@ describe('ModelSelectionService', () => {
 
         it('A4 clone on setCached: mutating caller object does not corrupt Map', async () => {
             const next = fiveFeatureSettings({
-                chat: { modelId: 'gpt-4o-mini', reasoningLevel: 'low' },
+                chat: { modelId: 'gpt-4.1-mini-engeai-local', reasoningLevel: 'low' },
             });
             service.setCachedSettings('c1', next);
             next.chat.modelId = 'gpt-5.6-luna';
             const cached = await service.getSettingsForCourse('c1');
-            expect(cached.chat.modelId).toBe('gpt-4o-mini');
+            expect(cached.chat.modelId).toBe('gpt-4.1-mini-engeai-local');
             expect(mongoLoads).toBe(0);
         });
     });
@@ -346,7 +422,7 @@ describe('ModelSelectionService', () => {
             jest.advanceTimersByTime(4 * 60 * 1000);
             service.setCachedSettings(
                 'c1',
-                fiveFeatureSettings({ chat: { modelId: 'gpt-4o-mini', reasoningLevel: 'low' } })
+                fiveFeatureSettings({ chat: { modelId: 'gpt-4.1-mini-engeai-local', reasoningLevel: 'low' } })
             );
             jest.advanceTimersByTime(4 * 60 * 1000);
             expect(service.hasCachedCourseForTests('c1')).toBe(true);
@@ -366,10 +442,10 @@ describe('ModelSelectionService', () => {
             expect(mongoLoads).toBe(1);
             service.setCachedSettings(
                 'c1',
-                fiveFeatureSettings({ chat: { modelId: 'gpt-4o-mini', reasoningLevel: 'low' } })
+                fiveFeatureSettings({ chat: { modelId: 'gpt-4.1-mini-engeai-local', reasoningLevel: 'low' } })
             );
             const next = await service.getSettingsForCourse('c1');
-            expect(next.chat.modelId).toBe('gpt-4o-mini');
+            expect(next.chat.modelId).toBe('gpt-4.1-mini-engeai-local');
             expect(mongoLoads).toBe(1);
         });
 
@@ -377,19 +453,19 @@ describe('ModelSelectionService', () => {
             await service.getSettingsForCourse('c1');
             service.setCachedSettings(
                 'c1',
-                fiveFeatureSettings({ chat: { modelId: 'gpt-4o-mini', reasoningLevel: 'low' } })
+                fiveFeatureSettings({ chat: { modelId: 'gpt-4.1-mini-engeai-local', reasoningLevel: 'low' } })
             );
             const opts = await service.buildFeatureLlmCallOptions('c1', 'chat');
-            expect(opts.model).toBe('gpt-4o-mini');
+            expect(opts.model).toBe('gpt-4.1-mini-engeai-local');
             expect(mongoLoads).toBe(1);
         });
 
         it('C3 all five features updated', async () => {
             const next = fiveFeatureSettings({
-                chat: { modelId: 'gpt-4o-mini', reasoningLevel: 'low' },
-                scenarioGeneration: { modelId: 'gpt-5.4-mini', reasoningLevel: 'high' },
+                chat: { modelId: 'gpt-4.1-mini-engeai-local', reasoningLevel: 'low' },
+                scenarioGeneration: { modelId: 'qwen3.8-27b', reasoningLevel: 'high' },
                 writingFeedback: { modelId: 'gpt-5.6-luna', reasoningLevel: 'medium' },
-                guidedPathway: { modelId: 'gpt-4o-mini', reasoningLevel: 'none' },
+                guidedPathway: { modelId: 'gpt-4.1-mini-engeai-local', reasoningLevel: 'none' },
                 memoryAgent: { modelId: 'gpt-5.6-luna', reasoningLevel: 'high' },
             });
             service.setCachedSettings('c1', next);
@@ -403,12 +479,12 @@ describe('ModelSelectionService', () => {
         it('C4 setCached without prior get', async () => {
             service.setCachedSettings(
                 'c1',
-                fiveFeatureSettings({ chat: { modelId: 'gpt-4o-mini', reasoningLevel: 'low' } })
+                fiveFeatureSettings({ chat: { modelId: 'gpt-4.1-mini-engeai-local', reasoningLevel: 'low' } })
             );
             expect(service.hasCachedCourseForTests('c1')).toBe(true);
             expect(mongoLoads).toBe(0);
             const got = await service.getSettingsForCourse('c1');
-            expect(got.chat.modelId).toBe('gpt-4o-mini');
+            expect(got.chat.modelId).toBe('gpt-4.1-mini-engeai-local');
             expect(mongoLoads).toBe(0);
         });
     });
@@ -516,19 +592,19 @@ describe('ModelSelectionService', () => {
             const features = {
                 chat: { modelId: 'gpt-5.6-luna' as CourseLlmModelId, reasoningLevel: 'high' as AppReasoningLevel },
                 scenarioGeneration: {
-                    modelId: 'gpt-5.4-mini' as CourseLlmModelId,
+                    modelId: 'qwen3.8-27b' as CourseLlmModelId,
                     reasoningLevel: 'medium' as AppReasoningLevel,
                 },
                 writingFeedback: {
-                    modelId: 'gpt-4o-mini' as CourseLlmModelId,
+                    modelId: 'gpt-4.1-mini-engeai-local' as CourseLlmModelId,
                     reasoningLevel: 'low' as AppReasoningLevel,
                 },
                 guidedPathway: {
-                    modelId: 'gpt-5.4-mini' as CourseLlmModelId,
+                    modelId: 'qwen3.8-27b' as CourseLlmModelId,
                     reasoningLevel: 'medium' as AppReasoningLevel,
                 },
                 memoryAgent: {
-                    modelId: 'gpt-5.4-mini' as CourseLlmModelId,
+                    modelId: 'qwen3.8-27b' as CourseLlmModelId,
                     reasoningLevel: 'low' as AppReasoningLevel,
                 },
             };
@@ -573,7 +649,7 @@ describe('ModelSelectionService', () => {
                 'chat',
                 {
                     ...DEFAULT_COURSE_LLM_SETTINGS,
-                    chat: { modelId: 'gpt-5.4-mini', reasoningLevel: 'low' },
+                    chat: { modelId: 'gpt-5.6-luna', reasoningLevel: 'low' },
                 },
                 { temperature: 0.7 }
             );
