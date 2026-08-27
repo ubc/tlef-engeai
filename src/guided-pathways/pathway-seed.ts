@@ -30,6 +30,7 @@ export function buildPlatformPathwaySeeds(now: number = Date.now()): GuidedPathw
             order: 0,
             title: 'Mental health crisis',
             enabled: true,
+            notifyInstructorOnTrigger: true,
             triggerDescription:
                 'Detects if the user message expresses suicidal ideation, thoughts of self-harm, severe hopelessness, or a mental health crisis.',
             assistantResponse: `Thank you for telling me this — it sounds like a genuinely hard moment, and I want to take it seriously rather than brush past it.
@@ -66,6 +67,7 @@ You don't have to handle this on your own. I'll be here for the course whenever 
             order: 1,
             title: 'Inappropriate content',
             enabled: true,
+            notifyInstructorOnTrigger: true,
             triggerDescription:
                 'Detects if the user message contains harassment, hate speech, explicit content, threats, or abusive language.',
             assistantResponse: `I'm not able to respond to that. EngE-AI is here to support your learning in {courseName}, and I need to keep our conversation focused and respectful to do that well.

@@ -34,29 +34,11 @@
 
 .wf-main-content {
     width: 100%;
-    max-width: 1680px;
-    margin: 0 auto;
-    padding: 0 20px 20px;
-    overflow-y: auto;
 }
 
-/* Header — green sticky bar, same recipe as monitor/flags */
-
+/* Header — layout for left cluster and actions; bar chrome from .page-header */
 .wf-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 15px;
-    padding: 20px;
-    background: var(--color-chbe-green);
-    border: 1px solid var(--border-color);
-    border-radius: 12px;
-    margin-bottom: 20px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1), 0 0 0 20px white;
-    animation: slideInDown 0.5s ease-in-out;
-    position: sticky;
-    top: 0;
-    z-index: 10;
+    flex-wrap: wrap;
 }
 
 .wf-header-left {
@@ -64,18 +46,7 @@
     align-items: center;
     gap: 10px;
     min-width: 0;
-}
-
-.wf-header h1 {
-    margin: 0;
-    color: white;
-    font-size: 24px;
-    font-weight: 600;
-    line-height: 1.2;
-}
-
-.wf-header .instructor-mobile-hamburger-btn {
-    display: none;
+    flex: 1;
 }
 
 .wf-header-actions {
@@ -2400,29 +2371,8 @@ mark.wf-anchor.is-filtered-out,
 }
 
 @media (max-width: 768px) {
-    .wf-main-content {
-        padding: 0 10px 10px;
-    }
-
     .wf-header {
-        position: static;
-        background: var(--chat-bg);
-        border: none;
-        border-radius: 0;
-        box-shadow: none;
-        padding: 0.75rem 1rem;
-        animation: none;
         flex-wrap: wrap;
-    }
-
-    .wf-header h1 {
-        color: var(--color-chbe-green);
-        font-size: 1.25rem;
-        font-weight: 600;
-    }
-
-    .wf-header .instructor-mobile-hamburger-btn {
-        display: inline-flex;
     }
 
     .wf-header-actions {

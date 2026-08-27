@@ -27,6 +27,12 @@ describe('pathway-schema', () => {
         expect(
             isPathwayEvaluable({
                 ...seeds[0],
+                notifyInstructorOnTrigger: false,
+            })
+        ).toBe(true);
+        expect(
+            isPathwayEvaluable({
+                ...seeds[0],
                 enabled: false,
             })
         ).toBe(false);
@@ -40,6 +46,7 @@ describe('pathway-schema', () => {
         const result = buildPathwayResult('none', courseName, seeds);
         expect(result.triggered).toBe(false);
         expect(result.winningPathwayId).toBeNull();
+        expect(result.triggerSnapshot).toBeNull();
         expect(result.responseText).toBeNull();
         expect(result.ctas).toEqual([]);
     });
@@ -48,9 +55,23 @@ describe('pathway-schema', () => {
         const result = buildPathwayResult('mental-health-crisis', courseName, seeds);
         expect(result.triggered).toBe(true);
         expect(result.winningPathwayId).toBe('mental-health-crisis');
+        expect(result.triggerSnapshot).toEqual({
+            pathwayId: 'mental-health-crisis',
+            pathwayTitle: 'Mental health crisis',
+            notifyInstructorOnTrigger: true,
+        });
         expect(result.responseText).toContain(courseName);
         expect(result.ctas.length).toBeGreaterThan(0);
         expect(result.ctas[0].label).toContain('9-8-8');
+    });
+
+    it('snapshots notification disabled without disabling the pathway response', () => {
+        const pathway = { ...seeds[1], notifyInstructorOnTrigger: false };
+        const result = buildPathwayResult(pathway.id, courseName, [pathway]);
+
+        expect(result.triggered).toBe(true);
+        expect(result.responseText).toBeTruthy();
+        expect(result.triggerSnapshot?.notifyInstructorOnTrigger).toBe(false);
     });
 
     it('maps inappropriate-content', () => {

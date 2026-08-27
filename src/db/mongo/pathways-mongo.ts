@@ -87,6 +87,7 @@ export interface CreatePathwayInput {
     triggerDescription?: string;
     assistantResponse?: string;
     enabled?: boolean;
+    notifyInstructorOnTrigger?: boolean;
     ctas?: PathwayCta[];
 }
 
@@ -96,6 +97,7 @@ export interface UpdatePathwayInput {
     triggerDescription?: string;
     assistantResponse?: string;
     enabled?: boolean;
+    notifyInstructorOnTrigger?: boolean;
     ctas?: PathwayCta[];
 }
 
@@ -105,6 +107,13 @@ export interface UpdatePathwayInput {
 function resolveEnabled(doc: any): boolean {
     if (typeof doc.enabled === 'boolean') return doc.enabled;
     return doc.enabledGlobally !== false;
+}
+
+/**
+ * resolveNotifyInstructorOnTrigger - Preserve explicit settings and default legacy rows to on.
+ */
+function resolveNotifyInstructorOnTrigger(doc: any): boolean {
+    return doc.notifyInstructorOnTrigger !== false;
 }
 
 /**
@@ -397,6 +406,7 @@ function docToPathway(doc: any): GuidedPathway {
         order: typeof doc.order === 'number' ? doc.order : 0,
         title: normalizeTitle(doc.title, id),
         enabled: resolveEnabled(doc),
+        notifyInstructorOnTrigger: resolveNotifyInstructorOnTrigger(doc),
         triggerDescription: typeof doc.triggerDescription === 'string' ? doc.triggerDescription : '',
         assistantResponse: typeof doc.assistantResponse === 'string' ? doc.assistantResponse : '',
         ctas: normalizeCtas(doc.ctas),
@@ -443,6 +453,7 @@ export async function createPathway(
         order: maxOrder + 1,
         title: normalizeTitle(input.title),
         enabled: input.enabled !== false,
+        notifyInstructorOnTrigger: input.notifyInstructorOnTrigger !== false,
         triggerDescription,
         assistantResponse: (input.assistantResponse ?? '').trim(),
         ctas: normalizeCtas(input.ctas),
@@ -485,6 +496,9 @@ export async function updatePathway(
     }
     if (typeof input.enabled === 'boolean') {
         $set.enabled = input.enabled;
+    }
+    if (typeof input.notifyInstructorOnTrigger === 'boolean') {
+        $set.notifyInstructorOnTrigger = input.notifyInstructorOnTrigger;
     }
     if (input.ctas !== undefined) {
         $set.ctas = normalizeCtas(input.ctas);

@@ -24,6 +24,8 @@ export interface CourseCollectionNames {
     scenarioProgress: string;
     /** `{courseName}_pathways` — lazy-provisioned, see `pathways-mongo.ts`. */
     pathways: string;
+    /** Server-registered per-course collection for automatic Guided Pathway trigger alerts. */
+    guidedPathwayFlags: string;
 }
 
 /**

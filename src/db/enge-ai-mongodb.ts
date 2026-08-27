@@ -19,6 +19,7 @@ import {
     CourseLmsLink,
     CourseUser,
     FlagReport,
+    FlagReportActor,
     GlobalUser,
     InitialAssistantPrompt,
     InstructorOnboardingProgress,
@@ -31,6 +32,12 @@ import {
 } from '../types/shared';
 import { IDGenerator } from '../utils/unique-id-generator';
 import { appLogger } from '../utils/logger';
+import type {
+    CreateGuidedPathwayFlagInput,
+    GuidedPathwayFlagListFilters,
+    GuidedPathwayFlagReviewActor
+} from '../flags/guided-pathway-flag-contracts';
+import { validateManualFlagStatusTransition } from '../flags/manual-flag-policy';
 
 import type { MongoDalContext, CourseCollectionNames } from './mongo/mongo-context';
 import * as ChatMongo from './mongo/chat-mongo';
@@ -38,6 +45,7 @@ import * as CollectionRegistryMongo from './mongo/collection-registry-mongo';
 import * as CourseMongo from './mongo/course-mongo';
 import * as CourseUserMongo from './mongo/course-user-mongo';
 import * as FlagMongo from './mongo/flag-mongo';
+import * as GuidedPathwayFlagMongo from './mongo/guided-pathway-flag-mongo';
 import * as GlobalUserMongo from './mongo/global-user-mongo';
 import * as InstructorPromptMongo from './mongo/instructor-prompt-mongo';
 import * as SystemPromptConfigMongo from './mongo/system-prompt-config-mongo';
@@ -825,7 +833,7 @@ export class EngEAI_MongoDB {
     public deleteAllFlagReports = async (courseName: string) =>
         FlagMongo.deleteAllFlagReports(this.ctx(), courseName);
 
-    public validateStatusTransition = FlagMongo.validateStatusTransition;
+    public validateStatusTransition = validateManualFlagStatusTransition;
 
     public updateFlagStatus = async (
         courseName: string,
@@ -846,6 +854,77 @@ export class EngEAI_MongoDB {
 
     public getFlagReportsWithUserNames = async (courseName: string) =>
         FlagMongo.getFlagReportsWithUserNames(this.ctx(), courseName);
+
+    public escalateFlagReport = async (
+        courseName: string,
+        flagId: string,
+        actor: FlagReportActor
+    ) => FlagMongo.escalateFlagReport(this.ctx(), courseName, flagId, actor);
+
+    public markManualFlagAdminReviewed = async (
+        courseName: string,
+        flagId: string,
+        actor: FlagReportActor
+    ) => FlagMongo.markManualFlagAdminReviewed(this.ctx(), courseName, flagId, actor);
+
+    public listEscalatedManualFlagsForAdmin = async (filters: FlagMongo.ManualFlagAdminListFilters) =>
+        FlagMongo.listEscalatedManualFlagsForAdmin(this.ctx(), filters);
+
+    public countManualFlagsAwaitingAdminReview = async () =>
+        FlagMongo.countManualFlagsAwaitingAdminReview(this.ctx());
+
+    /**
+     * #########################################################
+     * Guided Pathway trigger alerts - guided-pathway-flag-mongo.ts
+     * #########################################################
+     */
+    /** Creates or deduplicates one course-owned Guided Pathway trigger alert and returns its safe view. */
+    public createGuidedPathwayFlag = async (input: CreateGuidedPathwayFlagInput) =>
+        GuidedPathwayFlagMongo.createGuidedPathwayFlag(this.ctx(), input);
+
+    /** Lists one course's paginated, explicitly anonymous Guided Pathway alert queue. */
+    public listGuidedPathwayFlagsForCourse = async (
+        courseId: string,
+        filters: Pick<GuidedPathwayFlagListFilters, 'page' | 'pageSize' | 'status'>
+    ) => GuidedPathwayFlagMongo.listGuidedPathwayFlagsForCourse(this.ctx(), courseId, filters);
+
+    /** Aggregates active course collections into the platform administrator queue. */
+    public listGuidedPathwayFlagsForAdmin = async (filters: GuidedPathwayFlagListFilters) =>
+        GuidedPathwayFlagMongo.listGuidedPathwayFlagsForAdmin(this.ctx(), filters);
+
+    /** Records an immutable course instructor Escalate or Dismiss decision. */
+    public decideGuidedPathwayFlag = async (
+        courseId: string,
+        flagId: string,
+        decision: import('../types/shared').GuidedPathwayFlagDecision,
+        actor: GuidedPathwayFlagReviewActor
+    ) => GuidedPathwayFlagMongo.decideGuidedPathwayFlag(this.ctx(), courseId, flagId, decision, actor);
+
+    /** Marks one escalated alert reviewed by a platform administrator. */
+    public markGuidedPathwayFlagAdminReviewed = async (
+        courseId: string,
+        flagId: string,
+        actor: GuidedPathwayFlagReviewActor
+    ) => GuidedPathwayFlagMongo.markGuidedPathwayFlagAdminReviewed(this.ctx(), courseId, flagId, actor);
+
+    /** Audits an administrator reveal and returns only the current course-roster display name. */
+    public revealGuidedPathwayFlagIdentity = async (
+        courseId: string,
+        flagId: string,
+        actor: GuidedPathwayFlagReviewActor
+    ) => GuidedPathwayFlagMongo.revealGuidedPathwayFlagIdentity(this.ctx(), courseId, flagId, actor);
+
+    /** Counts escalated alerts that still require platform administrator review. */
+    public countGuidedPathwayFlagsAwaitingAdminReview = async () =>
+        GuidedPathwayFlagMongo.countGuidedPathwayFlagsAwaitingAdminReview(this.ctx());
+
+    /** Drops the physical Guided Pathway alert collection owned by one course lifecycle. */
+    public deleteGuidedPathwayFlagsForCourse = async (courseId: string) =>
+        GuidedPathwayFlagMongo.deleteGuidedPathwayFlagsForCourse(this.ctx(), courseId);
+
+    /** Runs the idempotent GPF-002 shared-to-course collection migration. */
+    public migrateGuidedPathwayFlagsToCourseCollections = async () =>
+        GuidedPathwayFlagMongo.migrateGuidedPathwayFlagsToCourseCollections(this.ctx());
 
     /**
      * #########################################################

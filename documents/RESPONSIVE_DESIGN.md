@@ -188,27 +188,101 @@ The student mode uses a consistent mobile header pattern across welcome screen, 
 
 ---
 
+## Instructor Flag Management
+
+**Flag Management** (`flag-instructor.html`, `flag-instructor.css`) uses the shared **page shell** (`.page-frame` > `.page-shell` > `.page-header`). Workflow nav tiles sit in the page header (outline/green, filled when active). At **768px**, tiles wrap under the title with 44px touch targets.
+
+**Filters** sit in page content, first below the header (not in the header, not a modal). Source, category, and period controls apply with Clear/Apply. Custom date fields stack to one column at ≤768px.
+
+---
+
 ## Instructor Dashboard
 
-The instructor dashboard (`dashboard-instructor.html`, `dashboard.css`) uses a two-column topbar on desktop and stacks on mobile. `.dashboard-page-header` is `position: sticky` inside `.dashboard-grid-view` (the scrollport), with opaque `var(--chat-bg)` chrome and negative margins matching grid padding so cards cannot peek beside it.
+The instructor dashboard (`dashboard-instructor.html`, `dashboard.css`) uses the shared **page shell**. The topbar is `.page-header` plus `.dashboard-topbar` (title + course-code flip). Welcome/date live in the scroll body under the header.
 
 ### Desktop (≥768px)
 
-- **Topbar**: sticky flex row — left column (title, welcome, date) + right column (course-code flip widget, 200px).
+- **Topbar**: sticky flex row — left column (title) + right column (course-code flip widget, 200px).
 - **Advanced Settings**: static section title + divider; three inline accordion cards (Model Settings, Advanced Features, Course Information).
-- **Enter animation**: topbar first, greeting/date at 0.08s, card grid at 0.18s, Advanced Settings section at 0.28s. Topbar keyframes end at `transform: none` so sticky keeps working after the enter anim.
+- **Enter animation**: header via `.page-header`; greeting/date at 0.08s, card grid at 0.18s, Advanced Settings section at 0.28s.
 
 ### Mobile (≤768px)
 
-- **Topbar**: sticky; `flex-direction: column`; course-code flip `align-self: flex-start` (left-aligned under greeting block). Sticky bleed margins match the tighter grid padding (`1.25rem` / `1rem`).
+- **Topbar**: sticky; `flex-direction: column`; course-code flip `align-self: flex-start` (left-aligned under the title).
 - **Advanced Settings**: three inline accordions (Model Settings, Advanced Features, Course Information) expand inside each card with a smooth height transition; `prefers-reduced-motion` collapses instantly.
 - **Feature rows**: Model pickers and Advanced Feature toggles share a wrapping flex layout at every width. Controls stay beside their title where space permits, wrap internally when possible, then move to a right-aligned line below the title.
-- **Hamburger**: shown in title row via `.dashboard-mobile-menu-btn`.
+- **Hamburger**: shown in the title row via `.instructor-mobile-hamburger-btn`.
 - **Accordions**: full-width; toggle min-height 44px for touch.
 
 Course Information was removed from the instructor sidebar footer; course code lives in the dashboard topbar and metadata in the Course Information accordion.
 
 ---
+
+## Admin course selection (`admin-course-selection.html`)
+
+Styles: [`public/styles/course-selection.css`](public/styles/course-selection.css) (split layout) and [`public/styles/admin-guided-pathway-flags.css`](public/styles/admin-guided-pathway-flags.css) (escalations queue).
+
+### Desktop
+
+- **Bell**: toggles a **1:1 flex split** of `.admin-course-selection-wrapper` — courses on the left, escalations panel on the right (`flex: 1 1 0` each). Active bell uses palette light brown (`#ECE5DD` / `--background-2`).
+- **Independent scroll**: the page does not scroll as a whole; the course column and the escalations list each scroll in their own overflow region.
+- **Panel**: 1rem gap from the course column; 10px radius; **green header** on a **white** body. Header is a single row — title, All courses pill, compact Refresh / Hide. Bell, **Hide**, or **Escape** closes; focus returns to the bell. Closed panel uses `hidden` + `inert`.
+- **Splitter**: a drag handle between the columns resizes them. Both columns have **min-width 40%**. Arrow keys on the handle nudge by 2%. Hidden on ≤768px.
+- **Period cards**: when split, course containers use **100% of the left column** (not the default 80% page width).
+
+### Mobile (≤768px)
+
+- Escalations open as a **ModalOverlay** (same 768px cutoff as the View Diagram artefact modal). Course list stays full width; no stacked split and no splitter.
+- Overlay X, backdrop click, Escape, or the bell closes it. Nested identity-reveal confirms still stack on top.
+- `prefers-reduced-motion`: desktop split transitions remain disabled.
+
+---
+
+## Page shell (reusable layout)
+
+Generic scrollport + sticky header module: [`public/styles/page-shell.css`](public/styles/page-shell.css). Loaded from `instructor-mode.html` for instructor features today; student/admin can link the same file later without renaming classes.
+
+### Structure
+
+```text
+.page-frame          optional full-height outer wrapper
+  .page-shell        scrollport (1200px cap, 3rem / 1rem gutters)
+    .page-header     optional sticky title row + bleed
+    (feature content)
+```
+
+Modifiers: `.page-shell--wide` (1680px, Writing Feedback), `.page-shell--column` + `.page-shell-body` (System Prompts editor column).
+
+### Tokens (on `.page-shell`, overridable per instance)
+
+| Token | Desktop | Mobile |
+|-------|---------|--------|
+| `--page-shell-max-width` | `1200px` | — |
+| `--page-shell-pad-x` | `3rem` | `1rem` |
+| `--page-shell-pad-bottom` | `20px` | shell uses `2rem` bottom pad |
+| `--page-header-pad-top` | `1.5rem` | `1.25rem` |
+| `--page-header-pad-bottom` | `1rem` | `0.75rem` |
+| `--page-header-margin-bottom` | `3rem` | — |
+| `--page-header-title-size` | `2rem` | — |
+| `--page-header-title-weight` | `700` | — |
+
+### Sticky header (`.page-header`)
+
+- Bleed: `margin` / `padding` use `--page-shell-pad-x` so the title aligns with body content.
+- `background: var(--chat-bg)` so scrolled content does not peek beside the sticky title.
+- Enter animation: `page-header-in` (`0.45s ease-out`, ends at `transform: none` for sticky).
+
+Instructor hamburger styling stays in [`instructor-mode.css`](public/styles/instructor-mode.css) (`#main-content-area .page-header.mobile-header-bar`).
+
+### Adopting on a new page
+
+1. Link `/styles/page-shell.css`.
+2. Wrap content: `page-frame` > `page-shell` > `page-header` + body.
+3. Override tokens on `.page-shell` if needed (e.g. `--page-shell-max-width: none`).
+
+### `prefers-reduced-motion`
+
+- Header enter animation collapses to `0.01ms` in `page-shell.css`.
 
 ---
 

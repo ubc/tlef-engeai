@@ -16,7 +16,7 @@ import { renderOnCourseSetup } from "../onboarding/course-setup.js";
 import { renderDocumentSetup } from "../onboarding/document-setup.js";
 import { renderFlagSetup } from "../onboarding/flag-setup.js";
 import { renderMonitorSetup } from "../onboarding/monitor-setup.js";
-import { initializeFlags } from "../feature/flags.js";
+import { initializeFlagManagement } from '../feature/flag-management.js';
 import { initializeMonitorDashboard } from "../feature/monitor.js";
 import { ChatManager } from "../feature/chat.js";
 import { authService } from '../services/auth-service.js';
@@ -31,6 +31,7 @@ import { initializeSystemPrompts, flushSystemPromptOnLeave } from '../feature/sy
 import { initializeScenarioQuestionsInstructor, isScenarioQuestionsMounted, syncScenarioQuestionsFromURL } from '../feature/scenario-questions-instructor.js';
 import { initializePathwayLibrary } from '../feature/pathway-library.js';
 import { initializeDashboard, renderDashboardCards } from '../feature/dashboard.js';
+import { canManageGuidedPathways } from '../utils/course-permissions.js';
 import { 
     getCourseIdFromURL, 
     getInstructorViewFromURL, 
@@ -473,6 +474,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Sidebar header: `{firstName} (Instructor|TA)`
     const authUser = authService.getAuthState().user;
+    const canManageGuidedPathwayFeatures = canManageGuidedPathways(currentClass, authUser);
     if (authUser) {
         updateSidebarCompanionText(authUser.name, authUser.userId, currentClass);
     }
@@ -838,6 +840,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                     'Feature unavailable'
                 );
                 navigateToInstructorView('dashboard');
+            } else if (view === 'pathway-library' && !canManageGuidedPathwayFeatures) {
+                await showSimpleErrorModal(
+                    'Only course instructors and platform administrators can access the Pathway Library.',
+                    'Access denied'
+                );
+                navigateToInstructorView('dashboard');
             } else if (view === 'pathway-library' && currentClass.features?.guidedPathway?.enabled !== true) {
                 await showSimpleErrorModal(
                     'Guided Pathway is not enabled for this course. You can enable it from Advanced Settings on the Dashboard if you have instructor or admin access.',
@@ -923,13 +931,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                 initializeDocumentsPage(currentClass);
             }
             else if (componentName === 'dashboard-instructor') {
-                await initializeDashboard(currentClass);
+                await initializeDashboard(currentClass, canManageGuidedPathwayFeatures);
             }
             else if (componentName === 'writing-feedback') {
                 await initializeWritingFeedback(currentClass);
             }
             else if (componentName === 'flag-instructor') {
-                await initializeFlags();
+                const gpEnabled = currentClass.features?.guidedPathway?.enabled === true;
+                await initializeFlagManagement({
+                    courseId: currentClass.id,
+                    canAccessGuidedPathway: gpEnabled && canManageGuidedPathwayFeatures,
+                });
             }
             else if (componentName === 'monitor-instructor') {
                 initializeMonitorDashboard();
@@ -950,7 +962,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 await initializeScenarioQuestionsInstructor(currentClass);
             }
             else if (componentName === 'pathway-library-instructor') {
-                await initializePathwayLibrary(currentClass);
+                if (canManageGuidedPathwayFeatures) {
+                    await initializePathwayLibrary(currentClass);
+                }
             }
             
             renderFeatherIcons();
@@ -1087,6 +1101,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             hideChatList(); // Ensure chat list is hidden
         }
         else if ( currentState === StateEvent.PathwayLibrary){
+            if (!canManageGuidedPathwayFeatures) {
+                void showSimpleErrorModal(
+                    'Only course instructors and platform administrators can access the Pathway Library.',
+                    'Access denied'
+                );
+                navigateToInstructorView('dashboard');
+                return;
+            }
             if (currentClass.features?.guidedPathway?.enabled !== true) {
                 void showSimpleErrorModal(
                     'Guided Pathway is not enabled for this course. You can enable it from Advanced Settings on the Dashboard if you have instructor or admin access.',
@@ -1218,9 +1240,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (wfItem) wfItem.hidden = !wfEnabled;
         }
         if (pathwayLibraryStateEl) {
-            pathwayLibraryStateEl.hidden = !pathwayEnabled;
+            pathwayLibraryStateEl.hidden = !pathwayEnabled || !canManageGuidedPathwayFeatures;
             const pathwayItem = pathwayLibraryStateEl.closest('li');
-            if (pathwayItem) pathwayItem.hidden = !pathwayEnabled;
+            if (pathwayItem) pathwayItem.hidden = !pathwayEnabled || !canManageGuidedPathwayFeatures;
         }
         if (scenarioQuestionsStateEl) {
             scenarioQuestionsStateEl.hidden = !scenarioEnabled;
@@ -1228,7 +1250,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (scenarioItem) scenarioItem.hidden = !scenarioEnabled;
         }
         if (currentState === StateEvent.Dashboard) {
-            renderDashboardCards(currentClass);
+            renderDashboardCards(currentClass, canManageGuidedPathwayFeatures);
         }
     };
     updateFeatureNavigation();
@@ -1244,7 +1266,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (detail.feature === 'writingFeedback' && !detail.enabled && currentState === StateEvent.WritingFeedback) {
             navigateToInstructorView('dashboard');
         }
-        if (detail.feature === 'guidedPathway' && !detail.enabled && currentState === StateEvent.PathwayLibrary) {
+        if (
+            detail.feature === 'guidedPathway' &&
+            (!detail.enabled || !canManageGuidedPathwayFeatures) &&
+            currentState === StateEvent.PathwayLibrary
+        ) {
             navigateToInstructorView('dashboard');
         }
         if (detail.feature === 'scenarioGeneration' && !detail.enabled && currentState === StateEvent.ScenarioQuestions) {

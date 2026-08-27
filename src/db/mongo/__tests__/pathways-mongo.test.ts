@@ -7,6 +7,7 @@ import type { MongoDalContext } from '../mongo-context';
 import {
     seedPathwaysIfEmpty,
     listPathways,
+    listPathwaysForEvaluation,
     createPathway,
     updatePathway,
     deletePathway,
@@ -118,6 +119,7 @@ describe('pathways-mongo', () => {
         ctx = {
             db: {
                 collection: jest.fn(() => collection),
+                createCollection: jest.fn(async () => undefined),
             } as any,
             idGenerator: {
                 uniqueIDGenerator: (input: string) => `id-${input.length}`,
@@ -135,6 +137,11 @@ describe('pathways-mongo', () => {
         expect(store.filter((d) => d.id !== PATHWAY_EVALUATION_PROMPT_ID)).toHaveLength(2);
         expect(store.some((d) => d.id === PATHWAY_EVALUATION_PROMPT_ID)).toBe(true);
         expect(store[0].title).toBe('Mental health crisis');
+        expect(
+            store
+                .filter((d) => d.id !== PATHWAY_EVALUATION_PROMPT_ID)
+                .every((pathway) => pathway.notifyInstructorOnTrigger === true)
+        ).toBe(true);
         expect(store[0].triggerDescription).toMatch(/^Detects if/);
     });
 
@@ -176,6 +183,7 @@ describe('pathways-mongo', () => {
         expect(list.map((p) => p.id)).toEqual(['mental-health-crisis', 'custom-row']);
         expect(list[0].title).toBe('Mental health crisis');
         expect(list[1].title).toBe('Untitled');
+        expect(list.every((pathway) => pathway.notifyInstructorOnTrigger === true)).toBe(true);
     });
 
     it('listPathways maps legacy enabledGlobally to enabled', async () => {
@@ -231,20 +239,43 @@ describe('pathways-mongo', () => {
         expect(created.id).toMatch(/^pathway-/);
         expect(created.order).toBe(0);
         expect(created.title).toBe('Untitled');
+        expect(created.notifyInstructorOnTrigger).toBe(true);
         expect(created.ctas[0].color).toBe('#4d7a2f');
 
         const updated = await updatePathway(ctx, 'Test', created.id, {
             title: 'Spill response',
             assistantResponse: 'Updated',
             enabled: false,
+            notifyInstructorOnTrigger: false,
         });
         expect(updated?.assistantResponse).toBe('Updated');
         expect(updated?.enabled).toBe(false);
+        expect(updated?.notifyInstructorOnTrigger).toBe(false);
         expect(updated?.title).toBe('Spill response');
 
         const deleted = await deletePathway(ctx, 'Test', created.id);
         expect(deleted).toBe(true);
         expect(store).toHaveLength(0);
+    });
+
+    it('returns an instructor-created pathway through the chat evaluation list', async () => {
+        const created = await createPathway(ctx, 'Test', {
+            title: 'Instructor support route',
+            triggerDescription: 'Detect a request for instructor support',
+            assistantResponse: 'Please use these support options.',
+            enabled: true,
+            notifyInstructorOnTrigger: true,
+            ctas: []
+        });
+
+        const evaluable = await listPathwaysForEvaluation(ctx, 'Test');
+
+        expect(evaluable).toEqual([expect.objectContaining({
+            id: created.id,
+            title: 'Instructor support route',
+            enabled: true,
+            notifyInstructorOnTrigger: true
+        })]);
     });
 
     it('reorderPathways rewrites order', async () => {

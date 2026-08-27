@@ -307,6 +307,7 @@ function renderList(): void {
         const article = node.querySelector('.pathway-block') as HTMLElement;
         article.dataset.pathwayId = pathway.id;
         applyEnabledVisual(article, pathway.enabled !== false);
+        applyNotificationVisual(article, pathway.notifyInstructorOnTrigger !== false);
 
         const titleText = article.querySelector('.pathway-block__title-text') as HTMLElement;
         const titleInput = article.querySelector('.pathway-block__title-input') as HTMLInputElement;
@@ -364,6 +365,11 @@ function renderList(): void {
         article.querySelector('.pathway-block__toggle-enabled')?.addEventListener('click', (e) => {
             e.stopPropagation();
             void onToggleEnabled(article, pathway.id);
+        });
+
+        article.querySelector('.pathway-block__toggle-notification')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            void onToggleNotification(article, pathway.id);
         });
 
         article.querySelector('.pathway-block__save')?.addEventListener('click', () => {
@@ -686,6 +692,21 @@ function isArticleEnabled(article: HTMLElement): boolean {
     return article.dataset.enabled !== 'false';
 }
 
+function applyNotificationVisual(article: HTMLElement, enabled: boolean): void {
+    article.dataset.notifyInstructorOnTrigger = enabled ? 'true' : 'false';
+    const toggle = article.querySelector('.pathway-block__toggle-notification') as HTMLButtonElement | null;
+    const state = article.querySelector('.pathway-block__notification-state') as HTMLElement | null;
+    if (toggle) {
+        toggle.setAttribute('aria-checked', String(enabled));
+        toggle.title = enabled ? 'Instructor notification on' : 'Instructor notification off';
+    }
+    if (state) state.textContent = enabled ? 'On' : 'Off';
+}
+
+function isArticleNotificationEnabled(article: HTMLElement): boolean {
+    return article.dataset.notifyInstructorOnTrigger !== 'false';
+}
+
 async function onToggleEnabled(article: HTMLElement, pathwayId: string): Promise<void> {
     const nextEnabled = !isArticleEnabled(article);
     try {
@@ -695,6 +716,29 @@ async function onToggleEnabled(article: HTMLElement, pathwayId: string): Promise
         showSuccessToast(updated.enabled ? 'Pathway activated' : 'Pathway deactivated');
     } catch (error: any) {
         showErrorToast(error?.message || 'Failed to update pathway status');
+    }
+}
+
+async function onToggleNotification(article: HTMLElement, pathwayId: string): Promise<void> {
+    const nextEnabled = !isArticleNotificationEnabled(article);
+    const toggle = article.querySelector('.pathway-block__toggle-notification') as HTMLButtonElement | null;
+    if (toggle) toggle.disabled = true;
+    try {
+        const updated = await updatePathway(courseId, pathwayId, {
+            notifyInstructorOnTrigger: nextEnabled,
+        });
+        const normalized = updated.notifyInstructorOnTrigger !== false;
+        pathways = pathways.map((pathway) =>
+            pathway.id === pathwayId
+                ? { ...updated, notifyInstructorOnTrigger: normalized }
+                : pathway
+        );
+        applyNotificationVisual(article, normalized);
+        showSuccessToast(normalized ? 'Instructor notification enabled' : 'Instructor notification disabled');
+    } catch (error: any) {
+        showErrorToast(error?.message || 'Failed to update instructor notification');
+    } finally {
+        if (toggle) toggle.disabled = false;
     }
 }
 
@@ -711,6 +755,7 @@ async function onSave(article: HTMLElement, pathwayId: string): Promise<void> {
         const updated = await updatePathway(courseId, pathwayId, {
             title,
             enabled: isArticleEnabled(article),
+            notifyInstructorOnTrigger: isArticleNotificationEnabled(article),
             triggerDescription,
             assistantResponse,
             ctas,
@@ -721,6 +766,7 @@ async function onSave(article: HTMLElement, pathwayId: string): Promise<void> {
         if (titleText) titleText.textContent = updated.title;
         if (titleInput) titleInput.value = updated.title;
         applyEnabledVisual(article, updated.enabled !== false);
+        applyNotificationVisual(article, updated.notifyInstructorOnTrigger !== false);
         article.classList.remove('is-editing-title');
         if (status) status.textContent = 'Saved';
         showSuccessToast('Pathway saved');
@@ -738,6 +784,7 @@ async function onAddPathway(): Promise<void> {
         const created = await createPathway(courseId, {
             title: DEFAULT_TITLE,
             enabled: true,
+            notifyInstructorOnTrigger: true,
             triggerDescription: '',
             assistantResponse: '',
             ctas: [],

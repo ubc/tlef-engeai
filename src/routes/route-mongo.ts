@@ -33,7 +33,16 @@
 import express, { Request, Response } from 'express';
 import archiver from 'archiver';
 import { asyncHandler, asyncHandlerWithAuth } from '../middleware/async-handler';
-import { requireAdminForCourseAPI, requireCourseFeatureAPI, requireInstructorForCourseAPI, requireInstructorGlobal, requirePostPeriodAnalyticsAPI, requireRosterManageAPI } from '../middleware/require-course-role';
+import {
+    requireAdminForCourseAPI,
+    requireCourseFeatureAPI,
+    requireInstructorForCourseAPI,
+    requireInstructorGlobal,
+    requireInstructorOrAdminForCourseAPI,
+    requirePostPeriodAnalyticsAPI,
+    requireRosterManageAPI,
+    requireSelfOrInstructorForCourseAPI
+} from '../middleware/require-course-role';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import {
     InvalidInstructorStruggleTopicReorderError,
@@ -47,6 +56,7 @@ import {
 } from '../db/mongo/report-fixture-seed-mongo';
 import { materialChunkIds } from '../migrate/schema-walker';
 import { activeCourse, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem, FlagReport, User, InitialAssistantPrompt, SystemPromptItem } from '../types/shared';
+import * as FlagMongo from '../db/mongo/flag-mongo';
 import { IDGenerator } from '../utils/unique-id-generator';
 import { memoryAgent } from '../memory-agent/memory-agent';
 import dotenv from 'dotenv';
@@ -103,6 +113,8 @@ import type { ConversationZipExportRow } from '../db/mongo/conversation-export-m
 import { mountSystemPromptConfigRoutes } from './mongo/system-prompt-config-routes';
 import { mountScenarioQuestionRoutes } from './mongo/scenario-questions-routes';
 import { mountPathwaysRoutes } from './mongo/pathways-routes';
+import { mountGuidedPathwayFlagRoutes } from './mongo/guided-pathway-flag-routes';
+import { isManualFlagType, MANUAL_FLAG_TYPES } from '../flags/manual-flag-policy';
 
 const router = express.Router();
 export default router;
@@ -1051,16 +1063,21 @@ router.put('/:id', requireInstructorForCourseAPI(['paramsId']), asyncHandlerWith
         });
     }
     
-    // Strip capabilities so this generic instructor update cannot bypass the roster-manager gate.
+    // Keep capabilities, immutable ids, and physical collection registrations server-owned.
     // Also strip the three tutorial flags: they moved to `GlobalUser.instructorOnboarding` (OB-002)
     // and must not be resurrected on the course document by a stale client.
-    const {
-        features: _ignoredFeatures,
-        contentSetup: _ignoredContentSetup,
-        flagSetup: _ignoredFlagSetup,
-        monitorSetup: _ignoredMonitorSetup,
-        ...updateData
-    } = req.body ?? {};
+    const updateData = Object.fromEntries(
+        Object.entries(req.body ?? {}).filter(([key]) => (
+            key !== 'features'
+            && key !== 'id'
+            && key !== '_id'
+            && key !== 'collections'
+            && !key.startsWith('collections.')
+            && key !== 'contentSetup'
+            && key !== 'flagSetup'
+            && key !== 'monitorSetup'
+        ))
+    );
     const updatedCourse = await instance.updateActiveCourse(routeParam(req.params, 'id'), updateData);
     
     res.status(200).json({
@@ -1191,7 +1208,7 @@ router.post('/:courseId/instructors', requireInstructorForCourseAPI(['params']),
  * @response 404 - Course not found
  * @response 500 - Failed to restart onboarding
  */
-router.delete('/:id/restart-onboarding', requireInstructorForCourseAPI(['paramsId']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.delete('/:id/restart-onboarding', requireInstructorOrAdminForCourseAPI(['paramsId']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     const instance = await EngEAI_MongoDB.getInstance();
     
     try {
@@ -1209,6 +1226,9 @@ router.delete('/:id/restart-onboarding', requireInstructorForCourseAPI(['paramsI
         
         // Get collection names before deleting the course (to use stored names if available)
         const collectionNames = await instance.getCollectionNames(courseName);
+
+        // Drop the course-owned Guided Pathway alert collection before replacing the course id.
+        await instance.deleteGuidedPathwayFlagsForCourse(course.id);
         
         // Remove course from active-course-list
         await instance.deleteActiveCourse(course);
@@ -1402,7 +1422,7 @@ router.delete('/:id/remove', requireInstructorForCourseAPI(['paramsId']), asyncH
  * @response 403 - Instructor access required for course
  * @response 404 - Course not found
  */
-router.delete('/:id', requireInstructorForCourseAPI(['paramsId']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.delete('/:id', requireInstructorOrAdminForCourseAPI(['paramsId']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     const instance = await EngEAI_MongoDB.getInstance();
     
     // First check if course exists
@@ -1414,7 +1434,10 @@ router.delete('/:id', requireInstructorForCourseAPI(['paramsId']), asyncHandlerW
         });
     }
     
-    // Delete the course
+    // Drop the physical Guided Pathway alert collection owned by this course.
+    await instance.deleteGuidedPathwayFlagsForCourse(existingCourse.id);
+
+    // Delete the course catalog row.
     await instance.deleteActiveCourse(existingCourse as unknown as activeCourse);
     
     res.status(200).json({
@@ -2145,11 +2168,10 @@ router.post('/:courseId/flags', asyncHandlerWithAuth(async (req: Request, res: R
         }
 
         // Validate flagType
-        const validFlagTypes = ['innacurate_response', 'harassment', 'inappropriate', 'dishonesty', 'interface bug', 'other'];
-        if (!validFlagTypes.includes(flagType)) {
+        if (!isManualFlagType(flagType)) {
             return res.status(400).json({
                 success: false,
-                error: 'Invalid flagType. Must be one of: ' + validFlagTypes.join(', ')
+                error: 'Invalid flagType. Must be one of: ' + MANUAL_FLAG_TYPES.join(', ')
             });
         }
 
@@ -2568,6 +2590,101 @@ router.get('/:courseId/flags/with-names', requireInstructorForCourseAPI(['params
     }
 }));
 
+// Literal `/flags/...` routes must be declared before the `/:courseId/flags/:flagId`
+// capture below; Express matches in declaration order, so a later literal route would
+// be swallowed by `:flagId` and never run.
+
+/**
+ * GET /:courseId/flags/validate
+ * Validate flag collection integrity. Instructors only.
+ *
+ * @route GET /api/courses/:courseId/flags/validate
+ * @param {string} courseId - Course ID (path param)
+ * @returns {object} { success: boolean, data?: object, error?: string }
+ * @response 200 - Validation result
+ * @response 401 - User not authenticated
+ * @response 403 - Instructor access required for course
+ * @response 404 - Course not found
+ * @response 500 - Failed to validate flag collection
+ */
+router.get('/:courseId/flags/validate', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId } = normalizeRouteParams(req.params);
+
+        // Get course to get course name
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+
+        //START DEBUG LOG : DEBUG-CODE(VALIDATE-COLLECTION-API)
+        appLogger.log('🔍 Validating flag collection for course:', course.courseName);
+        //END DEBUG LOG : DEBUG-CODE(VALIDATE-COLLECTION-API)
+
+        const validation = await instance.validateFlagCollection(course.courseName);
+
+        res.json({
+            success: true,
+            data: validation
+        });
+    } catch (error) {
+        appLogger.error('Error validating flag collection:', { error });
+        res.status(500).json({
+            success: false,
+            error: 'Failed to validate flag collection'
+        });
+    }
+}));
+
+/**
+ * GET /:courseId/flags/statistics
+ * Get flag statistics for a course.
+ *
+ * @route GET /api/courses/:courseId/flags/statistics
+ * @param {string} courseId - Course ID (path param)
+ * @returns {object} { success: boolean, data?: object, error?: string }
+ * @response 200 - Success
+ * @response 401 - User not authenticated
+ * @response 404 - Course not found
+ * @response 500 - Failed to get flag statistics
+ */
+router.get('/:courseId/flags/statistics', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId } = normalizeRouteParams(req.params);
+
+        // Get course to get course name
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+
+        //START DEBUG LOG : DEBUG-CODE(GET-STATISTICS-API)
+        appLogger.log('📊 Getting flag statistics for course:', course.courseName);
+        //END DEBUG LOG : DEBUG-CODE(GET-STATISTICS-API)
+
+        const statistics = await instance.getFlagStatistics(course.courseName);
+
+        res.json({
+            success: true,
+            data: statistics
+        });
+    } catch (error) {
+        appLogger.error('Error getting flag statistics:', { error });
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get flag statistics'
+        });
+    }
+}));
+
 /**
  * GET /:courseId/flags/:flagId
  * Get a specific flag report by ID. Instructors only.
@@ -2657,6 +2774,20 @@ router.put('/:courseId/flags/:flagId', requireInstructorForCourseAPI(['params'])
             });
         }
 
+        const existingFlag = await instance.getFlagReport(course.courseName, flagId);
+        if (!existingFlag) {
+            return res.status(404).json({
+                success: false,
+                error: 'Flag report not found'
+            });
+        }
+        if (existingFlag.status === 'escalated') {
+            return res.status(409).json({
+                success: false,
+                error: 'Escalated flags cannot be updated until reviewed by a platform administrator'
+            });
+        }
+
         // Prepare update data
         const updateData: Partial<FlagReport> = {};
         if (status !== undefined) updateData.status = status;
@@ -2697,6 +2828,41 @@ router.put('/:courseId/flags/:flagId', requireInstructorForCourseAPI(['params'])
             success: false,
             error: 'Failed to update flag report'
         });
+    }
+}));
+
+/**
+ * PATCH /:courseId/flags/:flagId/escalate
+ * Escalate an unresolved manual flag to platform administrators. Course staff only.
+ */
+router.patch('/:courseId/flags/:flagId/escalate', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId, flagId } = normalizeRouteParams(req.params);
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({ success: false, error: 'Course not found' });
+        }
+
+        const globalUser = (req.session as any)?.globalUser;
+        if (!globalUser?.userId || !globalUser?.name) {
+            return res.status(401).json({ success: false, error: 'Authenticated staff identity is unavailable' });
+        }
+
+        const data = await instance.escalateFlagReport(course.courseName, flagId, {
+            userId: globalUser.userId,
+            name: globalUser.name
+        });
+        res.json({ success: true, message: 'Flag escalated to administrators', data });
+    } catch (error) {
+        if (error instanceof FlagMongo.FlagReportNotFoundError) {
+            return res.status(404).json({ success: false, error: error.message });
+        }
+        if (error instanceof FlagMongo.FlagReportConflictError) {
+            return res.status(409).json({ success: false, error: error.message });
+        }
+        appLogger.error('Error escalating flag report:', { error });
+        res.status(500).json({ success: false, error: 'Failed to escalate flag report' });
     }
 }));
 
@@ -2940,96 +3106,6 @@ router.post('/:courseId/flags/create-indexes', requireInstructorForCourseAPI(['p
     }
 }));
 
-/**
- * GET /:courseId/flags/validate
- * Validate flag collection integrity. Instructors only.
- *
- * @route GET /api/courses/:courseId/flags/validate
- * @param {string} courseId - Course ID (path param)
- * @returns {object} { success: boolean, data?: object, error?: string }
- * @response 200 - Validation result
- * @response 401 - User not authenticated
- * @response 403 - Instructor access required for course
- * @response 404 - Course not found
- * @response 500 - Failed to validate flag collection
- */
-router.get('/:courseId/flags/validate', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
-    try {
-        const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId } = normalizeRouteParams(req.params);
-        
-        // Get course to get course name
-        const course = await instance.getActiveCourse(courseId);
-        if (!course) {
-            return res.status(404).json({
-                success: false,
-                error: 'Course not found'
-            });
-        }
-
-        //START DEBUG LOG : DEBUG-CODE(VALIDATE-COLLECTION-API)
-        appLogger.log('🔍 Validating flag collection for course:', course.courseName);
-        //END DEBUG LOG : DEBUG-CODE(VALIDATE-COLLECTION-API)
-
-        const validation = await instance.validateFlagCollection(course.courseName);
-        
-        res.json({
-            success: true,
-            data: validation
-        });
-    } catch (error) {
-        appLogger.error('Error validating flag collection:', { error });
-        res.status(500).json({
-            success: false,
-            error: 'Failed to validate flag collection'
-        });
-    }
-}));
-
-/**
- * GET /:courseId/flags/statistics
- * Get flag statistics for a course.
- *
- * @route GET /api/courses/:courseId/flags/statistics
- * @param {string} courseId - Course ID (path param)
- * @returns {object} { success: boolean, data?: object, error?: string }
- * @response 200 - Success
- * @response 401 - User not authenticated
- * @response 404 - Course not found
- * @response 500 - Failed to get flag statistics
- */
-router.get('/:courseId/flags/statistics', asyncHandlerWithAuth(async (req: Request, res: Response) => {
-    try {
-        const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId } = normalizeRouteParams(req.params);
-        
-        // Get course to get course name
-        const course = await instance.getActiveCourse(courseId);
-        if (!course) {
-            return res.status(404).json({
-                success: false,
-                error: 'Course not found'
-            });
-        }
-
-        //START DEBUG LOG : DEBUG-CODE(GET-STATISTICS-API)
-        appLogger.log('📊 Getting flag statistics for course:', course.courseName);
-        //END DEBUG LOG : DEBUG-CODE(GET-STATISTICS-API)
-
-        const statistics = await instance.getFlagStatistics(course.courseName);
-        
-        res.json({
-            success: true,
-            data: statistics
-        });
-    } catch (error) {
-        appLogger.error('Error getting flag statistics:', { error });
-        res.status(500).json({
-            success: false,
-            error: 'Failed to get flag statistics'
-        });
-    }
-}));
 
 /**
  * GET /:courseId/flags/student/:userId
@@ -3044,7 +3120,8 @@ router.get('/:courseId/flags/statistics', asyncHandlerWithAuth(async (req: Reque
  * @response 404 - Course not found
  * @response 500 - Failed to get student flag reports
  */
-router.get('/:courseId/flags/student/:userId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+// A student may read their own flag history; anyone else needs course staff authority.
+router.get('/:courseId/flags/student/:userId', requireSelfOrInstructorForCourseAPI('userId', ['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
         const { courseId, userId } = normalizeRouteParams(req.params);
@@ -4341,7 +4418,7 @@ router.get(
 
 /**
  * GET /:courseId/course-backup.zip
- * Instructor-only ZIP: `{CourseName} - Backup/` with five EJSON files (catalog row + four per-course collections).
+ * Admin-only ZIP with the catalog row, four per-course collections, and anonymous Guided Pathway alerts.
  *
  * @route GET /api/courses/:courseId/course-backup.zip
  */
@@ -4388,7 +4465,8 @@ router.get(
                 [`${rootPrefix}${names.flags}`, payloads.flagsJson],
                 [`${rootPrefix}${names.scheduledTasks}`, payloads.scheduledTasksJson],
                 [`${rootPrefix}${names.users}`, payloads.usersJson],
-                [`${rootPrefix}${names.memoryAgent}`, payloads.memoryAgentJson]
+                [`${rootPrefix}${names.memoryAgent}`, payloads.memoryAgentJson],
+                [`${rootPrefix}${names.guidedPathwayFlags}`, payloads.guidedPathwayFlagsJson]
             ];
             for (const [path, body] of entries) {
                 archive.append(Buffer.from(`${body}\n`, 'utf-8'), { name: path });
@@ -4682,3 +4760,8 @@ mountScenarioQuestionRoutes(router);
 // ========= GUIDED PATHWAY LIBRARY API =====
 // ===========================================
 mountPathwaysRoutes(router);
+
+// ===========================================
+// ========= GUIDED PATHWAY ALERTS API ======
+// ===========================================
+mountGuidedPathwayFlagRoutes(router);

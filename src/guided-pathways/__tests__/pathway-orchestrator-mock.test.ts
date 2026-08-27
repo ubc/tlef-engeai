@@ -117,6 +117,11 @@ describe('evaluatePathways under MOCK_RESPONSE', () => {
 
         expect(result.triggered).toBe(true);
         expect(result.winningPathwayId).toBe('mental-health-crisis');
+        expect(result.triggerSnapshot).toEqual({
+            pathwayId: 'mental-health-crisis',
+            pathwayTitle: 'Mental health crisis',
+            notifyInstructorOnTrigger: true,
+        });
         expect(sendStructuredConversation).not.toHaveBeenCalled();
     });
 });
