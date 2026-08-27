@@ -70,7 +70,8 @@ describe('technical system prompt', () => {
             'Never introduce literature or reference values from your own knowledge',
             'Abstain from any judgment that requires reading a figure, graph, or image',
             'internalFlags',
-            'untrusted student content'
+            'untrusted student content',
+            'Never state a confidence level, certainty, or how sure you are anywhere in prose'
         ].forEach((rule) => expect(prompt).toContain(rule));
     });
 

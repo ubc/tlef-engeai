@@ -470,8 +470,16 @@ function delay(ms: number): Promise<void> {
     return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
+// The worker retries a failed attempt up to maxAttempts (3) with up to a 60s lease
+// each, so a job that fails once and succeeds on retry can legitimately take past
+// two minutes. This ceiling stays comfortably above that worst case, and matches
+// the server's default idle-session window (5 minutes) so a submission that is
+// still generating when this loop gives up has, in practice, already logged the
+// user out rather than doing so silently after this promise settles.
+const GENERATION_POLL_TIMEOUT_MS = 300_000;
+
 async function waitForGeneration(submissionId: string): Promise<SubmissionDetail> {
-    const deadline = Date.now() + 120_000;
+    const deadline = Date.now() + GENERATION_POLL_TIMEOUT_MS;
     while (Date.now() < deadline) {
         const detail = await request<SubmissionDetail>(`/submissions/${encodeURIComponent(submissionId)}`);
         if (detail.submission.status === 'draft_ready') return detail;
@@ -480,7 +488,7 @@ async function waitForGeneration(submissionId: string): Promise<SubmissionDetail
         }
         await delay(2000);
     }
-    throw new Error('Feedback generation is still running. Refresh this submission in a moment.');
+    throw new Error('Feedback generation is taking longer than expected. It may still finish — refresh this submission in a moment to check.');
 }
 
 function renderReviewView(root: HTMLDivElement, detail: SubmissionDetail): void {

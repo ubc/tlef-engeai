@@ -1027,6 +1027,10 @@ export async function leaseNextWritingJob(ctx: MongoDalContext, leaseMs: number 
 /**
  * completeWritingJob — marks a currently leased job completed and clears its lease.
  *
+ * Also clears any `sanitizedError` left by an earlier failed attempt: the job's
+ * `state` is authoritative, and a completed job carrying a stale failure message
+ * misleads anyone inspecting the record after a retry succeeded.
+ *
  * @param ctx - Connected Mongo data-layer context
  * @param jobId - Internal job id
  * @returns When the conditional update completes; missing/non-leased jobs are unchanged
@@ -1034,7 +1038,10 @@ export async function leaseNextWritingJob(ctx: MongoDalContext, leaseMs: number 
 export async function completeWritingJob(ctx: MongoDalContext, jobId: string): Promise<void> {
     await jobs(ctx).updateOne(
         { id: jobId, state: 'leased' },
-        { $set: { state: 'completed', updatedAt: new Date() }, $unset: { leaseUntil: '' } }
+        {
+            $set: { state: 'completed', updatedAt: new Date() },
+            $unset: { leaseUntil: '', sanitizedError: '' }
+        }
     );
 }
 

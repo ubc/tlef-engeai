@@ -199,6 +199,7 @@ export function buildWritingFeedbackSystemPrompt(assignment: WritingAssignment):
         'Use plain language. Use SFL terms only if they appear in the approved profile, glossary, or course material labels.',
         'Do not write or rewrite sentences, paragraphs, or model answers for the student.',
         'Never invent numeric weights or grades. Flag uncertainty internally.',
+        'Never state a confidence level, certainty, or how sure you are anywhere in prose — not in explanation, strengths, or revision goals. Confidence belongs only in the separate confidence field.',
         `<approved_rubric version="${rubric.version}">${JSON.stringify({
             assignmentTitle: assignment.title,
             assignmentInstructions: assignment.instructions,

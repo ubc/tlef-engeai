@@ -77,11 +77,16 @@ describe('mergeAutofill', () => {
         expect(merged.criteria).toEqual(existing);
     });
 
-    it('writes cells but not weights for the APSC 182 form', () => {
+    it('writes cells but not weights for the APSC 182 form, banding to the locked weight', () => {
         const apsc = [{ id: 'organization', label: 'Organization', description: 'old desc', points: 15 }];
         const merged = mergeAutofill(draft(apsc), proposal, autofillMergeRules('apsc182'));
         expect(merged.criteria[0].points).toBe(15);
-        expect(merged.criteria[0].cells?.weak.descriptor).toBe('W');
+        // The proposal's own points (25) are ignored for banding; the row's locked
+        // weight (15) is, matching what "Space points evenly" would compute.
+        expect(merged.criteria[0].cells).toEqual({
+            weak: { min: 7, max: 7, descriptor: 'W' },
+            strong: { min: 15, max: 15, descriptor: 'S' }
+        });
     });
 
     it('never adds a row when rows are locked', () => {
@@ -123,7 +128,7 @@ describe('mergeAutofill', () => {
         expect(writingRubricDraftInputSchema.safeParse(merged).success).toBe(false);
     });
 
-    it('produces a rubric the shared draft validator refuses when a band starts above where it ends', () => {
+    it('replaces an inverted model band for a known level with the weight-derived band', () => {
         const badProposal = {
             ...proposal,
             criteria: [
@@ -134,7 +139,58 @@ describe('mergeAutofill', () => {
             ]
         };
         const merged = mergeAutofill(draft(existing), badProposal, autofillMergeRules('metafunctions_plain'));
-        expect(writingRubricDraftInputSchema.safeParse(merged).success).toBe(false);
+        expect(merged.criteria[0].cells).toEqual({
+            weak: { min: 12, max: 12, descriptor: 'W' },
+            strong: { min: 25, max: 25, descriptor: 'S' }
+        });
+        expect(writingRubricDraftInputSchema.safeParse(merged).success).toBe(true);
+    });
+
+    it('rescales a model band proposed on the wrong point total to the criterion\'s actual weight', () => {
+        const wrongScaleProposal = {
+            ...proposal,
+            criteria: [
+                {
+                    id: 'organization', label: 'Organization', description: 'new desc', points: 30,
+                    // The model assumed a 0-100 scale instead of the row's 30-point weight.
+                    cells: { weak: { min: 0, max: 24 }, strong: { min: 25, max: 100 } }
+                }
+            ]
+        };
+        const merged = mergeAutofill(draft(existing), wrongScaleProposal, autofillMergeRules('metafunctions_plain'));
+        expect(merged.criteria[0].cells).toEqual({
+            weak: { min: 15, max: 15 },
+            strong: { min: 30, max: 30 }
+        });
+    });
+
+    it('replaces degenerate zero-value model bands with the weight-derived split', () => {
+        const zeroedProposal = {
+            ...proposal,
+            criteria: [
+                {
+                    id: 'organization', label: 'Organization', description: 'new desc', points: 30,
+                    cells: { weak: { min: 0, max: 0 }, strong: { min: 0, max: 0 } }
+                }
+            ]
+        };
+        const merged = mergeAutofill(draft(existing), zeroedProposal, autofillMergeRules('metafunctions_lab'));
+        expect(merged.criteria[0].cells).toEqual({
+            weak: { min: 15, max: 15 },
+            strong: { min: 30, max: 30 }
+        });
+    });
+
+    it('reconciles cells on a newly added row against that row\'s own proposed weight', () => {
+        const merged = mergeAutofill(draft(existing), proposal, autofillMergeRules('metafunctions_plain'));
+        const added = merged.criteria.find((criterion) => criterion.id === 'method');
+        // proposal's "method" row proposes points 20 with cells 0-7/8-20; the weight-
+        // derived award for 20 points across two levels is 10/20, so the model's
+        // own numbers are overridden here too, exactly as for an existing row.
+        expect(added?.cells).toEqual({
+            weak: { min: 10, max: 10, descriptor: 'W' },
+            strong: { min: 20, max: 20, descriptor: 'S' }
+        });
     });
 });
 
