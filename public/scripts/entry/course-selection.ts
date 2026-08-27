@@ -257,15 +257,6 @@ function escapeHtml(text: string): string {
     return div.innerHTML;
 }
 
-/** Instructor names to exclude from display (e.g. dev team members) */
-const EXCLUDED_INSTRUCTOR_NAMES = ['Charisma Rusdiyanto', 'Richard Tape'];
-
-/**
- * createCourseCard
- * 
- * @param course any — Course object (id, courseName, instructors, etc.)
- * @returns string — HTML for workspace row with course name, instructors, enter/restart buttons
- */
 function createCourseCard(course: activeCourse & { instructorDisplay?: string }): string {
     const instructorNames =
         course.instructorDisplay ??
@@ -279,7 +270,6 @@ function createCourseCard(course: activeCourse & { instructorDisplay?: string })
                 }
                 return inst.userId || 'Unknown';
             })
-            .filter((name: string) => !EXCLUDED_INSTRUCTOR_NAMES.includes(name))
             .join(', ') || 'No instructors');
     
     return `

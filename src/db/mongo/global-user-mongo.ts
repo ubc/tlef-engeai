@@ -115,6 +115,32 @@ export async function addCourseToGlobalUser(
 }
 
 /**
+ * removeCourseFromGlobalUser - Pulls a course id from `coursesEnrolled` on `active-users`.
+ *
+ * Idempotent: no-op when the user or enrollment row is missing.
+ *
+ * @param ctx - MongoDalContext
+ * @param puid - Global user lookup key
+ * @param courseId - `activeCourse.id` to remove from the enrolled list
+ * @returns Promise<void>
+ */
+export async function removeCourseFromGlobalUser(
+    ctx: MongoDalContext,
+    puid: string,
+    courseId: string
+): Promise<void> {
+    const collection = activeUsersMongoCollection(ctx.db);
+    // Pull course id so removed instructors lose course-selection visibility
+    await collection.updateOne(
+        { puid },
+        {
+            $pull: { coursesEnrolled: courseId },
+            $set: { updatedAt: new Date() }
+        } as any
+    );
+}
+
+/**
  * updateGlobalUser
  *
  * Shallow merge of arbitrary fields on the document located by `puid`.

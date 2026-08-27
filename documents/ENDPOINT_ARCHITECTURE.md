@@ -249,8 +249,8 @@ Live Canvas OAuth routes are intentionally absent from this table until the priv
 
 | Method | Path | Auth | Role | Description |
 |--------|------|------|------|-------------|
-| POST | `/api/course/enter` | Yes | Any | Enter course by ID; syncs session `globalUser.coursesEnrolled` from DB after enroll |
-| POST | `/api/course/enter-by-code` | Yes | Any | Enter course by code; syncs session `globalUser.coursesEnrolled` from DB after enroll |
+| POST | `/api/course/enter` | Yes | Member | Enter course by ID; requires `isCourseAccessible` (403 if removed faculty); no longer auto-adds faculty to `instructors[]` |
+| POST | `/api/course/enter-by-code` | Yes | Any | Enter course by code; students may join without prior enrollment; non-students require `isCourseAccessible` |
 | GET | `/api/course/current` | Yes | Any | Get current course from session |
 
 ### 4.3 Courses & Content (`/api/courses`)
@@ -272,7 +272,7 @@ Live Canvas OAuth routes are intentionally absent from this table until the priv
 | GET | `/admin/course-selection` | Yes | Admin | Admin course selection HTML |
 | GET | `/api/admin/course-selection` | Yes | Admin | BFF: periods + all courses grouped |
 | POST | `/api/admin/courses` | Yes | Admin | Create course in period; enroll admin + instructors |
-| PUT | `/api/admin/courses/:id` | Yes | Admin | Edit course name, period, instructors |
+| PUT | `/api/admin/courses/:id` | Yes | Admin | Edit course name, period, merge-add instructors (`instructorUserIds`), remove instructors (`removeInstructorUserIds` — admin-only; blocks self-removal and platform-admin removal; pulls `coursesEnrolled`, preserves `{courseName}_users` history) |
 | POST | `/api/admin/courses/:id/ensure-enrollment` | Yes | Admin | Idempotent admin roster enroll on enter |
 | GET | `/api/admin/users/search?q=` | Yes | Admin | Faculty search for instructor picker |
 | PUT | `/api/admin/instructor-allowances` | Yes | Admin | Set allowed course names per puid + period |

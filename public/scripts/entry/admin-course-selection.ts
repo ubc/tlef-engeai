@@ -11,12 +11,21 @@ import {
     createUserSearchMultiSelect,
     type FacultyPickerUser
 } from '../ui/user-search-multi-select.js';
+import {
+    createCourseStaffPicker,
+    type CourseStaffMember
+} from '../ui/course-staff-picker.js';
 import { authService } from '../services/auth-service.js';
 import { startInactivityTracking } from '../services/inactivity-tracker.js';
 
+type AdminCourseRow = Omit<activeCourse, 'instructors'> & {
+    instructorDisplay?: string;
+    instructors?: CourseStaffMember[];
+};
+
 interface AdminPeriodSection extends AcademicPeriodDocument {
     courseCount: number;
-    courses: (activeCourse & { instructorDisplay?: string })[];
+    courses: AdminCourseRow[];
 }
 
 interface AdminCourseSelectionPayload {
@@ -123,7 +132,7 @@ function renderPeriodSection(period: AdminPeriodSection): string {
     `;
 }
 
-function renderCourseRow(course: activeCourse & { instructorDisplay?: string }, periodId: string): string {
+function renderCourseRow(course: AdminCourseRow, periodId: string): string {
     const instructors = course.instructorDisplay ?? formatInstructors(course.instructors);
     return `
         <div class="workspace-row admin-course-row" data-course-id="${course.id}" data-period-id="${periodId}">
@@ -342,7 +351,7 @@ async function openPeriodModal(mode: 'create' | 'edit', period?: AdminPeriodSect
 async function openCourseModal(
     mode: 'create' | 'edit',
     periodId: string,
-    course?: activeCourse
+    course?: AdminCourseRow
 ): Promise<void> {
     if (!pageData) {
         return;
@@ -370,27 +379,48 @@ async function openCourseModal(
     }
 
     let selectedInstructors: FacultyPickerUser[] = [];
-    if (mode === 'edit' && course?.instructors) {
-        selectedInstructors = (course.instructors as InstructorInfo[])
-            .filter((i): i is InstructorInfo => typeof i !== 'string')
-            .map((i) => ({ userId: i.userId, name: i.name, affiliation: 'faculty' }));
-    }
+    let staffPicker: ReturnType<typeof createCourseStaffPicker> | null = null;
+
+    const removalDivider = document.createElement('hr');
+    removalDivider.className = 'admin-modal-divider';
+    removalDivider.hidden = true;
+
+    const removalMount = document.createElement('div');
+    removalMount.className = 'course-staff-removal-mount';
+
     if (mode === 'edit' && course) {
         nameInput.value = course.courseName;
+
+        const roster: CourseStaffMember[] =
+            course.instructors?.map((i) => ({
+                userId: i.userId,
+                name: i.name,
+                isPlatformAdmin: i.isPlatformAdmin ?? false
+            })) ?? [];
+
+        staffPicker = createCourseStaffPicker({ staff: roster });
+        removalMount.appendChild(staffPicker.confirmationContainer);
+
+        content.append(
+            labelField('Course name', nameInput),
+            labelField('Academic period', periodSelect),
+            fieldGroup('Course Staff', staffPicker.root),
+            removalDivider,
+            removalMount
+        );
+    } else {
+        const instructorPicker = createUserSearchMultiSelect({
+            selected: selectedInstructors,
+            onChange: (sel) => {
+                selectedInstructors = sel;
+            }
+        });
+        content.append(
+            labelField('Course name', nameInput),
+            labelField('Academic period', periodSelect),
+            fieldGroup('Course Staff', instructorPicker)
+        );
     }
-
-    const instructorPicker = createUserSearchMultiSelect({
-        selected: selectedInstructors,
-        onChange: (sel) => {
-            selectedInstructors = sel;
-        }
-    });
-
-    content.append(
-        labelField('Course name', nameInput),
-        labelField('Academic period', periodSelect),
-        labelField('Instructors (faculty)', instructorPicker)
-    );
 
     const actions = document.createElement('div');
     actions.className = 'admin-modal-actions';
@@ -406,6 +436,23 @@ async function openCourseModal(
     actions.append(cancelBtn, submitBtn);
     content.appendChild(actions);
 
+    const updateSaveEnabled = () => {
+        if (!staffPicker) {
+            submitBtn.disabled = false;
+            return;
+        }
+        const pending = staffPicker.hasPendingRemovals();
+        removalDivider.hidden = !pending;
+        submitBtn.disabled = pending && !staffPicker.areRemovalsConfirmed();
+    };
+
+    if (staffPicker) {
+        staffPicker.onSaveStateChange(updateSaveEnabled);
+        updateSaveEnabled();
+        // Icons render after modal content is in the document
+        requestAnimationFrame(() => staffPicker?.refreshChipIcons());
+    }
+
     const showPromise = modal.show({
         type: 'custom',
         title: mode === 'edit' ? 'Edit course' : 'Create new course',
@@ -420,22 +467,38 @@ async function openCourseModal(
     submitBtn.addEventListener('click', async () => {
         const courseName = nameInput.value.trim();
         const academicPeriodId = periodSelect.value;
-        const instructorUserIds = selectedInstructors.map((u) => u.userId);
 
         if (!courseName) {
             await showErrorModal('Validation', 'Course name is required.');
             return;
         }
 
+        if (staffPicker && staffPicker.hasPendingRemovals() && !staffPicker.areRemovalsConfirmed()) {
+            await showErrorModal('Validation', 'Confirm each removal by typing the full name.');
+            return;
+        }
+
+        const instructorUserIds = staffPicker
+            ? staffPicker.getInstructorUserIdsToAdd()
+            : selectedInstructors.map((u) => u.userId);
+        const removeInstructorUserIds = staffPicker
+            ? staffPicker.getRemoveInstructorUserIds()
+            : undefined;
+
         const url =
             mode === 'edit' && course ? `/api/admin/courses/${course.id}` : '/api/admin/courses';
         const method = mode === 'edit' ? 'PUT' : 'POST';
+
+        const body: Record<string, unknown> = { courseName, academicPeriodId, instructorUserIds };
+        if (removeInstructorUserIds && removeInstructorUserIds.length > 0) {
+            body.removeInstructorUserIds = removeInstructorUserIds;
+        }
 
         const res = await fetch(url, {
             method,
             headers: { 'Content-Type': 'application/json' },
             credentials: 'same-origin',
-            body: JSON.stringify({ courseName, academicPeriodId, instructorUserIds })
+            body: JSON.stringify(body)
         });
         const data = await res.json();
         if (!res.ok || !data.success) {
@@ -447,6 +510,31 @@ async function openCourseModal(
     });
 
     await showPromise;
+}
+
+let fieldGroupIdCounter = 0;
+
+/**
+ * fieldGroup - Labelled wrapper for composite controls (chips, buttons, inputs).
+ *
+ * Uses a div rather than a label: an implicit label forwards clicks anywhere in
+ * its box to its first labelable descendant, which made clicking the section
+ * label or an admin chip press the first instructor's remove button.
+ *
+ * @param label - Visible group label
+ * @param control - Composite control root
+ * @returns Group element labelled for assistive tech via aria-labelledby
+ */
+function fieldGroup(label: string, control: HTMLElement): HTMLElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'admin-modal-field';
+    wrap.setAttribute('role', 'group');
+    const span = document.createElement('span');
+    span.id = `admin-modal-field-${++fieldGroupIdCounter}`;
+    span.textContent = label;
+    wrap.setAttribute('aria-labelledby', span.id);
+    wrap.append(span, control);
+    return wrap;
 }
 
 function labelField(label: string, control: HTMLElement): HTMLElement {

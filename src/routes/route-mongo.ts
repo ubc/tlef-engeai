@@ -603,11 +603,14 @@ router.get('/course-selection', asyncHandlerWithAuth(async (req: Request, res: R
     const defaultPeriodId = await instance.getDefaultAcademicPeriodId();
     const periods = await instance.listAcademicPeriods();
     const allCourses = await instance.getAllActiveCourses();
+    const platformAdmins = await instance.findAdminGlobalUsers();
+    const platformAdminUserIds = new Set(platformAdmins.map((u) => u.userId));
     const data = buildCourseSelectionByPeriod(
         periods,
         allCourses as activeCourse[],
         globalUser,
-        defaultPeriodId
+        defaultPeriodId,
+        platformAdminUserIds
     );
 
     res.status(200).json({

@@ -977,6 +977,9 @@ export class EngEAI_MongoDB {
     public addCourseToGlobalUser = async (puid: string, courseId: string) =>
         GlobalUserMongo.addCourseToGlobalUser(this.ctx(), puid, courseId);
 
+    public removeCourseFromGlobalUser = async (puid: string, courseId: string) =>
+        GlobalUserMongo.removeCourseFromGlobalUser(this.ctx(), puid, courseId);
+
     public updateGlobalUser = async (puid: string, updateData: Partial<GlobalUser>) =>
         GlobalUserMongo.updateGlobalUser(this.ctx(), puid, updateData);
 
@@ -1157,6 +1160,12 @@ export class EngEAI_MongoDB {
 
     public enrollInstructorsOnCourse = async (course: activeCourse, instructorUserIds: string[]) =>
         CourseEnrollmentMongo.enrollInstructorsOnCourse(this.ctx(), course, instructorUserIds);
+
+    public removeInstructorsFromCourse = async (
+        course: activeCourse,
+        userIdsToRemove: string[],
+        options?: CourseEnrollmentMongo.RemoveInstructorsFromCourseOptions
+    ) => CourseEnrollmentMongo.removeInstructorsFromCourse(this.ctx(), course, userIdsToRemove, options);
 
     /**
      * LMS course links — course-lms-link-mongo.ts
