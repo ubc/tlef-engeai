@@ -29,8 +29,6 @@ import { passport } from './middleware/passport';
 import { sessionActivityMiddleware } from './middleware/session-activity';
 import { EngEAI_MongoDB } from './db/enge-ai-mongodb';
 import { initAcademicPeriods } from './helpers/init-academic-periods';
-import { migrateInstructorAllowances } from './helpers/migrate-instructor-allowances';
-import { migrateOnboardingFlags } from './helpers/migrate-onboarding-flags';
 import { getCourseSelectionRedirectPath } from './helpers/course-selection-redirect';
 import { resolveAffiliation } from './utils/affiliation';
 import { isAdminUser, isAdminName } from './utils/admin';
@@ -313,16 +311,13 @@ app.listen(port, async () => {
         logger.error('Failed to initialize academic periods:', err as any);
     }
 
+    // Guards against two EngE-AI courses claiming the same LMS course, which would make
+    // student enrollment sync ambiguous. Best-effort inside the helper — a failure here
+    // must not stop the server, and the import path checks for a conflict before writing.
     try {
-        await migrateInstructorAllowances();
+        await (await EngEAI_MongoDB.getInstance()).createCourseLmsLinkIndex();
     } catch (err) {
-        logger.error('Failed to migrate instructor allowances:', err as any);
-    }
-
-    try {
-        await migrateOnboardingFlags();
-    } catch (err) {
-        logger.error('Onboarding migration failed:', err as any);
+        logger.error('Failed to create LMS course-link index:', err as any);
     }
 
     // Guards against two EngE-AI courses claiming the same LMS course, which would make

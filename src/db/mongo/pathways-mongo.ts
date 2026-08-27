@@ -1,22 +1,33 @@
 /**
  * pathways-mongo.ts
  *
- * Domain logic for `{courseName}_pathways` — ensure/seed, list, CRUD, reorder.
+ * Domain logic for `{courseName}_pathways` — ensure/seed, list, CRUD, reorder,
+ * evaluation-prompt singleton, and GP-001 off-topic heal.
  * Lazy provision for legacy courses mirrors scenario-questions SQ-001.
  *
  * @author: EngE-AI Team
  * @date: 2026-07-24
- * @version: 1.0.0
+ * @version: 1.1.0
  * @description: Guided Pathway Library Mongo delegates.
  */
 
 import type { Collection } from 'mongodb';
-import type { activeCourse, GuidedPathway, PathwayCta } from '../../types/shared';
+import type {
+    activeCourse,
+    GuidedPathway,
+    PathwayCta,
+    PathwayEvaluationPromptConfig,
+} from '../../types/shared';
 import { getCollectionNames } from './collection-registry-mongo';
 import { activeCourseListCollection } from './mongo-collections';
 import type { MongoDalContext } from './mongo-context';
 import { fetchActiveCourseDocById, fetchActiveCourseDocByCourseName } from './active-course-queries-mongo';
 import { buildPlatformPathwaySeeds } from '../../guided-pathways/pathway-seed';
+import {
+    PATHWAY_EVALUATION_PROMPT_DOC_TYPE,
+    PATHWAY_EVALUATION_PROMPT_ID,
+    PLATFORM_PATHWAY_EVALUATION_PROMPT_DEFAULT,
+} from '../../guided-pathways/pathway-evaluation-prompt-default';
 import { appLogger } from '../../utils/logger';
 
 /** Default CTA fill when color/style missing — matches former primary (CHBE green). */
@@ -32,6 +43,12 @@ const LEGACY_STYLE_COLORS: Record<string, string> = {
 };
 
 const DEFAULT_PATHWAY_TITLE = 'Untitled';
+
+/** Mongo filter: pathway cards only (exclude evaluation-prompt singleton). */
+const PATHWAY_CARD_FILTER = {
+    id: { $ne: PATHWAY_EVALUATION_PROMPT_ID },
+    docType: { $ne: PATHWAY_EVALUATION_PROMPT_DOC_TYPE },
+} as const;
 
 /**
  * normalizeCtaColor - Coerce a CTA color to `#RRGGBB`.
@@ -120,25 +137,178 @@ export async function createPathwayIndexes(collection: Collection, courseName: s
 }
 
 /**
- * seedPathwaysIfEmpty - Insert platform defaults when the collection has zero docs (idempotent).
+ * healRemoveOffTopicPathway - GP-001: delete legacy platform `off-topic` pathway docs (idempotent).
  *
- * Used by new-course provision and Reset to defaults — not by ensure/list (empty stays empty).
+ * Scope redirect now lives in the teaching system prompt. Does not remove custom pathways.
+ *
+ * @param collection - Course pathways collection
+ * @param courseName - For logging
+ * @returns Deleted count
+ */
+export async function healRemoveOffTopicPathway(
+    collection: Collection,
+    courseName: string
+): Promise<number> {
+    const result = await collection.deleteMany({ id: 'off-topic' });
+    const deleted = result.deletedCount ?? 0;
+    if (deleted > 0) {
+        appLogger.log(`[pathways] GP-001 removed ${deleted} off-topic pathway doc(s) for ${courseName}`);
+    }
+    return deleted;
+}
+
+function buildPlatformEvaluationPromptDoc(now: number = Date.now()) {
+    return {
+        id: PATHWAY_EVALUATION_PROMPT_ID,
+        docType: PATHWAY_EVALUATION_PROMPT_DOC_TYPE,
+        usePlatformDefault: true,
+        body: PLATFORM_PATHWAY_EVALUATION_PROMPT_DEFAULT,
+        updatedAt: now,
+    };
+}
+
+/**
+ * ensureEvaluationPromptDoc - Upsert the evaluation-prompt singleton when missing.
+ *
+ * @param collection - Course pathways collection
+ * @param courseName - For logging
+ */
+export async function ensureEvaluationPromptDoc(
+    collection: Collection,
+    courseName: string
+): Promise<void> {
+    const existing = await collection.findOne({ id: PATHWAY_EVALUATION_PROMPT_ID });
+    if (existing) return;
+    await collection.insertOne(buildPlatformEvaluationPromptDoc() as any);
+    appLogger.log(`[pathways] Seeded evaluation system prompt for ${courseName}`);
+}
+
+/**
+ * resolveEvaluationPromptConfig - Map Mongo singleton (or missing) to API config.
+ */
+function resolveEvaluationPromptConfig(doc: any | null): PathwayEvaluationPromptConfig {
+    if (!doc) {
+        return {
+            usePlatformDefault: true,
+            body: PLATFORM_PATHWAY_EVALUATION_PROMPT_DEFAULT,
+            updatedAt: 0,
+        };
+    }
+    const usePlatformDefault = doc.usePlatformDefault !== false;
+    const storedBody = typeof doc.body === 'string' ? doc.body.trim() : '';
+    return {
+        usePlatformDefault,
+        body: usePlatformDefault || !storedBody ? PLATFORM_PATHWAY_EVALUATION_PROMPT_DEFAULT : storedBody,
+        updatedAt: typeof doc.updatedAt === 'number' ? doc.updatedAt : 0,
+    };
+}
+
+/**
+ * getPathwayEvaluationPrompt - Load effective evaluation shell for instructor UI / runtime.
+ *
+ * Ensures singleton exists. When `usePlatformDefault`, returns the code default body.
+ *
+ * @param ctx - Mongo DAL context
+ * @param courseName - Course whose pathways collection to read
+ * @returns Resolved {@link PathwayEvaluationPromptConfig}
+ */
+export async function getPathwayEvaluationPrompt(
+    ctx: MongoDalContext,
+    courseName: string
+): Promise<PathwayEvaluationPromptConfig> {
+    const collection = await getPathwaysCollection(ctx, courseName);
+    await ensureEvaluationPromptDoc(collection, courseName);
+    const doc = await collection.findOne({ id: PATHWAY_EVALUATION_PROMPT_ID });
+    return resolveEvaluationPromptConfig(doc);
+}
+
+/**
+ * updatePathwayEvaluationPrompt - Persist a customized evaluation shell.
+ *
+ * Sets `usePlatformDefault: false`. Empty body is rejected by the route.
+ *
+ * @param ctx - Mongo DAL context
+ * @param courseName - Course name
+ * @param body - Shell text (should include `{{pathway_trigger_sections}}`)
+ * @returns Updated config
+ */
+export async function updatePathwayEvaluationPrompt(
+    ctx: MongoDalContext,
+    courseName: string,
+    body: string
+): Promise<PathwayEvaluationPromptConfig> {
+    const collection = await getPathwaysCollection(ctx, courseName);
+    const trimmed = body.trim();
+    const now = Date.now();
+    await collection.updateOne(
+        { id: PATHWAY_EVALUATION_PROMPT_ID },
+        {
+            $set: {
+                id: PATHWAY_EVALUATION_PROMPT_ID,
+                docType: PATHWAY_EVALUATION_PROMPT_DOC_TYPE,
+                usePlatformDefault: false,
+                body: trimmed,
+                updatedAt: now,
+            },
+        },
+        { upsert: true }
+    );
+    return {
+        usePlatformDefault: false,
+        body: trimmed,
+        updatedAt: now,
+    };
+}
+
+/**
+ * resetPathwayEvaluationPrompt - Restore platform default evaluation shell.
+ *
+ * @param ctx - Mongo DAL context
+ * @param courseName - Course name
+ * @returns Platform default config
+ */
+export async function resetPathwayEvaluationPrompt(
+    ctx: MongoDalContext,
+    courseName: string
+): Promise<PathwayEvaluationPromptConfig> {
+    const collection = await getPathwaysCollection(ctx, courseName);
+    const doc = buildPlatformEvaluationPromptDoc();
+    await collection.updateOne(
+        { id: PATHWAY_EVALUATION_PROMPT_ID },
+        { $set: doc },
+        { upsert: true }
+    );
+    appLogger.log(`[pathways] Reset evaluation system prompt for ${courseName}`);
+    return resolveEvaluationPromptConfig(doc);
+}
+
+/**
+ * seedPathwaysIfEmpty - Insert platform defaults when there are zero pathway cards (idempotent).
+ *
+ * Ignores the evaluation-prompt singleton when counting. Always ensures the singleton exists.
  */
 export async function seedPathwaysIfEmpty(ctx: MongoDalContext, courseName: string): Promise<number> {
     const collection = await getPathwaysCollection(ctx, courseName);
-    const count = await collection.countDocuments();
-    if (count > 0) return 0;
-
-    const seeds = buildPlatformPathwaySeeds();
-    await collection.insertMany(seeds as any[]);
-    appLogger.log(`[pathways] Seeded ${seeds.length} default pathway(s) for ${courseName}`);
-    return seeds.length;
+    await healRemoveOffTopicPathway(collection, courseName);
+    const count = await collection.countDocuments(PATHWAY_CARD_FILTER as any);
+    let inserted = 0;
+    if (count === 0) {
+        const seeds = buildPlatformPathwaySeeds();
+        if (seeds.length > 0) {
+            await collection.insertMany(seeds as any[]);
+            inserted = seeds.length;
+            appLogger.log(`[pathways] Seeded ${seeds.length} default pathway(s) for ${courseName}`);
+        }
+    }
+    await ensureEvaluationPromptDoc(collection, courseName);
+    return inserted;
 }
 
 /**
  * ensurePathwaysCollection - Lazy migration: create collection and register name (no auto-seed).
  *
- * Empty collections stay empty until new-course seed, instructor add, or Reset to defaults.
+ * Runs GP-001 heal and ensures evaluation-prompt singleton. Empty pathway lists stay empty
+ * until new-course seed, instructor add, or Reset to defaults.
  *
  * @param ctx - Mongo DAL context
  * @param courseId - activeCourse.id
@@ -152,26 +322,28 @@ export async function ensurePathwaysCollection(ctx: MongoDalContext, courseId: s
 
     const courseName = course.courseName;
 
-    if (course.collections?.pathways) {
-        return courseName;
-    }
+    if (!course.collections?.pathways) {
+        const collectionName = `${courseName}_pathways`;
+        try {
+            await ctx.db.createCollection(collectionName);
+        } catch (error: any) {
+            if (error?.codeName !== 'NamespaceExists') throw error;
+        }
 
-    const collectionName = `${courseName}_pathways`;
-    try {
-        await ctx.db.createCollection(collectionName);
-    } catch (error: any) {
-        if (error?.codeName !== 'NamespaceExists') throw error;
-    }
+        await activeCourseListCollection(ctx.db).updateOne(
+            { id: courseId },
+            { $set: { 'collections.pathways': collectionName } }
+        );
+        ctx.collectionNamesCache.delete(courseName);
+        appLogger.log(`[pathways] Lazy migration: provisioned ${collectionName} for course ${courseName}`);
 
-    await activeCourseListCollection(ctx.db).updateOne(
-        { id: courseId },
-        { $set: { 'collections.pathways': collectionName } }
-    );
-    ctx.collectionNamesCache.delete(courseName);
-    appLogger.log(`[pathways] Lazy migration: provisioned ${collectionName} for course ${courseName}`);
+        const collection = await getPathwaysCollection(ctx, courseName);
+        await createPathwayIndexes(collection, courseName);
+    }
 
     const collection = await getPathwaysCollection(ctx, courseName);
-    await createPathwayIndexes(collection, courseName);
+    await healRemoveOffTopicPathway(collection, courseName);
+    await ensureEvaluationPromptDoc(collection, courseName);
     return courseName;
 }
 
@@ -191,6 +363,8 @@ export async function ensurePathwaysCollectionByCourseName(
         } catch {
             /* index may already exist */
         }
+        await healRemoveOffTopicPathway(collection, courseName);
+        await ensureEvaluationPromptDoc(collection, courseName);
         return;
     }
     await ensurePathwaysCollection(ctx, course.id);
@@ -231,16 +405,17 @@ function docToPathway(doc: any): GuidedPathway {
 }
 
 /**
- * listPathways - All pathways for instructor UI, sorted by order.
+ * listPathways - Pathway cards for instructor UI, sorted by order (excludes evaluation shell).
  */
 export async function listPathways(ctx: MongoDalContext, courseName: string): Promise<GuidedPathway[]> {
     const collection = await getPathwaysCollection(ctx, courseName);
-    const docs = await collection.find({}).sort({ order: 1 }).toArray();
+    await healRemoveOffTopicPathway(collection, courseName);
+    const docs = await collection.find(PATHWAY_CARD_FILTER as any).sort({ order: 1 }).toArray();
     return docs.map(docToPathway);
 }
 
 /**
- * listPathwaysForEvaluation - Same as list, after ensure+seed by course name (chat path).
+ * listPathwaysForEvaluation - Same as list, after ensure by course name (chat path).
  */
 export async function listPathwaysForEvaluation(
     ctx: MongoDalContext,
@@ -259,7 +434,7 @@ export async function createPathway(
     input: CreatePathwayInput
 ): Promise<GuidedPathway> {
     const collection = await getPathwaysCollection(ctx, courseName);
-    const existing = await collection.find({}).project({ order: 1 }).toArray();
+    const existing = await collection.find(PATHWAY_CARD_FILTER as any).project({ order: 1 }).toArray();
     const maxOrder = existing.reduce((max, d) => Math.max(max, typeof d.order === 'number' ? d.order : 0), -1);
     const now = Date.now();
     const triggerDescription = (input.triggerDescription ?? '').trim();
@@ -274,6 +449,10 @@ export async function createPathway(
         updatedAt: now,
     };
 
+    if (pathway.id.startsWith('__') || pathway.id === PATHWAY_EVALUATION_PROMPT_ID) {
+        throw new Error('Reserved pathway id');
+    }
+
     await collection.insertOne(pathway as any);
     return pathway;
 }
@@ -287,9 +466,12 @@ export async function updatePathway(
     pathwayId: string,
     input: UpdatePathwayInput
 ): Promise<GuidedPathway | null> {
+    if (pathwayId === PATHWAY_EVALUATION_PROMPT_ID || pathwayId.startsWith('__')) {
+        return null;
+    }
     const collection = await getPathwaysCollection(ctx, courseName);
     const existing = await collection.findOne({ id: pathwayId });
-    if (!existing) return null;
+    if (!existing || existing.docType === PATHWAY_EVALUATION_PROMPT_DOC_TYPE) return null;
 
     const $set: Record<string, unknown> = { updatedAt: Date.now() };
     if (typeof input.title === 'string') {
@@ -315,20 +497,26 @@ export async function updatePathway(
 }
 
 /**
- * deletePathway - Hard-delete one pathway by id.
+ * deletePathway - Hard-delete one pathway by id (refuses reserved evaluation-prompt id).
  */
 export async function deletePathway(
     ctx: MongoDalContext,
     courseName: string,
     pathwayId: string
 ): Promise<boolean> {
+    if (pathwayId === PATHWAY_EVALUATION_PROMPT_ID || pathwayId.startsWith('__')) {
+        return false;
+    }
     const collection = await getPathwaysCollection(ctx, courseName);
-    const result = await collection.deleteOne({ id: pathwayId });
+    const result = await collection.deleteOne({
+        id: pathwayId,
+        docType: { $ne: PATHWAY_EVALUATION_PROMPT_DOC_TYPE },
+    } as any);
     return result.deletedCount === 1;
 }
 
 /**
- * reorderPathways - Rewrite `order` from an ordered id list (must include all existing ids).
+ * reorderPathways - Rewrite `order` from an ordered id list (must include all existing pathway ids).
  */
 export async function reorderPathways(
     ctx: MongoDalContext,
@@ -351,9 +539,9 @@ export async function reorderPathways(
 }
 
 /**
- * resetPathwaysToDefaults - Wipe all course pathways and re-insert platform seeds.
+ * resetPathwaysToDefaults - Wipe pathway cards + evaluation shell, re-insert platform defaults.
  *
- * Destructive instructor action (confirm in UI). Returns the fresh sorted list.
+ * Destructive instructor action (confirm in UI). Returns the fresh sorted pathway list.
  *
  * @param ctx - Mongo DAL context
  * @param courseName - Course whose pathways collection to reset
@@ -369,6 +557,7 @@ export async function resetPathwaysToDefaults(
     if (seeds.length > 0) {
         await collection.insertMany(seeds as any[]);
     }
+    await collection.insertOne(buildPlatformEvaluationPromptDoc() as any);
     appLogger.log(`[pathways] Reset ${courseName} to ${seeds.length} platform default pathway(s)`);
     return listPathways(ctx, courseName);
 }

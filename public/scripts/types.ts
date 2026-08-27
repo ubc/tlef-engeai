@@ -57,6 +57,13 @@ export interface GuidedPathway {
     updatedAt: number;
 }
 
+/** Must match src/types/shared.ts — pathway classifier shell stored in pathways collection. */
+export interface PathwayEvaluationPromptConfig {
+    usePlatformDefault: boolean;
+    body: string;
+    updatedAt: number;
+}
+
 /**
  * Must match src/types/shared.ts.
  * Persisted turn — plain UI text only (no RAG/struggle tags in MongoDB).
@@ -144,7 +151,11 @@ export interface CourseFeatures {
 }
 
 /** UI catalog ids for course-wide LLM model selection (API contract). */
-export type CourseLlmModelId = 'gpt-5.6-luna' | 'gpt-5.4-mini' | 'gpt-4o-mini';
+export type CourseLlmModelId =
+    | 'gpt-5.6-luna'
+    | 'qwen3.8-27b'
+    | 'qwen3.6-35b-a3b'
+    | 'gpt-4.1-mini-engeai-local';
 
 /** App UI + persisted reasoning from dashboard catalog / PATCH (API contract). */
 export type AppReasoningLevel = 'none' | 'low' | 'medium' | 'high';
@@ -189,6 +200,11 @@ export interface LlmModelDashboardCatalogEntry {
     label: string;
     costTier: 'low' | 'medium' | 'high';
     reasoningOptions: LlmReasoningCatalogOption[];
+    /**
+     * True when the model is listed for context but cannot be chosen — the picker
+     * renders it disabled and PATCH rejects it. Absent means selectable.
+     */
+    unavailable?: boolean;
 }
 
 /** GET `/api/courses/:courseId/llm-model-catalog` response body. */
@@ -229,9 +245,12 @@ export interface activeCourse {
     id : string,
     date : Date,
     courseSetup : boolean, 
-    contentSetup : boolean,
-    flagSetup : boolean,
-    monitorSetup : boolean,
+    /** @deprecated moved to `GlobalUser.instructorOnboarding` (OB-002); retained for rollback only */
+    contentSetup? : boolean,
+    /** @deprecated moved to `GlobalUser.instructorOnboarding` (OB-002); retained for rollback only */
+    flagSetup? : boolean,
+    /** @deprecated moved to `GlobalUser.instructorOnboarding` (OB-002); retained for rollback only */
+    monitorSetup? : boolean,
     courseName: string,
     instructors: InstructorInfo[] | string[]; // Support both old format (string[]) and new format (InstructorInfo[])
     teachingAssistants: InstructorInfo[] | string[]; // Support both old format (string[]) and new format (InstructorInfo[])
@@ -568,39 +587,57 @@ export interface CourseAnalyticsAccessFlags {
  */
 export type AdditionalMaterialSource = 'file' | 'url' | 'text';
 
+/** Keys stored on Mongo / shown in Documents. Must match src/types/shared.ts. */
+export const PERSISTED_ADDITIONAL_MATERIAL_KEYS = [
+    'id',
+    'date',
+    'name',
+    'courseName',
+    'topicOrWeekTitle',
+    'itemTitle',
+    'sourceType',
+    'text',
+    'fileName',
+    'uploaded',
+    'qdrantChunkIds',
+    'chunksGenerated',
+    'deleted',
+    'deletedAt',
+    'uploadedBy',
+    'courseId',
+    'topicOrWeekId',
+    'itemId',
+] as const;
+
 /**
  * Must match src/types/shared.ts
- * Additional material attached to a course content item (front-end only for now)
- *
- * additional material is only applicable for text only eventually (as we use RAG)
- *
- * So initially, instructor can upload file, url, or text.
- *
- * But eventually, we will only allow text (processed in the backend).
+ * Persisted additional material (Mongo + Documents UI). Browser File is upload-only.
  */
 export interface AdditionalMaterial {
-    id: string,
-    date : Date,
+    id: string;
+    date: Date;
     name: string;
     courseName: string;
     topicOrWeekTitle: string;
     itemTitle: string;
     sourceType: AdditionalMaterialSource;
-    file?: File;
     text?: string;
-    fileName?: string; // Store the actual filename for display
-    uploaded?: boolean; // Track if successfully uploaded to Qdrant
-    qdrantId?: string; // Store Qdrant document ID
-    chunksGenerated?: number; // Number of chunks generated in Qdrant
-    /** Parsed upload text for struggle-topic generation; not persisted on Mongo material records. */
-    extractedText?: string;
-    deleted?: boolean; // Soft delete flag (defaults to false/undefined for backward compatibility)
-    deletedAt?: Date; // Timestamp when material was deleted
-    uploadedBy?: string; // Track who uploaded the material
+    fileName?: string;
+    uploaded?: boolean;
+    qdrantChunkIds?: string[];
+    chunksGenerated?: number;
+    deleted?: boolean;
+    deletedAt?: Date;
+    uploadedBy?: string;
     courseId?: string;
     topicOrWeekId?: string;
     itemId?: string;
 }
+
+/** In-memory upload draft. `file` is FormData only and is not stored. */
+export type AdditionalMaterialUpload = AdditionalMaterial & {
+    file?: File;
+};
 
 /**
  * Must match src/types/shared.ts
@@ -619,6 +656,23 @@ export interface CourseUser {
     chats: Chat[];                 // Course-specific chat history
     createdAt: Date;
     updatedAt: Date;
+}
+
+/**
+ * Per-user instructor tutorial progress.
+ *
+ * A missing or `false` entry means the tutorial is still owed, which is how users who
+ * predate this field are routed through the stages. Progress follows the person rather
+ * than the course, so a new instructor joining an already-set-up course is still taught,
+ * while a returning instructor is never taught the same tutorial twice.
+ *
+ * `courseSetup` is deliberately absent: it writes real course configuration and stays on
+ * {@link activeCourse} so a second instructor cannot override the first one's choices.
+ */
+export interface InstructorOnboardingProgress {
+    contentSetup?: boolean;
+    flagSetup?: boolean;
+    monitorSetup?: boolean;
 }
 
 /**
@@ -642,6 +696,8 @@ export interface GlobalUser {
     studentOnboardingCompleted?: boolean;
     /** platform admin — all instructor privileges plus admin-only features */
     isAdmin?: boolean;
+    /** Per-user instructor tutorial progress; see {@link InstructorOnboardingProgress}. Backfilled by OB-002. */
+    instructorOnboarding?: InstructorOnboardingProgress;
 }
 
 /**
@@ -814,7 +870,7 @@ export interface ChatManagerConfig {
 // ===========================================
 
 /** Available modal types */
-export type ModalType = 'error' | 'warning' | 'success' | 'info' | 'disclaimer' | 'custom';
+export type ModalType = 'error' | 'warning' | 'success' | 'info' | 'custom';
 
 /** Button configuration for modal footer */
 export interface ModalButton {

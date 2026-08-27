@@ -15,7 +15,8 @@ import { AppConfig, loadConfig } from "../utils/config";
 import { appLogger } from "../utils/logger";
 import { LLMModule } from "ubc-genai-toolkit-llm";
 import { DocumentParsingModule } from "ubc-genai-toolkit-document-parsing";
-import { AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem } from "../types/shared";
+import { AdditionalMaterialUpload, TopicOrWeekInstance, TopicOrWeekItem } from "../types/shared";
+import { materialChunkIds } from "../migrate/schema-walker";
 import { EngEAI_MongoDB } from "../db/enge-ai-mongodb";
 import { IDGenerator } from "../utils/unique-id-generator";
 import { isMockResponse } from "../helpers/mock-response";
@@ -353,7 +354,7 @@ export class RAGApp {
      * @param document - The document to upload
      * @returns The result of the upload with updated metadata
      */
-    async uploadDocument(document: AdditionalMaterial): Promise<AdditionalMaterial> {
+    async uploadDocument(document: AdditionalMaterialUpload): Promise<AdditionalMaterialUpload> {
         if (!RAGApp.instance) {
             await this.initialize();
         }
@@ -367,7 +368,7 @@ export class RAGApp {
                 throw new Error('Document must be either a text or a file, not both');
             }
 
-            let fullDocument: AdditionalMaterial;
+            let fullDocument: AdditionalMaterialUpload;
             let documentText: string;
             // let qdrantIds: string[] = []; // COMMENTED OUT FOR TESTING
 
@@ -410,7 +411,6 @@ export class RAGApp {
                     text: document.text,
                     fileName: textFileName,
                     uploaded: false,
-                    qdrantId: undefined,
                 };
 
             } else if (document.sourceType === 'file') {
@@ -466,10 +466,8 @@ export class RAGApp {
                         topicOrWeekTitle: document.topicOrWeekTitle,
                         itemTitle: document.itemTitle,
                         sourceType: document.sourceType,
-                        file: document.file,
                         fileName: document.fileName,
                         uploaded: false,
-                        qdrantId: undefined,
                     };
 
                 } finally {
@@ -481,37 +479,6 @@ export class RAGApp {
                 throw new Error(`Unsupported source type: ${document.sourceType}`);
             }
 
-            // Get learning objectives from the course item
-            let learningObjectives: any[] = [];
-            try {
-                const course = await this.mongoDB.getCourseByName(fullDocument.courseName);
-                if (course) {
-                    // Find the topic/week instance that matches topicOrWeekTitle
-                    const topicOrWeekInstance = course.topicOrWeekInstances?.find(
-                        (instance: any) => instance.title === fullDocument.topicOrWeekTitle
-                    );
-
-                    if (topicOrWeekInstance) {
-                        // Find the item that matches itemTitle
-                        const item = topicOrWeekInstance.items?.find(
-                            (item: any) => item.title === fullDocument.itemTitle || item.itemTitle === fullDocument.itemTitle
-                        );
-
-                        if (item && item.learningObjectives) {
-                            // Extract just the LearningObjective text from each objective
-                            learningObjectives = item.learningObjectives.map((obj: any) => ({
-                                text: obj.LearningObjective || obj.learningObjective || ''
-                            }));
-                        }
-                    }
-                }
-            } catch (error) {
-                const errorMessage = error instanceof Error ? error.message : String(error);
-                appLogger.warn(`⚠️ Could not retrieve learning objectives for ${fullDocument.itemTitle}: ${errorMessage}`);
-                // Continue without learning objectives
-            }
-
-            // Upload to RAG with metadata
             const metadata = {
                 id: fullDocument.id,
                 date: fullDocument.date.toISOString(),
@@ -524,7 +491,6 @@ export class RAGApp {
                 itemTitle: fullDocument.itemTitle,
                 sourceType: fullDocument.sourceType,
                 uploadedAt: new Date().toISOString(),
-                learningObjectives: learningObjectives
             };
 
             appLogger.info(`📤 Uploading document to RAG: ${fullDocument.name}`);
@@ -568,8 +534,8 @@ export class RAGApp {
 
             // Update document with upload results
             fullDocument.uploaded = true;
-            fullDocument.qdrantId = qdrantIds[0]; // Store the first chunk ID as reference
-            fullDocument.chunksGenerated = qdrantIds.length; // Add actual chunk count
+            fullDocument.qdrantChunkIds = qdrantIds;
+            fullDocument.chunksGenerated = qdrantIds.length;
             fullDocument.extractedText = documentText;
 
             appLogger.info(`✅ Document uploaded successfully: ${fullDocument.name} (ID: ${fullDocument.id})`);
@@ -631,8 +597,9 @@ export class RAGApp {
             const item = instance_topicOrWeek?.items?.find((i: any) => i.id === itemId);
             const material = item?.additionalMaterials?.find((m: any) => m.id === materialId);
 
-            if (!material || !material.qdrantId) {
-                throw new Error('Material or qdrantId not found');
+            const storedIds = materialChunkIds(material);
+            if (!material || storedIds.length === 0) {
+                throw new Error('Material or qdrant chunk ids not found');
             }
 
             // Build list of chunk IDs to delete (material may have multiple chunks in Qdrant)
@@ -646,7 +613,7 @@ export class RAGApp {
                 appLogger.warn('Metadata lookup failed, falling back to qdrantId:', { error: metadataError });
             }
             if (chunkIdsToDelete.length === 0) {
-                chunkIdsToDelete = [material.qdrantId];
+                chunkIdsToDelete = storedIds;
             }
 
             // BEFORE: Log deletion intent
@@ -778,9 +745,7 @@ export class RAGApp {
             course.topicOrWeekInstances?.forEach((instance_topicOrWeek: any) => {
                 instance_topicOrWeek.items?.forEach((item: any) => {
                     item.additionalMaterials?.forEach((material: any) => {
-                        if (material.qdrantId) {
-                            qdrantIds.push(material.qdrantId);
-                        }
+                        qdrantIds.push(...materialChunkIds(material));
                     });
                 });
             });
@@ -830,7 +795,7 @@ export class RAGApp {
             for (const instance_topicOrWeek of course.topicOrWeekInstances || []) {
                 for (const item of instance_topicOrWeek.items || []) {
                     for (const material of item.additionalMaterials || []) {
-                        if (!material.qdrantId) continue;
+                        if (materialChunkIds(material).length === 0) continue;
 
                         try {
                             const result = await this.deleteDocument(
@@ -889,9 +854,7 @@ export class RAGApp {
                 instance_topicOrWeek.items?.forEach((item: any) => {
                     item.additionalMaterials?.forEach((material: any) => {
                         mongoMaterialCount++;
-                        if (material.qdrantId) {
-                            qdrantIds.push(material.qdrantId);
-                        }
+                        qdrantIds.push(...materialChunkIds(material));
                     });
                 });
             });

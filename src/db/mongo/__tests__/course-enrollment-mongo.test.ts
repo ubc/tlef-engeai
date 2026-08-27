@@ -1,6 +1,7 @@
 jest.mock('../global-user-mongo', () => ({
     addCourseToGlobalUser: jest.fn(),
-    findGlobalUserByUserId: jest.fn()
+    findGlobalUserByUserId: jest.fn(),
+    removeCourseFromGlobalUser: jest.fn()
 }));
 jest.mock('../course-user-mongo', () => ({
     createStudent: jest.fn(),
@@ -13,8 +14,8 @@ jest.mock('../../../utils/logger', () => ({
     appLogger: { log: jest.fn(), warn: jest.fn(), error: jest.fn() }
 }));
 
-import { enrollInstructorsOnCourse } from '../course-enrollment-mongo';
-import { findGlobalUserByUserId } from '../global-user-mongo';
+import { enrollInstructorsOnCourse, removeInstructorsFromCourse } from '../course-enrollment-mongo';
+import { findGlobalUserByUserId, removeCourseFromGlobalUser } from '../global-user-mongo';
 import { createStudent, findStudentByUserId } from '../course-user-mongo';
 import { getActiveCourse } from '../course-mongo';
 import type { MongoDalContext } from '../mongo-context';
@@ -70,5 +71,63 @@ describe('enrollInstructorsOnCourse admin bypass', () => {
             expect.arrayContaining([expect.objectContaining({ userId: 'student-1' })])
         );
         expect(createStudent).not.toHaveBeenCalled();
+    });
+});
+
+describe('removeInstructorsFromCourse', () => {
+    const ctx = {} as MongoDalContext;
+    const course = {
+        id: 'course-1',
+        courseName: 'TestCourse',
+        instructors: [
+            { userId: 'fac-1', name: 'Amira' },
+            { userId: 'admin-1', name: 'Admin One' }
+        ]
+    } as unknown as activeCourse;
+
+    const facultyUser = {
+        userId: 'fac-1',
+        name: 'Amira',
+        puid: 'puid-fac-1',
+        affiliation: 'faculty',
+        isAdmin: false,
+        coursesEnrolled: ['course-1']
+    } as unknown as GlobalUser;
+
+    const adminUser = {
+        userId: 'admin-1',
+        name: 'Admin One',
+        puid: 'puid-admin',
+        affiliation: 'staff',
+        isAdmin: true,
+        coursesEnrolled: ['course-1']
+    } as unknown as GlobalUser;
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
+
+    it('removes faculty from instructors and pulls coursesEnrolled', async () => {
+        (findGlobalUserByUserId as jest.Mock).mockResolvedValue(facultyUser);
+
+        const result = await removeInstructorsFromCourse(ctx, course, ['fac-1']);
+
+        expect(result).toEqual([{ userId: 'admin-1', name: 'Admin One' }]);
+        expect(removeCourseFromGlobalUser).toHaveBeenCalledWith(ctx, 'puid-fac-1', 'course-1');
+    });
+
+    it('rejects removal of platform admin', async () => {
+        (findGlobalUserByUserId as jest.Mock).mockResolvedValue(adminUser);
+
+        await expect(removeInstructorsFromCourse(ctx, course, ['admin-1'])).rejects.toThrow(
+            'Platform admins cannot be removed'
+        );
+        expect(removeCourseFromGlobalUser).not.toHaveBeenCalled();
+    });
+
+    it('rejects self-removal by caller', async () => {
+        await expect(
+            removeInstructorsFromCourse(ctx, course, ['fac-1'], { callerUserId: 'fac-1' })
+        ).rejects.toThrow('Cannot remove yourself');
     });
 });

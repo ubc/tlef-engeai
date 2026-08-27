@@ -3,7 +3,7 @@
 /**
  * canvas-connect.ts
  *
- * "Connect to Canvas" flow on the course selection pages.
+ * "Connect to Canvas" flow on the course selection page.
  *
  * Answers two questions in sequence — are you connected, and which course — and skips the first
  * whenever the answer is already yes. An instructor who connected last week should open this on

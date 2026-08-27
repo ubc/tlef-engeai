@@ -58,6 +58,22 @@ const REASONING_BRAIN_COUNT: Record<AppReasoningLevel, number> = {
     high: 3,
 };
 
+/** Short badge on a model the platform cannot currently serve. */
+const MODEL_UNAVAILABLE_NOTE = 'Unavailable';
+
+/** Full explanation, surfaced as the disabled option's tooltip. */
+const MODEL_UNAVAILABLE_HINT =
+    'This model is temporarily unavailable on the platform API key and cannot be selected right now.';
+
+/** Gap between the picker trigger and its popover, in px. */
+const POPOVER_GAP = 6;
+
+/** Smallest gap kept between the popover and the viewport edge, in px. */
+const VIEWPORT_MARGIN = 8;
+
+/** Floor for a clamped popover so it stays usable on very short viewports, in px. */
+const MIN_POPOVER_HEIGHT = 120;
+
 /** Model row — replaces former $ / $$ / $$$ costLabel from API. */
 const COST_TIER_BRAIN_COUNT: Record<'low' | 'medium' | 'high', number> = {
     low: 1,
@@ -77,6 +93,7 @@ let currentCourseRef: activeCourse | null = null;
 let canManageState = false;
 let openPickerId: string | null = null;
 let documentClickBound = false;
+let pickerRepositionBound = false;
 let isSaving = false;
 
 /**
@@ -218,8 +235,26 @@ function findModelEntry(modelId: CourseLlmModelId): LlmModelDashboardCatalogEntr
     return modelCatalog.find((m) => m.id === modelId);
 }
 
+/** Catalog rows an instructor may actually choose (server rejects the rest on PATCH). */
+function selectableModels(): LlmModelDashboardCatalogEntry[] {
+    return modelCatalog.filter((m) => !m.unavailable);
+}
+
+/**
+ * findSelectableModelEntry - catalog lookup that refuses withheld models.
+ *
+ * Used wherever a model becomes the *selected* value, so an `unavailable` row can be
+ * listed in the popover without ever being adopted as a feature's selection.
+ */
+function findSelectableModelEntry(
+    modelId: CourseLlmModelId
+): LlmModelDashboardCatalogEntry | undefined {
+    const entry = findModelEntry(modelId);
+    return entry && !entry.unavailable ? entry : undefined;
+}
+
 function defaultModelEntry(): LlmModelDashboardCatalogEntry {
-    return findModelEntry(defaultSelection.modelId) ?? modelCatalog[0];
+    return findSelectableModelEntry(defaultSelection.modelId) ?? selectableModels()[0];
 }
 
 function hydrateFeatureSettings(stored: CourseLlmSettings | undefined): FeatureLlmSettingsMap {
@@ -278,7 +313,8 @@ function clampReasoningForModel(
 
 function sanitizeSelection(selection: FeatureLlmSelection | undefined): FeatureLlmSelection {
     if (!selection) return { ...defaultSelection };
-    const model = findModelEntry(selection.modelId) ?? defaultModelEntry();
+    // Withheld / unknown stored models fall back — the server clamps them the same way
+    const model = findSelectableModelEntry(selection.modelId) ?? defaultModelEntry();
     if (!model) return { ...defaultSelection };
     return {
         modelId: model.id,
@@ -308,11 +344,14 @@ function renderFeatureRows(): void {
     const container = document.getElementById('modelSettingFeatures');
     if (!container || !featureSettings || modelCatalog.length === 0) return;
 
+    // Rewriting the rows destroys the open popover's node — drop the dangling id
+    openPickerId = null;
+
     closeOpenPicker();
 
     container.innerHTML = FEATURE_CATALOG.map((feature) => {
         const selection = featureSettings![feature.key];
-        const modelEntry = findModelEntry(selection.modelId) ?? defaultModelEntry();
+        const modelEntry = findSelectableModelEntry(selection.modelId) ?? defaultModelEntry();
         const reasoningLabel = reasoningLabelFor(modelEntry, selection.reasoningLevel);
         const modelLabel = modelEntry.label;
         const interactive = isFeatureInteractive(feature);
@@ -376,7 +415,7 @@ function renderPickerWrap(
 ): string {
     const id = pickerId(featureKey, kind);
     const selection = featureSettings![featureKey];
-    const modelEntry = findModelEntry(selection.modelId) ?? defaultModelEntry();
+    const modelEntry = findSelectableModelEntry(selection.modelId) ?? defaultModelEntry();
     const kindLabel = kind === 'reasoning' ? 'Reasoning' : 'Model';
     const canOpen = canManageState && interactive;
 
@@ -414,19 +453,25 @@ function renderModelOption(
     model: LlmModelDashboardCatalogEntry,
     selectedId: CourseLlmModelId
 ): string {
-    const selected = model.id === selectedId;
+    const unavailable = model.unavailable === true;
+    const selected = !unavailable && model.id === selectedId;
     return `
         <button
             type="button"
-            class="model-picker-option"
+            class="model-picker-option${unavailable ? ' model-picker-option--unavailable' : ''}"
             role="option"
             data-feature="${featureKey}"
             data-kind="model"
             data-value="${model.id}"
             aria-selected="${selected}"
+            ${unavailable ? `disabled aria-disabled="true" title="${escapeHtml(MODEL_UNAVAILABLE_HINT)}"` : ''}
         >
             <span class="model-picker-option-title">${escapeHtml(model.label)}</span>
-            <span class="model-reasoning-brains" aria-hidden="true">${renderBrainIcons(COST_TIER_BRAIN_COUNT[model.costTier])}</span>
+            ${
+                unavailable
+                    ? `<span class="model-picker-option-note">${escapeHtml(MODEL_UNAVAILABLE_NOTE)}</span>`
+                    : `<span class="model-reasoning-brains" aria-hidden="true">${renderBrainIcons(COST_TIER_BRAIN_COUNT[model.costTier])}</span>`
+            }
             ${selected ? '<span class="model-picker-option-check" aria-hidden="true">✓</span>' : ''}
         </button>`;
 }
@@ -487,6 +532,67 @@ function openPicker(id: string): void {
     popover.classList.add('is-open');
     trigger.setAttribute('aria-expanded', 'true');
     openPickerId = id;
+
+    // Must run while visible — the popover has to be laid out before it can be measured
+    positionOpenPicker();
+    ensurePickerRepositionHandlers();
+}
+
+/**
+ * positionOpenPicker — anchors the fixed popover to its trigger, flipping and clamping to fit.
+ *
+ * The popover is `position: fixed` (see .model-picker-popover) so the accordion's two
+ * `overflow: hidden` ancestors cannot clip it, which means its placement is ours to compute:
+ * right-aligned to the trigger and clamped into the viewport horizontally, below the trigger
+ * unless the space above is larger, with `max-height` set to the space actually available so
+ * a list too tall to fit scrolls instead of being cut off.
+ */
+function positionOpenPicker(): void {
+    if (!openPickerId) return;
+
+    const popover = document.getElementById(`popover-${openPickerId}`);
+    const trigger = document.getElementById(`trigger-${openPickerId}`);
+    if (!popover || !trigger) return;
+
+    // Clear any previous clamp so the popover reports its natural height again
+    popover.style.maxHeight = '';
+    const triggerRect = trigger.getBoundingClientRect();
+    const naturalHeight = popover.getBoundingClientRect().height;
+
+    // Step 1: pick a side — below unless it does not fit and above has more room
+    const spaceBelow = window.innerHeight - triggerRect.bottom - POPOVER_GAP - VIEWPORT_MARGIN;
+    const spaceAbove = triggerRect.top - POPOVER_GAP - VIEWPORT_MARGIN;
+    const openUp = naturalHeight > spaceBelow && spaceAbove > spaceBelow;
+
+    // Step 2: clamp to that side's room, keeping a usable minimum on very short viewports
+    const available = Math.max(openUp ? spaceAbove : spaceBelow, MIN_POPOVER_HEIGHT);
+    popover.style.maxHeight = `${available}px`;
+
+    // Re-measure: maxHeight may have shortened it and added a scrollbar
+    const rect = popover.getBoundingClientRect();
+
+    // Step 3: place it, right-aligned to the trigger but never off-screen
+    popover.style.top = openUp
+        ? `${triggerRect.top - POPOVER_GAP - rect.height}px`
+        : `${triggerRect.bottom + POPOVER_GAP}px`;
+    popover.style.left = `${Math.max(
+        VIEWPORT_MARGIN,
+        Math.min(triggerRect.right - rect.width, window.innerWidth - rect.width - VIEWPORT_MARGIN)
+    )}px`;
+}
+
+/**
+ * ensurePickerRepositionHandlers — keeps a fixed popover glued to its trigger.
+ *
+ * A fixed popover does not travel with the page, so anything that moves the trigger has to
+ * re-anchor it. Scroll is captured so scrolling in any container counts, not just the window.
+ * Bound once and inert while nothing is open.
+ */
+function ensurePickerRepositionHandlers(): void {
+    if (pickerRepositionBound) return;
+    pickerRepositionBound = true;
+    window.addEventListener('scroll', () => positionOpenPicker(), true);
+    window.addEventListener('resize', () => positionOpenPicker());
 }
 
 function closeOpenPicker(): void {
@@ -495,7 +601,13 @@ function closeOpenPicker(): void {
     const popover = document.getElementById(`popover-${openPickerId}`);
     const trigger = document.getElementById(`trigger-${openPickerId}`) as HTMLButtonElement | null;
     popover?.classList.remove('is-open');
-    if (popover) popover.hidden = true;
+    if (popover) {
+        popover.hidden = true;
+        // Drop the computed placement so the next open measures from a clean slate
+        popover.style.maxHeight = '';
+        popover.style.top = '';
+        popover.style.left = '';
+    }
     trigger?.setAttribute('aria-expanded', 'false');
     openPickerId = null;
 }
@@ -519,7 +631,7 @@ function handleOptionSelect(option: HTMLButtonElement): void {
 
     if (kind === 'model' && isModelId(value)) {
         featureSettings[featureKey].modelId = value;
-        const model = findModelEntry(value)!;
+        const model = findSelectableModelEntry(value)!;
         featureSettings[featureKey].reasoningLevel = clampReasoningForModel(
             model,
             featureSettings[featureKey].reasoningLevel
@@ -619,7 +731,7 @@ function renderBrainIcons(count: number): string {
 }
 
 function isModelId(value: string): value is CourseLlmModelId {
-    return modelCatalog.some((m) => m.id === value);
+    return selectableModels().some((m) => m.id === value);
 }
 
 function isReasoningLevel(value: string): value is AppReasoningLevel {

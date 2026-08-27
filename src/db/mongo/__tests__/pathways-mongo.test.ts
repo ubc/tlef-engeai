@@ -13,9 +13,18 @@ import {
     reorderPathways,
     resetPathwaysToDefaults,
     normalizeCtaColor,
+    getPathwayEvaluationPrompt,
+    updatePathwayEvaluationPrompt,
+    resetPathwayEvaluationPrompt,
+    healRemoveOffTopicPathway,
 } from '../pathways-mongo';
 import { isPathwayEvaluable } from '../../../guided-pathways/pathway-schema';
 import { buildPlatformPathwaySeeds } from '../../../guided-pathways/pathway-seed';
+import {
+    PATHWAY_EVALUATION_PROMPT_DOC_TYPE,
+    PATHWAY_EVALUATION_PROMPT_ID,
+    PLATFORM_PATHWAY_EVALUATION_PROMPT_DEFAULT,
+} from '../../../guided-pathways/pathway-evaluation-prompt-default';
 
 jest.mock('../collection-registry-mongo', () => ({
     getCollectionNames: jest.fn().mockResolvedValue({
@@ -29,10 +38,18 @@ jest.mock('../collection-registry-mongo', () => ({
     }),
 }));
 
+function matchesFilter(doc: any, filter: any = {}): boolean {
+    if (!filter || Object.keys(filter).length === 0) return true;
+    if (filter.id?.$ne !== undefined && doc.id === filter.id.$ne) return false;
+    if (filter.docType?.$ne !== undefined && doc.docType === filter.docType.$ne) return false;
+    if (typeof filter.id === 'string' && doc.id !== filter.id) return false;
+    return true;
+}
+
 function makeCollection(store: any[] = []): Collection & { _store: any[] } {
     const col: any = {
         _store: store,
-        countDocuments: jest.fn(async () => store.length),
+        countDocuments: jest.fn(async (filter: any = {}) => store.filter((d) => matchesFilter(d, filter)).length),
         insertMany: jest.fn(async (docs: any[]) => {
             store.push(...docs);
             return { insertedCount: docs.length };
@@ -41,19 +58,29 @@ function makeCollection(store: any[] = []): Collection & { _store: any[] } {
             store.push(doc);
             return { insertedId: doc.id };
         }),
-        find: jest.fn(() => ({
-            sort: () => ({
-                toArray: async () => [...store].sort((a, b) => a.order - b.order),
-            }),
-            project: () => ({
-                toArray: async () => store.map((d) => ({ order: d.order })),
-            }),
-            toArray: async () => [...store],
-        })),
-        findOne: jest.fn(async (q: any) => store.find((d) => d.id === q.id) || null),
-        updateOne: jest.fn(async (q: any, update: any) => {
-            const doc = store.find((d) => d.id === q.id);
-            if (!doc) return { matchedCount: 0 };
+        find: jest.fn((filter: any = {}) => {
+            const filtered = () => store.filter((d) => matchesFilter(d, filter));
+            return {
+                sort: () => ({
+                    toArray: async () => [...filtered()].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+                }),
+                project: () => ({
+                    toArray: async () => filtered().map((d) => ({ order: d.order })),
+                }),
+                toArray: async () => [...filtered()],
+            };
+        }),
+        findOne: jest.fn(async (q: any) => store.find((d) => matchesFilter(d, q)) || null),
+        updateOne: jest.fn(async (q: any, update: any, options?: any) => {
+            let doc = store.find((d) => matchesFilter(d, q));
+            if (!doc) {
+                if (options?.upsert) {
+                    doc = { ...(update.$set || {}) };
+                    store.push(doc);
+                    return { matchedCount: 0, upsertedCount: 1 };
+                }
+                return { matchedCount: 0 };
+            }
             Object.assign(doc, update.$set || {});
             if (update.$unset) {
                 for (const key of Object.keys(update.$unset)) {
@@ -63,15 +90,17 @@ function makeCollection(store: any[] = []): Collection & { _store: any[] } {
             return { matchedCount: 1 };
         }),
         deleteOne: jest.fn(async (q: any) => {
-            const idx = store.findIndex((d) => d.id === q.id);
+            const idx = store.findIndex((d) => matchesFilter(d, q));
             if (idx < 0) return { deletedCount: 0 };
             store.splice(idx, 1);
             return { deletedCount: 1 };
         }),
-        deleteMany: jest.fn(async () => {
-            const n = store.length;
-            store.splice(0, store.length);
-            return { deletedCount: n };
+        deleteMany: jest.fn(async (q: any = {}) => {
+            const before = store.length;
+            for (let i = store.length - 1; i >= 0; i--) {
+                if (matchesFilter(store[i], q)) store.splice(i, 1);
+            }
+            return { deletedCount: before - store.length };
         }),
         createIndex: jest.fn(async () => 'ok'),
     };
@@ -98,12 +127,13 @@ describe('pathways-mongo', () => {
         };
     });
 
-    it('seedPathwaysIfEmpty inserts platform defaults once', async () => {
+    it('seedPathwaysIfEmpty inserts platform defaults once and evaluation prompt', async () => {
         const n1 = await seedPathwaysIfEmpty(ctx, 'Test');
-        expect(n1).toBe(3);
+        expect(n1).toBe(2);
         const n2 = await seedPathwaysIfEmpty(ctx, 'Test');
         expect(n2).toBe(0);
-        expect(store).toHaveLength(3);
+        expect(store.filter((d) => d.id !== PATHWAY_EVALUATION_PROMPT_ID)).toHaveLength(2);
+        expect(store.some((d) => d.id === PATHWAY_EVALUATION_PROMPT_ID)).toBe(true);
         expect(store[0].title).toBe('Mental health crisis');
         expect(store[0].triggerDescription).toMatch(/^Detects if/);
     });
@@ -114,7 +144,7 @@ describe('pathways-mongo', () => {
         expect(store).toHaveLength(0);
     });
 
-    it('listPathways returns sorted docs and restores platform titles when missing', async () => {
+    it('listPathways excludes evaluation-prompt singleton and restores platform titles', async () => {
         store.push(
             {
                 id: 'mental-health-crisis',
@@ -132,6 +162,13 @@ describe('pathways-mongo', () => {
                 triggerDescription: '',
                 assistantResponse: 'y',
                 ctas: [],
+                updatedAt: 1,
+            },
+            {
+                id: PATHWAY_EVALUATION_PROMPT_ID,
+                docType: PATHWAY_EVALUATION_PROMPT_DOC_TYPE,
+                usePlatformDefault: true,
+                body: PLATFORM_PATHWAY_EVALUATION_PROMPT_DEFAULT,
                 updatedAt: 1,
             }
         );
@@ -154,6 +191,35 @@ describe('pathways-mongo', () => {
         const list = await listPathways(ctx, 'Test');
         expect(list[0].enabled).toBe(false);
         expect((list[0] as any).enabledGlobally).toBeUndefined();
+    });
+
+    it('healRemoveOffTopicPathway deletes legacy off-topic docs', async () => {
+        store.push(
+            {
+                id: 'off-topic',
+                order: 2,
+                title: 'Off-topic',
+                enabled: true,
+                triggerDescription: 'x',
+                assistantResponse: 'y',
+                ctas: [],
+                updatedAt: 1,
+            },
+            {
+                id: 'inappropriate-content',
+                order: 1,
+                title: 'Inappropriate content',
+                enabled: true,
+                triggerDescription: 'x',
+                assistantResponse: 'y',
+                ctas: [],
+                updatedAt: 1,
+            }
+        );
+        const deleted = await healRemoveOffTopicPathway(collection, 'Test');
+        expect(deleted).toBe(1);
+        expect(store.map((d) => d.id)).toEqual(['inappropriate-content']);
+        expect(await healRemoveOffTopicPathway(collection, 'Test')).toBe(0);
     });
 
     it('create/update/delete pathway', async () => {
@@ -224,7 +290,7 @@ describe('pathways-mongo', () => {
         await expect(reorderPathways(ctx, 'Test', ['a', 'missing'])).rejects.toThrow(/permutation/i);
     });
 
-    it('resetPathwaysToDefaults wipes and re-seeds platform defaults', async () => {
+    it('resetPathwaysToDefaults wipes and re-seeds platform defaults plus evaluation prompt', async () => {
         store.push({
             id: 'custom',
             order: 0,
@@ -236,14 +302,29 @@ describe('pathways-mongo', () => {
             updatedAt: 1,
         });
         const list = await resetPathwaysToDefaults(ctx, 'Test');
-        expect(list).toHaveLength(3);
-        expect(list.map((p) => p.id)).toEqual([
-            'mental-health-crisis',
-            'inappropriate-content',
-            'off-topic',
-        ]);
+        expect(list).toHaveLength(2);
+        expect(list.map((p) => p.id)).toEqual(['mental-health-crisis', 'inappropriate-content']);
         expect(list[1].title).toBe('Inappropriate content');
-        expect(list[2].triggerDescription).toMatch(/unrelated to the course/);
+        expect(store.some((d) => d.id === PATHWAY_EVALUATION_PROMPT_ID)).toBe(true);
+        expect(store.some((d) => d.id === 'off-topic')).toBe(false);
+    });
+
+    it('get/update/reset pathway evaluation prompt', async () => {
+        const initial = await getPathwayEvaluationPrompt(ctx, 'Test');
+        expect(initial.usePlatformDefault).toBe(true);
+        expect(initial.body).toContain('{{pathway_trigger_sections}}');
+
+        const updated = await updatePathwayEvaluationPrompt(ctx, 'Test', 'Custom shell\n{{pathway_trigger_sections}}');
+        expect(updated.usePlatformDefault).toBe(false);
+        expect(updated.body).toContain('Custom shell');
+
+        const again = await getPathwayEvaluationPrompt(ctx, 'Test');
+        expect(again.usePlatformDefault).toBe(false);
+        expect(again.body).toContain('Custom shell');
+
+        const reset = await resetPathwayEvaluationPrompt(ctx, 'Test');
+        expect(reset.usePlatformDefault).toBe(true);
+        expect(reset.body).toBe(PLATFORM_PATHWAY_EVALUATION_PROMPT_DEFAULT);
     });
 
     it('seed defaults are evaluable and titled', () => {
@@ -251,6 +332,7 @@ describe('pathways-mongo', () => {
             expect(isPathwayEvaluable(seed)).toBe(true);
             expect(seed.title.trim().length).toBeGreaterThan(0);
         }
+        expect(buildPlatformPathwaySeeds().some((p) => p.id === 'off-topic')).toBe(false);
     });
 
     it('normalizeCtaColor accepts hex and maps legacy style', () => {

@@ -45,6 +45,7 @@ import {
     parseStruggleTopicsByStudentBody,
     ReportFixtureSeedError
 } from '../db/mongo/report-fixture-seed-mongo';
+import { materialChunkIds } from '../migrate/schema-walker';
 import { activeCourse, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem, FlagReport, User, InitialAssistantPrompt, SystemPromptItem } from '../types/shared';
 import { IDGenerator } from '../utils/unique-id-generator';
 import { memoryAgent } from '../memory-agent/memory-agent';
@@ -602,11 +603,14 @@ router.get('/course-selection', asyncHandlerWithAuth(async (req: Request, res: R
     const defaultPeriodId = await instance.getDefaultAcademicPeriodId();
     const periods = await instance.listAcademicPeriods();
     const allCourses = await instance.getAllActiveCourses();
+    const platformAdmins = await instance.findAdminGlobalUsers();
+    const platformAdminUserIds = new Set(platformAdmins.map((u) => u.userId));
     const data = buildCourseSelectionByPeriod(
         periods,
         allCourses as activeCourse[],
         globalUser,
-        defaultPeriodId
+        defaultPeriodId,
+        platformAdminUserIds
     );
 
     res.status(200).json({
@@ -1048,7 +1052,15 @@ router.put('/:id', requireInstructorForCourseAPI(['paramsId']), asyncHandlerWith
     }
     
     // Strip capabilities so this generic instructor update cannot bypass the roster-manager gate.
-    const { features: _ignoredFeatures, ...updateData } = req.body ?? {};
+    // Also strip the three tutorial flags: they moved to `GlobalUser.instructorOnboarding` (OB-002)
+    // and must not be resurrected on the course document by a stale client.
+    const {
+        features: _ignoredFeatures,
+        contentSetup: _ignoredContentSetup,
+        flagSetup: _ignoredFlagSetup,
+        monitorSetup: _ignoredMonitorSetup,
+        ...updateData
+    } = req.body ?? {};
     const updatedCourse = await instance.updateActiveCourse(routeParam(req.params, 'id'), updateData);
     
     res.status(200).json({
@@ -1232,9 +1244,6 @@ router.delete('/:id/restart-onboarding', requireInstructorForCourseAPI(['paramsI
             date: new Date(),
             courseName: courseName, // Preserved from original
             courseSetup: false,
-            contentSetup: false,
-            flagSetup: false,
-            monitorSetup: false,
             instructors: [], // Empty array
             teachingAssistants: [], // Empty array
             frameType: 'byTopic', // Default frame type
@@ -2260,12 +2269,9 @@ router.patch(
 
             if (role === 'ta') {
                 await instance.promoteStudentToTA(courseData, targetUserId, targetName);
-                const targetGlobal = await instance.findGlobalUserByUserId(targetUserId);
-                if (targetGlobal?.puid) {
-                    await instance.updateGlobalUser(targetGlobal.puid, {
-                        instructorOnboardingCompleted: true
-                    });
-                }
+                // Deliberately does NOT mark instructor onboarding complete. Promotion completes
+                // no tutorial, and a new TA is exactly who the instructor tutorials are for —
+                // they now run through them on first entry like any other new course staff.
                 appLogger.log(`[ROSTER] Promoted ${targetUserId} to TA in course ${courseId}`);
             } else {
                 await instance.demoteTAToStudent(courseData, targetUserId);
@@ -3141,7 +3147,7 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/m
         }
         
         let qdrantResult: { materialName: string; chunksDeleted: number } | null = null;
-        if (material.qdrantId) {
+        if (materialChunkIds(material).length > 0) {
             try {
                 const ragApp = await RAGApp.getInstance();
                 const deleteResult = await ragApp.deleteDocument(materialId, courseId, topicOrWeekId, itemId);
@@ -3656,7 +3662,7 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId', requireInstru
             const ragPromises: Promise<{ deleted: boolean; materialName: string; chunksDeleted: number }>[] = [];
             topicOrWeekInstance.items?.forEach((item: TopicOrWeekItem) => {
                 (item.additionalMaterials || []).forEach((material: any) => {
-                    if (material.id && material.qdrantId) {
+                    if (material.id && materialChunkIds(material).length > 0) {
                         ragPromises.push(ragApp.deleteDocument(material.id, courseId, topicOrWeekId, item.id));
                     }
                 });
@@ -3899,7 +3905,7 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId',
         try {
             const ragApp = await RAGApp.getInstance();
             const ragPromises = (item.additionalMaterials || [])
-                .filter((material: any) => material.id && material.qdrantId)
+                .filter((material: any) => material.id && materialChunkIds(material).length > 0)
                 .map((material: any) => ragApp.deleteDocument(material.id, courseId, topicOrWeekId, itemId));
             const results = await Promise.allSettled(ragPromises);
             results.forEach((r, i) => {

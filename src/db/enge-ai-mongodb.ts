@@ -21,6 +21,7 @@ import {
     FlagReport,
     GlobalUser,
     InitialAssistantPrompt,
+    InstructorOnboardingProgress,
     MemoryAgentEntry,
     SystemPromptItem,
     ScenarioMode,
@@ -977,6 +978,15 @@ export class EngEAI_MongoDB {
     public resetPathwaysToDefaults = async (courseName: string) =>
         PathwaysMongo.resetPathwaysToDefaults(this.ctx(), courseName);
 
+    public getPathwayEvaluationPrompt = async (courseName: string) =>
+        PathwaysMongo.getPathwayEvaluationPrompt(this.ctx(), courseName);
+
+    public updatePathwayEvaluationPrompt = async (courseName: string, body: string) =>
+        PathwaysMongo.updatePathwayEvaluationPrompt(this.ctx(), courseName, body);
+
+    public resetPathwayEvaluationPrompt = async (courseName: string) =>
+        PathwaysMongo.resetPathwayEvaluationPrompt(this.ctx(), courseName);
+
     /**
      * #########################################################
      * Course users roster — course-user-mongo.ts
@@ -1070,8 +1080,17 @@ export class EngEAI_MongoDB {
     public addCourseToGlobalUser = async (puid: string, courseId: string) =>
         GlobalUserMongo.addCourseToGlobalUser(this.ctx(), puid, courseId);
 
+    public removeCourseFromGlobalUser = async (puid: string, courseId: string) =>
+        GlobalUserMongo.removeCourseFromGlobalUser(this.ctx(), puid, courseId);
+
     public updateGlobalUser = async (puid: string, updateData: Partial<GlobalUser>) =>
         GlobalUserMongo.updateGlobalUser(this.ctx(), puid, updateData);
+
+    /** Marks one instructor tutorial stage complete without clobbering its siblings. */
+    public completeInstructorOnboardingStage = async (
+        puid: string,
+        stage: keyof InstructorOnboardingProgress
+    ) => GlobalUserMongo.completeInstructorOnboardingStage(this.ctx(), puid, stage);
 
     public updateGlobalUserAffiliation = async (
         userId: string,
@@ -1244,6 +1263,29 @@ export class EngEAI_MongoDB {
 
     public enrollInstructorsOnCourse = async (course: activeCourse, instructorUserIds: string[]) =>
         CourseEnrollmentMongo.enrollInstructorsOnCourse(this.ctx(), course, instructorUserIds);
+
+    public removeInstructorsFromCourse = async (
+        course: activeCourse,
+        userIdsToRemove: string[],
+        options?: CourseEnrollmentMongo.RemoveInstructorsFromCourseOptions
+    ) => CourseEnrollmentMongo.removeInstructorsFromCourse(this.ctx(), course, userIdsToRemove, options);
+
+    /**
+     * LMS course links — course-lms-link-mongo.ts
+     */
+    public findCourseByLmsLink = async (provider: CourseLmsLink['provider'], externalCourseId: string) =>
+        CourseLmsLinkMongo.findCourseByLmsLink(this.ctx(), provider, externalCourseId);
+
+    public findCoursesByLmsLinks = async (
+        provider: CourseLmsLink['provider'],
+        externalCourseIds: string[]
+    ) => CourseLmsLinkMongo.findCoursesByLmsLinks(this.ctx(), provider, externalCourseIds);
+
+    public setCourseLmsLink = async (courseId: string, link: CourseLmsLink) =>
+        CourseLmsLinkMongo.setCourseLmsLink(this.ctx(), courseId, link);
+
+    public createCourseLmsLinkIndex = async () =>
+        CourseLmsLinkMongo.createCourseLmsLinkIndex(this.ctx());
 
     /**
      * LMS course links — course-lms-link-mongo.ts

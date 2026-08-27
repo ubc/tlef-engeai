@@ -16,7 +16,7 @@
  * @version: 1.0.0
  */
 
-import { AdditionalMaterial, UploadResult, ValidationResult } from '../types.js';
+import { AdditionalMaterial, AdditionalMaterialUpload, UploadResult, ValidationResult } from '../types.js';
 
 /**
  * Document Upload Module Class
@@ -187,7 +187,7 @@ export class DocumentUploadModule {
     /**
      * Upload a document (file or text) to the RAG system
      */
-    public async uploadDocument(document: AdditionalMaterial): Promise<UploadResult> {
+    public async uploadDocument(document: AdditionalMaterialUpload): Promise<UploadResult> {
         try {
             this.progressCallback(10, 'Validating document...');
 
@@ -237,7 +237,7 @@ export class DocumentUploadModule {
     /**
      * Upload a file to the RAG system
      */
-    private async uploadFile(file: File, metadata: Omit<AdditionalMaterial, 'id' | 'file' | 'text' | 'date'>): Promise<UploadResult> {
+    private async uploadFile(file: File, metadata: Omit<AdditionalMaterial, 'id' | 'text' | 'date'>): Promise<UploadResult> {
         try {
             this.progressCallback(20, 'Preparing file upload...');
 
@@ -315,7 +315,8 @@ export class DocumentUploadModule {
                 sourceType: metadata.sourceType,
                 fileName: file.name,
                 uploaded: true,
-                qdrantId: result.data?.qdrantId,
+                qdrantChunkIds: result.data?.qdrantChunkIds ?? [],
+                chunksGenerated: result.data?.chunksGenerated || 0,
                 date: new Date()
             };
 
@@ -342,7 +343,7 @@ export class DocumentUploadModule {
     /**
      * Upload text content to the RAG system
      */
-    private async uploadText(text: string, metadata: Omit<AdditionalMaterial, 'id' | 'file' | 'text' | 'date'>): Promise<UploadResult> {
+    private async uploadText(text: string, metadata: Omit<AdditionalMaterial, 'id' | 'text' | 'date'>): Promise<UploadResult> {
         try {
             this.progressCallback(20, 'Preparing text upload...');
 
@@ -422,7 +423,8 @@ export class DocumentUploadModule {
                 sourceType: metadata.sourceType,
                 text: text,
                 uploaded: true,
-                qdrantId: result.data?.qdrantId,
+                qdrantChunkIds: result.data?.qdrantChunkIds ?? [],
+                chunksGenerated: result.data?.chunksGenerated || 0,
                 date: new Date()
             };
 
