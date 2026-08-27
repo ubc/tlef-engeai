@@ -23,7 +23,7 @@ function user(overrides: Partial<GlobalUser>): GlobalUser {
 }
 
 describe('resolveGuidedPathwayFlagTriggerActor', () => {
-    it('classifies a listed faculty instructor as an instructor test before enrollment', () => {
+    it('classifies a listed faculty instructor as a staff test before enrollment', () => {
         const actor = resolveGuidedPathwayFlagTriggerActor(course, user({
             userId: 'instructor-1',
             affiliation: 'faculty',
@@ -44,6 +44,27 @@ describe('resolveGuidedPathwayFlagTriggerActor', () => {
         expect(actor).toEqual({ origin: 'instructor-test', userId: 'instructor-1' });
     });
 
+    it('classifies an enrolled TA as a staff test', () => {
+        const actor = resolveGuidedPathwayFlagTriggerActor(course, user({
+            userId: 'ta-1',
+            affiliation: 'staff',
+            coursesEnrolled: ['course-1'],
+        }));
+
+        expect(actor).toEqual({ origin: 'instructor-test', userId: 'ta-1' });
+    });
+
+    it('classifies a platform admin not on the course roster as a staff test', () => {
+        const actor = resolveGuidedPathwayFlagTriggerActor(course, user({
+            userId: 'admin-1',
+            affiliation: 'staff',
+            coursesEnrolled: ['course-1'],
+            isAdmin: true,
+        }));
+
+        expect(actor).toEqual({ origin: 'instructor-test', userId: 'admin-1' });
+    });
+
     it('classifies an enrolled non-staff user as a production student', () => {
         const actor = resolveGuidedPathwayFlagTriggerActor(course, user({
             userId: 'student-1',
@@ -53,12 +74,8 @@ describe('resolveGuidedPathwayFlagTriggerActor', () => {
         expect(actor).toEqual({ origin: 'student', userId: 'student-1' });
     });
 
-    it.each([
-        ['teaching assistant', user({ userId: 'ta-1', affiliation: 'staff', coursesEnrolled: ['course-1'] })],
-        ['admin-only user', user({ userId: 'admin-1', affiliation: 'staff', coursesEnrolled: ['course-1'], isAdmin: true })],
-        ['unenrolled outsider', user({ userId: 'outsider-1' })],
-    ])('skips an ineligible %s', (_label, candidate) => {
-        expect(resolveGuidedPathwayFlagTriggerActor(course, candidate)).toBeNull();
+    it('skips an unenrolled outsider', () => {
+        expect(resolveGuidedPathwayFlagTriggerActor(course, user({ userId: 'outsider-1' }))).toBeNull();
     });
 
     it('safely skips a legacy user whose enrollment array is missing', () => {

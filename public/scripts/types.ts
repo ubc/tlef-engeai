@@ -81,7 +81,7 @@ export interface GuidedPathwayFlagView {
     pathwayId: string; // winning pathway id
     pathwayTitle: string; // winning pathway title snapshot
     messageText: string; // exact triggering chat message
-    origin: GuidedPathwayFlagOrigin; // production student alert or non-escalatable instructor test
+    origin: GuidedPathwayFlagOrigin; // production student alert or non-escalatable course-staff test
     status: GuidedPathwayFlagStatus; // instructor decision lifecycle
     triggeredAt: string; // ISO trigger timestamp
     decidedAt?: string; // ISO instructor-decision timestamp

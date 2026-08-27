@@ -38,8 +38,8 @@ Guided Pathway flags are automatic records created only after the real evaluator
 The chat route resolves the actor from the current `activeCourse` and `GlobalUser`; request fields never select an origin.
 
 - An enrolled non-staff user becomes `origin: 'student'`.
-- A faculty user explicitly listed in `course.instructors` becomes `origin: 'instructor-test'`. This check runs before enrollment, so a dual-role instructor remains a test actor; a listed instructor who is also a platform admin also qualifies.
-- A TA, an admin who is not a listed instructor, an outsider, or a request without valid course/user context does not create an automatic alert.
+- Any course staff member (`isCourseStaff`: listed faculty instructor, TA, or platform admin) becomes `origin: 'instructor-test'`. This check runs before enrollment, so dual-role staff remain test actors.
+- An outsider or a request without valid course/user context does not create an automatic alert.
 - A legacy document with no `origin` is normalized to `student` at the safe-view boundary.
 
 Student rows retain internal `studentUserId` for the existing audited reveal workflow. At creation, instructor-test rows omit `studentUserId` and do not persist a separate trigger-actor identity field. The trigger actor ID may contribute to the opaque deduplication digest, which also includes origin so equivalent student and test triggers cannot collide, but it is never returned as trigger identity. A later dismissal retains the ordinary authorized decision-actor audit fields; those describe the decision, not the original trigger.

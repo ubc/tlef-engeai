@@ -672,7 +672,7 @@ export interface ManualFlagEscalationListPage {
 /** Lifecycle state for an automatic alert created by a Guided Pathway trigger. */
 export type GuidedPathwayFlagStatus = 'pending' | 'escalated' | 'dismissed';
 
-/** Server-owned origin separating production student alerts from instructor tests. */
+/** Server-owned origin separating production student alerts from course-staff tests. */
 export type GuidedPathwayFlagOrigin = 'student' | 'instructor-test';
 
 /** Instructor decision accepted by the Guided Pathway alert review API. */
@@ -694,7 +694,7 @@ export interface GuidedPathwayFlagView {
     pathwayId: string; // winning pathway id for filtering
     pathwayTitle: string; // winning pathway title snapshot shown to reviewers
     messageText: string; // exact triggering chat message; may contain self-identifying text
-    origin: GuidedPathwayFlagOrigin; // production student alert or non-escalatable instructor test
+    origin: GuidedPathwayFlagOrigin; // production student alert or non-escalatable course-staff test
     status: GuidedPathwayFlagStatus; // instructor review lifecycle
     triggeredAt: string; // ISO timestamp for the pathway trigger
     decidedAt?: string; // ISO timestamp for Escalate or Dismiss

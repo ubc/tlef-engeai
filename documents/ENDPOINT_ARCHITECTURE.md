@@ -319,7 +319,7 @@ and platform admins may configure pathways; teaching assistants cannot. `enabled
 a pathway can trigger. The independent `notifyInstructorOnTrigger` setting controls whether a
 successful trigger creates an automatic alert, and defaults to `true` for new, seeded, and legacy
 records where the field is missing. Manually created and seeded pathways use the same evaluator.
-When a listed faculty instructor exercises a notification-enabled pathway in normal instructor chat,
+When course staff exercise a notification-enabled pathway in chat,
 the server records a course-local `instructor-test` alert; the client cannot request or forge test mode.
 
 | Method | Path | Auth | Role | Description |
@@ -345,7 +345,7 @@ the server records a course-local `instructor-test` alert; the client cannot req
 
 **Unified instructor Flag Management UI** merges manual flags and course-scoped Guided Pathway alerts client-side. RBAC split: TAs may list/resolve/escalate manual flags (`requireInstructorForCourseAPI`) but cannot access Guided Pathway alert APIs (`requireInstructorOrAdminForCourseAPI`).
 
-Automatic alerts are created when an enabled pathway with `notifyInstructorOnTrigger` wins for any **enrolled user or course staff** sender (students, TAs, faculty instructors, platform admins). TAs may trigger alerts while testing chat but still cannot list or act on GP flags in Flag Management. The stored `studentUserId` field holds the triggering user's id; admin identity reveal resolves the display name from the course roster, then `active-users` when the sender is staff not on the roster.
+Automatic alerts are created when an enabled pathway with `notifyInstructorOnTrigger` wins for an eligible chat sender. Enrolled non-staff users produce production `student` alerts; course staff (listed faculty instructors, TAs, and platform admins) produce non-escalatable `instructor-test` alerts. Staff are classified before enrollment so dual-role users never get a production alert. TAs may trigger test alerts while chatting but still cannot list or act on GP flags in Flag Management (`requireInstructorOrAdminForCourseAPI`). The stored `studentUserId` field holds the triggering user's id for production student alerts only; admin identity reveal resolves the display name from the course roster, then `active-users` when the sender is staff not on the roster.
 
 **Guided Pathway category filters** (faculty/admin Flag Management UI only) are client-side: checkboxes mirror the current Pathway Library; each GP flag is classified by its persisted `pathwayId` against that library. Flags whose `pathwayId` is missing or no longer in the library appear under **Others** — never by title inference.
 
