@@ -339,13 +339,23 @@ router.post('/:courseId/writing-feedback/canvas/import', withCanvasClientWhenLin
         const context = await service.loadAssignmentContext(canvasAssignmentId);
         const seedGrid = canvasRubricToSeedShape(context?.rubric) ?? undefined;
 
+        // The assignment brief is what becomes the local assignment instructions, and the
+        // two gateways carry it in different places: the demo gateway puts it on the summary,
+        // while the live one reads Canvas\u2019s rich-editor HTML in loadAssignmentContext and
+        // returns it already converted to plain text. Preferring the converted text means a
+        // live import arrives with instructions rather than an empty field \u2014 without them
+        // auto-fill refuses outright, since it has nothing to propose a rubric from.
+        const importedInstructions = context?.details?.descriptionText?.trim()
+            || preview.assignment.description?.trim()
+            || undefined;
+
         // Reuse the Canvas mapping when present so repeated imports remain assignment-idempotent.
         const existing = await mongo.getWritingAssignmentByCanvasId(courseId(req), canvasAssignmentId);
         const target = existing ?? await mongo.createCanvasWritingAssignment(
             courseId(req),
             canvasAssignmentId,
             preview.assignment.title,
-            preview.assignment.description,
+            importedInstructions,
             preview.assignment.dueAt ? new Date(preview.assignment.dueAt) : undefined,
             seedGrid
         );

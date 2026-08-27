@@ -94,6 +94,7 @@ const ASSIGNMENTS = [
         due_at: '2026-09-22T06:59:00Z',
         submission_types: ['online_text_entry', 'online_upload'],
         has_submitted_submissions: true,
+        description: '<p>Explain one <strong>failure mode</strong>.</p><ul><li>Use SI units.</li></ul>',
         rubric: [{ id: 'crit_1' }]
     },
     // Excluded: a quiz has no writing to import.
@@ -134,6 +135,18 @@ describe('LiveCanvasImportGateway assignment listing', () => {
             rubricState: 'canvas_rubric',
             synthetic: false
         });
+    });
+
+    it('carries the assignment brief as plain text, since it becomes the local instructions', async () => {
+        // Without this the summary reaches the import route with no description, the created
+        // assignment has no instructions, and auto-fill refuses with nothing to propose from.
+        const { client } = fakeClient({ getAll: { '/assignments': ASSIGNMENTS } });
+        const gateway = new LiveCanvasImportGateway({ client, canvasCourseId: '55' });
+
+        const [assignment] = await gateway.listAssignments();
+
+        expect(assignment.description).toBe('Explain one failure mode.\nUse SI units.');
+        expect(assignment.description).not.toContain('<');
     });
 
     it('leaves the submission count unset rather than guessing one', async () => {

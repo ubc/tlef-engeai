@@ -11,7 +11,7 @@
  */
 
 import type { Db } from 'mongodb';
-import { createCanvasWritingAssignment } from '../writing-feedback-mongo';
+import { createCanvasWritingAssignment, saveCanvasAssignmentDetails } from '../writing-feedback-mongo';
 import type { MongoDalContext } from '../mongo-context';
 import type { ImportedRubricShape } from '../../../writing-feedback/rubric-seed';
 import type { WritingAssignment } from '../../../writing-feedback/contracts';
@@ -84,5 +84,51 @@ describe('createCanvasWritingAssignment rubric seeding', () => {
         await createCanvasWritingAssignment(ctx, 'c1', '101', 'Essay 1', 'Directions.', undefined, CANVAS_GRID);
 
         expect(inserted()).toMatchObject({ canvasAssignmentId: '101', title: 'Essay 1', instructions: 'Directions.' });
+    });
+});
+
+/**
+ * The brief is the only source the local instructions have on a Canvas import, so a re-import
+ * onto an assignment that never received one must fill it — and must never overwrite staff text.
+ */
+describe('saveCanvasAssignmentDetails instructions backfill', () => {
+    function detailsContext(stored: Partial<WritingAssignment>) {
+        const updates: Array<Record<string, unknown>> = [];
+        let current = { ...stored } as WritingAssignment;
+        const api = {
+            collection: () => ({
+                findOneAndUpdate: async (_filter: unknown, update: any) => {
+                    updates.push(update.$set);
+                    current = { ...current, ...update.$set };
+                    return current;
+                }
+            })
+        };
+        return {
+            ctx: { db: api as unknown as Db, idGenerator: { generate: () => 'generated' } } as unknown as MongoDalContext,
+            updates
+        };
+    }
+
+    const details = { descriptionHtml: '<p>Explain one failure mode.</p>', descriptionText: 'Explain one failure mode.', importedAt: new Date() };
+
+    it('fills empty instructions from the imported brief', async () => {
+        const { ctx, updates } = detailsContext({ id: 'a1', courseId: 'c1' } as WritingAssignment);
+
+        const result = await saveCanvasAssignmentDetails(ctx, 'c1', 'a1', details);
+
+        expect(result?.instructions).toBe('Explain one failure mode.');
+        expect(updates.some((set) => 'instructions' in set)).toBe(true);
+    });
+
+    it('never overwrites instructions a staff member already wrote', async () => {
+        const { ctx, updates } = detailsContext({
+            id: 'a1', courseId: 'c1', instructions: 'Staff rewrote this locally.'
+        } as WritingAssignment);
+
+        const result = await saveCanvasAssignmentDetails(ctx, 'c1', 'a1', details);
+
+        expect(result?.instructions).toBe('Staff rewrote this locally.');
+        expect(updates.some((set) => 'instructions' in set)).toBe(false);
     });
 });

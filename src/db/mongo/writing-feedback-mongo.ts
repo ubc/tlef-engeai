@@ -532,6 +532,11 @@ export async function mapWritingAssignmentToCanvas(
  * draft exists it carries staff edits, and silently replacing it from Canvas would discard
  * their work.
  *
+ * It does fill `instructions` from the brief, but only on an assignment that has none. That
+ * covers an assignment imported before the brief reached the instructions field, and an import
+ * whose brief arrived after the assignment record existed. Staff text is never overwritten: an
+ * instructor who rewrote the instructions locally keeps them, exactly as the rubric draft does.
+ *
  * @param ctx - Connected Mongo data-layer context
  * @param courseId - Course that owns the assignment
  * @param assignmentId - Local assignment receiving the brief
@@ -544,11 +549,19 @@ export async function saveCanvasAssignmentDetails(
     assignmentId: string,
     details: CanvasAssignmentDetails
 ): Promise<WritingAssignment | null> {
+    const brief = details.descriptionText?.trim();
     return assignments(ctx).findOneAndUpdate(
         { id: assignmentId, courseId },
         { $set: { canvasDetails: details, updatedAt: new Date() } },
         { returnDocument: 'after' }
-    );
+    ).then(async (updated) => {
+        if (!updated || !brief || updated.instructions?.trim()) return updated;
+        return assignments(ctx).findOneAndUpdate(
+            { id: assignmentId, courseId },
+            { $set: { instructions: brief, updatedAt: new Date() } },
+            { returnDocument: 'after' }
+        );
+    });
 }
 
 

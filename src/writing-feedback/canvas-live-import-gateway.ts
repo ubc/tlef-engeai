@@ -314,6 +314,11 @@ export class LiveCanvasImportGateway implements CanvasImportGateway {
             .map((assignment) => ({
                 canvasAssignmentId: String(assignment.id),
                 title: assignment.name?.trim() || 'Untitled Canvas assignment',
+                // Canvas serializes the brief as rich-editor HTML on the index response, so it
+                // is converted here rather than passed through: the field feeds the local
+                // assignment instructions, which staff read and the auto-fill prompt sends to
+                // the model, and neither has any use for markup.
+                description: text(assignment.description) ? htmlToText(text(assignment.description)) : undefined,
                 // Canvas's assignment payload carries no submitted count; the preview reports it.
                 submissionCount: undefined,
                 pointsPossible: typeof assignment.points_possible === 'number' ? assignment.points_possible : undefined,
