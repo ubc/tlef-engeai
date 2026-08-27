@@ -86,6 +86,7 @@ export interface PathwayCta {
  *
  * Evaluated pre-LLM on Socratic/Explanatory sends. List `order` is library list position.
  * Empty `assistantResponse` or `enabled: false` makes the pathway ineligible to intercept.
+ * The evaluation system-prompt shell is a separate singleton in the same collection (not this type).
  */
 export interface GuidedPathway {
     id: string; // stable pathway id (seed keeps mental-health-crisis etc.)
@@ -97,6 +98,18 @@ export interface GuidedPathway {
     assistantResponse: string; // markdown reply; empty => cannot intercept
     ctas: PathwayCta[]; // resource buttons shown with the predetermined reply
     updatedAt: number; // Unix epoch ms of last instructor edit
+}
+
+/**
+ * Course-scoped Guided Pathway classifier system-prompt shell (API + instructor UI).
+ *
+ * Stored as a reserved singleton in `{courseName}_pathways` (`__evaluation_system_prompt`).
+ * Runtime fills `{{pathway_trigger_sections}}` from pathway trigger cards.
+ */
+export interface PathwayEvaluationPromptConfig {
+    usePlatformDefault: boolean; // true => body is the platform default (or treat as such)
+    body: string; // shell text shown/edited; platform default when usePlatformDefault
+    updatedAt: number; // Unix epoch ms of last change
 }
 
 /**
@@ -224,7 +237,11 @@ export interface CourseFeatures {
 }
 
 /** UI catalog ids for course-wide LLM model selection. */
-export type CourseLlmModelId = 'gpt-5.6-luna' | 'gpt-5.4-mini' | 'gpt-4o-mini';
+export type CourseLlmModelId =
+    | 'gpt-5.6-luna'
+    | 'qwen3.8-27b'
+    | 'qwen3.6-35b-a3b'
+    | 'gpt-4.1-mini-engeai-local';
 
 /** Official provider reasoning effort values — aligned with ubc-genai-toolkit-llm `ReasoningEffort`. */
 export type ProviderReasoningLevel =
@@ -289,6 +306,11 @@ export interface LlmModelDashboardCatalogEntry {
     label: string;
     costTier: 'low' | 'medium' | 'high';
     reasoningOptions: LlmReasoningCatalogOption[];
+    /**
+     * True when the model is listed for context but cannot be chosen — the picker
+     * renders it disabled and PATCH rejects it. Absent means selectable.
+     */
+    unavailable?: boolean;
 }
 
 /** GET `/api/courses/:courseId/llm-model-catalog` response body. */
@@ -306,13 +328,41 @@ export interface UpdateCourseLlmSettingsRequest {
     memoryAgent: FeatureLlmSelection;
 }
 
+/**
+ * Link between an EngE-AI course and the LMS course it was imported from.
+ *
+ * Set once, when an instructor imports a course from their LMS; it is what lets a
+ * student who connects the same LMS land in the right EngE-AI course. A course
+ * created by an admin in EngE-AI has no `lmsLink` and is joined by course code.
+ *
+ * `provider` is stored explicitly because the LMS package's `LmsCourse` dropped its
+ * own `provider` tag in 1.0.0 — ids are provider-scoped, so a bare `courseId` is
+ * ambiguous once more than one LMS is configured.
+ */
+export interface CourseLmsLink {
+    /** Which LMS `courseId` belongs to. Only Canvas imports courses today. */
+    provider: 'canvas';
+    /** The LMS's own course id, as a string (Canvas returns a number). */
+    courseId: string;
+    /** Course title as the LMS reported it at link time; display only, never re-matched on. */
+    name: string;
+    /** Course code as the LMS reported it at link time, e.g. `APSC183-101`. */
+    code: string;
+    linkedAt: Date;
+    /** `GlobalUser.userId` of the instructor who imported it — never a PUID. */
+    linkedBy: string;
+}
+
 export interface activeCourse {
     id : string,
     date : Date,
-    courseSetup : boolean, 
-    contentSetup : boolean,
-    flagSetup : boolean,
-    monitorSetup : boolean,
+    courseSetup : boolean,
+    /** @deprecated moved to `GlobalUser.instructorOnboarding` (OB-002); retained for rollback only */
+    contentSetup? : boolean,
+    /** @deprecated moved to `GlobalUser.instructorOnboarding` (OB-002); retained for rollback only */
+    flagSetup? : boolean,
+    /** @deprecated moved to `GlobalUser.instructorOnboarding` (OB-002); retained for rollback only */
+    monitorSetup? : boolean,
     courseName: string,
     instructors: InstructorInfo[] | string[]; // Support both old format (string[]) and new format (InstructorInfo[])
     teachingAssistants: InstructorInfo[] | string[]; // Support both old format (string[]) and new format (InstructorInfo[])
@@ -320,6 +370,11 @@ export interface activeCourse {
     tilesNumber: number;
     topicOrWeekInstances: TopicOrWeekInstance[]; // previously content, previously divisions
     courseCode?: string; // 6-character uppercase alphanumeric PIN code for course entry
+    /**
+     * Present only on courses imported from an LMS. Absent on admin-created courses,
+     * which students join with {@link activeCourse.courseCode} instead.
+     */
+    lmsLink?: CourseLmsLink;
     collections?: {
         users: string;
         flags: string;
@@ -557,40 +612,64 @@ export interface InstructorStruggleTopicForDisplay {
 }
 
 /**
- * Additional material attached to a course content item (front-end only for now)
+ * Additional material attached to a course content item.
  *
- * additional material is only applicable for text only eventually (as we use RAG)
- * 
- * So initially, instructor can upload file, url, or text.
- * 
- * But eventually, we will only allow text (processed in the backend).
+ * This is the persisted shape: Mongo `additionalMaterials[]`, RAG 201 `data`, and the
+ * Documents UI list. Browser `File`, nested `file`, `extractedText`, and singular
+ * `qdrantId` are upload leftovers — hoist then strip; never store them.
  */
 export type AdditionalMaterialSource = 'file' | 'url' | 'text';
 
+/** Keys stored on Mongo / returned to the Documents UI. Must match `additionalMaterialFields`. */
+export const PERSISTED_ADDITIONAL_MATERIAL_KEYS = [
+    'id',
+    'date',
+    'name',
+    'courseName',
+    'topicOrWeekTitle',
+    'itemTitle',
+    'sourceType',
+    'text',
+    'fileName',
+    'uploaded',
+    'qdrantChunkIds',
+    'chunksGenerated',
+    'deleted',
+    'deletedAt',
+    'uploadedBy',
+    'courseId',
+    'topicOrWeekId',
+    'itemId',
+] as const;
+
+export type PersistedAdditionalMaterialKey = (typeof PERSISTED_ADDITIONAL_MATERIAL_KEYS)[number];
+
 export interface AdditionalMaterial {
-    id: string,
-    date : Date,
+    id: string;
+    date: Date;
     name: string;
     courseName: string;
     topicOrWeekTitle: string;
     itemTitle: string;
     sourceType: AdditionalMaterialSource;
-    file?: File;
     text?: string;
-    fileName?: string; // Store the actual filename for display
-    uploaded?: boolean; // Track if successfully uploaded to Qdrant
-    qdrantId?: string; // Store Qdrant document ID
-    chunksGenerated?: number; // Number of chunks generated in Qdrant
-    /** Parsed upload text for struggle-topic generation; not persisted on Mongo material records. */
-    extractedText?: string;
-    deleted?: boolean; // Soft delete flag (defaults to false/undefined for backward compatibility)
-    deletedAt?: Date; // Timestamp when material was deleted
-    uploadedBy?: string; // Track who uploaded the material
-    // Add these three optional fields:
+    fileName?: string;
+    uploaded?: boolean;
+    qdrantChunkIds?: string[];
+    chunksGenerated?: number;
+    deleted?: boolean;
+    deletedAt?: Date;
+    uploadedBy?: string;
     courseId?: string;
     topicOrWeekId?: string;
     itemId?: string;
 }
+
+/** In-memory upload only. `file` and `extractedText` are never written to Mongo. */
+export type AdditionalMaterialUpload = AdditionalMaterial & {
+    file?: { buffer: Buffer; originalname?: string };
+    extractedText?: string;
+};
 
 /**
  * Optional fields on RAG upload 201 responses when struggle-topic generation runs post-upload.
@@ -726,6 +805,23 @@ export interface GuidedPathwayFlagListPage {
 
 
 /**
+ * Per-user instructor tutorial progress.
+ *
+ * A missing or `false` entry means the tutorial is still owed, which is how users who
+ * predate this field are routed through the stages. Progress follows the person rather
+ * than the course, so a new instructor joining an already-set-up course is still taught,
+ * while a returning instructor is never taught the same tutorial twice.
+ *
+ * `courseSetup` is deliberately absent: it writes real course configuration and stays on
+ * {@link activeCourse} so a second instructor cannot override the first one's choices.
+ */
+export interface InstructorOnboardingProgress {
+    contentSetup?: boolean;
+    flagSetup?: boolean;
+    monitorSetup?: boolean;
+}
+
+/**
  * Global user registry
  * Stores core user identity across all courses
  * NOTE: This is the ONLY collection that should store PUID for privacy reasons
@@ -745,6 +841,8 @@ export interface GlobalUser {
     studentOnboardingCompleted?: boolean;
     /** platform admin — all instructor privileges plus admin-only features */
     isAdmin?: boolean;
+    /** Per-user instructor tutorial progress; see {@link InstructorOnboardingProgress}. Backfilled by OB-002. */
+    instructorOnboarding?: InstructorOnboardingProgress;
 }
 
 /**
@@ -1197,4 +1295,41 @@ export interface ScenarioSolutionResponse {
         subQuestions: ScenarioSubQuestion[];
     };
     error?: string;
+}
+
+// ===========================================
+// ========= SESSION IDLE UX ================
+// ===========================================
+
+/** Server idle phase derived from lastActivityAt and env thresholds. */
+export type SessionIdleState = 'active' | 'warning' | 'expired';
+
+/** Per-response client instruction for inactivity UX (not a persisted state). */
+export type SessionIdleUiAction = 'none' | 'show_inactivity_warning' | 'force_logout';
+
+/** Idle snapshot returned on GET/POST /api/user/activity. */
+export interface SessionIdleStatus {
+    serverTime: number; // server epoch ms at computation time
+    lastActivityAt: number; // session anchor epoch ms
+    state: SessionIdleState; // active | warning | expired
+    warningAt: number; // lastActivityAt + idle-before-warning
+    expiresAt: number; // warningAt + grace-after-warning
+    remainingMsUntilWarning: number; // ms until warningAt (0 when past)
+    remainingMsUntilGraceExpiry: number; // ms until expiresAt (0 when past)
+}
+
+/** Client poll/UI directive for one activity API response. */
+export interface SessionIdleClientDirective {
+    pollAfterMs: number; // ms until next GET /api/user/activity (0 = stop)
+    uiAction: SessionIdleUiAction; // modal/logout instruction for this response
+    warningCountdownSec?: number; // when uiAction is show_inactivity_warning
+}
+
+/** GET/POST /api/user/activity response shape. */
+export interface SessionIdleStatusResponse {
+    success: boolean;
+    idle: SessionIdleStatus;
+    client: SessionIdleClientDirective;
+    error?: string;
+    code?: string; // INACTIVITY_EXPIRED on 401
 }

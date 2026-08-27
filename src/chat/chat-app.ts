@@ -19,6 +19,7 @@ import { Chat, ChatMessage, ConversationModeId, PersistedConversationModeId, Lea
 import { conversationModePrompts } from './compose-system-prompt';
 import { assembleCourseSystemPrompt } from './system-prompts/assemble-course-system-prompt';
 import { getDefaultAssistantMessage } from './initial-assistant-prompt-default';
+import { appendLegalAiDisclaimer } from './legal-ai-disclaimer';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { memoryAgent } from '../memory-agent/memory-agent';
 import { isMockResponse, generateMockStreamingResponse } from '../helpers/mock-response';
@@ -32,7 +33,12 @@ import {
     ensureDebugModeTemplate,
     isDebugToggleMessage,
 } from './system-prompts/debug-mode-prompt';
+import {
+    invokeDebugScenarioSuggestions,
+    isScenarioDebugMessage,
+} from './system-prompts/debug-scenario-invoke';
 import { generateChatTitleFromResponse } from './chat-title';
+import { formatStruggleTopicsUserBridge } from './struggle-topics-bridge';
 
 /**
  * Shown to students who try to send a new message in a retired scenario-generation chat.
@@ -368,8 +374,19 @@ export class ChatApp {
             };
         }
 
-        // Sticky debug turns: prompt-engineer path with full teaching system prompt
+        // Sticky debug turns: /scenario short-circuit or prompt-engineer path
         if (isAdmin && this.debugModeByChat.get(chatId) === true) {
+            if (isScenarioDebugMessage(message)) {
+                return {
+                    assistantMessage: await this.sendDebugScenarioSuggestions(
+                        message,
+                        chatId,
+                        userId,
+                        courseName
+                    ),
+                    pathwayTrigger: null,
+                };
+            }
             return {
                 assistantMessage: await this.sendDebugModeMessage(
                     message,
@@ -454,8 +471,8 @@ export class ChatApp {
         try {
             const ragApp = await RAGApp.getInstance();
             const documents = await ragApp.retrieveForChat(message, courseName, {
-                limit: 3,
-                scoreThreshold: 0.4,
+                limit: 5,
+                scoreThreshold: 0.2,
             });
             ragContext = ragPrompts.formatRetrievedContext(documents);
             documentsLength = documents.length;
@@ -498,7 +515,7 @@ ${chunkDump}
         }
 
         // ====================================================================
-        // STEP 3: FORMAT USER PROMPT WITH RAG CONTEXT AND UNSTRUGGLE REVEAL TAG
+        // STEP 3: FORMAT USER PROMPT WITH RAG CONTEXT + STRUGGLE TOPICS BRIDGE
         // ====================================================================
         
         if (documentsLength > 0) {
@@ -514,9 +531,11 @@ ${chunkDump}
         }
 
         // Phase note: struggle topics apply to Socratic chats. Memory Agent on → inject
-        // catalog labels / unstruggle reveal; Memory Agent off → empty-tag Socratic bridge.
+        // catalog labels only; the model decides questionUnstruggle via system prompt (socratic analyser).
+        // Memory Agent off → empty-tag Socratic bridge.
         const struggleTopicsEnabledForChat = this.isStruggleTopicsEnabledForChat(chatId);
         const memoryAgentEnabled = isCourseFeatureEnabled(course, 'memoryAgent');
+
         if (struggleTopicsEnabledForChat && memoryAgentEnabled) {
             const struggleTopics = await memoryAgent.getStruggleWords(userId, courseName);
 
@@ -537,11 +556,8 @@ ${chunkDump}
 
                 //END DEBUG LOG : DEBUG-CODE(STRUGGLE-TOPICS)
 
-                // add the struggle topics to the additional context
-                additionalContext += `Based on our conversation, I've identified these topics you might want to focus on: <struggle_topics>${struggleTopics.join(', ')}</struggle_topics>\n\nPlease see the rules int he system prompt for how to covney information about any of these topics if the current user prompt is not asking about any of these topics`;
-
-                // add the questionUnstruggle tag to the additional context
-                additionalContext += '\n<questionUnstruggle reveal="TRUE"> \n by this tag this means that you SHOULD select the most relevant struggle topic from the <struggle_topics> tags, and add the <questionUnstruggle Topic="topic"> tag to the end of the response. ';
+                // Inject list only — match / interpretive vs socratic / unstruggle emit live in system modules.
+                additionalContext += formatStruggleTopicsUserBridge(struggleTopics);
             } else {
 
                 appLogger.log(`
@@ -554,7 +570,7 @@ ${chunkDump}
                     *
                     *`);
 
-                additionalContext += '\n<questionUnstruggle reveal="FALSE"> \n by this tag this means that you should NOT add the <questionUnstruggle Topic="topic"> tag to the end of the response';
+                additionalContext += formatStruggleTopicsUserBridge([]);
             }
         } else if (struggleTopicsEnabledForChat && !memoryAgentEnabled) {
             // Socratic chat with Memory Agent off: explicit empty struggle list, stay Socratic.
@@ -571,11 +587,7 @@ ${chunkDump}
                 *`
             );
 
-            additionalContext +=
-                'There are currently no struggle topics for this student: <struggle_topics></struggle_topics>\n\n' +
-                'Please continue in Socratic mode: ask guiding questions to help the student reason through the problem. ' +
-                '<questionUnstruggle reveal="FALSE">\n' +
-                'by this tag this means that you should NOT add the <questionUnstruggle Topic="topic"> tag to the end of the response.';
+            additionalContext += formatStruggleTopicsUserBridge([]);
         } else {
             const mode = this.chatConversationModes.get(chatId) ?? 'unset';
             appLogger.log(`
@@ -610,54 +622,52 @@ ${chunkDump}
         forkedConversation.addMessage('user', additionalContext);
 
         // ====================================================================
-        // LOG BOTH ORIGINAL AND FORKED CONVERSATION HISTORIES
+        // TRANSPARENCY LOG: system prompt + RAG + bridge + forked conversation
         // ====================================================================
+        // START DEBUG LOG : DEBUG-CODE(LLM-TRANSPARENCY)
+        {
+            const forkedConversationHistory = forkedConversation.getHistory() as Message[];
+            const systemMsg = (originalConversationHistory as Message[]).find(
+                (m) => m.role === 'system'
+            );
+            const systemPromptText = systemMsg?.content ?? '(no system message on conversation)';
+            const forkedDump = forkedConversationHistory
+                .map((msg, index) => {
+                    const role = String(msg.role).toUpperCase();
+                    const content = typeof msg.content === 'string' ? msg.content : String(msg.content);
+                    return `*  [${index + 1}] ${role} (${content.length} chars)\n${content}`;
+                })
+                .join('\n*\n');
 
-        // // Log original conversation (stored in Maps)
-        // appLogger.log(`\n📝 ORIGINAL CONVERSATION HISTORY (Chat: ${chatId}, User: ${userId}) - STORED IN MAPS:`);
-        // appLogger.log(`Total messages: ${originalConversationHistory.length}`);
-        // appLogger.log('='.repeat(80));
-
-        // originalConversationHistory.forEach((msg: any, index: number) => {
-        //     const role = msg.role.toUpperCase();
-        //     const content = msg.content;
-        //     const charCount = content.length;
-
-        //     appLogger.log(`[${index + 1}] ${role} - ${charCount} chars:`);
-        //     appLogger.log(`${content}`);
-        //     appLogger.log('-'.repeat(40));
-        // });
-        // appLogger.log('='.repeat(80));
-
-        // appLogger.log('\n'.repeat(10));
-
-        // Log forked conversation (used for LLM call)
-        // const forkedConversationHistory : Message[] = forkedConversation.getHistory();
-        // appLogger.log(`\n📝 FORKED CONVERSATION HISTORY (Chat: ${chatId}, User: ${userId}) - SENT TO LLM:`);
-        // appLogger.log(`Total messages: ${forkedConversationHistory.length}`);
-        // appLogger.log('='.repeat(80));
-
-        // forkedConversationHistory.forEach((msg: Message, index: number) => {
-        //     const role = msg.role.toUpperCase();
-        //     const content = msg.content;
-        //     const charCount = content.length;
-
-        //     appLogger.log(`[${index + 1}] ${role} - ${charCount} chars:`);
-        //     appLogger.log(`${content}`);
-        //     appLogger.log('-'.repeat(40));
-        // });
-        // appLogger.log('='.repeat(80));
-
-        // // printing out the full user prompt from this conversation
-        // appLogger.log(`\n\n📝 FULL USER PROMPT FROM THIS CONVERSATION:\n\n`);
-        // appLogger.log(`${message}`);
-        // appLogger.log('='.repeat(80));
-
-        // appLogger.log(`\n\n📝 FULL ADDITIONAL CONTEXT FROM THIS CONVERSATION:\n\n`);
-        // appLogger.log(`${additionalContext}`);
-        // appLogger.log('='.repeat(80));
-
-        // appLogger.log(`📝 END CONVERSATION LOG\n`);
+            appLogger.log(`
+*
+*
+* ########## LLM TRANSPARENCY DUMP ################
+*  chatId=${chatId}  userId=${userId}  course=${courseName}
+*  mode=${this.chatConversationModes.get(chatId) ?? 'unset'}
+*  ragChunks=${documentsLength}  ragFailed=${ragRetrievalFailed}
+*
+* ========== 1) SYSTEM PROMPT (${systemPromptText.length} chars) ==========
+*
+${systemPromptText}
+*
+* ========== 2) RETRIEVED DOCUMENTS / RAG CONTEXT (${ragContext.length} chars) ==========
+*
+${ragContext || '(empty — no chunks or retrieval failed)'}
+*
+* ========== 3) USER TURN BRIDGE (RAG bridge + student message + struggle bridge) (${additionalContext.length} chars) ==========
+*
+${additionalContext}
+*
+* ========== 4) FORKED CONVERSATION SENT TO LLM (${forkedConversationHistory.length} messages) ==========
+*
+${forkedDump}
+*
+* ##################################################################
+*
+*`);
+        }
+        // END DEBUG LOG : DEBUG-CODE(LLM-TRANSPARENCY)
 
         // Calculate token statistics for file logging
         let totalCharacters = 0;
@@ -884,6 +894,7 @@ ${chunkDump}
 
         let learningObjectives: LearningObjectiveForDisplay[] = [];
         let systemPromptConfig = null;
+        let memoryAgentEnabled: boolean | undefined;
 
         if (courseName) {
             try {
@@ -892,6 +903,7 @@ ${chunkDump}
                 if (course?.id) {
                     learningObjectives = await mongoDB.getAllLearningObjectives(course.id);
                     systemPromptConfig = await mongoDB.getSystemPromptConfig(course.id);
+                    memoryAgentEnabled = isCourseFeatureEnabled(course, 'memoryAgent');
                     appLogger.log(
                         `📚 Retrieved ${learningObjectives.length} learning objectives for system prompt (mode=${persistedMode})`
                     );
@@ -906,6 +918,7 @@ ${chunkDump}
             courseName,
             learningObjectives,
             config: systemPromptConfig,
+            memoryAgentEnabled,
         });
 
         try {
@@ -924,12 +937,14 @@ ${chunkDump}
         learningObjectives: LearningObjectiveForDisplay[]
     ): Promise<string> {
         let systemPromptConfig = null;
+        let memoryAgentEnabled: boolean | undefined;
         if (courseName) {
             try {
                 const mongoDB = await EngEAI_MongoDB.getInstance();
                 const course = await mongoDB.getCourseByName(courseName);
                 if (course?.id) {
                     systemPromptConfig = await mongoDB.getSystemPromptConfig(course.id);
+                    memoryAgentEnabled = isCourseFeatureEnabled(course, 'memoryAgent');
                 }
             } catch (error) {
                 appLogger.error('❌ Error loading system prompt config:', error);
@@ -940,6 +955,7 @@ ${chunkDump}
             courseName,
             learningObjectives,
             config: systemPromptConfig,
+            memoryAgentEnabled,
         });
     }
 
@@ -989,6 +1005,9 @@ ${chunkDump}
                 // Fall back to default on error
             }
         }
+
+        // Append Counsel-required short disclaimer (every new chat; instructors cannot remove it)
+        defaultMessageText = appendLegalAiDisclaimer(defaultMessageText);
         
         // Generate message ID using the first 10 words, chatID, and current date
         const currentDate = new Date();
@@ -1465,6 +1484,40 @@ ${chunkDump}
         const reply = ensureDebugModeTemplate(body);
         appLogger.log(`[DEBUG-MODE] Chat ${chatId} debugMode=${enabled}`);
         return this.addAssistantMessage(chatId, reply, userId, courseName);
+    }
+
+    /**
+     * sendDebugScenarioSuggestions - Sticky-DEBUG `/scenario` short-circuit into Yes follow-up chips.
+     *
+     * Only called when sticky DEBUG is on for an admin. Reuses the unstruggle-Yes pipeline
+     * via {@link invokeDebugScenarioSuggestions}; does not strip struggle state.
+     *
+     * @param message - Raw `/scenario` or `/scenario <topic>` text
+     * @param chatId - Active chat
+     * @param userId - Sender user id
+     * @param courseName - Active course
+     * @returns Assistant message with encouragement + optional `<scenarioSuggestions>` tag
+     */
+    private async sendDebugScenarioSuggestions(
+        message: string,
+        chatId: string,
+        userId: string,
+        courseName: string
+    ): Promise<ChatMessage> {
+        this.addUserMessageToHistoryOnly(chatId, message, userId, courseName);
+
+        const followUp = await invokeDebugScenarioSuggestions({
+            userId,
+            courseName,
+            message,
+            recentMessages: this.formatRecentChatExcerpt(chatId),
+        });
+
+        appLogger.log(
+            `[DEBUG-SCENARIO] Chat ${chatId} topic="${followUp.topic}" suggestions=${followUp.scenarioSuggestions.length}`
+        );
+
+        return this.addAssistantMessage(chatId, followUp.displayText, userId, courseName);
     }
 
     /**

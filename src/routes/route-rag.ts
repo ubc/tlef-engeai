@@ -9,7 +9,8 @@ import express, { Request, Response } from 'express';
 import multer from 'multer';
 import { appLogger } from '../utils/logger';
 import { RAGApp } from '../rag/rag-app';
-import { AdditionalMaterial } from '../types/shared';
+import { AdditionalMaterial, AdditionalMaterialUpload } from '../types/shared';
+import { hoistMaterialFile, materialChunkIds } from '../migrate/schema-walker';
 import { asyncHandlerWithAuth } from '../middleware/async-handler';
 import { requireInstructorForCourseAPI, requireInstructorGlobal } from '../middleware/require-course-role';
 import { isCourseFeatureEnabled } from '../dashboard-setting/course-features';
@@ -28,7 +29,7 @@ const router = express.Router();
  */
 async function persistMaterialAndGenerateStruggleTopics(
     ragApp: RAGApp,
-    result: AdditionalMaterial,
+    result: AdditionalMaterialUpload,
     body: {
         courseId?: string;
         topicOrWeekId?: string;
@@ -41,9 +42,10 @@ async function persistMaterialAndGenerateStruggleTopics(
     const { courseId, topicOrWeekId, itemId, topicOrWeekTitle, itemTitle } = body;
     let mongoSaveSucceeded = false;
 
-    if (result.uploaded && result.qdrantId && courseId && topicOrWeekId && itemId) {
+    const hasChunks = materialChunkIds(result).length > 0;
+    if (result.uploaded && hasChunks && courseId && topicOrWeekId && itemId) {
         try {
-            const { extractedText: _omitText, file: _omitFile, ...persistable } = result;
+            const persistable = hoistMaterialFile(result) as unknown as AdditionalMaterial;
             const materialWithUser = {
                 ...persistable,
                 uploadedBy,
@@ -282,7 +284,7 @@ router.post('/documents/parse/text', requireInstructorGlobal, asyncHandlerWithAu
  * @param {string} [courseId] - Course ID for MongoDB metadata (body)
  * @param {string} [topicOrWeekId] - Topic/week ID for MongoDB metadata (body)
  * @param {string} [itemId] - Item ID for MongoDB metadata (body)
- * @returns {object} { status: number, message?: string, data?: { id, name, uploaded, qdrantId, chunksGenerated }, details?: string }
+ * @returns {object} { status: number, message?: string, data?: { id, name, uploaded, qdrantChunkIds, chunksGenerated }, details?: string }
  * @response 201 - Document uploaded successfully
  * @response 400 - Validation error (missing fields, invalid text)
  * @response 401 - User not authenticated
@@ -298,7 +300,7 @@ router.post('/documents/text', validateTextDocument, requireInstructorForCourseA
 
         const ragApp = await RAGApp.getInstance();
 
-        const document: AdditionalMaterial = {
+        const document: AdditionalMaterialUpload = {
             id: '',
             date: new Date(),
             name: req.body.name,
@@ -328,7 +330,7 @@ router.post('/documents/text', validateTextDocument, requireInstructorForCourseA
                 id: result.id,
                 name: result.name,
                 uploaded: result.uploaded,
-                qdrantId: result.qdrantId,
+                qdrantChunkIds: result.qdrantChunkIds ?? [],
                 chunksGenerated: result.chunksGenerated || 0,
                 ...strugglePayload,
             }
@@ -356,7 +358,7 @@ router.post('/documents/text', validateTextDocument, requireInstructorForCourseA
  * @param {string} [courseId] - Course ID for MongoDB metadata (body)
  * @param {string} [topicOrWeekId] - Topic/week ID for MongoDB metadata (body)
  * @param {string} [itemId] - Item ID for MongoDB metadata (body)
- * @returns {object} { status: number, message?: string, data?: { id, name, fileName, uploaded, qdrantId, chunksGenerated }, details?: string }
+ * @returns {object} { status: number, message?: string, data?: { id, name, fileName, uploaded, qdrantChunkIds, chunksGenerated }, details?: string }
  * @response 201 - File uploaded and processed successfully
  * @response 400 - Validation error (missing file, invalid type, size limit exceeded)
  * @response 401 - User not authenticated
@@ -380,7 +382,7 @@ router.post('/documents/file', upload.single('file'), validateFileDocument, requ
             });
         }
 
-        const document: AdditionalMaterial = {
+        const document: AdditionalMaterialUpload = {
             id: '',
             date: new Date(),
             name: req.body.name,
@@ -410,7 +412,7 @@ router.post('/documents/file', upload.single('file'), validateFileDocument, requ
                 name: result.name,
                 fileName: result.fileName,
                 uploaded: result.uploaded,
-                qdrantId: result.qdrantId,
+                qdrantChunkIds: result.qdrantChunkIds ?? [],
                 chunksGenerated: result.chunksGenerated || 0,
                 ...strugglePayload,
             }

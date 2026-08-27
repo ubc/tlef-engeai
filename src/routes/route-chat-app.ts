@@ -20,6 +20,7 @@ import { isAdminUser } from '../utils/admin';
 import { isDebugToggleMessage } from '../chat/system-prompts/debug-mode-prompt';
 import { persistGuidedPathwayFlagSafely } from '../flags/guided-pathway-flag-service';
 import { resolveGuidedPathwayFlagTriggerActor } from '../flags/guided-pathway-flag-policy';
+import { isScenarioDebugMessage } from '../chat/system-prompts/debug-scenario-invoke';
 
 import { getRandomNoResponse } from '../memory-agent/unstruggle-responses';
 import { memoryAgent } from '../memory-agent/memory-agent';
@@ -865,7 +866,7 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
 
             const isAdmin = isAdminUser(globalUser);
 
-            if (isDebugToggleMessage(message) && !isAdmin) {
+            if ((isDebugToggleMessage(message) || isScenarioDebugMessage(message)) && !isAdmin) {
                 return res.status(403).json({
                     success: false,
                     error: 'Debug mode is admin-only',

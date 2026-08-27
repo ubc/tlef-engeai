@@ -286,24 +286,26 @@ Instructor hamburger styling stays in [`instructor-mode.css`](public/styles/inst
 
 ---
 
-## Marketing homepage (`/` and `/team`)
+## Marketing homepage (`/`, `/team`, `/docs`, `/pages/ai-disclaimer.html`)
 
 Public marketing shell (not the course app). Styles live in `public/styles/home.css`.
 
 | Concern | Behavior |
 |---------|----------|
-| Breakpoints | Mobile-first; **centered** GitHub-style hero (copy above video) at all widths. Supporting extras (`#supporting`) use a **3-col hairline bento** at **768px** (stacks with horizontal dividers on small screens). Testimonials multi-column at **768px**. Team roster: multi-member grids go 2-col at **480px**; solo sections (PI / Co-I) stay single-column via `.team-grid--solo`. |
+| Breakpoints | Mobile-first; **centered** GitHub-style hero (copy above video) at all widths. Supporting extras (`#supporting`) use a **3-col hairline bento** at **768px** (stacks with horizontal dividers on small screens). Team roster: multi-member grids go 2-col at **480px**; solo sections (PI / Co-I) stay single-column via `.team-grid--solo`. |
 | Theme | Dark by default (`data-home-theme`); topbar sun/moon toggle persists in `localStorage` (`engeai-home-theme`). Light tokens reuse the prior green wash palette. |
 | Topbar | Sticky; brand (CHBE green `--home-chbe-accent`) + theme toggle + Login always visible. **Team** link appears after Learn more (or when session already revealed). Glassy background/border after scroll. |
 | Hero video | Centered full-width (max ~880px); 16:9 frame; green/blue ambient glow. Hero scrolls with the page (no sticky pin). Non-sticky scroll zoom ramps `1.06` → `1.22` and then holds max size while scrolling continues; disabled under `prefers-reduced-motion`. |
 | Features scrub | Sticky scroll-storytelling for three main features (`#features`) at **768px+**. UI stays **pinned** under the topbar while scroll advances steps 1→3 (then the page continues). Desktop: left nav (`~0.75fr`) + right visual (`~1.6fr`); each step’s image lives **inside** its `li` and is positioned absolute into the right column; full-height rail + moving active indicator; inactive titles muted, active title bold with body copy; panels **opacity crossfade** on step change only (no scroll-linked zoom/fade). Feature titles are `<h3 class="home-features-step-title">` (clickable on desktop to jump scrub offset). Feature images share the same frame as supporting extras: **16:9** (`object-fit: cover`, `object-position: left center`) with a **3px** glass border and a green/blue ambient glow biased **upper-right** (same tokens as the hero video, not wraparound). Track height = `sticky-h + N × scroll-per-step + top spacing` (`--home-features-sticky-h` + `3 × 100vh` + `5rem`); JS pin range excludes `padding-top` and maps scroll to step index. `#home-more` reveal animation is **opacity-only** (no `transform` — that would break sticky). Marketing pages use `overflow-x: clip` on `html`/`body` (not `hidden`) and `overflow: visible` on `main` / `#home-more` so sticky is not broken. Below **768px** and under `prefers-reduced-motion`: **three stacked feature cards**, each **title → description → image** (no sticky pin, no rail, no crossfade); titles are plain non-interactive headings. |
-| Supporting extras | `#supporting` + `#funding` use `--home-promo-band-*`: **light** — CHBE green band (`--home-green`) with off-white type and white bento hairlines; **dark** — muted wash (`--home-surface-muted`, same as testimonials) with CHBE green hairlines (`--home-chbe-accent-line`). Feature images use a **16:9** frame with a **3px** glass border (`--home-support-graphic-border` / `--home-support-graphic-glass`). Shared accents: `--home-chbe-accent` / `--home-chbe-accent-line` also color topbar brand, testimonial card borders, and student status lines. |
-| Home page assets | Under `public/assets/home/`: hero → `EngE-AI-front-page.mov` (poster `main-image.png`); features scrub → `feature-pathway.png`, `feature-scenario.png`, `feature-writing-feedback.png`; supporting extras → `feature-tone.png`, `feature-diagram.png`, `feature-multiple-modes.png`. Testimonials use `avatar-placeholder.svg` until real headshots exist. |
+| Supporting extras | `#supporting` + `#funding` use `--home-promo-band-*`: **light** — CHBE green band (`--home-green`) with off-white type and white bento hairlines; **dark** — muted wash (`--home-surface-muted`) with CHBE green hairlines (`--home-chbe-accent-line`). Feature images use a **16:9** frame with a **3px** glass border (`--home-support-graphic-border` / `--home-support-graphic-glass`). Shared accents: `--home-chbe-accent` / `--home-chbe-accent-line` also color topbar brand and related CHBE accents. |
+| Home page assets | Under `public/assets/home/`: hero → `EngE-AI-front-page.mov` (poster `main-image.png`); features scrub → `feature-pathway.png`, `feature-scenario.png`, `feature-writing-feedback.png`; supporting extras → `feature-tone.png`, `feature-diagram.png`, `feature-multiple-modes.png`; investigators → `alireza-bagherzadeh.jpg`, `amir-dehkhoda.png`. |
 | Security | `#security` — decorative database SVG (dark blue `--home-navy`, transparent bg) on the **left** of the copy at **768px+**; icon gently floats via `homeSecurityFloat` (disabled under `prefers-reduced-motion`). Stacks centered on small screens. |
-| Investigators | `#investigators` — mirrored pair: Alireza (text right-aligned, photo toward center) + Amir (photo toward center, text left-aligned). Circular portraits, no borders; hover zoom on photo (`prefers-reduced-motion` off). Mock `avatar-placeholder.svg` until real headshots (`investigator-alireza.jpg` / `investigator-amir.jpg`). Stacks on small screens. |
-| Grant selector | `#funding` — Year 1 · Year 2 · Total as underline tabs; a single ink bar **slides** under the active option. |
-| Team page (`/team`) | Roster only (no funding acknowledgement — that lives on `/#funding` + footer). Hairline member rows; section labels are uppercase CHBE-green. Link hover is **color only** (no lift). Shared topbar/footer/theme with `/`. |
-| Touch targets | Login / Learn more / Play / theme toggle / grant options use ≥ ~44px targets. Feature step titles are clickable scrub jumps at **768px+** only (plain `<h3>` on phone / reduced-motion). |
+| Investigators | `#investigators` — mirrored pair: Alireza (text right-aligned, photo toward center) + Amir (photo toward center, text left-aligned). Circular portraits (`alireza-bagherzadeh.jpg` / `amir-dehkhoda.png`), no borders; hover zoom on photo (`prefers-reduced-motion` off). Stacks on small screens. |
+| Funding | `#funding` — TLEF title + external proposal link only; empty `.home-grant-stat` spacer keeps the prior amount/year-selector stack height. No dollar amount or Year 1 / Year 2 / Total controls. |
+| Team page (`/team`) | Roster only (no funding acknowledgement — that lives on `/#funding` + footer). Hairline member rows; section labels are uppercase CHBE-green. Link hover is **color only** (no lift). Shared topbar/footer/theme with `/`. Footer links include Documentation (`/docs`), Disclaimer (`/pages/ai-disclaimer.html`), and UBC LTIC (`https://ltic.ubc.ca/`). |
+| Disclaimer page (`/pages/ai-disclaimer.html`) | Counsel terms + FIPPA notice as a **borderless Medium-like article** (`max-width: ~42rem`, ~1.25rem / 1.8 line-height). Shared topbar (`is-scrolled`), footer, and theme with `/` and `/team`. No card, shadow, or header underline. Linked from the marketing footer and the chat footer; there is no in-app disclaimer modal. |
+| Docs page (`/docs`) | Three-pane markdown viewer: left nav (link labels from `nav.json`), article, right “On this page”. **Phone:** hamburger **Menu** at the **top-left of the article**; left nav is a full-height overlay (`z-index` above the topbar) with backdrop covering the topbar; EngE-AI brand shows at the top of the drawer only. **768px+:** sticky left nav (no sidebar brand) + article. **1024px+:** sticky right TOC. Article callouts: collapsible **Developer note** (code icon) and **Agent note** (robot icon, purple); **Prerequisites** and **Relevant readings** stack vertically with bulleted green underlined links (external readings open in a new tab). `` ```mermaid `` fences render as diagrams via Mermaid v10 (CDN). Shared topbar (EngE-AI + Documentation) / footer (logo + EngE-AI + Documentation) / theme with `/`. |
+| Touch targets | Login / Learn more / Play / theme toggle / docs Menu use ≥ ~44px targets. Feature step titles are clickable scrub jumps at **768px+** only (plain `<h3>` on phone / reduced-motion). |
 
 ### Testing additions
 
@@ -313,10 +315,14 @@ Public marketing shell (not the course app). Styles live in `public/styles/home.
 - [ ] 1280px: centered hero scrolls normally; theme toggle flips dark/light
 - [ ] 1280px: features scrub — sticky pin holds under topbar; scroll through steps 1→2→3; click step title jumps; panels opacity-crossfade on step change
 - [ ] 1280px: supporting extras — 3 equal cells, shared hairlines, 16:9 images with 3px glass border
-- [ ] Grant selector: underline tabs Year 1 → Year 2 → Total; dark + light readable
+- [ ] Funding band: TLEF title + link only; spacer keeps prior section height (no dollar amount / year tabs)
 - [ ] Features: `prefers-reduced-motion` and phone widths show title→desc→image cards (no sticky scrub)
 - [ ] `/team` readable at phone and desktop; solo sections stay 1-col; multi-member grids 2-col at 480px+; theme preference shared with `/`
-- [ ] Footer APSC link hover: UBC red color only (no lift)
+- [ ] `/pages/ai-disclaimer.html` readable at phone and desktop; homepage topbar/theme/footer; no card around the article; theme preference shared with `/`
+- [ ] `/docs` at 375px: Menu at top-left of the article opens full-height overlay (covers topbar); EngE-AI brand in drawer; article readable; TOC hidden
+- [ ] `/docs` at 768px: sticky left nav + article
+- [ ] `/docs` at 1024px+: three panes including On this page
+- [ ] Footer APSC link hover: UBC red color only (no lift); Documentation opens `/docs`; Disclaimer opens `/pages/ai-disclaimer.html`; LTIC link opens `https://ltic.ubc.ca/`
 
 ---
 

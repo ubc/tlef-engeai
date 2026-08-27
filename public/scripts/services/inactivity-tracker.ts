@@ -1,229 +1,196 @@
+// public/scripts/services/inactivity-tracker.ts
+
 /**
- * Inactivity Tracker Service
- * 
- * Tracks user activity (clicks and keyboard input) and manages inactivity timers.
- * Shows warning after 4 minutes of inactivity and logs out after 5 minutes total.
- * Supports cross-tab synchronization via server-side activity ping.
- * 
+ * Inactivity Tracker — server-directed idle poll loop
+ *
+ * Polls GET /api/user/activity on client.pollAfterMs only; shows modal or logs out
+ * from client.uiAction. DOM input sends debounced POST { userActivity: true }.
+ *
  * @author: EngE-AI Team
- * @version: 1.0.0
- * @since: 2025-01-27
+ * @date: 2026-08-14
+ * @version: 2.0.0
+ * @description: Dumb client for backend-driven session idle UX.
  */
 
-import type { InactivityTrackerConfig, ActivityData, InactivityEvent } from '../types.js';
+import type { InactivityTrackerConfig, SessionIdleStatusResponse } from '../types.js';
+import { showInactivityWarningModal } from '../ui/modal-overlay.js';
 
-export class InactivityTracker {
+const INACTIVITY_EXPIRED_CODE = 'INACTIVITY_EXPIRED';
+const INACTIVITY_LOGOUT_URL = '/auth/logout';
+
+class InactivityTracker {
     private static instance: InactivityTracker | null = null;
-    
-    private warningTimeoutMs: number = 4 * 60 * 1000; // 4 minutes
-    private logoutTimeoutMs: number = 5 * 60 * 1000; // 5 minutes
-    private serverSyncIntervalMs: number = 30 * 1000; // 30 seconds
-    private activityDebounceMs: number = 100; // 100ms
-    
-    private lastActivityTime: number = Date.now();
-    private serverLastActivityTime: number | null = null;
-    private warningTimer: NodeJS.Timeout | null = null;
-    private logoutTimer: NodeJS.Timeout | null = null;
-    private serverSyncTimer: NodeJS.Timeout | null = null;
-    private activityDebounceTimer: NodeJS.Timeout | null = null;
-    
-    private isTracking: boolean = false;
-    private isPaused: boolean = false;
-    private warningShown: boolean = false;
-    
-    private eventListeners: Map<InactivityEvent, Set<(data?: any) => void>> = new Map();
-    
+
+    private activityDebounceMs = 100;
+    private activityDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+    private pollTimer: ReturnType<typeof setTimeout> | null = null;
+    private pollInFlight = false;
+    private isTracking = false;
+    private warningModalOpen = false;
+
     private clickHandler: ((e: MouseEvent) => void) | null = null;
     private keydownHandler: ((e: KeyboardEvent) => void) | null = null;
     private keypressHandler: ((e: KeyboardEvent) => void) | null = null;
-    
+    private visibilityHandler: (() => void) | null = null;
+
     private constructor(config?: InactivityTrackerConfig) {
-        if (config) {
-            this.warningTimeoutMs = config.warningTimeoutMs ?? this.warningTimeoutMs;
-            this.logoutTimeoutMs = config.logoutTimeoutMs ?? this.logoutTimeoutMs;
-            this.serverSyncIntervalMs = config.serverSyncIntervalMs ?? this.serverSyncIntervalMs;
-            this.activityDebounceMs = config.activityDebounceMs ?? this.activityDebounceMs;
+        if (config?.activityDebounceMs !== undefined) {
+            this.activityDebounceMs = config.activityDebounceMs;
         }
     }
-    
-    /**
-     * Get singleton instance
-     */
+
     public static getInstance(config?: InactivityTrackerConfig): InactivityTracker {
         if (!InactivityTracker.instance) {
             InactivityTracker.instance = new InactivityTracker(config);
         }
         return InactivityTracker.instance;
     }
-    
-    /**
-     * Start tracking user activity
-     */
+
     public start(): void {
         if (this.isTracking) {
-            // console.log('[INACTIVITY-TRACKER] ⚠️ Already tracking, ignoring start()'); // 🟢 MEDIUM: State check logging
             return;
         }
-        
-        // console.log('[INACTIVITY-TRACKER] 🚀 Starting inactivity tracking...'); // 🟢 MEDIUM: Start operation logging
         this.isTracking = true;
-        this.lastActivityTime = Date.now();
-        this.warningShown = false;
-        
-        // Set up event listeners for activity detection
         this.setupActivityListeners();
-        
-        // Start server sync
-        this.startServerSync();
-        
-        // Start timers
-        this.resetTimers();
+        this.setupVisibilityListener();
+        void this.pollCycle();
     }
-    
-    /**
-     * Stop tracking user activity
-     */
+
     public stop(): void {
-        if (!this.isTracking) {
-            return;
-        }
-        
-        // console.log('[INACTIVITY-TRACKER] 🛑 Stopping inactivity tracking...'); // 🟢 MEDIUM: Stop operation logging
         this.isTracking = false;
-        
-        // Remove event listeners
+        this.clearPollTimer();
+        this.clearActivityDebounce();
         this.removeActivityListeners();
-        
-        // Clear timers
-        this.clearTimers();
-        
-        // Stop server sync
-        this.stopServerSync();
+        this.removeVisibilityListener();
+        this.warningModalOpen = false;
     }
-    
-    /**
-     * Reset inactivity timers (called when user activity is detected)
-     */
-    public reset(): void {
-        if (!this.isTracking) {
+
+    private clearPollTimer(): void {
+        if (this.pollTimer !== null) {
+            clearTimeout(this.pollTimer);
+            this.pollTimer = null;
+        }
+    }
+
+    private clearActivityDebounce(): void {
+        if (this.activityDebounceTimer !== null) {
+            clearTimeout(this.activityDebounceTimer);
+            this.activityDebounceTimer = null;
+        }
+    }
+
+    private schedulePoll(pollAfterMs: number): void {
+        this.clearPollTimer();
+        if (!this.isTracking || pollAfterMs <= 0) {
             return;
         }
-        
-        const now = Date.now();
-        const timeSinceLastActivity = now - this.lastActivityTime;
-        
-        // Only reset if significant time has passed (avoid excessive resets)
-        if (timeSinceLastActivity < 1000) {
+        this.pollTimer = setTimeout(() => {
+            void this.pollCycle();
+        }, pollAfterMs);
+    }
+
+    private async pollCycle(): Promise<void> {
+        if (!this.isTracking || this.pollInFlight) {
             return;
         }
-        
-        // console.log('[INACTIVITY-TRACKER] 🔄 Resetting inactivity timers (activity detected)'); // 🟢 MEDIUM: Reset operation logging
-        this.lastActivityTime = now;
-        this.warningShown = false;
-        
-        // Reset timers only if not paused (if paused, timers will be reset on resume)
-        if (!this.isPaused) {
-            this.resetTimers();
-        }
-        
-        // Emit activity reset event
-        this.emit('activity-reset', { timestamp: now });
-    }
-    
-    /**
-     * Pause tracking (e.g., when modal is shown)
-     */
-    public pause(): void {
-        if (this.isPaused) {
-            return;
-        }
-        
-        // console.log('[INACTIVITY-TRACKER] ⏸️ Pausing inactivity tracking...'); // 🟢 MEDIUM: Pause operation logging
-        this.isPaused = true;
-        this.clearTimers();
-    }
-    
-    /**
-     * Resume tracking
-     */
-    public resume(): void {
-        if (!this.isPaused) {
-            return;
-        }
-        
-        // console.log('[INACTIVITY-TRACKER] ▶️ Resuming inactivity tracking...'); // 🟢 MEDIUM: Resume operation logging
-        this.isPaused = false;
-        
-        // Reset timers based on current lastActivityTime (which may have been updated while paused)
-        this.resetTimers();
-    }
-    
-    /**
-     * Get remaining time until warning (in milliseconds)
-     */
-    public getRemainingTimeUntilWarning(): number {
-        if (!this.isTracking || this.isPaused) {
-            return this.warningTimeoutMs;
-        }
-        
-        const elapsed = Date.now() - this.lastActivityTime;
-        const remaining = this.warningTimeoutMs - elapsed;
-        return Math.max(0, remaining);
-    }
-    
-    /**
-     * Get remaining time until logout (in milliseconds)
-     */
-    public getRemainingTimeUntilLogout(): number {
-        if (!this.isTracking || this.isPaused) {
-            return this.logoutTimeoutMs;
-        }
-        
-        const elapsed = Date.now() - this.lastActivityTime;
-        const remaining = this.logoutTimeoutMs - elapsed;
-        return Math.max(0, remaining);
-    }
-    
-    /**
-     * Check if warning has been shown
-     */
-    public isWarningShown(): boolean {
-        return this.warningShown;
-    }
-    
-    /**
-     * Add event listener
-     */
-    public on(event: InactivityEvent, callback: (data?: any) => void): void {
-        if (!this.eventListeners.has(event)) {
-            this.eventListeners.set(event, new Set());
-        }
-        this.eventListeners.get(event)!.add(callback);
-    }
-    
-    /**
-     * Remove event listener
-     */
-    public off(event: InactivityEvent, callback: (data?: any) => void): void {
-        const listeners = this.eventListeners.get(event);
-        if (listeners) {
-            listeners.delete(callback);
+        this.pollInFlight = true;
+        try {
+            const response = await this.fetchActivity('GET');
+            if (!response) {
+                this.schedulePoll(5000);
+                return;
+            }
+            await this.applyClientDirective(response);
+        } finally {
+            this.pollInFlight = false;
         }
     }
-    
-    /**
-     * Emit event to all listeners
-     */
-    private emit(event: InactivityEvent, data?: any): void {
-        const listeners = this.eventListeners.get(event);
-        if (listeners) {
-            listeners.forEach(callback => {
-                try {
-                    callback(data);
-                } catch (error) {
-                    console.error(`[INACTIVITY-TRACKER] Error in event listener for ${event}:`, error);
-                }
+
+    private async fetchActivity(method: 'GET' | 'POST', body?: object): Promise<SessionIdleStatusResponse | null> {
+        try {
+            const response = await fetch('/api/user/activity', {
+                method,
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: body ? JSON.stringify(body) : undefined,
             });
+
+            let data: SessionIdleStatusResponse | null = null;
+            try {
+                data = await response.json() as SessionIdleStatusResponse;
+            } catch {
+                data = null;
+            }
+
+            if (response.status === 401 && data?.code === INACTIVITY_EXPIRED_CODE) {
+                this.handleForceLogout();
+                return null;
+            }
+
+            if (!response.ok || !data?.client) {
+                return null;
+            }
+
+            return data;
+        } catch {
+            return null;
+        }
+    }
+
+    private async applyClientDirective(data: SessionIdleStatusResponse): Promise<void> {
+        const { client } = data;
+
+        if (client.uiAction === 'show_inactivity_warning') {
+            void this.showWarningModal(client.warningCountdownSec ?? 60);
+        }
+
+        if (client.uiAction === 'force_logout') {
+            this.handleForceLogout();
+            return;
+        }
+
+        this.schedulePoll(client.pollAfterMs);
+    }
+
+    private async showWarningModal(remainingSeconds: number): Promise<void> {
+        if (this.warningModalOpen) {
+            return;
+        }
+        this.warningModalOpen = true;
+
+        const result = await showInactivityWarningModal(remainingSeconds, () => {
+            void this.sendActivityHeartbeat();
+        });
+
+        this.warningModalOpen = false;
+
+        if (result.action === 'stay-active') {
+            return;
+        }
+
+        if (result.action === 'timeout') {
+            this.handleForceLogout();
+            return;
+        }
+    }
+
+    private handleForceLogout(): void {
+        this.stop();
+        window.location.replace(INACTIVITY_LOGOUT_URL);
+    }
+
+    private async sendActivityHeartbeat(): Promise<void> {
+        if (this.pollInFlight) {
+            return;
+        }
+        this.pollInFlight = true;
+        try {
+            const response = await this.fetchActivity('POST', { userActivity: true });
+            if (response) {
+                await this.applyClientDirective(response);
+            }
+        } finally {
+            this.pollInFlight = false;
         }
     }
     
@@ -233,203 +200,88 @@ export class InactivityTracker {
     private setupActivityListeners(): void {
         // Click handler
         this.clickHandler = (e: MouseEvent) => {
-            // Don't count clicks on modal overlays (to prevent reset during warning)
             const target = e.target as HTMLElement;
             if (target.closest('.modal-overlay')) {
                 return;
             }
-            this.handleActivity();
+            this.onDomActivity();
         };
-        
-        // Keyboard handlers (keydown and keypress for better coverage)
+
         this.keydownHandler = (e: KeyboardEvent) => {
-            // Don't count keyboard input in modal overlays
             const target = e.target as HTMLElement;
             if (target.closest('.modal-overlay')) {
                 return;
             }
-            this.handleActivity();
+            this.onDomActivity();
         };
-        
+
         this.keypressHandler = (e: KeyboardEvent) => {
-            // Don't count keyboard input in modal overlays
             const target = e.target as HTMLElement;
             if (target.closest('.modal-overlay')) {
                 return;
             }
-            this.handleActivity();
+            this.onDomActivity();
         };
-        
-        // Add event listeners
+
         document.addEventListener('click', this.clickHandler, true);
         document.addEventListener('keydown', this.keydownHandler, true);
         document.addEventListener('keypress', this.keypressHandler, true);
     }
-    
-    /**
-     * Remove activity detection event listeners
-     */
+
     private removeActivityListeners(): void {
         if (this.clickHandler) {
             document.removeEventListener('click', this.clickHandler, true);
             this.clickHandler = null;
         }
-        
         if (this.keydownHandler) {
             document.removeEventListener('keydown', this.keydownHandler, true);
             this.keydownHandler = null;
         }
-        
         if (this.keypressHandler) {
             document.removeEventListener('keypress', this.keypressHandler, true);
             this.keypressHandler = null;
         }
     }
-    
-    /**
-     * Handle user activity (debounced)
-     */
-    private handleActivity(): void {
-        // Clear existing debounce timer
-        if (this.activityDebounceTimer) {
-            clearTimeout(this.activityDebounceTimer);
+
+    private setupVisibilityListener(): void {
+        this.visibilityHandler = () => {
+            if (document.visibilityState === 'visible' && this.isTracking && !this.pollInFlight) {
+                void this.pollCycle();
+            }
+        };
+        document.addEventListener('visibilitychange', this.visibilityHandler);
+    }
+
+    private removeVisibilityListener(): void {
+        if (this.visibilityHandler) {
+            document.removeEventListener('visibilitychange', this.visibilityHandler);
+            this.visibilityHandler = null;
         }
-        
-        // Set new debounce timer
+    }
+
+    private onDomActivity(): void {
+        this.clearActivityDebounce();
         this.activityDebounceTimer = setTimeout(() => {
-            this.reset();
+            void this.sendActivityHeartbeat();
         }, this.activityDebounceMs);
-    }
-    
-    /**
-     * Reset inactivity timers
-     */
-    private resetTimers(): void {
-        // Clear existing timers
-        this.clearTimers();
-        
-        if (!this.isTracking || this.isPaused) {
-            return;
-        }
-        
-        // Set warning timer (4 minutes)
-        this.warningTimer = setTimeout(() => {
-            if (!this.warningShown) {
-                // console.log('[INACTIVITY-TRACKER] ⚠️ Warning timeout reached (4 minutes)'); // 🟢 MEDIUM: Timeout warning
-                this.warningShown = true;
-                this.emit('warning', {
-                    timestamp: Date.now(),
-                    remainingTimeUntilLogout: this.logoutTimeoutMs - this.warningTimeoutMs
-                });
-            }
-        }, this.warningTimeoutMs);
-        
-        // Set logout timer (5 minutes)
-        this.logoutTimer = setTimeout(() => {
-            // console.log('[INACTIVITY-TRACKER] 🚪 Logout timeout reached (5 minutes)'); // 🟢 MEDIUM: Logout timeout
-            this.emit('logout', { timestamp: Date.now() });
-        }, this.logoutTimeoutMs);
-    }
-    
-    /**
-     * Clear inactivity timers
-     */
-    private clearTimers(): void {
-        if (this.warningTimer) {
-            clearTimeout(this.warningTimer);
-            this.warningTimer = null;
-        }
-        
-        if (this.logoutTimer) {
-            clearTimeout(this.logoutTimer);
-            this.logoutTimer = null;
-        }
-        
-        if (this.activityDebounceTimer) {
-            clearTimeout(this.activityDebounceTimer);
-            this.activityDebounceTimer = null;
-        }
-    }
-    
-    /**
-     * Start server sync for cross-tab synchronization
-     */
-    private startServerSync(): void {
-        // Initial sync
-        this.syncWithServer();
-        
-        // Set up periodic sync
-        this.serverSyncTimer = setInterval(() => {
-            this.syncWithServer();
-        }, this.serverSyncIntervalMs);
-    }
-    
-    /**
-     * Stop server sync
-     */
-    private stopServerSync(): void {
-        if (this.serverSyncTimer) {
-            clearInterval(this.serverSyncTimer);
-            this.serverSyncTimer = null;
-        }
-    }
-    
-    /**
-     * Sync activity state with server
-     */
-    private async syncWithServer(): Promise<void> {
-        try {
-            const response = await fetch('/api/user/activity', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    lastActivityTime: this.lastActivityTime
-                })
-            });
-            
-            if (!response.ok) {
-                console.warn('[INACTIVITY-TRACKER] ⚠️ Server sync failed:', response.status);
-                return;
-            }
-            
-            const data: ActivityData = await response.json();
-            // Use serverLastActivityTime or fallback to lastActivityTime (alias)
-            this.serverLastActivityTime = data.serverLastActivityTime || (data as any).lastActivityTime || null;
-            
-            // Check if server shows inactivity > 4 minutes (cross-tab sync)
-            if (this.serverLastActivityTime) {
-                const serverInactivityTime = Date.now() - this.serverLastActivityTime;
-                
-                // If server shows we've been inactive for > 4 minutes and we haven't shown warning yet
-                if (serverInactivityTime > this.warningTimeoutMs && !this.warningShown) {
-                    // console.log('[INACTIVITY-TRACKER] ⚠️ Server sync detected inactivity > 4 minutes'); // 🟢 MEDIUM: Server sync warning
-                    this.warningShown = true;
-                    this.emit('warning', {
-                        timestamp: Date.now(),
-                        remainingTimeUntilLogout: this.logoutTimeoutMs - this.warningTimeoutMs,
-                        fromServerSync: true
-                    });
-                }
-                
-                // If server shows we've been inactive for > 5 minutes
-                if (serverInactivityTime > this.logoutTimeoutMs) {
-                    // console.log('[INACTIVITY-TRACKER] 🚪 Server sync detected inactivity > 5 minutes'); // 🟢 MEDIUM: Server sync logout
-                    this.emit('logout', {
-                        timestamp: Date.now(),
-                        fromServerSync: true
-                    });
-                }
-            }
-        } catch (error) {
-            // Continue with client-side timer if server sync fails
-            console.warn('[INACTIVITY-TRACKER] ⚠️ Server sync error (continuing with client-side timer):', error);
-        }
     }
 }
 
-// Export singleton instance getter
-export const inactivityTracker = InactivityTracker.getInstance();
+/**
+ * startInactivityTracking - begin server-directed idle poll loop on authenticated pages
+ *
+ * @param config - optional activityDebounceMs (default 100)
+ */
+export function startInactivityTracking(config?: InactivityTrackerConfig): void {
+    InactivityTracker.getInstance(config).start();
+}
 
+export function stopInactivityTracking(): void {
+    InactivityTracker.getInstance().stop();
+}
+
+/** @deprecated Use startInactivityTracking */
+export const inactivityTracker = {
+    start: (config?: InactivityTrackerConfig) => startInactivityTracking(config),
+    stop: () => stopInactivityTracking(),
+};

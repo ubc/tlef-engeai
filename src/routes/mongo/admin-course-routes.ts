@@ -13,18 +13,33 @@ import type { activeCourse, GlobalUser, InstructorInfo } from '../../types/share
 import { buildDefaultByWeekCourseContent } from '../../helpers/build-default-course-content';
 import { isAdminUser } from '../../utils/admin';
 import { routeParam } from '../../helpers/route-params';
+import { mapFacultyInstructorDisplay } from '../../helpers/course-access';
+import { instructorEntryUserId } from '../../utils/course-staff';
 
 const router = Router();
 
-function mapInstructorNames(course: activeCourse): string {
-    const names =
-        course.instructors?.map((inst) => {
-            if (typeof inst === 'string') {
-                return inst;
-            }
-            return inst?.name ?? inst?.userId ?? 'Unknown';
-        }) ?? [];
-    return names.join(', ') || 'No instructors';
+
+/**
+ * normalizeInstructorRoster - Normalizes instructor data for consistent processing.
+ *
+ * @param course - Course data to normalize
+ * @param platformAdminUserIds - Set of platform admin user IDs
+ * @returns Normalized instructor list
+ */ 
+
+function normalizeInstructorRoster(
+    course: activeCourse,
+    platformAdminUserIds: Set<string>
+): { userId: string; name: string; isPlatformAdmin: boolean }[] {
+    return (course.instructors ?? []).map((inst) => {
+        const userId = instructorEntryUserId(inst);
+        const name = typeof inst === 'string' ? 'Unknown' : (inst.name ?? userId);
+        return {
+            userId,
+            name,
+            isPlatformAdmin: platformAdminUserIds.has(userId)
+        };
+    });
 }
 
 router.get(
@@ -33,13 +48,15 @@ router.get(
     asyncHandlerWithAuth(async (_req: Request, res: Response) => {
         const mongo = await EngEAI_MongoDB.getInstance();
         const defaultPeriodId = await mongo.getDefaultAcademicPeriodId();
-        const [periods, courses, guidedAwaitingReview, manualAwaitingReview] = await Promise.all([
+        const [periods, courses, guidedAwaitingReview, manualAwaitingReview, platformAdmins] = await Promise.all([
             mongo.listAcademicPeriods(),
             mongo.getAllActiveCourses(),
             mongo.countGuidedPathwayFlagsAwaitingAdminReview(),
-            mongo.countManualFlagsAwaitingAdminReview()
+            mongo.countManualFlagsAwaitingAdminReview(),
+            mongo.findAdminGlobalUsers()
         ]);
         const guidedPathwayEscalationsAwaitingReview = guidedAwaitingReview + manualAwaitingReview;
+        const platformAdminUserIds = new Set(platformAdmins.map((u) => u.userId));
 
         const coursesByPeriod = new Map<string, activeCourse[]>();
         for (const period of periods) {
@@ -62,7 +79,8 @@ router.get(
                 courseCount: periodCourses.length,
                 courses: periodCourses.map((c) => ({
                     ...c,
-                    instructorDisplay: mapInstructorNames(c)
+                    instructorDisplay: mapFacultyInstructorDisplay(c, platformAdminUserIds),
+                    instructors: normalizeInstructorRoster(c, platformAdminUserIds)
                 }))
             };
         });
@@ -155,9 +173,6 @@ router.post(
             courseName: trimmedName,
             date: new Date(),
             courseSetup: false,
-            contentSetup: false,
-            flagSetup: false,
-            monitorSetup: false,
             frameType: 'byWeek' as const,
             tilesNumber: 12,
             topicOrWeekInstances,
@@ -206,8 +221,9 @@ router.put(
     '/courses/:id',
     requireAdminGlobal,
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        const globalUser = (req.session as any).globalUser as GlobalUser;
         const courseId = routeParam(req.params, 'id');
-        const { courseName, academicPeriodId, instructorUserIds } = req.body ?? {};
+        const { courseName, academicPeriodId, instructorUserIds, removeInstructorUserIds } = req.body ?? {};
         const mongo = await EngEAI_MongoDB.getInstance();
 
         const existing = await mongo.getActiveCourse(courseId);
@@ -216,13 +232,16 @@ router.put(
         }
 
         const updates: Partial<activeCourse> = {};
+        let workingCourse = existing as activeCourse;
 
         if (courseName !== undefined) {
             if (typeof courseName !== 'string' || !courseName.trim()) {
                 return res.status(400).json({ success: false, error: 'courseName must be a non-empty string' });
             }
+            
             const trimmed = courseName.trim();
             const duplicate = await mongo.getCourseByName(trimmed);
+
             if (duplicate && duplicate.id !== courseId) {
                 return res.status(409).json({ success: false, error: 'Course name already exists' });
             }
@@ -237,8 +256,23 @@ router.put(
             await mongo.linkCourseToPeriod(courseId, academicPeriodId);
         }
 
+        // Apply explicit removals before merge-add so stale roster rows are cleared first
+        if (Array.isArray(removeInstructorUserIds) && removeInstructorUserIds.length > 0) {
+            try {
+                const ids = removeInstructorUserIds.filter((x: unknown) => typeof x === 'string') as string[];
+                const instructors = await mongo.removeInstructorsFromCourse(workingCourse, ids, {
+                    callerUserId: globalUser.userId
+                });
+                updates.instructors = instructors;
+                workingCourse = { ...workingCourse, instructors };
+            } catch (err) {
+                const message = err instanceof Error ? err.message : 'Instructor removal failed';
+                return res.status(400).json({ success: false, error: message });
+            }
+        }
+
         if (Array.isArray(instructorUserIds)) {
-            const instructors = await mongo.enrollInstructorsOnCourse(existing as activeCourse, instructorUserIds);
+            const instructors = await mongo.enrollInstructorsOnCourse(workingCourse, instructorUserIds);
             updates.instructors = instructors;
         }
 

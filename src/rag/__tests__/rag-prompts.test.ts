@@ -5,7 +5,7 @@
 import { ragPrompts } from '../rag-prompts';
 
 describe('RAGPrompts.formatRagUserTurn', () => {
-    const context = '\n\n<course_materials>\n--- START document ---\n</course_materials>\n';
+    const context = '\n\n<course_materials>\n--- START chunk 1 ---\n</course_materials>\n';
     const userMessage = 'Calculate the pH of a weak base solution.';
 
     it('appends explanatory bridge for explanatory mode', () => {

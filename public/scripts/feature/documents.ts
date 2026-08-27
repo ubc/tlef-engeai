@@ -22,7 +22,8 @@
 import { 
     TopicOrWeekInstance, 
     TopicOrWeekItem, 
-    AdditionalMaterial, 
+    AdditionalMaterial,
+    AdditionalMaterialUpload,
     activeCourse
 } from '../types.js';
 import { uploadRAGContent } from '../services/rag-service.js';
@@ -1733,7 +1734,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             if (!contentItem.additionalMaterials) contentItem.additionalMaterials = [];
 
             // Create the additional material object
-            const additionalMaterial: AdditionalMaterial = {
+            const additionalMaterial: AdditionalMaterialUpload = {
                 id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                 name: material.name,
                 courseName: currentClass.courseName,

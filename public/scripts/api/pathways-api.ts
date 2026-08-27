@@ -4,7 +4,7 @@
  * Pathways API — instructor Guided Pathway Library client helpers.
  */
 
-import type { GuidedPathway, PathwayCta } from '../types.js';
+import type { GuidedPathway, PathwayCta, PathwayEvaluationPromptConfig } from '../types.js';
 
 function apiBase(courseId: string): string {
     return `/api/courses/${courseId}/pathways`;
@@ -86,4 +86,39 @@ export async function resetPathways(courseId: string): Promise<GuidedPathway[]> 
     });
     const json = await parseJson(response);
     return (json.data ?? []) as GuidedPathway[];
+}
+
+export async function getPathwayEvaluationPrompt(
+    courseId: string
+): Promise<PathwayEvaluationPromptConfig> {
+    const response = await fetch(`${apiBase(courseId)}/evaluation-prompt`, {
+        credentials: 'include',
+    });
+    const json = await parseJson(response);
+    return json.data as PathwayEvaluationPromptConfig;
+}
+
+export async function updatePathwayEvaluationPrompt(
+    courseId: string,
+    body: string
+): Promise<PathwayEvaluationPromptConfig> {
+    const response = await fetch(`${apiBase(courseId)}/evaluation-prompt`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body }),
+    });
+    const json = await parseJson(response);
+    return json.data as PathwayEvaluationPromptConfig;
+}
+
+export async function resetPathwayEvaluationPrompt(
+    courseId: string
+): Promise<PathwayEvaluationPromptConfig> {
+    const response = await fetch(`${apiBase(courseId)}/evaluation-prompt/reset`, {
+        method: 'POST',
+        credentials: 'include',
+    });
+    const json = await parseJson(response);
+    return json.data as PathwayEvaluationPromptConfig;
 }

@@ -3,10 +3,10 @@
  * 
  * This module provides a comprehensive modal overlay system for EngE-AI.
  * It supports various types of modals including error, warning, success, info,
- * disclaimer, and custom content modals.
+ * and custom content modals.
  * 
  * FEATURES:
- * - Multiple modal types (error, warning, success, info, disclaimer, custom)
+ * - Multiple modal types (error, warning, success, info, custom)
  * - Keyboard navigation support (ESC to close, Tab navigation)
  * - Focus management and accessibility
  * - Stack-safe nested modal focus, keyboard, and body-scroll handling
@@ -443,7 +443,6 @@ export class ModalOverlay {
         if (classList.contains('modal-error')) return 'error';
         if (classList.contains('modal-success')) return 'success';
         if (classList.contains('modal-info')) return 'info';
-        if (classList.contains('modal-disclaimer')) return 'disclaimer';
         
         return 'custom';
     }
@@ -915,31 +914,6 @@ export async function showInputModal(
             input.focus();
             input.select();
         }, 100);
-    });
-}
-
-/**
- * Shows a disclaimer modal
- * 
- * @param title - Modal title
- * @param content - Disclaimer content (HTML string)
- * @param buttons - Optional custom buttons
- * @returns Promise that resolves when modal is closed
- */
-export async function showDisclaimerModal(
-    title: string = 'Disclaimer',
-    content: string,
-    buttons?: ModalButton[]
-): Promise<ModalResult> {
-    const modal = getModal();
-    return modal.show({
-        type: 'disclaimer',
-        title,
-        content,
-        maxWidth: '600px',
-        buttons: buttons || [
-            { text: 'I Understand', type: 'primary', closeOnClick: true }
-        ]
     });
 }
 
@@ -1898,7 +1872,7 @@ export async function showInactivityWarningModal(
     countdownDisplay.id = 'inactivity-countdown';
     countdownDisplay.style.fontSize = '48px';
     countdownDisplay.style.fontWeight = 'bold';
-    countdownDisplay.style.color = 'var(--color-chbe-green, #4CAF50)';
+    countdownDisplay.style.color = '#f44336';
     countdownDisplay.style.marginBottom = '16px';
     countdownDisplay.textContent = `${countdown}`;
     
@@ -1941,9 +1915,8 @@ export async function showInactivityWarningModal(
         
         // Change color as time runs out
         if (countdown <= 10) {
-            countdownDisplay.style.color = '#f44336'; // Red
-        } else if (countdown <= 30) {
-            countdownDisplay.style.color = '#ff9800'; // Orange
+            countdownDisplay.classList.add('danger');
+            countdownDisplay.style.color = '#f44336';
         }
         
         if (countdown <= 0) {
@@ -1970,6 +1943,7 @@ export async function showInactivityWarningModal(
     try {
         const result = await modal.show({
             type: 'warning',
+            customClass: 'modal-inactivity',
             title: 'Session Timeout Warning',
             content: countdownContainer,
             buttons: [
@@ -2024,7 +1998,6 @@ export default {
     showConfirmModal,
     showSkipOnboardingModal,
     showInputModal,
-    showDisclaimerModal,
     showHelpModal,
     showCustomModal,
     showSimpleErrorModal,

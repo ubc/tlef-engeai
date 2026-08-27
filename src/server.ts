@@ -13,6 +13,7 @@ import writingFeedbackRoutes from './routes/route-writing-feedback';
 import healthRoutes from './routes/route-health';
 import versionRoutes from './routes/route-version';
 import onboardingRoutes from './routes/route-onboarding';
+import lmsRoutes from './routes/route-lms';  // Canvas + Moodle integration routes
 import authRoutes from './routes/route-auth';  // Import authentication routes
 import courseEntryRoutes from './routes/route-course-entry';  // Import course entry routes
 import userManagementRoutes from './routes/route-user-management';  // Import user management routes
@@ -26,10 +27,9 @@ import adminManualFlagRoutes from './routes/mongo/admin-manual-flag-routes';
 // Import SAML authentication middleware
 import sessionMiddleware from './middleware/session';
 import { passport } from './middleware/passport';
+import { sessionActivityMiddleware } from './middleware/session-activity';
 import { EngEAI_MongoDB } from './db/enge-ai-mongodb';
 import { initAcademicPeriods } from './helpers/init-academic-periods';
-import { migrateInstructorAllowances } from './helpers/migrate-instructor-allowances';
-import { migrateOnboardingFlags } from './helpers/migrate-onboarding-flags';
 import { getCourseSelectionRedirectPath } from './helpers/course-selection-redirect';
 import { resolveAffiliation } from './utils/affiliation';
 import { isAdminUser, isAdminName } from './utils/admin';
@@ -55,6 +55,9 @@ app.use(sessionMiddleware);
 // Passport middleware
 app.use(passport.initialize());
 app.use(passport.session());
+
+// Session idle: bump activity on /api/* (except poll endpoint); block expired sessions
+app.use(sessionActivityMiddleware);
 
 // When running from src/server.ts, __dirname is .../src
 // When running from dist/server.js, __dirname is .../dist
@@ -108,6 +111,14 @@ app.get('/', (req: any, res: any) => {
 // Public marketing team page (no auth)
 app.get('/team', (_req: any, res: any) => {
     sendHtmlPageWithBuildComment(res, path.join(publicPath, 'pages/team.html'));
+});
+
+// Public markdown files first so /docs/overview.md is never the HTML shell.
+app.use('/docs', express.static(path.join(publicPath, 'docs'), { index: false }));
+
+// Public markdown docs shell (no auth). Unmatched /docs paths get the viewer.
+app.get(/^\/docs(\/.*)?$/, (_req: any, res: any) => {
+    sendHtmlPageWithBuildComment(res, path.join(publicPath, 'pages/docs.html'));
 });
 
 // Serve static files from the 'public' directory (but not for root path)
@@ -276,6 +287,9 @@ app.use('/api/user', userManagementRoutes);  // User management routes
 app.use('/api/health', healthRoutes);    // Health check routes
 app.use('/api/version', versionRoutes);  // Version endpoint for UI display
 app.use('/api/onboarding', onboardingRoutes);  // Onboarding demo routes (e.g. sample chat download)
+// Canvas/Moodle per-user connections. Each provider self-disables when its env
+// vars are unset, so this mount is safe without LMS configuration present.
+app.use('/api/lms', lmsRoutes);
 
 // Final 404 handler for any requests that do not match a route
 app.use((req: express.Request, res: express.Response) => {
@@ -308,16 +322,13 @@ app.listen(port, async () => {
         logger.error('Guided Pathway GPF-002 storage migration failed:', err as any);
     }
 
+    // Guards against two EngE-AI courses claiming the same LMS course, which would make
+    // student enrollment sync ambiguous. Best-effort inside the helper — a failure here
+    // must not stop the server, and the import path checks for a conflict before writing.
     try {
-        await migrateInstructorAllowances();
+        await (await EngEAI_MongoDB.getInstance()).createCourseLmsLinkIndex();
     } catch (err) {
-        logger.error('Failed to migrate instructor allowances:', err as any);
-    }
-
-    try {
-        await migrateOnboardingFlags();
-    } catch (err) {
-        logger.error('Onboarding migration failed:', err as any);
+        logger.error('Failed to create LMS course-link index:', err as any);
     }
 
 });

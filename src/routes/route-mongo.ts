@@ -54,6 +54,7 @@ import {
     parseStruggleTopicsByStudentBody,
     ReportFixtureSeedError
 } from '../db/mongo/report-fixture-seed-mongo';
+import { materialChunkIds } from '../migrate/schema-walker';
 import { activeCourse, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem, FlagReport, User, InitialAssistantPrompt, SystemPromptItem } from '../types/shared';
 import * as FlagMongo from '../db/mongo/flag-mongo';
 import { IDGenerator } from '../utils/unique-id-generator';
@@ -66,6 +67,7 @@ import { isAdminUser } from '../utils/admin';
 import { filterAccessibleCourses, buildCourseSelectionByPeriod, isCourseAccessible } from '../helpers/course-access';
 import { validateCourseSetupFields } from '../helpers/instructor-onboarding-redirect';
 import { buildTopicOrWeekInstances } from '../helpers/build-default-course-content';
+import { provisionCourse } from '../helpers/provision-course';
 import {
     buildCourseAnalyticsAccessFlags,
     canAccessPostPeriodAnalytics,
@@ -329,25 +331,6 @@ router.post('/', validateNewCourse, requireInstructorGlobal, asyncHandlerWithAut
             });
         }
 
-        //creating id - ensure date is a Date object for ID generation
-        const tempActiveClass = {
-            ...req.body,
-            courseName,
-            date: new Date()
-        } as activeCourse;
-        const id = instance.idGenerator.courseID(tempActiveClass);
-
-        const courseContent = buildTopicOrWeekInstances(
-            req.body.frameType,
-            req.body.tilesNumber,
-            courseName,
-            instance.idGenerator
-        );
-
-        //add the coursecontent to the body
-        req.body.topicOrWeekInstances = courseContent;
-
-        // Get the current user (course creator) from session
         const globalUser = (req.session as any).globalUser;
         if (!globalUser) {
             return res.status(401).json({
@@ -356,130 +339,24 @@ router.post('/', validateNewCourse, requireInstructorGlobal, asyncHandlerWithAut
             });
         }
 
-        // Ensure the creator is in the instructors array
-        const creatorUserId = globalUser.userId;
-        const creatorName = globalUser.name;
-        
-        // Helper function to check if instructor is already in the array (handles both old and new formats)
-        const isInstructorInArray = (instructors: any[]): boolean => {
-            if (!instructors || instructors.length === 0) return false;
-            return instructors.some(inst => {
-                if (typeof inst === 'string') {
-                    return inst === creatorUserId; // Old format
-                } else if (inst && inst.userId) {
-                    return inst.userId === creatorUserId; // New format
-                }
-                return false;
-            });
-        };
-
-        // Get existing instructors and convert to new format if needed
-        const existingInstructors = req.body.instructors || [];
-        let updatedInstructors = existingInstructors.map((inst: any) => {
-            // Convert old format to new format if needed
-            if (typeof inst === 'string') {
-                return { userId: inst, name: 'Unknown' }; // Will be updated later if needed
-            }
-            return inst; // Already in new format
-        });
-
-        // Add creator to instructors array if not already present
-        if (!isInstructorInArray(updatedInstructors)) {
-            updatedInstructors.push({
-                userId: creatorUserId,
-                name: creatorName
-            });
-            appLogger.log(`[CREATE-COURSE] Added course creator ${creatorName} (${creatorUserId}) to instructors array`);
-        }
-
-        let courseData: activeCourse = {
-            ...req.body, //spread the properties of the body first
-            id: id, // use the generated id
+        // Provisioning lives in provision-course.ts because LMS import creates courses too and
+        // the two must stay identical. `courseSetup` keeps its long-standing default of true
+        // here: this endpoint is reached from the onboarding wizard, which has already collected
+        // the setup answers.
+        const courseData = await provisionCourse(instance, {
             courseName,
-            date: new Date(),
-            onBoarded: true, // default to false for new courses
-            instructors: updatedInstructors,
-            teachingAssistants: req.body.teachingAssistants || [],
-            // Normalize Extra Features via dashboard-setting defaults (new courses all off unless opted in).
-            features: normalizeCourseFeaturesInput(req.body.features, creatorUserId),
+            frameType: req.body.frameType,
             tilesNumber: req.body.tilesNumber || 0,
+            creator: globalUser,
+            instructors: req.body.instructors,
+            teachingAssistants: req.body.teachingAssistants,
+            features: req.body.features,
             courseSetup: req.body.courseSetup ?? true
-        };
-        
-        
-        await instance.postActiveCourse(courseData);
-        
-        // Fetch the created course to get the generated courseCode
-        const createdCourse = await instance.getActiveCourse(id);
-        if (createdCourse) {
-            courseData = createdCourse as unknown as activeCourse;
-        }
-
-        // Add creator to the course's users collection ({courseName}_users)
-        try {
-            const courseName = courseData.courseName;
-            const collectionNames = await instance.getCollectionNames(courseName);
-            
-            // Check if CourseUser already exists
-            let courseUser = await instance.findStudentByUserId(courseName, creatorUserId);
-            
-            if (!courseUser) {
-                // Create CourseUser entry for the creator
-                const newCourseUserData: Partial<User> = {
-                    name: creatorName,
-                    userId: creatorUserId,
-                    courseName: courseName,
-                    courseId: id,
-                    userOnboarding: false, // Creator doesn't need onboarding
-                    affiliation: 'faculty',
-                    status: 'active',
-                    chats: []
-                };
-                
-                await instance.createStudent(courseName, newCourseUserData);
-                appLogger.log(`[CREATE-COURSE] Created CourseUser entry for creator ${creatorName} (${creatorUserId}) in ${collectionNames.users}`);
-            } else {
-                appLogger.log(`[CREATE-COURSE] CourseUser entry already exists for creator ${creatorName} (${creatorUserId})`);
-            }
-        } catch (courseUserError) {
-            appLogger.error(`[CREATE-COURSE] ⚠️ Error creating CourseUser for creator:`, { error: courseUserError });
-            // Continue even if CourseUser creation fails - course is already created
-        }
-
-        // Add course to creator's coursesEnrolled array
-        try {
-            if (!globalUser.coursesEnrolled.includes(id)) {
-                await instance.addCourseToGlobalUser(globalUser.puid, id);
-                appLogger.log(`[CREATE-COURSE] Added course ${id} to creator's enrolled list`);
-            }
-        } catch (enrollmentError) {
-            appLogger.error(`[CREATE-COURSE] ⚠️ Error adding course to creator's enrolled list:`, { error: enrollmentError });
-            // Continue even if enrollment fails - course is already created
-        }
-
-        // Always add current platform admins when a course is initiated (any creator)
-        try {
-            const courseName = courseData.courseName;
-            const instructorsWithAdmins = await addAdminsToCourse(
-                instance,
-                id,
-                courseName,
-                courseData.instructors
-            );
-            await instance.updateActiveCourse(id, { instructors: instructorsWithAdmins });
-            courseData = { ...courseData, instructors: instructorsWithAdmins };
-            appLogger.log(`[CREATE-COURSE] Added admins to course ${id} (creator: ${creatorName})`);
-        } catch (adminError) {
-            appLogger.error(`[CREATE-COURSE] Error adding admins to course:`, { error: adminError });
-        }
-
-        // Since activeCourse is the correct type, we can return it directly
-        // This now includes the generated courseCode
-        const activeClassData: activeCourse = courseData as activeCourse;
+        });
 
         res.status(201).json({
             success: true,
-            data: activeClassData,
+            data: courseData,
             message: 'Course created successfully'
         });
 
@@ -738,11 +615,14 @@ router.get('/course-selection', asyncHandlerWithAuth(async (req: Request, res: R
     const defaultPeriodId = await instance.getDefaultAcademicPeriodId();
     const periods = await instance.listAcademicPeriods();
     const allCourses = await instance.getAllActiveCourses();
+    const platformAdmins = await instance.findAdminGlobalUsers();
+    const platformAdminUserIds = new Set(platformAdmins.map((u) => u.userId));
     const data = buildCourseSelectionByPeriod(
         periods,
         allCourses as activeCourse[],
         globalUser,
-        defaultPeriodId
+        defaultPeriodId,
+        platformAdminUserIds
     );
 
     res.status(200).json({
@@ -1184,6 +1064,8 @@ router.put('/:id', requireInstructorForCourseAPI(['paramsId']), asyncHandlerWith
     }
     
     // Keep capabilities, immutable ids, and physical collection registrations server-owned.
+    // Also strip the three tutorial flags: they moved to `GlobalUser.instructorOnboarding` (OB-002)
+    // and must not be resurrected on the course document by a stale client.
     const updateData = Object.fromEntries(
         Object.entries(req.body ?? {}).filter(([key]) => (
             key !== 'features'
@@ -1191,6 +1073,9 @@ router.put('/:id', requireInstructorForCourseAPI(['paramsId']), asyncHandlerWith
             && key !== '_id'
             && key !== 'collections'
             && !key.startsWith('collections.')
+            && key !== 'contentSetup'
+            && key !== 'flagSetup'
+            && key !== 'monitorSetup'
         ))
     );
     const updatedCourse = await instance.updateActiveCourse(routeParam(req.params, 'id'), updateData);
@@ -1379,9 +1264,6 @@ router.delete('/:id/restart-onboarding', requireInstructorOrAdminForCourseAPI(['
             date: new Date(),
             courseName: courseName, // Preserved from original
             courseSetup: false,
-            contentSetup: false,
-            flagSetup: false,
-            monitorSetup: false,
             instructors: [], // Empty array
             teachingAssistants: [], // Empty array
             frameType: 'byTopic', // Default frame type
@@ -2409,12 +2291,9 @@ router.patch(
 
             if (role === 'ta') {
                 await instance.promoteStudentToTA(courseData, targetUserId, targetName);
-                const targetGlobal = await instance.findGlobalUserByUserId(targetUserId);
-                if (targetGlobal?.puid) {
-                    await instance.updateGlobalUser(targetGlobal.puid, {
-                        instructorOnboardingCompleted: true
-                    });
-                }
+                // Deliberately does NOT mark instructor onboarding complete. Promotion completes
+                // no tutorial, and a new TA is exactly who the instructor tutorials are for —
+                // they now run through them on first entry like any other new course staff.
                 appLogger.log(`[ROSTER] Promoted ${targetUserId} to TA in course ${courseId}`);
             } else {
                 await instance.demoteTAToStudent(courseData, targetUserId);
@@ -3345,7 +3224,7 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/m
         }
         
         let qdrantResult: { materialName: string; chunksDeleted: number } | null = null;
-        if (material.qdrantId) {
+        if (materialChunkIds(material).length > 0) {
             try {
                 const ragApp = await RAGApp.getInstance();
                 const deleteResult = await ragApp.deleteDocument(materialId, courseId, topicOrWeekId, itemId);
@@ -3860,7 +3739,7 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId', requireInstru
             const ragPromises: Promise<{ deleted: boolean; materialName: string; chunksDeleted: number }>[] = [];
             topicOrWeekInstance.items?.forEach((item: TopicOrWeekItem) => {
                 (item.additionalMaterials || []).forEach((material: any) => {
-                    if (material.id && material.qdrantId) {
+                    if (material.id && materialChunkIds(material).length > 0) {
                         ragPromises.push(ragApp.deleteDocument(material.id, courseId, topicOrWeekId, item.id));
                     }
                 });
@@ -4103,7 +3982,7 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId',
         try {
             const ragApp = await RAGApp.getInstance();
             const ragPromises = (item.additionalMaterials || [])
-                .filter((material: any) => material.id && material.qdrantId)
+                .filter((material: any) => material.id && materialChunkIds(material).length > 0)
                 .map((material: any) => ragApp.deleteDocument(material.id, courseId, topicOrWeekId, itemId));
             const results = await Promise.allSettled(ragPromises);
             results.forEach((r, i) => {

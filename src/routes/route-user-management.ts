@@ -9,6 +9,7 @@ import { appLogger } from '../utils/logger';
 import { asyncHandlerWithAuth } from '../middleware/async-handler';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { sanitizeGlobalUserForFrontend } from '../utils/user-utils';
+import { respondWithSessionIdleStatus } from '../middleware/session-activity';
 
 const router = express.Router();
 
@@ -167,54 +168,101 @@ router.patch('/onboarding/instructor-completed', asyncHandlerWithAuth(async (req
 }));
 
 /**
+ * PATCH /onboarding/instructor-stage
+ * Marks one instructor tutorial stage complete on the calling user's GlobalUser record.
+ *
+ * Tutorial progress lives on the user rather than the course so a second instructor joining
+ * an already-set-up course is still taught. `courseSetup` is deliberately not accepted here:
+ * it writes real course configuration and stays on the course document.
+ *
+ * Writes only the caller's own record, so no course-scoped RBAC applies.
+ *
+ * @route PATCH /api/user/onboarding/instructor-stage
+ * @param {('contentSetup'|'flagSetup'|'monitorSetup')} stage - Completed tutorial stage (body)
+ * @returns {object} { success: boolean, error?: string }
+ * @response 200 - Success
+ * @response 400 - Invalid or missing stage
+ * @response 401 - User not authenticated
+ * @response 404 - GlobalUser not found
+ * @response 500 - Failed to update
+ */
+const INSTRUCTOR_ONBOARDING_STAGES = ['contentSetup', 'flagSetup', 'monitorSetup'] as const;
+type InstructorOnboardingStage = (typeof INSTRUCTOR_ONBOARDING_STAGES)[number];
+
+router.patch('/onboarding/instructor-stage', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const globalUser = (req.session as any).globalUser;
+        if (!globalUser?.puid) {
+            return res.status(401).json({ success: false, error: 'User not authenticated' });
+        }
+
+        const { stage } = req.body ?? {};
+        if (!INSTRUCTOR_ONBOARDING_STAGES.includes(stage)) {
+            return res.status(400).json({
+                success: false,
+                error: `stage must be one of: ${INSTRUCTOR_ONBOARDING_STAGES.join(', ')}`
+            });
+        }
+
+        const mongoDB = await EngEAI_MongoDB.getInstance();
+        const updated = await mongoDB.completeInstructorOnboardingStage(
+            globalUser.puid,
+            stage as InstructorOnboardingStage
+        );
+
+        if (!updated) {
+            return res.status(404).json({ success: false, error: 'User not found' });
+        }
+
+        // Keep the session copy in step so a later read in the same session is not stale.
+        (req.session as any).globalUser = {
+            ...globalUser,
+            instructorOnboarding: updated.instructorOnboarding
+        };
+
+        appLogger.log(`[INSTRUCTOR-ONBOARDING] Completed stage ${stage} for user ${globalUser.userId}`);
+        return res.json({ success: true });
+    } catch (error) {
+        appLogger.error('[INSTRUCTOR-ONBOARDING] Error:', error);
+        return res.status(500).json({
+            success: false,
+            error: 'Failed to update instructor onboarding stage'
+        });
+    }
+}));
+
+/**
+ * GET /activity
+ * Read-only idle poll. Does not bump lastActivityAt.
+ *
+ * @route GET /api/user/activity
+ * @returns {SessionIdleStatusResponse} { success, idle, client }
+ * @response 200 - Success
+ * @response 401 - INACTIVITY_EXPIRED
+ */
+router.get('/activity', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    respondWithSessionIdleStatus(req, res, false);
+}));
+
+/**
  * POST /activity
- * Updates server-side last activity timestamp for cross-tab synchronization. Used by InactivityTracker.
+ * Bumps lastActivityAt when body.userActivity === true; returns idle + client directive.
  *
  * @route POST /api/user/activity
- * @param {number} [lastActivityTime] - Client timestamp (body, optional)
- * @returns {object} { success: boolean, currentTime?: number, serverLastActivityTime?: number, lastActivityTime?: number, error?: string }
+ * @param {boolean} [userActivity] - When true, records user activity on the session
+ * @returns {SessionIdleStatusResponse} { success, idle, client }
  * @response 200 - Success
- * @response 500 - Failed to update activity timestamp
+ * @response 401 - INACTIVITY_EXPIRED
  */
 router.post('/activity', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
-        const { lastActivityTime } = req.body;
-        const currentTime = Date.now();
-        
-        // Update session with last activity time
-        // Use the client's lastActivityTime if provided and recent, otherwise use current server time
-        let serverLastActivityTime: number;
-        
-        if (lastActivityTime && typeof lastActivityTime === 'number') {
-            // Use client's timestamp if it's reasonable (within last 10 minutes)
-            const timeDiff = Math.abs(currentTime - lastActivityTime);
-            if (timeDiff < 10 * 60 * 1000) {
-                serverLastActivityTime = lastActivityTime;
-            } else {
-                // Client timestamp seems off, use server time
-                serverLastActivityTime = currentTime;
-            }
-        } else {
-            // No client timestamp provided, use server time
-            serverLastActivityTime = currentTime;
-        }
-        
-        // Store in session for cross-tab synchronization
-        (req.session as any).lastActivityTime = serverLastActivityTime;
-        
-        // Return current server time and last activity time for client sync
-        return res.json({
-            success: true,
-            currentTime: currentTime,
-            serverLastActivityTime: serverLastActivityTime,
-            lastActivityTime: serverLastActivityTime // Alias for compatibility
-        });
-        
+        const bump = req.body?.userActivity === true;
+        respondWithSessionIdleStatus(req, res, bump);
     } catch (error) {
         appLogger.error('[USER-ACTIVITY] Error:', error);
         return res.status(500).json({
             success: false,
-            error: 'Failed to update activity timestamp'
+            error: 'Failed to update activity timestamp',
         });
     }
 }));
