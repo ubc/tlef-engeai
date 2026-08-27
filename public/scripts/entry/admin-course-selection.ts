@@ -404,7 +404,7 @@ async function openCourseModal(
         content.append(
             labelField('Course name', nameInput),
             labelField('Academic period', periodSelect),
-            labelField('Course Staff', staffPicker.root),
+            fieldGroup('Course Staff', staffPicker.root),
             removalDivider,
             removalMount
         );
@@ -418,7 +418,7 @@ async function openCourseModal(
         content.append(
             labelField('Course name', nameInput),
             labelField('Academic period', periodSelect),
-            labelField('Course Staff', instructorPicker)
+            fieldGroup('Course Staff', instructorPicker)
         );
     }
 
@@ -510,6 +510,31 @@ async function openCourseModal(
     });
 
     await showPromise;
+}
+
+let fieldGroupIdCounter = 0;
+
+/**
+ * fieldGroup - Labelled wrapper for composite controls (chips, buttons, inputs).
+ *
+ * Uses a div rather than a label: an implicit label forwards clicks anywhere in
+ * its box to its first labelable descendant, which made clicking the section
+ * label or an admin chip press the first instructor's remove button.
+ *
+ * @param label - Visible group label
+ * @param control - Composite control root
+ * @returns Group element labelled for assistive tech via aria-labelledby
+ */
+function fieldGroup(label: string, control: HTMLElement): HTMLElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'admin-modal-field';
+    wrap.setAttribute('role', 'group');
+    const span = document.createElement('span');
+    span.id = `admin-modal-field-${++fieldGroupIdCounter}`;
+    span.textContent = label;
+    wrap.setAttribute('aria-labelledby', span.id);
+    wrap.append(span, control);
+    return wrap;
 }
 
 function labelField(label: string, control: HTMLElement): HTMLElement {

@@ -142,6 +142,7 @@ export function createCourseStaffPicker(options: CourseStaffPickerOptions): Cour
     searchInput.className = 'admin-modal-input user-search-input';
     searchInput.placeholder = 'Search faculty by name';
     searchInput.setAttribute('autocomplete', 'off');
+    searchInput.setAttribute('aria-label', 'Search faculty by name');
 
     const results = document.createElement('ul');
     results.className = 'user-search-results';
