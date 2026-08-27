@@ -80,7 +80,8 @@ function makeCtx(docs: MemoryDoc[], courseName = 'TestCourse'): MongoDalContext 
                     scheduledTasks: `${courseName}_scheduled-tasks`,
                     scenarioQuestions: `${courseName}_scenario_questions`,
                     scenarioProgress: `${courseName}_scenario_progress`,
-                    pathways: `${courseName}_pathways`
+                    pathways: `${courseName}_pathways`,
+                    guidedPathwayFlags: `${courseName}_guided-pathway-flags`
                 }
             ]
         ]),

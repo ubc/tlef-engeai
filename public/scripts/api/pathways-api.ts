@@ -46,6 +46,7 @@ export async function updatePathway(
         triggerDescription?: string;
         assistantResponse?: string;
         enabled?: boolean;
+        notifyInstructorOnTrigger?: boolean;
         ctas?: PathwayCta[];
     }
 ): Promise<GuidedPathway> {

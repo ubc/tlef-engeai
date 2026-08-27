@@ -48,9 +48,14 @@ router.get(
     asyncHandlerWithAuth(async (_req: Request, res: Response) => {
         const mongo = await EngEAI_MongoDB.getInstance();
         const defaultPeriodId = await mongo.getDefaultAcademicPeriodId();
-        const periods = await mongo.listAcademicPeriods();
-        const courses = await mongo.getAllActiveCourses();
-        const platformAdmins = await mongo.findAdminGlobalUsers();
+        const [periods, courses, guidedAwaitingReview, manualAwaitingReview, platformAdmins] = await Promise.all([
+            mongo.listAcademicPeriods(),
+            mongo.getAllActiveCourses(),
+            mongo.countGuidedPathwayFlagsAwaitingAdminReview(),
+            mongo.countManualFlagsAwaitingAdminReview(),
+            mongo.findAdminGlobalUsers()
+        ]);
+        const guidedPathwayEscalationsAwaitingReview = guidedAwaitingReview + manualAwaitingReview;
         const platformAdminUserIds = new Set(platformAdmins.map((u) => u.userId));
 
         const coursesByPeriod = new Map<string, activeCourse[]>();
@@ -85,7 +90,8 @@ router.get(
             data: {
                 periods: payload,
                 defaultPeriodId,
-                defaultPeriodTitle: DEFAULT_ACADEMIC_PERIOD_TITLE
+                defaultPeriodTitle: DEFAULT_ACADEMIC_PERIOD_TITLE,
+                guidedPathwayEscalationsAwaitingReview
             }
         });
     })

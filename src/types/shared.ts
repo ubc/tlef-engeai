@@ -93,6 +93,7 @@ export interface GuidedPathway {
     order: number; // library list position (ascending)
     title: string; // instructor-facing card title (library UI)
     enabled: boolean; // on for this course; false = listed but not evaluated
+    notifyInstructorOnTrigger: boolean; // creates an anonymous instructor alert when this active pathway wins
     triggerDescription: string; // fed into the dynamic evaluator prompt
     assistantResponse: string; // markdown reply; empty => cannot intercept
     ctas: PathwayCta[]; // resource buttons shown with the predetermined reply
@@ -386,6 +387,8 @@ export interface activeCourse {
         scenarioProgress?: string;
         /** Per-course Guided Pathway Library (e.g. `${courseName}_pathways`); lazy-provisions on existing courses */
         pathways?: string;
+        /** Registered course-owned collection for automatic Guided Pathway alerts (GPF-002). */
+        guidedPathwayFlags?: string;
     };
     collectionOfInitialAssistantPrompts?: InitialAssistantPrompt[];
     /** @deprecated v2 uses systemPromptConfig; retained for lazy migration reads only */
@@ -698,6 +701,11 @@ export interface CourseUser {
 
 
 // Types for flag reports
+export interface FlagReportActor {
+    userId: string; // staff user id at escalation or admin review time
+    name: string; // staff display name snapshot
+}
+
 export interface FlagReport {
     id: string;
     courseName: string; // Added to support course-specific flag collections
@@ -706,10 +714,93 @@ export interface FlagReport {
     reportType: string; // store the long explanation of the flag type
     chatContent: string;
     userId: string;
-    status: 'unresolved' | 'resolved';
+    status: 'unresolved' | 'resolved' | 'escalated';
     response?: string; // if resolved, the response from the instructor
+    escalatedAt?: Date; // when staff escalated to platform admins
+    escalatedBy?: FlagReportActor; // instructor or TA who escalated
+    adminReviewedAt?: Date; // when a platform admin marked the escalation reviewed
+    adminReviewedBy?: FlagReportActor; // platform admin who reviewed
     createdAt: Date;
     updatedAt: Date;
+}
+
+/** Safe cross-course manual escalation row for the platform-admin queue. */
+export interface ManualFlagEscalationView {
+    id: string; // stable flag id within the owning course collection
+    courseId: string; // owning active course id for admin review actions
+    courseName: string; // course-name snapshot for display
+    flagType: FlagReport['flagType']; // moderation category key
+    reportType: string; // long category label shown to staff
+    chatContent: string; // flagged chat excerpt; may contain identifying text
+    status: 'escalated'; // admin queue includes escalated manual flags only
+    escalatedAt: string; // ISO timestamp for queue sorting
+    escalatedByName?: string; // staff display name at escalation time
+    adminReviewedAt?: string; // ISO timestamp when platform admin reviewed
+    adminReviewedByName?: string; // platform-admin display name at review time
+    createdAt: string; // ISO timestamp for period filters
+}
+
+/** Paginated administrator manual-escalation list. */
+export interface ManualFlagEscalationListPage {
+    items: ManualFlagEscalationView[]; // escalated manual flags for the current page
+    page: number; // one-based page number
+    pageSize: number; // rows per page
+    total: number; // total rows matching filters
+}
+
+/** Lifecycle state for an automatic alert created by a Guided Pathway trigger. */
+export type GuidedPathwayFlagStatus = 'pending' | 'escalated' | 'dismissed';
+
+/** Server-owned origin separating production student alerts from course-staff tests. */
+export type GuidedPathwayFlagOrigin = 'student' | 'instructor-test';
+
+/** Instructor decision accepted by the Guided Pathway alert review API. */
+export type GuidedPathwayFlagDecision = 'escalate' | 'dismiss';
+
+/** Admin queue view selector for escalated alerts that still need platform review. */
+export type GuidedPathwayFlagReviewState = 'needs-review' | 'reviewed' | 'all';
+
+/**
+ * Anonymous Guided Pathway alert returned to instructor and admin interfaces.
+ *
+ * This is an explicit safe projection of the internal Mongo record. Student identity,
+ * deduplication data, chat/request identifiers, and identity-reveal audit events are excluded.
+ */
+export interface GuidedPathwayFlagView {
+    id: string; // stable alert id used for decision and review actions
+    courseId: string; // owning course id for course and admin filtering
+    courseName: string; // course-name snapshot captured when the pathway triggered
+    pathwayId: string; // winning pathway id for filtering
+    pathwayTitle: string; // winning pathway title snapshot shown to reviewers
+    messageText: string; // exact triggering chat message; may contain self-identifying text
+    origin: GuidedPathwayFlagOrigin; // production student alert or non-escalatable course-staff test
+    status: GuidedPathwayFlagStatus; // instructor review lifecycle
+    triggeredAt: string; // ISO timestamp for the pathway trigger
+    decidedAt?: string; // ISO timestamp for Escalate or Dismiss
+    decidedByName?: string; // staff display-name snapshot for admin reviewer filtering
+    adminReviewedAt?: string; // ISO timestamp for platform-admin review
+    adminReviewedByName?: string; // platform-admin display-name snapshot
+}
+
+/** One safe Guided Pathway choice returned for administrator queue filtering. */
+export interface GuidedPathwayFlagPathwayFacet {
+    pathwayId: string; // stable winning-pathway id used by the list filter
+    pathwayTitle: string; // instructor-facing title snapshot; contains no student data
+}
+
+/** Full-queue filter choices returned with the administrator alert list. */
+export interface GuidedPathwayFlagFacets {
+    pathways: GuidedPathwayFlagPathwayFacet[]; // choices matching every active filter except pathwayId
+    reviewers: string[]; // staff display names matching every active filter except reviewer
+}
+
+/** Paginated anonymous result returned by Guided Pathway alert list APIs. */
+export interface GuidedPathwayFlagListPage {
+    items: GuidedPathwayFlagView[]; // safe alert rows for the current page
+    page: number; // one-based page number
+    pageSize: number; // bounded number of rows requested per page
+    total: number; // total rows matching the supplied filters
+    facets?: GuidedPathwayFlagFacets; // global-admin full-queue choices; omitted by course list APIs
 }
 
 

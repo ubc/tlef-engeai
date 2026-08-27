@@ -762,8 +762,8 @@ body {
         justify-content: center;
     }
 
-    /* Mobile header bar - shown when inside main-content-area */
-    #main-content-area .mobile-header-bar {
+    /* Mobile header bar - shown when inside main-content-area (not .page-header; see page-shell.css) */
+    #main-content-area .mobile-header-bar:not(.page-header) {
         display: flex;
         align-items: center;
         gap: 0.75rem;
@@ -783,7 +783,7 @@ body {
         justify-content: center;
     }
 
-    #main-content-area .mobile-header-bar .mobile-header-title {
+    #main-content-area .mobile-header-bar:not(.page-header) .mobile-header-title {
         font-weight: 600;
         font-size: 1.25rem;
         color: var(--color-chbe-green);
@@ -792,6 +792,16 @@ body {
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+    }
+
+    #main-content-area .page-header.mobile-header-bar .instructor-mobile-hamburger-btn {
+        color: var(--color-chbe-green);
+        padding: 0 !important;
+    }
+
+    #main-content-area .page-header.mobile-header-bar .instructor-mobile-hamburger-btn:hover {
+        background-color: rgba(92, 138, 58, 0.1);
+        color: var(--color-chbe-green);
     }
 
     /* Sidebar: hidden off-screen by default, slides in when .mobile-open */

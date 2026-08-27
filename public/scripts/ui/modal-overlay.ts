@@ -9,13 +9,14 @@
  * - Multiple modal types (error, warning, success, info, custom)
  * - Keyboard navigation support (ESC to close, Tab navigation)
  * - Focus management and accessibility
+ * - Stack-safe nested modal focus, keyboard, and body-scroll handling
  * - Responsive design
  * - Animation support
  * - Promise-based API for user interactions
  * 
  * @author: gatahcha
  * @date: 2025-01-27
- * @version: 1.0.0
+ * @version: 1.1.0
  */
 
 import type {
@@ -30,6 +31,10 @@ import {
     openCatalogEditModal,
     type CatalogEditModalOptions,
 } from './catalog-edit-modal.js';
+
+let nextModalId = 1;
+const visibleModalStack: ModalOverlay[] = [];
+let bodyOverflowBeforeModalStack = '';
 export {
     openDivisionReorderModal,
     type DivisionReorderModalOptions,
@@ -119,6 +124,7 @@ export class ModalOverlay {
     public isVisible = false;
     private focusableElements: HTMLElement[] = [];
     private lastFocusedElement: HTMLElement | null = null;
+    private readonly titleId = `modal-title-${nextModalId++}`;
 
     /**
      * Creates and shows a modal with the specified configuration
@@ -150,7 +156,7 @@ export class ModalOverlay {
         this.overlay.className = 'modal-overlay';
         this.overlay.setAttribute('role', 'dialog');
         this.overlay.setAttribute('aria-modal', 'true');
-        this.overlay.setAttribute('aria-labelledby', 'modal-title');
+        this.overlay.setAttribute('aria-labelledby', this.titleId);
 
         // Create container
         this.container = document.createElement('div');
@@ -178,17 +184,9 @@ export class ModalOverlay {
             this.container.appendChild(footer);
         }
 
-        // Custom body controls (e.g. choice cards) must join the tab trap
-        this.container.querySelectorAll<HTMLElement>(
-            '.modal-body button, .modal-body [href], .modal-body input, .modal-body select, .modal-body textarea'
-        ).forEach((el) => {
-            if (!this.focusableElements.includes(el)) {
-                this.focusableElements.push(el);
-            }
-        });
-
         this.overlay.appendChild(this.container);
         document.body.appendChild(this.overlay);
+        this.refreshFocusableElements();
 
         // Set up event listeners
         this.setupEventListeners(config);
@@ -205,7 +203,7 @@ export class ModalOverlay {
         header.className = 'modal-header';
 
         const title = document.createElement('h2');
-        title.id = 'modal-title';
+        title.id = this.titleId;
         title.className = 'modal-title';
         title.textContent = config.title;
 
@@ -297,7 +295,7 @@ export class ModalOverlay {
         // Overlay click to close
         if (config.closeOnOverlayClick !== false) {
             this.overlay.addEventListener('click', (e) => {
-                if (e.target === this.overlay) {
+                if (e.target === this.overlay && this.isTopmostModal()) {
                     this.close('overlay');
                 }
             });
@@ -305,14 +303,7 @@ export class ModalOverlay {
 
         // Escape key to close
         if (config.closeOnEscape !== false) {
-            const escapeHandler = (e: KeyboardEvent) => {
-                if (e.key === 'Escape') {
-                    this.close('escape');
-                }
-            };
-            
-            document.addEventListener('keydown', escapeHandler);
-            this.overlay.setAttribute('data-escape-handler', 'true');
+            document.addEventListener('keydown', this.handleEscapeKey);
         }
 
         // Tab navigation (overlay-level)
@@ -346,6 +337,8 @@ export class ModalOverlay {
      * @param e - Keyboard event
      */
     private handleTabNavigation(e: KeyboardEvent): void {
+        if (!this.isTopmostModal()) return;
+        this.refreshFocusableElements();
         if (this.focusableElements.length === 0) return;
 
         const firstElement = this.focusableElements[0];
@@ -373,7 +366,8 @@ export class ModalOverlay {
      */
     private handleEnterKey = (e: KeyboardEvent): void => {
         // Only handle Enter when this modal is visible
-        if (!this.isVisible || e.key !== 'Enter') return;
+        if (!this.isVisible || !this.isTopmostModal() || e.key !== 'Enter') return;
+        this.refreshFocusableElements();
 
         // Don't handle Enter if user is typing in an input field (except buttons)
         const activeElement = document.activeElement;
@@ -385,7 +379,7 @@ export class ModalOverlay {
 
         // Prevent default behavior (form submission, etc.) and stop propagation
         e.preventDefault();
-        e.stopPropagation();
+        e.stopImmediatePropagation();
 
         // Modal-specific Enter key handling based on modal type
         if (!this.container) return;
@@ -513,6 +507,15 @@ export class ModalOverlay {
         if (!this.overlay) return;
 
         this.isVisible = true;
+        const previousTop = visibleModalStack[visibleModalStack.length - 1];
+        if (visibleModalStack.length === 0) {
+            bodyOverflowBeforeModalStack = document.body.style.overflow;
+        }
+        if (previousTop?.overlay) {
+            previousTop.overlay.setAttribute('aria-hidden', 'true');
+            previousTop.overlay.inert = true;
+        }
+        visibleModalStack.push(this);
         document.body.style.overflow = 'hidden';
 
         // Double rAF so the initial opacity/transform paint before .show (CSS transition needs it)
@@ -522,6 +525,7 @@ export class ModalOverlay {
             });
         });
 
+        this.refreshFocusableElements();
         if (this.focusableElements.length > 0) {
             this.focusableElements[0].focus();
         } else {
@@ -538,23 +542,31 @@ export class ModalOverlay {
         if (!this.overlay || !this.isVisible) return;
 
         this.isVisible = false;
-
-        // Remove escape key listener
-        const escapeHandler = this.overlay.getAttribute('data-escape-handler');
-        if (escapeHandler) {
-            document.removeEventListener('keydown', this.handleEscapeKey);
-        }
+        const stackIndex = visibleModalStack.indexOf(this);
+        const wasTopmost = stackIndex === visibleModalStack.length - 1;
+        if (stackIndex >= 0) visibleModalStack.splice(stackIndex, 1);
+        document.removeEventListener('keydown', this.handleEscapeKey);
+        document.removeEventListener('keydown', this.handleEnterKey);
 
         // Hide modal with animation
         this.overlay.classList.remove('show');
         this.overlay.classList.add('hide');
 
-        // Restore body scroll
-        document.body.style.overflow = '';
+        // Keep the page locked until the final stacked modal closes.
+        const nextTop = visibleModalStack[visibleModalStack.length - 1];
+        if (nextTop?.overlay) {
+            nextTop.overlay.removeAttribute('aria-hidden');
+            nextTop.overlay.inert = false;
+        }
+        if (visibleModalStack.length === 0) {
+            document.body.style.overflow = bodyOverflowBeforeModalStack;
+        }
 
-        // Restore focus
-        if (this.lastFocusedElement) {
+        // Restore focus only when this was the interactive top layer.
+        if (wasTopmost && this.lastFocusedElement?.isConnected) {
             this.lastFocusedElement.focus();
+        } else if (wasTopmost && nextTop) {
+            nextTop.focusFirstElement();
         }
 
         // Clean up after animation
@@ -575,10 +587,39 @@ export class ModalOverlay {
      * @param e - Keyboard event
      */
     private handleEscapeKey = (e: KeyboardEvent): void => {
-        if (e.key === 'Escape') {
+        if (e.key === 'Escape' && this.isTopmostModal()) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
             this.close('escape');
         }
     };
+
+    private isTopmostModal(): boolean {
+        return visibleModalStack[visibleModalStack.length - 1] === this;
+    }
+
+    private refreshFocusableElements(): void {
+        if (!this.container) {
+            this.focusableElements = [];
+            return;
+        }
+        const selector = [
+            'button:not([disabled])',
+            '[href]',
+            'input:not([disabled]):not([type="hidden"])',
+            'select:not([disabled])',
+            'textarea:not([disabled])',
+            '[tabindex]:not([tabindex="-1"])',
+            '[contenteditable="true"]'
+        ].join(',');
+        this.focusableElements = [...this.container.querySelectorAll<HTMLElement>(selector)]
+            .filter((element) => !element.closest('[hidden]') && element.getAttribute('aria-hidden') !== 'true');
+    }
+
+    private focusFirstElement(): void {
+        this.refreshFocusableElements();
+        (this.focusableElements[0] ?? this.overlay)?.focus();
+    }
 
     /**
      * Cleans up modal resources

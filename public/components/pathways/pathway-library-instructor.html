@@ -1,8 +1,11 @@
 <!-- public/components/pathways/pathway-library-instructor.html -->
-<section class="pathway-library" aria-labelledby="pathway-library-title">
+<section class="pathway-library page-shell" aria-labelledby="pathway-library-title">
     <header class="pathway-library__header">
-        <div class="pathway-library__header-row">
-            <h1 id="pathway-library-title" class="pathway-library__title">Pathway Library</h1>
+        <div class="pathway-library__header-bar page-header mobile-header-bar">
+            <button id="instructor-hamburger-btn" class="instructor-mobile-hamburger-btn icon-btn" type="button" title="Open menu" aria-label="Open menu">
+                <i data-feather="menu"></i>
+            </button>
+            <h1 id="pathway-library-title" class="pathway-library__title mobile-header-title">Pathway Library</h1>
             <div class="pathway-library__header-actions">
                 <button type="button" id="pathway-library-add-btn" class="pathway-library__btn pathway-library__btn--primary">
                     + Add Pathway
@@ -149,6 +152,30 @@
                 <div class="pathway-block__field">
                     <label class="pathway-block__label">Trigger description</label>
                     <textarea class="pathway-block__trigger" rows="4" placeholder="Describe when this pathway should fire…"></textarea>
+                </div>
+
+                <div class="pathway-block__notification-setting">
+                    <div class="pathway-block__notification-copy">
+                        <span class="pathway-block__label">Notify instructor when triggered</span>
+                        <span class="pathway-block__hint">
+                            Creates an anonymous Guided Pathway Alert when this active pathway is triggered.
+                        </span>
+                    </div>
+                    <div class="pathway-block__notification-control">
+                        <span class="pathway-block__notification-state">On</span>
+                        <button
+                            type="button"
+                            class="pathway-block__toggle-notification"
+                            role="switch"
+                            aria-checked="true"
+                            aria-label="Notify instructor when this pathway is triggered"
+                            title="Instructor notification on"
+                        >
+                            <span class="pathway-block__toggle-track" aria-hidden="true">
+                                <span class="pathway-block__toggle-thumb"></span>
+                            </span>
+                        </button>
+                    </div>
                 </div>
 
                 <div class="pathway-block__ctas-section">

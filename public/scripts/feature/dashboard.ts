@@ -28,6 +28,7 @@ interface DashboardCardDef {
     title: string;
     feather: string;
     feature?: 'writingFeedback' | 'guidedPathway';
+    managerOnly?: boolean;
 }
 
 type FeatureKey = keyof CourseFeatures;
@@ -39,7 +40,7 @@ const CARD_DEFS: DashboardCardDef[] = [
     { view: 'system-prompts', title: 'System Prompt', feather: 'sliders' },
     { view: 'monitor', title: 'Monitor', feather: 'monitor' },
     { view: 'writing-feedback', title: 'Writing Feedback', feather: 'edit-3', feature: 'writingFeedback' },
-    { view: 'pathway-library', title: 'Pathway Library', feather: 'git-branch', feature: 'guidedPathway' }
+    { view: 'pathway-library', title: 'Pathway Library', feather: 'git-branch', feature: 'guidedPathway', managerOnly: true }
 ];
 
 const FEATURE_ENDPOINTS: Record<FeatureKey, string> = {
@@ -61,11 +62,14 @@ const FEATURE_INPUT_IDS: Record<FeatureKey, string> = {
  *
  * @param currentClass - Active course used for feature gating and metadata
  */
-export async function initializeDashboard(currentClass: activeCourse): Promise<void> {
+export async function initializeDashboard(
+    currentClass: activeCourse,
+    canManageCourse: boolean
+): Promise<void> {
     renderWelcomeHeader();
-    renderDashboardCards(currentClass);
+    renderDashboardCards(currentClass, canManageCourse);
     wireCourseCodeFlip(currentClass);
-    await wireAdvancedSettings(currentClass);
+    await wireAdvancedSettings(currentClass, canManageCourse);
     renderFeatherIcons();
 }
 
@@ -210,11 +214,12 @@ function syncDashboardCardOrder(
  *
  * @param currentClass - Active course whose features gate optional cards
  */
-export function renderDashboardCards(currentClass: activeCourse): void {
+export function renderDashboardCards(currentClass: activeCourse, canManageCourse: boolean): void {
     const container = document.getElementById('dashboard-cards');
     if (!container) return;
 
     const desired = CARD_DEFS.filter((card) => {
+        if (card.managerOnly && !canManageCourse) return false;
         if (!card.feature) return true;
         return currentClass.features?.[card.feature]?.enabled === true;
     });
@@ -375,9 +380,8 @@ function bindAccordionToggle(itemId: string, toggleId: string, bodyId: string, c
  *
  * @param currentClass - Active course for toggles and metadata
  */
-async function wireAdvancedSettings(currentClass: activeCourse): Promise<void> {
+async function wireAdvancedSettings(currentClass: activeCourse, canManage: boolean): Promise<void> {
     const featuresTaNote = document.getElementById('dashboard-features-ta-note');
-    const canManage = await resolveCanManage(currentClass);
 
     fillCourseMetadata(currentClass);
 
@@ -390,26 +394,6 @@ async function wireAdvancedSettings(currentClass: activeCourse): Promise<void> {
     if (featuresTaNote) featuresTaNote.hidden = canManage;
 
     await wireFeatureToggles(currentClass, canManage);
-}
-
-/**
- * resolveCanManage - faculty instructor or platform admin (not TA).
- *
- * @param currentClass - Course whose instructors list is checked
- * @returns Whether the current user may edit capabilities / open Advanced Settings
- */
-async function resolveCanManage(currentClass: activeCourse): Promise<boolean> {
-    try {
-        const currentUserResponse = await fetch('/auth/current-user', { credentials: 'same-origin' });
-        const currentUserData = currentUserResponse.ok ? await currentUserResponse.json() : {};
-        const currentUser = currentUserData.globalUser;
-        const instructorIds = (currentClass.instructors ?? []).map((item: string | InstructorInfo) =>
-            typeof item === 'string' ? item : item.userId
-        );
-        return Boolean(currentUser?.isAdmin === true || instructorIds.includes(currentUser?.userId));
-    } catch {
-        return false;
-    }
 }
 
 /**
@@ -564,7 +548,7 @@ async function wireFeatureToggles(currentClass: activeCourse, canManage: boolean
             }
             persistedFeatures = featureSnapshotFromCourse(currentClass);
             showSuccessToast('Extra Feature settings saved.');
-            renderDashboardCards(currentClass);
+            renderDashboardCards(currentClass, canManage);
             refreshModelSettingsVisibility(currentClass);
         } catch (error) {
             currentClass.features = snapshot;
@@ -573,7 +557,7 @@ async function wireFeatureToggles(currentClass: activeCourse, canManage: boolean
                 if (input) input.checked = currentClass.features?.[key]?.enabled === true;
             }
             persistedFeatures = featureSnapshotFromCourse(currentClass);
-            renderDashboardCards(currentClass);
+            renderDashboardCards(currentClass, canManage);
             refreshModelSettingsVisibility(currentClass);
             await showErrorModal(
                 'Save Failed',

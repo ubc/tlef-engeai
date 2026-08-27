@@ -51,6 +51,7 @@ export interface GuidedPathway {
     order: number; // library list position
     title: string;
     enabled: boolean; // on for this course; false = listed but not evaluated
+    notifyInstructorOnTrigger: boolean; // creates an anonymous instructor alert when this active pathway wins
     triggerDescription: string;
     assistantResponse: string;
     ctas: PathwayCta[];
@@ -63,6 +64,157 @@ export interface PathwayEvaluationPromptConfig {
     body: string;
     updatedAt: number;
 }
+
+/** Must match src/types/shared.ts. Automatic Guided Pathway alert lifecycle. */
+export type GuidedPathwayFlagStatus = 'pending' | 'escalated' | 'dismissed';
+
+/** Must match src/types/shared.ts. Server-owned trigger origin. */
+export type GuidedPathwayFlagOrigin = 'student' | 'instructor-test';
+
+/** Must match src/types/shared.ts. Instructor decision request value. */
+export type GuidedPathwayFlagDecision = 'escalate' | 'dismiss';
+
+/** Must match src/types/shared.ts. Admin review-state filter. */
+export type GuidedPathwayFlagReviewState = 'needs-review' | 'reviewed' | 'all';
+
+/**
+ * Must match src/types/shared.ts. Anonymous alert DTO used by instructor and admin pages.
+ * Restricted student identity and audit fields are deliberately absent.
+ */
+export interface GuidedPathwayFlagView {
+    id: string; // stable alert id for review actions
+    courseId: string; // owning course id
+    courseName: string; // course-name snapshot at trigger time
+    pathwayId: string; // winning pathway id
+    pathwayTitle: string; // winning pathway title snapshot
+    messageText: string; // exact triggering chat message
+    origin: GuidedPathwayFlagOrigin; // production student alert or non-escalatable course-staff test
+    status: GuidedPathwayFlagStatus; // instructor decision lifecycle
+    triggeredAt: string; // ISO trigger timestamp
+    decidedAt?: string; // ISO instructor-decision timestamp
+    decidedByName?: string; // staff display-name snapshot
+    adminReviewedAt?: string; // ISO platform-review timestamp
+    adminReviewedByName?: string; // platform-admin display-name snapshot
+}
+
+/** Must match src/types/shared.ts. Safe pathway choice for administrator filtering. */
+export interface GuidedPathwayFlagPathwayFacet {
+    pathwayId: string; // stable winning-pathway id
+    pathwayTitle: string; // instructor-facing title snapshot
+}
+
+/** Must match src/types/shared.ts. Full-queue administrator filter choices. */
+export interface GuidedPathwayFlagFacets {
+    pathways: GuidedPathwayFlagPathwayFacet[]; // all scoped pathways except the active pathway filter
+    reviewers: string[]; // all scoped staff names except the active reviewer filter
+}
+
+/** Must match src/types/shared.ts. Paginated anonymous alert list. */
+export interface GuidedPathwayFlagListPage {
+    items: GuidedPathwayFlagView[]; // safe alerts for this page
+    page: number; // one-based page number
+    pageSize: number; // bounded page size
+    total: number; // total matching alerts
+    facets?: GuidedPathwayFlagFacets; // always present on admin list responses; omitted for course lists
+}
+
+/** Must match src/types/shared.ts. Staff identity snapshot on manual flag escalation/review. */
+export interface FlagReportActor {
+    userId: string;
+    name: string;
+}
+
+/** Must match src/types/shared.ts. Student-reported moderation flag. */
+export type ManualFlagType =
+    | 'innacurate_response'
+    | 'harassment'
+    | 'inappropriate'
+    | 'dishonesty'
+    | 'interface bug'
+    | 'other';
+
+export type ManualFlagStatus = 'unresolved' | 'resolved' | 'escalated';
+
+/** Must match src/types/shared.ts. */
+export interface FlagReport {
+    id: string;
+    courseName: string;
+    date: string | Date;
+    flagType: ManualFlagType;
+    reportType: string;
+    chatContent: string;
+    userId: string | number;
+    status: ManualFlagStatus;
+    response?: string;
+    escalatedAt?: string | Date;
+    escalatedBy?: FlagReportActor;
+    adminReviewedAt?: string | Date;
+    adminReviewedBy?: FlagReportActor;
+    createdAt: string | Date;
+    updatedAt: string | Date;
+    userName?: string;
+    userAffiliation?: string;
+}
+
+/** Must match src/types/shared.ts. Safe cross-course manual escalation row for admins. */
+export interface ManualFlagEscalationView {
+    id: string;
+    courseId: string;
+    courseName: string;
+    flagType: ManualFlagType;
+    reportType: string;
+    chatContent: string;
+    status: 'escalated';
+    escalatedAt: string;
+    escalatedByName?: string;
+    adminReviewedAt?: string;
+    adminReviewedByName?: string;
+    createdAt: string;
+}
+
+export interface ManualFlagEscalationListPage {
+    items: ManualFlagEscalationView[];
+    page: number;
+    pageSize: number;
+    total: number;
+}
+
+/** Unified instructor Flag Management workflow tab. */
+export type FlagWorkflowStatus = 'unresolved' | 'resolved' | 'escalated';
+
+/** Unified instructor Flag Management source discriminator. */
+export type FlagSource = 'manual' | 'guided-pathway';
+
+export interface FlagManagementFilters {
+    workflowStatus: FlagWorkflowStatus;
+    sources: Set<FlagSource>;
+    manualCategories: Set<ManualFlagType>;
+    /** Pathway library ids plus `others` for GP alert category filtering. */
+    guidedCategories: Set<string>;
+    period: {
+        from?: Date;
+        to?: Date;
+    };
+}
+
+/** Frontend-only normalized row for the unified instructor flag list. */
+export interface UnifiedFlagListItem {
+    id: string;
+    source: FlagSource;
+    workflowStatus: FlagWorkflowStatus;
+    sortDate: Date;
+    titlePrefix: string;
+    titleDetail: string;
+    previewText: string;
+    footerLabel: string;
+    statusBadge: string;
+    collapsed: boolean;
+    editing: boolean;
+    raw: FlagReport | GuidedPathwayFlagView;
+}
+
+/** Admin escalations queue source filter. */
+export type AdminEscalationSource = 'manual' | 'guided-pathway' | 'both';
 
 /**
  * Must match src/types/shared.ts.
@@ -269,6 +421,8 @@ export interface activeCourse {
         scenarioQuestions?: string;
         /** Per-course Guided Pathway Library; lazy-provisions on existing courses */
         pathways?: string;
+        /** Registered course-owned collection for automatic Guided Pathway alerts. */
+        guidedPathwayFlags?: string;
     };
     collectionOfInitialAssistantPrompts?: InitialAssistantPrompt[];
     /** @deprecated v2 uses systemPromptConfig; retained for lazy migration reads only */

@@ -7,11 +7,13 @@
  * Prefer these over string literals so renames stay localized.
  */
 
-import type { Db, Collection } from 'mongodb';
+import type { Db, Collection, Document } from 'mongodb';
 import {
     ACADEMIC_PERIODS_COLLECTION,
     ACTIVE_COURSE_LIST_COLLECTION,
     ACTIVE_USERS_COLLECTION,
+    APPLICATION_MIGRATIONS_COLLECTION,
+    GUIDED_PATHWAY_FLAGS_COLLECTION,
     INSTRUCTOR_PERIOD_ALLOWANCES_COLLECTION
 } from './mongo-constants';
 
@@ -57,4 +59,27 @@ export function academicPeriodsCollection(db: Db): Collection {
  */
 export function instructorPeriodAllowancesCollection(db: Db): Collection {
     return db.collection(INSTRUCTOR_PERIOD_ALLOWANCES_COLLECTION);
+}
+
+/**
+ * applicationMigrationsCollection - Returns the cross-process migration-state collection.
+ *
+ * @param db - Connected Mongo database handle
+ * @returns Fixed `application-migrations` collection
+ */
+export function applicationMigrationsCollection<T extends Document = Document>(db: Db): Collection<T> {
+    return db.collection<T>(APPLICATION_MIGRATIONS_COLLECTION);
+}
+
+/**
+ * guidedPathwayFlagsCollection
+ *
+ * Returns the legacy shared alert collection used only as a GPF-002 migration source.
+ * Runtime reads and writes use the collection registered on the active course.
+ *
+ * @param db - Connected Mongo database handle
+ * @returns `Collection` - legacy `guided-pathway-flags` migration source
+ */
+export function guidedPathwayFlagsCollection(db: Db): Collection {
+    return db.collection(GUIDED_PATHWAY_FLAGS_COLLECTION);
 }

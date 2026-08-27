@@ -33,9 +33,113 @@ Operational CLI migrations (OB-001, OB-002) are documented here but are **not** 
 | **MIG-C** | Resolve Qdrant to Mongo | CLI | `runQdrantResolveToMongo` | register point UUIDs onto `qdrantChunkIds` | Keep |
 | **MIG-D** | Validate Qdrant from Mongo | CLI | `runQdrantValidateFromMongo` | Mongo wins metadata; delete orphan points | Keep |
 | **ADM-001** | Platform admin `isAdmin` backfill | Startup | `migratePlatformAdmins` in `src/helpers/migrate-platform-admins.ts` | GlobalUsers matching `CHARISMA_RUSDIYANTO_PUID` / `RICHARD_TAPE_PUID` → `isAdmin: true` | Operational — keep unless product changes |
+| **GPF-001** | Guided Pathway alert course isolation | Superseded | Historical implementation in `guided-pathway-flag-collection-mongo.ts` | shared `guided-pathway-flags` rows → hashed per-course collections | Superseded by GPF-002; hash recognition remains migration-only |
+| **GPF-002** | Guided Pathway registered collection normalization | Startup + operation gate | `migrateGuidedPathwayFlagsToCourseCollections` in `src/db/mongo/guided-pathway-flag-collection-mongo.ts` | shared and hashed rows → readable `activeCourse.collections.guidedPathwayFlags` targets; lease/result → `application-migrations` | Operational — retain until every environment passes the GPF-002 postchecks and retained legacy data is resolved |
 | **SQ-001** | Scenario Questions collection backfill | Lazy (first API call) | `ensureScenarioQuestionsCollection` in `src/db/mongo/scenario-questions-mongo.ts` | missing `activeCourse.collections.scenarioQuestions` → creates `{courseName}_scenario_questions` + `$set` the field | Keep while any pre-feature course document may lack `collections.scenarioQuestions` |
 | **SQ-004** | Scenario Progress collection backfill | Lazy (first progress API call) | `ensureScenarioProgressCollection` in `src/db/mongo/scenario-progress-mongo.ts` | missing `activeCourse.collections.scenarioProgress` → creates `{courseName}_scenario_progress` + `$set` the field | Keep while any course may lack `collections.scenarioProgress` |
 | **GP-001** | Remove legacy off-topic pathway | Lazy (pathways ensure/list/seed) | `healRemoveOffTopicPathway` in `src/db/mongo/pathways-mongo.ts` | `{courseName}_pathways` docs with `id: 'off-topic'` → deleted | Keep while legacy courses may still hold the seed; audit then remove |
+
+---
+
+## GPF-001: Guided Pathway alert course isolation
+
+**Status:** Superseded by GPF-002
+
+GPF-001 moved the original global `guided-pathway-flags` rows into
+`guided-pathway-flags-course-<hash>` namespaces. It also made the hash authoritative
+instead of reading `activeCourse.collections.guidedPathwayFlags`. Some environments may
+already contain those namespaces, so GPF-002 still recognizes them as migration sources.
+GPF-001 must not run independently again.
+
+---
+
+## GPF-002: Guided Pathway registered collection normalization
+
+**Status:** Active (startup migration with operation-level gate)
+
+**Collections:** legacy `guided-pathway-flags`, legacy `guided-pathway-flags-course-<hash>`, `active-course-list`, durable migration state in `application-migrations`, and readable registered course targets such as `{courseName}_guided-pathway-flags`
+
+### Behavior
+
+1. Create/verify a partial unique index on the non-empty string `activeCourse.collections.guidedPathwayFlags` field. This is the cross-process catalog guard that prevents two active courses from owning the same automatic-alert namespace.
+2. Treat a valid non-hash registered value as authoritative. When the field is missing or still points at a GPF-001 hash, choose `{courseName}_guided-pathway-flags` and persist it only after source rows are copied and verified. A later course rename does not recompute the stored name.
+3. Preflight every target. Reject protected names, collisions with another registered course collection, duplicate Guided Pathway registrations, and a physical target containing any row whose `courseId` differs from the target course. The checks and logs use counts/identity metadata only and never emit alert content.
+4. Copy matching rows from the course's GPF-001 hash namespace first, then the older shared collection, in 200-row `_id` batches. Each destination operation is an upsert with `$setOnInsert`, so the per-course source wins a duplicate legacy `_id` while an existing readable-target document remains authoritative. Verify every destination `_id` with its owning `courseId` before switching the catalog field.
+5. Compare-and-set `collections.guidedPathwayFlags`, invalidate the course collection-name cache only after success, and then verify that the catalog still owns the target. Re-verify exact source `_id` batches before deleting them. Drop only namespaces that are empty; a missing namespace is an idempotent cleanup result.
+6. Retain malformed global rows and non-empty hash namespaces without an active catalog owner for manual recovery. Never guess ownership or attach orphan data to a current course.
+7. Do not register or create storage for an untouched existing course with no registration, no shared/hash source, and no pre-existing readable namespace. Alert creation uses the provisioning resolver when storage is first needed. Course/admin list, count, backup, and cross-course aggregation use read-only resolution and include only existing registered collections.
+
+Startup invokes GPF-002 after academic-period initialization. Guided Pathway operations also await the migration gate. The exported method retains its historical name for façade compatibility.
+
+### Cross-process coordination
+
+GPF-002 stores one record at `application-migrations._id = 'GPF-002'`:
+
+- The owner acquires `state: 'running'` with a random `ownerId` and a renewable five-minute `leaseUntil`.
+- Other application instances poll the durable record. A failed record, an expired lease, or a running record with no lease can be claimed for retry.
+- The owner renews the lease between bounded migration/copy/cleanup phases. Losing the lease fails the attempt before it can report completion.
+- Success persists `state: 'complete'`, the count-only result, and `completedAt`, then removes owner/lease fields. Later processes and restarts return that persisted result without rerunning data movement.
+- Failure marks the record `failed` and removes the lease so a later operation can retry. A process-local promise coalesces callers only within one application instance and is discarded on failure.
+
+### Idempotency and failure safety
+
+Destination writes are insert-only upserts by Mongo `_id`; retrying after a partial copy does not duplicate an alert and does not overwrite a newer target decision, admin review, or reveal-audit history with a stale legacy snapshot. A source row is never deleted before target verification, compare-and-set catalog registration, and a second ownership check. Per-course unique alert-id and deduplication indexes remain the runtime guards.
+
+GPF-001 application instances ignore the registered field and can continue writing hashes. Because a completed GPF-002 record makes later runs a no-op, any old process writing after completion would strand new rows in a migration-only source. Run GPF-002 only after old instances stop accepting chat traffic; a rolling mixed-version migration is unsupported.
+
+### Deployment preconditions
+
+1. Take and validate a recoverable full database backup.
+2. Stop every pre-GPF-002 application instance from accepting chat/write traffic before a new instance starts the migration.
+3. Ensure the deployment identity can read/write `application-migrations`, create the catalog and per-course indexes, create target collections, update `active-course-list`, and delete/drop only verified legacy sources.
+4. Do not manually mark the migration complete. If startup fails, inspect the count-only migration error/result and retry the same build after correcting the cause.
+
+### Verification (Mongo shell)
+
+```js
+db.getCollection('guided-pathway-flags').countDocuments({
+  courseId: { $type: 'string' }
+})
+
+db.getCollection('active-course-list').countDocuments({
+  'collections.guidedPathwayFlags': /^guided-pathway-flags-course-[a-f0-9]{24}$/
+})
+
+db.getCollection('active-course-list').aggregate([
+  { $match: { 'collections.guidedPathwayFlags': { $type: 'string' } } },
+  { $group: { _id: '$collections.guidedPathwayFlags', owners: { $addToSet: '$id' }, count: { $sum: 1 } } },
+  { $match: { count: { $gt: 1 } } }
+])
+
+db.getCollection('application-migrations').findOne(
+  { _id: 'GPF-002' },
+  { _id: 1, state: 1, completedAt: 1, result: 1 }
+)
+
+db.getCollection('active-course-list').getIndexes().filter(
+  ({ name }) => name === 'guided_pathway_flag_collection_unique'
+)
+```
+
+The first two counts and the duplicate-registration aggregation should be empty/zero for migratable active-course data. The migration record must be `state: 'complete'`, and the named partial unique catalog index must exist. Review the count-only `result.retainedLegacyRows`, `result.retainedHashedCollections`, and `result.orphanCourseCollections` values. Non-empty global or hash sources require manual ownership review; do not delete them merely to satisfy the count.
+
+For every active course with a non-empty registration, also verify operationally that the named collection exists and contains no row with a different `courseId`. Perform that check with counts/projections only; do not print messages, user identifiers, deduplication keys, or reveal events.
+
+### Rollback
+
+Rollback requires restoring the pre-deployment database backup together with the pre-GPF-002 application build. Redeploying the old build alone is unsafe because new writes use readable registered targets and verified legacy rows may already have been removed. If an attempt fails before completion, prefer correcting the cause and retrying the same GPF-002 build; do not edit the lease/result record or move rows manually without a separate recovery plan.
+
+### Sunset criteria
+
+Keep the operation gate, shared/hash source discovery, and durable migration record handling until every deployed environment has:
+
+- a `complete` GPF-002 record from the current migration implementation;
+- zero migratable active-course rows in the shared source and zero hash registrations;
+- no duplicate/unsafe registered namespaces and the partial unique registry index present;
+- reviewed and resolved every retained malformed/orphan source; and
+- passed an agreed rollback-support window with no pre-GPF-002 application version eligible for redeployment.
+
+After those conditions are documented, a separate change may remove global/hash discovery and the operation-level migration gate. Keep registry-authoritative resolution, the unique catalog index, and read-only versus provisioning resolution after migration code is retired.
 
 ---
 

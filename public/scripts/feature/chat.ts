@@ -8,7 +8,7 @@
  */
 
 import { loadComponentHTML, renderFeatherIcons } from "../api/api.js";
-import { createNewChat, sendMessageToChat, deleteChat, dismissUnstruggleBlock, updateChatConversationMode } from "../api/chat-api.js";
+import { createNewChat, deleteChat, dismissUnstruggleBlock, updateChatConversationMode } from "../api/chat-api.js";
 import {
     Chat,
     ChatMessage,
@@ -184,6 +184,11 @@ export class ChatManager {
     private selectedConversationMode: ConversationModeId = 'socratic';
     private conversationModePicker: ConversationModePicker | null = null;
     private isConversationModeUpdatePending = false;
+    private failedTransportAttempt: {
+        chatId: string;
+        messageText: string;
+        clientMessageId: string;
+    } | null = null;
     
     // ===== LOGGING HELPER METHODS =====
     
@@ -653,6 +658,21 @@ export class ChatManager {
             return;
         }
         const selectedModeForSend = this.selectedConversationMode;
+        const chatIdForSend = activeChat.id;
+        const retryAttempt = this.failedTransportAttempt;
+        const isManualRetry = Boolean(
+            retryAttempt &&
+            retryAttempt.chatId === chatIdForSend &&
+            retryAttempt.messageText === text
+        );
+        const clientMessageId = isManualRetry
+            ? retryAttempt!.clientMessageId
+            : crypto.randomUUID();
+
+        // A different chat/text is a deliberate new send and receives a fresh request id.
+        if (!isManualRetry) {
+            this.failedTransportAttempt = null;
+        }
 
         // console.log('[CHAT-MANAGER] 💬 Sending message...'); // 🟢 MEDIUM: Debug info - keep for monitoring
 
@@ -694,9 +714,10 @@ export class ChatManager {
 
         // Show loading state immediately
         onChunk?.('Thinking...', false);
+        let requestProcessed = false;
 
         try {
-            const response = await fetch(`/api/chat/${this.activeChatId}`, {
+            const response = await fetch(`/api/chat/${chatIdForSend}`, {
                 method: 'POST',
                 credentials: 'same-origin', 
                 headers: {
@@ -704,6 +725,7 @@ export class ChatManager {
                 },
                 body: JSON.stringify({
                     message: text,
+                    clientMessageId,
                     userId: this.config.userContext.userId,
                     courseName: this.config.userContext.courseName,
                     conversationMode: selectedModeForSend,
@@ -719,6 +741,10 @@ export class ChatManager {
             if (!data.success) {
                 throw new Error(data.error || 'Failed to send message');
             }
+
+            // Successful processing closes the retry window; a later send is a new message.
+            requestProcessed = true;
+            this.failedTransportAttempt = null;
 
             // console.log('[CHAT-MANAGER] ✅ Message sent successfully'); // 🟢 MEDIUM: Success info - keep for monitoring
             const persistedMode = data.conversationMode ?? selectedModeForSend;
@@ -773,6 +799,15 @@ export class ChatManager {
 
         } catch (error) {
             // console.error('[CHAT-MANAGER] 🚨 Error sending message:', error);
+
+            // Reuse this id only when transport/server processing did not complete.
+            if (!requestProcessed) {
+                this.failedTransportAttempt = {
+                    chatId: chatIdForSend,
+                    messageText: text,
+                    clientMessageId,
+                };
+            }
             
             // Remove placeholder messages from DOM and data using incremental updates
             this.removeMessageFromDOM(botMessageId);
