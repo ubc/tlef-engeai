@@ -1,4 +1,4 @@
-# AI Assisted Coding Tools
+# AI-Assisted Coding Tools
 
 ```prerequisites
 
@@ -14,144 +14,129 @@
 
 ```
 
-The page discuss about
 
-1. Why This matters for EngE-AI
-2. Tool Tradeoffs
-3. AI Agent Rules 
-4. AI Agent Skills 
-5. Plan Mode
-6. Suggested Practice
-7. Conclusion
+Cursor has been used extensively throughout EngE-AI development because it allows us to develop the app through manual code editing and review, as well as agentic development, within the same ecosystem.
 
-## Why this Matters to EngE-AI
+The important thing is not whether Cursor is always the best tool, but how AI tools can be used effectively in app development. This includes defining feature requirements, checking generated code, and validating changes before accepting them.
 
-Cursor is the main AI-Assisted coding tools used throughout EngE-AI development. Cursor allows us to develop the app through manual code editing, and review, and agentic development within the same ecosystem.
+This page explains how AI-assisted coding tools can be used in EngE-AI development. It covers:
 
-The important thing is not Cursor is the always the best tools, but how AI tools can be optimally used for the project context. This includes developing the feature requirements, checking the generated code, and validating them before accepting the changes. 
+
+1. Tools and Interface Tradeoffs
+2. AI Agent Rules
+3. AI Agent Skills
+4. Plan Mode
+5. Suggested Practice
+6. Conclusion
+
 
 ## Tools and Interface Tradeoffs
 
-Even Cursor is the tool that is used mainly to develop EngE-AI, many other AI-Assisted coding tools that are commonly used for software development. We briefly compare between 3 common tools: Cursor, Claude code, and Codex, and 3 different stylings: IDE, CLI, and agent windows. The following comparison does not discuss which tool is better, but you might want to have good judgement for opting the best tools given their pros and cons
+This comparison helps developers choose an AI-assisted coding tool and interface based on the task, workflow, and amount of code review required. We briefly compare three common tools—Cursor, Claude Code, and Codex—and three interface styles: IDE, CLI, and agent windows. The following comparison does not identify which tool is better; instead, it provides information to help you make an informed choice.
 
 ### Tools Comparison
 
-**Similarities**: All of them are supported with development-centered features: such as planning, debug, skills. All of them has their own CLI and Agentic views, or ide-chat sidebar feature. Generous quota on their own internal models. Mostly accurate judgement on Vanilla typescript. And ranging in the same price for the lowest subscription fee. May read other tools rules and skills.
+**Similarities**: All three tools provide development-focused features, such as planning, debugging, and skills. They support command-line, agent-based, or IDE-integrated workflows, although the available interfaces differ by tool. They generally provide generous quotas for their respective internal models, produce mostly accurate output when working with vanilla TypeScript, and have broadly comparable prices for their lowest subscription tiers.
 
-**Cursor**:
+| Tool | Pros | Cons |
+|---|---|---|
+| **Cursor** | It has its own dedicated IDE, so there is no requirement to open a third-party IDE such as VS Code. It has fast throughput for internal models. | It is memory-hungry, particularly in Agent Windows. It is stingy with external models, including OpenAI and Anthropic models. |
+| **Codex** | It provides a generous quota for OpenAI frontier models. It may be used for purposes other than coding. | You may need to open VS Code to validate the changes. It has slow throughput on high-end models. |
+| **Claude Code** | It provides exposure to Anthropic’s smartest models. It may be used for purposes other than coding. | It has slow throughput for medium- to high-level models. It might be suitable for well-defined plans, skills, and rules, but less favourable for debugging front-end components. You may also need to open VS Code to validate the changes, which requires additional memory. |
 
-Pros: Has thier own dedicated IDE, no requirement to open third party IDE (such as vscode), fast throughput on their internal models
-
-Cons: Memory hungry (particularly in Agent Windows), Stingy on external models (OpenAI nor Anthropic Models).
-
-**Codex**
-
-Pros: Generous quota on OpenAI Frontier Models. May used for other-than coding purposes.
-
-Cons: You may need to open VSCode to validate the changes. Slow throughput on high models
-
-**Claude code**
-
-Pros: Exposure to Anthropic’s smartest Models. May used for other-than coding purposes.
-
-Cons: Slow throughput for their medium to high models (might be really good for well-defined plan, skills and rules, not really favourable for debugging front-end components). You also may need to open VSCode to validate the changes, which requires extra memory
-
-The comparison above can be really bias, but we all tools are really supportive when it comes to EngE-AI Development-just the matter of personal preference. There are other tools as well, such as Devin or Kimi, but these three tools are have been used EngE-AI Development. Lets see the conparison between CLI vs IDE vs Agent Windows.
+This comparison may be biased because it is based on EngE-AI’s development experience. However, all three tools have supported EngE-AI development, and the most suitable choice depends largely on personal preference. Other tools, such as Devin and Kimi, are also available, but this page focuses on the three tools used in EngE-AI development. Let’s compare CLI, IDE, and Agent Windows interfaces.
 
 ### Interface Comparison
 
-**Similarities**: All performs similar purposes-help you complete your deliverabels of your task
+**Similarities**: All three interfaces serve similar purposes: they help you complete your tasks.
 
-Now, lets compare their strengths
+Now, let’s compare their strengths.
 
-**CLI**: 
+| Interface | Pros | Cons |
+|---|---|---|
+| **CLI** | It uses the least memory and CPU. It is slightly faster for file I/O operations and is well suited to short, deterministic tasks. | Its interface might not be intuitive, and long descriptions might be harder to read. |
+| **IDE** | It is the most versatile option: you can edit and validate code while prompting directly through the sidebar. You may also spin up multiple agents simultaneously within one project. | It might use more memory and be less intuitive for longer descriptions. |
+| **Agentic Windows** | It is best for spinning up multiple agents simultaneously across several projects. It provides the best user experience if you want to focus on feature specifications and descriptions rather than the code itself. | It has the highest memory usage and requires customization if you mainly use VS Code. It may not be the best option if code maintainability is necessary. |
 
-Pros: Least memory and CPU usage, slightly rapid for file-IO operations. Realy good for short and deterministic tasks.
-
-Cons: Interface might not be really intuitive, long description might be harder to read.
-
-**IDE**: 
-
-Pros: Most versatile option-can edit and validate the code, while also can prompt directly to the sidebar. May spin up multiple agent simultaneously on one project.
-
-Const: Might cost memory usage, Less intuitive for longer description.
-
-**Agentic Windows**
-
-Pros: Best for spinning up multiple agents simulataneously across several projects, best user experience if you want to focus on the feature specs and description rather than the code itself.
-
-Cons: Higest memory usage, Need accostumizstion if you mainly uses VSCode. May not the best if code maintanibility is necessary
-
-As we have discuss the similarities and differences between some tools and interface option, we expect that you can have fair judgement when it comes to which tool and interface will you choose. 
+After considering the similarities and differences between tools and interface options, we hope you can make an informed judgment when choosing an option.
 
 ## Agent Rules
 
-Lets make a through experiment: we have set the deliverables, clear design decision, and necessary part of a clear prompt, and we sent to your AI Coding Agent. You wait, and Your AI is correctly implement the feature, and it works perfectly on your end. However, the generated code does not follow the proper coding standards, such as DRY, necessary comments, unintuitie synthax, etc, which truly make the code is not maintainable. You might need to rewrite or re-describe to the agent how would you like to structurize your code, and it takes extra time, and we obviously want to avoid it. This is when Agent rules takes place.
+```developer-note
 
-In cursor, you might want to configure your agent rules so unnecessary repetition can be avoided for maintanability purposes. In EngE-AI’s cursor rules we divide the agents into 5 personas:
+Let’s consider a thought experiment: We want to implement a feature.
 
-- Kernel: every mindset that each agent should follows, such as responsibility, role seperation, verification, etc
-- Orchestrator: The speaker man between the worker agent and the prompter: ask for further clarification and ensure the requiremnt completeness
-- System Architect: Agent who design the comunication between FrontEnd, Backend, Database and External Sources, along with the user experience factor
-- Front-End: Interface designer and FrontEnd Code writer-Agent Worker who only responible for Front-End
-- Backend: Agent who responsible for Backend
-- Prompt-Engineer: An agent who will evaluate system prompt, initialy assisted prompt, and prompt bridge we have.
-- Tester and Read team: Evaluates the code, and attempt to determine the missed edge cases or vulnerabilities of the ferature while the agent is still on the conversation
+We have defined the deliverables and design decisions, prepared a clear prompt, and sent it to an AI coding agent. You wait, and the AI correctly implements the feature. It works as expected, but the generated code does not follow appropriate coding standards, such as avoiding repetition, unnecessary comments, or unintuitive syntax. As a result, the code is no longer maintainable. You may need to restructure the code using either an AI agent or manual changes, which takes extra time. This is where agent rules become useful.
 
-Each of these agent personas has their own specialized rules that attached to each personas. Surprisingly coding tools in general (codex and claude code) are capable to reach to these documents. You may want to add an introdcutory messages in `AGENTS.MD`  (on how to use cursor rules universally). See `.cursor/rules` for further clarification. 
+```
+
+Agent rules should be configured carefully to avoid unnecessary repetition. In EngE-AI’s agent rules, we divide the agents into seven personas:
+
+| Agent persona | Responsibility |
+|---|---|
+| **Kernel** | Defines the principles and expectations that guide every agent, including responsibility, separation of roles, and verification. |
+| **Orchestrator** | Coordinates communication between worker agents and the prompter, asks for clarification when necessary, and ensures that the requirements are complete. |
+| **System Architect** | Designs the communication and integration between the front end, back end, database, and external sources while considering the user experience. |
+| **Front-End** | Designs the interface and writes front-end code. This agent is responsible only for the front end. |
+| **Backend** | Writes and maintains back-end code. This agent is responsible only for the back end. |
+| **Prompt-Engineer** | Evaluates the system prompts, AI-assisted prompts, and prompt bridges used by the application. |
+| **Tester and Review Team** | Reviews the code and identifies missed edge cases or vulnerabilities while the agent is still working on the feature. |
+
+Each of these agent personas has its own specialized rules, which are attached to that persona. Rules are not automatically portable across tools; each tool may require a supported instruction file or an explicit reference to the project rules. See `.cursor/rules` for further clarification.
 
 ## Agent Skills
 
-If cursor rules is limited to a project, we also can set rules in a skills. The main intention between skiils and rules are actually the same- description helper for more directed and expectable outcome. 
+Agent skills help address the limitation that agent rules may be restricted to a single project. Nevertheless, agent rules and agent skills have similar purposes: they direct the agent through instructions.
 
-The main difference however how these two are managed by the application: while rules is explicitly mentioned in the project, skills are embedded inside the application, meaning you might need extra steps to see the description of the skills. 
+The main difference, however, is how these two are managed by the application: agent rules are applied only to the dedicated project, whereas skills are embedded in the agent’s platform. You may need to take additional steps to view skill descriptions; see the platform settings for more information.
 
-Skiils usually contain of straighforward descriptions on how the skills should behave along with necessary checklists. There are some useful skills that has been embedded by the application such as `/plan` and `/code-review`
+Skills contain straightforward descriptions of an agent’s behaviour, along with checklists. Some useful skills are built into the application, such as `/plan` and `/code-review`.
 
-You can create you own dedicated skills using `/create-skills` (depends on your chosen tool), and you can decribe on how an agent should behave, you can create on your own or you can ask AI to configure it for you.
+You can create your own dedicated skills using `/create-skills`, depending on your chosen platform. You can describe the agent’s behaviour manually or ask an AI tool to configure the description.
 
-You also can attach skills that has been developed by other developers. The main popular skills are `ponytails` by Dietrich Gebert and team or `UI UX ProMax` by NextLevelBuilder and teams. See the sources for more information.
+You can also attach skills developed by other developers. Popular skills include `ponytails` by Dietrich Gebert and team and `UI UX ProMax` by NextLevelBuilder and team. See the sources for more information.
 
 ## Plan Mode
 
-When you have all the prompt description ready, along with well structured agent skills or rules, you still find that there are some bugs or unproperly written code. This may happen if you prompt is not specific enough to for the agent to grasp. Turns out your code might loss maintaibnability, or even unproperly integrated with other features. **Important Note**: Coding Assistant Agent will only do what your prompt us to do.
+While implementing a feature, you may have a complete prompt description, along with well-structured agent skills or rules, and still find bugs or poorly written code produced by the coding agent. This may happen if your prompt is not specific enough for the agent to understand. As a result, the code may lose maintainability or be poorly integrated with other features. **Important note:** A coding assistant will only do what your prompt asks it to do.
 
-So we need a feature that could evaluate adn clarify the prompt given our current implementation.
+We can use plan mode to address this issue. Plan mode scans the current implementation related to your prompt and performs a thorough evaluation of the in-scope and out-of-scope requirements that should be satisfied. You can also request a diagram to explain the plan in detail.
 
-We have plan mode to resolve this issue. Plan mode works by scanning your current implementation related to your prompt, and make a throrough evaluation on the in-scope and out-of-scope requirements that should be satisfied. We can request for a diagram to throroughly explain to us about their plan. 
+If the agent identifies an incomplete requirement, it may ask questions. You can define how detailed those questions should be.
 
-If the agent feels uncompleted requirement, they will ask for questions. You may define on how vary the question will be.
+Plan mode is highly recommended when starting a new feature or modifying an existing one. It provides a thorough plan, including its sources, judgments, explanations, and to-do list. You may want to review the plan and the relevant implementation before asking the agent to build the feature.
 
-Plan mode is highly recomended for a newly initiated feature or developing an implemented feature. Plan mode gives you thorough description about your their sources, judgement, explanation, and to-do-lists. We may want to skim / read over the implementation before we request them to build.
-
-IF you think that there are implementation that feels dissatisfied, you may ask them to adjust the plan accordingly. So, you have the ability to create a feedback loop changes in plain english. 
+If you are dissatisfied with any part of the plan, you can provide feedback and ask the agent to adjust it. This creates a feedback loop in plain English.
 
 ## Suggested Practices
 
-We acknowledge that every developer has their own style while using AI Assisted coding tools. In order to ensure the correctness of the implementation, we suggest you as follows:
+Every developer has their own style when using AI-assisted coding tools. To help ensure the correctness of an implementation, we suggest the following practices:
 
 1. Define your problem
-You should know what problem specifically that you are about to solve and the audience of the feature before moving to development. This steps is super important to avoid any unecessary edge cases.
-2. Define your requirements
-Once the problem is corrctly defined, along with the targetted audience. You might still need to think through what are the requirements of the feature. What are the important attributes / data structure. You may want to be really specific on this requirement, particularly to fill some edge cases. You might want to write this on girhub issue and let other poeple review this before heading to implementation.
+Define the problem and its audience before starting development. This step is important for avoiding overlooked edge cases.
 
-Developer note: You might want to leave it for 24 hours to mitigate any bias on the requirement, or you might come through any ideas or edge cases.
+2. Define your requirements and constraints
+Once the problem and audience are correctly defined, think through the feature’s requirements and constraints, such as important attributes, data structures, or limitations. Be specific about the requirements and constraints, particularly when addressing edge cases. You may want to write this in a GitHub project board or issue and ask other people or your supervisor to review the requirements before beginning implementation.
 
-1. Create your Plan
-You can ask you Agent to create a plan (mostly in md file) defining how the feature should be implemented. This is our key steps before any code is written. You may want to consider these parts:
-    1. What are new files / files that are about to be changed
-    2. How is the architecture of the overall design of the feature, including the newly created end point, what are their Role Based Access Controll
-    3. What are the Edge Cases that should be created
-    4. What are the automated / manual test that should be cover
-    5. Afte the code is generated Can you responsible for the output ? do you think the code structure is mainatable ? do you understand the synthax? 
+``` developer-note
+Developer note: You might want to set the requirements aside for 24 hours to reduce bias or identify additional ideas and edge cases.
+```
+
+3. Create your Plan
+Ask your agent to create a plan, usually in a Markdown file, that defines how the feature should be implemented. This is a key step before any code is written. You may want the plan to address the following:
+    1. Which new files will be created or changed?
+    2. What is the overall architecture of the feature, including any new endpoints and their role-based access control?
+    3. Which edge cases should be tested?
+    4. Which automated and manual tests should be covered?
+    5. After the code is generated, can you take responsibility for the output? Is the code structure maintainable? Do you understand the syntax?
     
-    If there any part of the plan does not fits what you want, you might want to provide feedback on how you are about to make the changes. By creating this loops hopefully we can generate more accurate output from the AI generated code.
+If any part of the plan does not fit your needs, provide feedback and explain how you want the changes to be made. By maintaining a human-in-the-loop system, we expect more accurate output from the coding agent.
     
-    It looks like using plan mode, rules and skills really cost us token througout the implementation. But implmentation correctness is highly more priorotize compared to toke cost.
+Although plan mode, rules, and skills may consume additional tokens, implementation correctness is a higher priority than token cost.
     
 
 ## Conclusion
 
-Overall, we have discussed about the essential of using AI-Assisted Coding Tools, Comparison between the pros and cons between well-known AI-Assisted Coding Tools and interfaces, Agent Rules and Skills, Plan mode, as well as the suggested practices. 
+Overall, we have discussed the purpose of AI-assisted coding tools, the advantages and disadvantages of well-known AI-assisted coding tools and interfaces, agent rules and skills, plan mode, and suggested practices.
 
-By having so, hopefully we can harness these tool to be more accurate, productive and faster, rhaterthan typical vibe coder that is hunch-based implementation. The content is mostly based on EngE-AI developer experience, some of the content might be innacurate or bias.
+By using these practices, we hope to make development more accurate, productive, and efficient rather than relying on hunch-based implementation. This content is based largely on EngE-AI developer experience, so some information may be inaccurate or biased.

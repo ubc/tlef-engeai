@@ -39,6 +39,11 @@ interface DocsNav {
 	items: DocsNavGroup[];
 }
 
+interface DocsNavEntry {
+	title: string;
+	path: string;
+}
+
 interface MarkedHeadingToken {
 	depth: number;
 	text: string;
@@ -99,6 +104,7 @@ let navToggle: HTMLButtonElement | null = null;
 let backdropEl: HTMLElement | null = null;
 let headingObserver: IntersectionObserver | null = null;
 let mermaidConfigured = false;
+let docsNavEntries: DocsNavEntry[] = [];
 
 /** CHBE-aligned Mermaid palette for public docs diagrams. */
 const DOCS_MERMAID_THEME = {
@@ -287,11 +293,28 @@ async function loadSidebar(): Promise<void> {
 			return;
 		}
 		const nav = (await response.json()) as DocsNav;
+		docsNavEntries = flattenNavEntries(nav);
 		sidebarLinksEl.innerHTML = renderNavHtml(nav);
 		highlightActiveNav();
 	} catch {
 		sidebarLinksEl.innerHTML = '<p class="docs-nav-error">Could not load navigation.</p>';
 	}
+}
+
+/**
+ * flattenNavEntries - converts the sidebar tree into the linear reading order used by page navigation.
+ */
+function flattenNavEntries(nav: DocsNav): DocsNavEntry[] {
+	const entries: DocsNavEntry[] = [];
+	for (const item of nav.items || []) {
+		if (item.path) {
+			entries.push({ title: item.title, path: item.path });
+		}
+		for (const child of item.children || []) {
+			entries.push({ title: child.title, path: child.path });
+		}
+	}
+	return entries;
 }
 
 /**
@@ -389,6 +412,7 @@ async function loadCurrentPage(): Promise<void> {
 	}
 	try {
 		articleEl.innerHTML = await renderMarkdown(markdown);
+		renderDocsPageNavigation();
 		try {
 			await renderDocsMermaidDiagrams(articleEl);
 		} catch {
@@ -411,6 +435,38 @@ async function loadCurrentPage(): Promise<void> {
 			tocListEl.innerHTML = '';
 		}
 		setTocVisible(false);
+	}
+}
+
+/**
+ * renderDocsPageNavigation - adds Previous and Next links in the configured documentation order.
+ */
+function renderDocsPageNavigation(): void {
+	if (!articleEl) {
+		return;
+	}
+
+	const currentPath = currentDocSlug(window.location.pathname);
+	const currentIndex = docsNavEntries.findIndex((entry) => entry.path === currentPath);
+	if (currentIndex < 0) {
+		return;
+	}
+
+	const previous = docsNavEntries[currentIndex - 1];
+	const next = docsNavEntries[currentIndex + 1];
+	const links: string[] = [];
+	if (previous) {
+		links.push(
+			`<a class="docs-page-nav-link docs-page-nav-link--previous" data-docs-path="${escapeHtml(previous.path)}" href="${escapeHtml(docsHrefForPath(previous.path))}" aria-label="Previous page: ${escapeHtml(previous.title)}"><span class="docs-page-nav-direction">← Previous</span><span class="docs-page-nav-title">${escapeHtml(previous.title)}</span></a>`
+		);
+	}
+	if (next) {
+		links.push(
+			`<a class="docs-page-nav-link docs-page-nav-link--next" data-docs-path="${escapeHtml(next.path)}" href="${escapeHtml(docsHrefForPath(next.path))}" aria-label="Next page: ${escapeHtml(next.title)}"><span class="docs-page-nav-direction">Next →</span><span class="docs-page-nav-title">${escapeHtml(next.title)}</span></a>`
+		);
+	}
+	if (links.length > 0) {
+		articleEl.insertAdjacentHTML('beforeend', `<nav class="docs-page-nav" aria-label="Documentation page navigation">${links.join('')}</nav>`);
 	}
 }
 

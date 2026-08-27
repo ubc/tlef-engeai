@@ -1,138 +1,147 @@
 # Scope
 
-EngE-AI is a vanilla Typescript application supported by preconfigured UBC's infrastrcuture and shared development tools. This page outlines your responsibilities as a developer, the system maintained by the project team, and the boundaries of your role throughout your development phase. This page covers:
+EngE-AI is a vanilla TypeScript application supported by preconfigured UBC infrastructure and shared development tools. This page outlines your responsibilities as a developer, the systems maintained by the project team, and the boundaries of your role during development. This page covers:
 
-1. Maintained Areas
-2. Continuos integration and Continuous Delivery
+1. Developer Responsibilities
+2. Continuous Integration and Continuous Delivery
 3. GenAI toolkits
-4. Out of Responisbilities
+4. Out of Responsibilities
 5. Recommendations
 6. Conclusion
 
-## Maintained Areas
+## Developer Responsibilities
 
-EngE-AI runs on UBC-supported infrastructure, which provides the hosting environment for the application adn its supporting services. These services may include the application server, mongo and vector database, UBC authentication integration. 
+EngE-AI runs on infrastructure managed and supported by UBC and the LTIC project team. This infrastructure hosts the application and its supporting services, which include, the application server, MongoDB, vector databases, and UBC authentication services.
 
-Both the [staging](https://engeai.staging.apps.ltic.ubc.ca/) and [production](https://engeai.apps.ltic.ubc.ca/) environments are both hosted under UBC’s infrastructure. The next section explains how code moves through local development, staging, and production.
+The project's software infrastructure has been preconfigured and is managed by the project team. Developers are not responsible for managing, modifying, or troubleshooting the infrastructure. Focus on the application code and report infrastructure-related issues to your supervisor. As a developer, you are responsible for:
 
-The project's software infrastructure has been pre-configured. As a developer you are responsible includees:
-
-1. **Implementating and maintaining on the application code** 
+1. **Implementing and maintaining the application code**
    
-   Develop features in the project repository and ensure that your code builds and  runs both locally and in the deployed environments. Use the projects documented `Node.JS`  and `npm versions` to reduce environment-related problems.
+   Develop features in the project repository and ensure that your code builds and runs both locally and in the deployed environments. Use the project's documented Node.js and npm versions to reduce environment-related problems.
 
 
-2. **Using apporved dependencies**
+2. **Using approved dependencies**
    
-   Use libraries approved for the porject, including UBC's LTIC-maintained libraries where they meet the porject's need. Consult to your supervisor before adding a new dependency so that the security, maintanance, and suitability can be thoroughly assessed.
+   Use dependencies approved for the project team, including UBC LTIC internal libraries. Consult your supervisor before adding a new dependency so that its security, maintenance, and suitability can be assessed.
 
 
-3. **Explaining and Justifying technical decision**
+3. **Explaining and justifying technical decisions**
     
-    AI-Assisted Coding Tools can speed-up implementaion, but developers remain responsible for understanding, testing, and explaining the code they introduce. You may document the reasoning behind significant technical decision, and consult to your supervisor. We will discuss further in [Agentic Engineering](/docs/logistics/agentic-engineering) page further.
+   AI-assisted coding tools can speed up implementation, but developers remain responsible for understanding, testing, and explaining the code they introduce. Document decisions that affect the application’s architecture, dependencies, security, data handling, performance, or long-term maintenance. Consult your supervisor when a technical decision changes the application’s architecture: adds a dependency, affects security or data handling.
+
 
 ## Development and Deployment Workflow
 
 EngE-AI uses three environments to support safe development and release: **Local**, **Staging**, **Production**. Each environment serves different purposes.
 
-Work is developed and tested locally before it is reviewed and merged. A merge to main automatically deploys the current vrsion to the staging environment. production deployment only after the staged version has been reviewed and approved.
+Work is developed and tested locally before it is reviewed and merged. A merge to `main` automatically deploys the current version to the staging environment. Production deployment occurs only after the staged version has been reviewed and approved.
 
 ### Local
 
-Local environment is where you develop and internally test changes before sharing it to the team.
+The local environment is where you develop and internally test changes before sharing them with the team.
 
 While in the local development phases, consider these steps:
 
-1. you should create a well-defined problems and solutions before heading to the implementation (see [Agentic Engineering](/docs/logistics/agentic-engineering) for more). This helps other team member review your work and porvide useful context for AI-Assisted development.
+1. Before implementation, record the problem, the proposed solution, and the expected outcome. (see [Agentic Engineering](/docs/logistics/agentic-engineering) for more). This helps other team members review your work and provides useful context for AI-assisted development.
 
-2. Create a new feature branch from the current main branch. Do not develop directlu on main, as it is the shared integration branch.
+2. Create a new feature branch from the current `main` branch. Do not develop directly on `main`, as it is the shared integration branch.
 
-3. Test yuur changes before opening a pull request. Run relevant automated test and manual testing for your feature, including edge cases.
+3. Test your changes before opening a pull request. Run relevant automated tests and perform manual testing for your feature, including edge cases.
 
 4. Ensure the application builds successfully and that your local Node.js and npm versions match the project’s documented requirements.
 
-5. Add diagnostic logging when it is need as breakpoints. This is useful to investigate problem throughout your development phases. Use `app.logger` rather than `console.log`. `app.logger` is set to log only for both staging and local, and disabled during the production (see [`logger.ts`](https://github.com/ubc/tlef-engeai/blob/main/src/utils/logger.ts) for more).
+5. Add diagnostic logging when it will help you investigate a problem. Use app.logger instead of console.log. `app.logger` is enabled in local and staging environments and disabled in production. (see [`logger.ts`](https://github.com/ubc/tlef-engeai/blob/main/src/utils/logger.ts) for more).
 
-6. Do not commit any secret values to the github repository
+6. Do not commit any secret values to the GitHub repository.
 
 
-Overall, you are responsible for anything inside the repo (including scripts, packages, .env attributes). If your new feature requires new environemtn variables or deployment configuration, document the required names and purpose for your developer
+Overall, you are responsible for anything inside the repository, including scripts, packages, and `.env` attributes. If your new feature requires new environment variables or deployment configuration, document the required names and purpose for other developers.
 
 ### Staging Environment
 
-The staging environment helps to identify bug before release reach production. Perform manual testing, and address relevant edge cases before the feature is made available to real users. 
+The staging environment helps identify bugs before a release reaches production. Perform manual testing for the expected user workflow, invalid input, error conditions, and feature-specific edge cases before the feature is made available to real users.
 
-You may use diagnostic logging set during on the repo local development to ease your debugging or testing process in staging. You may ask your supervisor to give you latest log for your debugging purposes.
+Use diagnostic logging in staging when it is needed to investigate a defect or verify feature behaviour. Do not log secrets, personal information, or sensitive user content. You may ask your supervisor to provide the latest logs for debugging purposes.
 
-if there are updates on the `.env` file, inform your supervisor and clearly list the required variables. Check names, formats, and values very carefully. 
+If the feature requires a new or changed environment variable, inform your supervisor. Provide the variable name, its expected format, and its purpose. **DO NOT** include secret values in documentation or the repository.
 
-Describe the feature and its expected behaviour to your supervisor during staging testing. This creates the opportunity to confirm assumptions and to acquire multiple perspective.
+During staging testing, describe the feature, its expected behaviour, the test cases completed, and any known limitations to your supervisor. This creates an opportunity to confirm assumptions and obtain multiple perspectives.
 
-After staged version confidently passes the necessary manual testing, ask your supervisor to approve for manual deployment in the production environment.
+After the staged version has passed the agreed manual test cases and any identified issues have been addressed, ask your supervisor to approve deployment to production. After approval, the supervisor deploys the staged version to production.
 
 ### Production
 
-Production is where you you expect the user to use your app. The app prod version should address all encountered bugs and the users expectedly use the app seamlessly.
+Production is where users access the application. This version expectedly should address all identified bugs and allow users to use the application reliably.
 
-The users might still be able to find a bug on our app, even a small culprits. As a developer, you should be able to hypothesize the source of the bug, and fix it as soon as possible. 
+Users might still find bugs in the application, even small ones. When  a production issue is reported, investigate its source using available evidence and inform your supervisor before applying a fix or rollback.
 
 ```developer-note
-The bug could be as simple as typos, or npm package incompatibility. Hard-to-debug culprits could be race conditions, or type differences. Please keep in mind about these cases, and this is where your judgement is required!
+A bug could be as simple as a typo or an npm package incompatibility. Hard-to-debug causes could include race conditions or type differences. Keep these cases in mind; this is where your judgement is required.
 ```
 
 Overall, there are three stages of development environment: **Local**, **Staging**, and **Production**, which they are set for development convenience and quality control.
 
-## UBC LTIC’s GenAI ToolKit adn Example App
+## UBC LTIC’s GenAI Toolkit and Example Applications
 
-UBC LTIC group has provided several GenAI toolkit (npm packages) and some example app corresponded to each toolkits.
+The UBC LTIC group has provided several GenAI toolkits (npm packages) and example applications corresponding to each toolkit.
 
 ### Toolkits
 
-You are required to use UBC LTIC’s GenAI Toolkit for major components of the app to avoid any malicious or unknown dependecies. 
+Use UBC LTIC’s GenAI Toolkit for major components of the app to avoid malicious or unknown dependencies. Ask your supervisor for using third party lubraries. The supervisor may recommend better approach instead.
 
-There are several provided GenAI Provided Toolkits such as: 
+Several GenAI toolkits are provided, including:
 
-1. [**ubc-genai-toolkit-llm**](https://www.npmjs.com/package/ubc-genai-toolkit-llm): Manages conversational structure for multiple provider (see [Conversation](/docs/features/conversation) for more)
-2. [**ubc-genai-toolkit-document-parsing**](https://www.npmjs.com/package/ubc-genai-toolkit-document-parsing): Standardized interface for transtating docs file from PDF, DOCX, PPT to text
-3. [**ubc-genai-toolkit-rag**](https://www.npmjs.com/package/ubc-genai-toolkit-rag): Manages RAG operation, like chunking and embedding, and how to connect it to Qdrant
+1. [**ubc-genai-toolkit-llm**](https://www.npmjs.com/package/ubc-genai-toolkit-llm): Manages conversational structure for multiple providers
+2. [**ubc-genai-toolkit-document-parsing**](https://www.npmjs.com/package/ubc-genai-toolkit-document-parsing): Standardized interface for translating document files from PDF, DOCX, and PPT to text
+3. [**ubc-genai-toolkit-rag**](https://www.npmjs.com/package/ubc-genai-toolkit-rag): Manages RAG operations, such as chunking and embedding, and connects them to Qdrant
 4. [**Passport-UBC-SHIB**](https://www.npmjs.com/package/passport-ubcshib): UBC’s passport JS strategy
 
-For the upcoming documentation, these libraries are likely to be the prerequisites of the [technical contents](/docs/technical-concepts/main-architecture).
+For the upcoming documentation, these libraries are likely to be the prerequisites of the upcoming [technical contents](/docs/technical-concepts/main-architecture).
 
-You should ask if your supervisor if external third party is about to be added. The supervisor may recommned better dependencies instead.
+You should 
 
 ### Example app
 
-Example app are provided For almost every of the toolkit as you should comprehend how the toolkits are used, or giving the AI agent better context on the Toolkit. You *Must* be familiarize with the toolkit before heading to the implementation. The example app is a good sandboxed system for learning purposes.
+Example applications are provided for almost every toolkit. Review the relevant example application before implementation to understand how the toolkit is used in practice and to provide accurate context when using an AI-assisted coding tool. The example application is a safe-environment for learning and experimentation. Do not treat it as production-ready code
+.
 
-The example app can be either inside the toolkit’s github repo, or a seperate repo. Consult to your supervisor for better clarification.
+The example application can be either inside the toolkit’s GitHub repository or in a separate repository. Consult your supervisor for clarification.
 
-## Out of Responsibilities
+## Out of Scope
 
-As the GenAI developer you should understand the boundarie of your role. You are not responsible for:
+As a GenAI developer, you should understand the boundaries of your role. You are not responsible for:
 
-- Debug any thing inside the Infrastructure such as `time out`, unavailable service, etc
-- Develop the toolkit (unless your supervisor ask you todo so)
-- UBC’s server maintanance
-- Managing LLM API keys or resolving problems with unavailable LLM provider credentials
+- Debugging anything within the infrastructure, such as timeouts or unavailable services
+- Developing the toolkits, unless your supervisor asks you to do so
+- UBC server maintenance
+- Managing LLM API keys or provider credentials. If credentials prevent development, testing, or release, report the issue to your supervisor.
+- Managing production secrets, including creating, rotating, distributing, or storing secret values
+- Managing service access, billing, subscriptions, or spending limits
 
-If the app runs slowly or become unavailable, first determine whether the cause is the aplication code (uncompiled or inefficient queries), or external dependencies or UBC infrestructure. Share the collected evidence to your supervisor, so the issue can be handled appropriately.
+If the application runs slowly or becomes unavailable, determine whether the likely cause is application code, an external dependency, or UBC infrastructure. Collect relevant evidence, such as error messages, logs, reproduction steps, and recent code changes, then share it with your supervisor.
 
-## Recommendation
+## Recommendations
 
-While developing the app, we should consider these steps:
+When developing a new feature or maintaining an existing one, follow this process:
 
+1. **Confirm the need**
 
-1. Whether do you are developing a new feature, or maintaining a feature, do you need a new library ? 
-    1. No, Go to step 2
-    2. Yes, Go to step 3
-2. If you need a new library, you should look if the library is already prepared one for you
-    1. if the library is provided by UBC LTIC, then please use it, then go to step 3
-    2. If no, please consult with your supervisor, and go to step 3
-3. Please use the best practice on developing your software and features. In the next chapter ([Agentic Engineering](/docs/logistics/agentic-engineering)), we discuss further how to harness AI-Assisted Coding Platform discipline to boost your productivity.
+   Determine whether the feature can be implemented using the application’s existing code and dependencies. Do not add a new library if an existing solution meets the requirement.
+
+2. **Check approved UBC LTIC toolkits**
+
+   If a new capability is needed, check whether an approved UBC LTIC toolkit already provides it. Use the approved toolkit when it meets the project’s requirements.
+
+3. **Consult before adding an external dependency**
+
+   If no approved toolkit meets the requirement, consult your supervisor before adding a third-party library, service, or API. Your supervisor can assess the dependency’s security, maintenance, suitability, and long-term impact on the project.
+
+4. **Follow the development workflow**
+
+   Develop the feature on a feature branch, test it locally and in staging, and document any important technical decisions or configuration requirements.
 
 ## Conclusion
 
-As a GenAI developer, you are responsibile for building and maintaining EngE-AI’s feature reliably, securely, within your role's boundaries.This includes following the project workflow, testing changes before release, using approved tools and dependencies, and communicating configuration or infrastructure concerns to your supervisor.
+As a GenAI developer, you are responsibile for building and maintaining EngE-AI’s feature reliably, securely, within your role's boundaries. This includes following the project workflow, testing changes before release, using approved tools and dependencies, and communicating configuration or infrastructure concerns to your supervisor.
 
 The next Chapter introduces [Agentic Engineering](/docs/logistics/agentic-engineering): The practices and principles for using AI-Assisted coding tools responsibly.
