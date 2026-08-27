@@ -17,6 +17,8 @@ import type {
 } from '../../types/shared';
 import {
     APP_REASONING_LEVELS,
+    appReasoningOptionsForEntry,
+    DEFAULT_FEATURE_SELECTION,
     SELECTABLE_MODEL_CATALOG,
     TEMPORARILY_UNAVAILABLE_MODEL_IDS,
 } from '../model-selection-list';
@@ -92,6 +94,8 @@ describe('ModelSelectionService', () => {
                 'xhigh',
                 'max',
             ]);
+            // Qwen3 ignores reasoning_effort (thinking is a chat-template flag), and the
+            // pinned toolkit throws 400 if we send it for a non-gpt-5 id — so: empty.
             expect(catalog.find((e) => e.id === 'qwen3.8-27b')?.supportedReasoningLevels).toEqual([]);
             expect(catalog.find((e) => e.id === 'qwen3.6-35b-a3b')?.supportedReasoningLevels).toEqual(
                 []
@@ -238,6 +242,76 @@ describe('ModelSelectionService', () => {
                 service.normalizeStoredSettings({ chat: { modelId: 'gpt-5.6-luna', reasoningLevel: 'high' } })
                     .memoryAgent
             ).toEqual(DEFAULT_COURSE_LLM_SETTINGS.memoryAgent);
+        });
+
+        it('offers no reasoning row for a model whose thinking is not an effort scale', () => {
+            const qwen = service.getDashboardCatalog().models.find((m) => m.id === 'qwen3.8-27b');
+            expect(qwen?.reasoningOptions).toEqual([]);
+        });
+
+        it('flags exactly the withheld ids as unavailable in the dashboard catalog', () => {
+            // Derived from the list, so this holds whether or not models are withheld
+            for (const row of service.getDashboardCatalog().models) {
+                const withheld = TEMPORARILY_UNAVAILABLE_MODEL_IDS.includes(row.id);
+                expect(row.unavailable ?? false).toBe(withheld);
+            }
+        });
+
+        it('omits reasoningEffort entirely from Qwen provider options', () => {
+            // Regression guard: ubc-genai-toolkit-llm@0.5.0 throws APIError 400 client-side
+            // if reasoningEffort is sent for any id outside gpt-5 / o1 / o3 / o4-mini, so
+            // this must stay absent however the stored reasoningLevel got there.
+            const options = service.buildProviderOptions('chat', {
+                ...DEFAULT_COURSE_LLM_SETTINGS,
+                chat: { modelId: 'qwen3.8-27b', reasoningLevel: 'high' },
+            });
+            expect(options.model).toBe('qwen3.8-27b');
+            expect(options.reasoningEffort).toBeUndefined();
+        });
+
+        it('resolves a stored Qwen row according to whether Qwen is currently withheld', () => {
+            // Withheld: the model id fails validation and the whole row falls back to the
+            // platform default. Available: the id survives. Asserting both keeps this test
+            // honest while TEMPORARILY_UNAVAILABLE_MODEL_IDS is being flipped for testing.
+            const settings = service.normalizeStoredSettings({
+                chat: { modelId: 'qwen3.8-27b', reasoningLevel: 'none' },
+            });
+
+            if (TEMPORARILY_UNAVAILABLE_MODEL_IDS.includes('qwen3.8-27b')) {
+                expect(settings.chat).toEqual(DEFAULT_FEATURE_SELECTION);
+            } else {
+                expect(settings.chat.modelId).toBe('qwen3.8-27b');
+            }
+        });
+
+        it('accepts a Qwen PATCH only while Qwen is selectable', () => {
+            const result = service.parseUpdateRequest(
+                fullBody({ modelId: 'qwen3.8-27b', reasoningLevel: 'low' })
+            );
+            expect(result.ok).toBe(!TEMPORARILY_UNAVAILABLE_MODEL_IDS.includes('qwen3.8-27b'));
+        });
+
+        it('never advertises an app reasoning level the provider does not list', () => {
+            for (const entry of LLM_MODEL_CATALOG) {
+                for (const option of appReasoningOptionsForEntry(entry)) {
+                    expect(entry.supportedReasoningLevels).toContain(option.id);
+                }
+            }
+        });
+
+        it('only claims reasoning for ids the pinned toolkit treats as reasoning-capable', () => {
+            // Mirrors getOpenAIReasoningCapability in ubc-genai-toolkit-llm@0.5.0
+            // (providers/openai-compat-mapping), shared by the openai and ubc-llm-sandbox
+            // providers: any other id + a reasoningEffort throws APIError 400 before the
+            // request is sent. Revisit this rule when the toolkit is upgraded.
+            const toolkitReasoningCapable = (id: string) =>
+                ['gpt-5', 'o1', 'o3', 'o4-mini'].some((p) => id.toLowerCase().startsWith(p));
+
+            for (const entry of LLM_MODEL_CATALOG) {
+                if (entry.supportedReasoningLevels.length > 0) {
+                    expect(toolkitReasoningCapable(entry.id)).toBe(true);
+                }
+            }
         });
 
         it('maps catalog model ids directly to provider model strings', () => {
