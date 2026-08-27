@@ -1536,18 +1536,25 @@
     box-shadow: 0 0 0 2px rgb(220 38 38 / 0.2);
 }
 
+.typed-name-confirm-input-wrap--mismatch .typed-name-confirm-input.admin-modal-input,
+.typed-name-confirm-input.admin-modal-input.typed-name-confirm-input--mismatch {
+    border: 2px solid #dc2626;
+    box-shadow: 0 0 0 2px rgb(220 38 38 / 0.2);
+}
+
+.typed-name-confirm-feedback-notice {
+    margin: 0;
+    font-size: 0.8rem;
+    color: #dc2626;
+    line-height: 1.3;
+}
+
 .typed-name-confirm-check {
     position: absolute;
     right: 0.65rem;
     color: #16a34a;
     font-weight: 700;
     pointer-events: none;
-}
-
-.typed-name-confirm-paste-notice {
-    margin: 0;
-    font-size: 0.8rem;
-    color: #dc2626;
 }
 
 @keyframes typed-name-confirm-shake {

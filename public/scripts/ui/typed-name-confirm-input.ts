@@ -70,10 +70,9 @@ export function createTypedNameConfirmInput(
     check.textContent = '✓';
     check.hidden = true;
 
-    const pasteNotice = document.createElement('p');
-    pasteNotice.className = 'typed-name-confirm-paste-notice';
-    pasteNotice.hidden = true;
-    pasteNotice.textContent = 'Paste is disabled — type the name manually.';
+    const feedbackNotice = document.createElement('p');
+    feedbackNotice.className = 'typed-name-confirm-feedback-notice';
+    feedbackNotice.hidden = true;
 
     inputWrap.append(input, check);
     block.append(prompt, inputWrap);
@@ -92,7 +91,18 @@ export function createTypedNameConfirmInput(
         block.appendChild(actions);
     }
 
-    block.appendChild(pasteNotice);
+    block.appendChild(feedbackNotice);
+
+    let showingPasteFeedback = false;
+
+    const setFeedback = (message: string | null) => {
+        if (!message) {
+            feedbackNotice.hidden = true;
+            return;
+        }
+        feedbackNotice.textContent = message;
+        feedbackNotice.hidden = false;
+    };
 
     const notify = () => listeners.forEach((fn) => fn());
 
@@ -100,17 +110,27 @@ export function createTypedNameConfirmInput(
         const value = input.value.trim();
         const matched = value === expected && value.length > 0;
         const focused = document.activeElement === input;
+        const showMismatchError = !focused && value.length > 0 && !matched;
 
         inputWrap.classList.toggle('typed-name-confirm-input-wrap--match', matched);
         inputWrap.classList.toggle('typed-name-confirm-input-wrap--focus', focused && !matched);
+        inputWrap.classList.toggle('typed-name-confirm-input-wrap--mismatch', showMismatchError);
         input.classList.toggle('typed-name-confirm-input--match', matched);
         input.classList.toggle('typed-name-confirm-input--focus', focused && !matched);
+        input.classList.toggle('typed-name-confirm-input--mismatch', showMismatchError);
         check.hidden = !matched;
+        if (showMismatchError) {
+            setFeedback("The name doesn't match.");
+        } else if (!showingPasteFeedback) {
+            setFeedback(null);
+        }
+        input.setAttribute('aria-invalid', showMismatchError ? 'true' : 'false');
         notify();
     };
 
     const shakeOnPaste = () => {
-        pasteNotice.hidden = false;
+        showingPasteFeedback = true;
+        setFeedback('Paste is disabled — type the name manually.');
         inputWrap.classList.remove('typed-name-confirm-input-wrap--shake');
         void inputWrap.offsetWidth;
         inputWrap.classList.add('typed-name-confirm-input-wrap--shake', 'typed-name-confirm-input-wrap--paste-error');
@@ -132,6 +152,7 @@ export function createTypedNameConfirmInput(
 
     input.addEventListener('input', () => {
         inputWrap.classList.remove('typed-name-confirm-input-wrap--paste-error');
+        showingPasteFeedback = false;
         updateVisualState();
     });
 
