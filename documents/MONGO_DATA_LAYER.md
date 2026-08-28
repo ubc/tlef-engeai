@@ -140,8 +140,7 @@ names are overridable via `CANVAS_TOKEN_COLLECTION_NAME` / `MOODLE_TOKEN_COLLECT
   provider silently overwrite the other's tokens.
 - **`userKey` is `GlobalUser.userId`, never a PUID.** `resolveUserKey` in
   `route-lms.ts` resolves the signed-in user's PUID to their internal `userId` via
-  `findGlobalUserByPUID` before any write, preserving the invariant that
-  `active-users` is the only collection storing a PUID at rest. The lookup is
+  `findGlobalUserByPUID` before any write, so token rows carry no PUID. The lookup is
   asynchronous; the package accepts `getUserKey: (req) => string | Promise<string>`.
 - Document shape is `{ _id, userKey, tokens }`. A unique index on `userKey` is
   created lazily on first use and memoized, so it is safe under multi-worker
@@ -187,7 +186,6 @@ not a collection of its own.
   (`enrollmentTypes: ['teacher']`), performed once, compared in memory, and discarded.
   No `integration_id` — the importer's or any co-instructor's — is written to any
   collection or log. The student join path performs no roster read at all.
-  `active-users` remains the only collection storing a PUID at rest.
 - Sync is add-only: a student whose Canvas enrollment disappears keeps their EngE-AI
   enrollment and chat history. Nothing in this path deletes an enrollment row.
 
@@ -203,8 +201,7 @@ names are overridable via `CANVAS_TOKEN_COLLECTION_NAME` / `MOODLE_TOKEN_COLLECT
   provider silently overwrite the other's tokens.
 - **`userKey` is `GlobalUser.userId`, never a PUID.** `resolveUserKey` in
   `route-lms.ts` resolves the signed-in user's PUID to their internal `userId` via
-  `findGlobalUserByPUID` before any write, preserving the invariant that
-  `active-users` is the only collection storing a PUID at rest. The lookup is
+  `findGlobalUserByPUID` before any write, so token rows carry no PUID. The lookup is
   asynchronous; the package accepts `getUserKey: (req) => string | Promise<string>`.
 - Document shape is `{ _id, userKey, tokens }`. A unique index on `userKey` is
   created lazily on first use and memoized, so it is safe under multi-worker
@@ -250,7 +247,6 @@ not a collection of its own.
   (`enrollmentTypes: ['teacher']`), performed once, compared in memory, and discarded.
   No `integration_id` — the importer's or any co-instructor's — is written to any
   collection or log. The student join path performs no roster read at all.
-  `active-users` remains the only collection storing a PUID at rest.
 - Sync is add-only: a student whose Canvas enrollment disappears keeps their EngE-AI
   enrollment and chat history. Nothing in this path deletes an enrollment row.
 

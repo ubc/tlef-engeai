@@ -754,8 +754,8 @@ provided by `@ubc/ubc-genai-toolkit-lms-integration`. Implemented in
   and `permissions_registry.rb` (`read_sis` is `true_for: [AccountAdmin, TeacherEnrollment]`).
 - The read is narrowed accordingly: **teacher roster only** (`enrollmentTypes: ['teacher']`
   passed explicitly, since `getCourseUsers` defaults to students), **instructor paths only**,
-  compared in memory and never persisted or logged. No student roster is ever read;
-  `active-users` remains the only collection holding a PUID at rest.
+  compared in memory and never persisted or logged. No student roster is ever read,
+  and this path persists no PUID.
 - **The check runs when listing courses, not only when importing one.** Canvas
   re-authorizes whoever is already signed in to it, so two EngE-AI users sharing a
   browser end up with the second account holding the first user's Canvas token.
@@ -812,7 +812,7 @@ provided by `@ubc/ubc-genai-toolkit-lms-integration`. Implemented in
   should use `canvas.ensureAuth` instead, which redirects to `/login`.
 - `CANVAS_REDIRECT_URI` must match the Canvas Developer Key byte-for-byte,
   including port, and its path is this router's `/canvas/auth/callback`.
-- Token persistence and the PUID invariant are documented in
+- Token persistence and PUID handling on this path are documented in
   `MONGO_DATA_LAYER.md`.
 
 ---

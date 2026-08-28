@@ -6,7 +6,7 @@ EngE-AI is an Express/TypeScript/MongoDB application with a vanilla TypeScript f
 
 - Never edit generated `dist/` or `public/dist/` files.
 - Keep HTTP handlers thin. Put persistence in `src/db/mongo/` delegates exposed through `EngEAI_MongoDB`.
-- Apply course-scoped RBAC to every course API. Never expose or persist student PUIDs outside `active-users`.
+- Apply course-scoped RBAC to every course API. Student PUIDs may be persisted outside `active-users` where a feature requires them, but must stay staff-gated, excluded from logs, and absent from student-facing responses.
 - Mirror shared API types in both `src/types/shared.ts` and `public/scripts/types.ts`.
 - Use lowercase kebab-case filenames, camelCase values/functions, and PascalCase types/classes.
 - Add behavior-first TSDoc to exported APIs and step comments to non-trivial pipelines.

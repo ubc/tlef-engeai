@@ -24,7 +24,7 @@ Security and privacy playbook for identity and course roles.
 ## Privacy
 
 - Monitor: instructor-only; conversation exports/downloads — minimum necessary data
-- Never expose student PUID in UI/APIs where roster policy forbids
+- Student PUID may appear in staff-gated UI/APIs; never in student-facing responses or logs
 - Flag content: handle harassment/inappropriate categories per product rules
 
 ## Defense in depth
