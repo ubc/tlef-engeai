@@ -39,7 +39,8 @@
     display: flex;
     height: 100%;
     width: 100%;
-    background-color: var(--background-2);
+    /* The ground behind both panels, not the panels themselves. */
+    background-color: white;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
 }
 
@@ -468,9 +469,102 @@
     margin: 0;
 }
 
+.radio-badge {
+    display: inline-block;
+    margin-left: 0.5rem;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    /* Solid rather than tinted: the card it sits on is itself tinted green once
+       selected, and a tinted badge would disappear into it. */
+    background-color: var(--color-chbe-green);
+    color: white;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    vertical-align: middle;
+}
+
 .radio-option:has(input:checked) {
     border-color: var(--color-chbe-green);
     background-color: rgba(92, 138, 58, 0.1);
+}
+
+/* ===========================================
+   COURSE FEATURE OPT-INS
+   The capability checkboxes reuse the .radio-option card so a feature choice
+   looks like the By Week / By Topic choice above it. Only the parts the radio
+   rules do not already cover are defined here: the checkbox itself, the leading
+   icon, and the fieldset wrapper, which carries no browser default worth keeping.
+   =========================================== */
+
+.feature-fieldset,
+.choice-fieldset {
+    padding: 0;
+    border: none;
+    margin: 0;
+}
+
+.feature-fieldset legend,
+.choice-fieldset legend {
+    padding: 0;
+    margin-bottom: 0.25rem;
+    line-height: 1.4;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.feature-fieldset .form-help {
+    margin: 0 0 1rem 0;
+}
+
+/* No help line under this legend, so the legend carries the gap itself. */
+.choice-fieldset legend {
+    margin-bottom: 1rem;
+}
+
+.radio-option input[type="checkbox"] {
+    flex-shrink: 0;
+    margin: 0 1rem 0 0;
+    width: 20px;
+    height: 20px;
+    accent-color: var(--color-chbe-green);
+}
+
+.feature-option {
+    /* Top-aligned rather than centred: these descriptions wrap to two lines, and
+       a centred checkbox drifts away from the title it belongs to. */
+    align-items: flex-start;
+    gap: 0;
+}
+
+.feature-option input[type="checkbox"] {
+    /* Centred against the 40px icon beside it rather than the top of the text. */
+    margin-top: 10px;
+}
+
+.feature-option-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    margin-right: 1rem;
+    border-radius: 10px;
+    background-color: rgba(92, 138, 58, 0.1);
+    color: var(--color-chbe-green);
+}
+
+.feature-option-icon svg {
+    width: 20px;
+    height: 20px;
+}
+
+.feature-option:has(input:checked) .feature-option-icon {
+    background-color: var(--color-chbe-green);
+    color: white;
 }
 
 /* ===========================================
@@ -573,6 +667,7 @@
     border: 1px solid var(--color-chbe-green);
     border-radius: 8px;
     background: rgba(92, 138, 58, 0.1);
+    margin: 1.5rem 0;
 }
 
 .review-section h3 {
@@ -1005,16 +1100,18 @@
 .completion-content {
     display: flex;
     flex-direction: column;
-    gap: 2rem;
+    gap: 1.5rem;
     width: 100%;
     max-width: 600px;
-    /* Centre the completion panels within the white content area rather than
-       letting the capped width sit flush against its left edge. */
-    margin: 0 auto;
+    /* Left-aligned with every other step component. Only the box moves; the
+       content inside each panel keeps its own alignment. */
+    margin: 1.5rem 0;
 }
 
 .completion-message {
-    text-align: center;
+    /* The panel sits left with the other step components, and its body copy is
+       left-aligned; only the award icon and the title stay centred. */
+    text-align: left;
     padding: 2rem;
     border: 1px solid var(--color-chbe-green);
     border-radius: 8px;
@@ -1039,6 +1136,7 @@
     color: var(--color-chbe-green);
     margin: 0 0 1rem 0;
     font-size: 1.5rem;
+    text-align: center;
 }
 
 .completion-list {
@@ -1067,6 +1165,7 @@
     padding: 1.5rem;
     border-radius: 12px;
     border: 1px solid var(--border-color);
+    margin: 1.5rem 0;
 }
 
 .next-steps h4 {
@@ -1719,7 +1818,7 @@
 
 /* Completion message styling */
 .completion-note {
-    margin-top: 20px;
+    margin: 1.5rem 0;
     padding: 10px 16px;
     border: 1px solid var(--color-chbe-green);
     border-radius: 8px;
@@ -1734,8 +1833,8 @@
 }
 
 .completion-cta {
-    text-align: center;
-    margin-top: 20px;
+    text-align: left;
+    margin: 1.5rem 0;
     padding: 15px;
     background: var(--gingham-color);
     border-radius: 8px;
@@ -2717,6 +2816,17 @@
    otherwise global and this stage mounts form-like demo markup.
    =========================================== */
 
+/* The Back/Next buttons float over the scroll area at bottom: 2rem, and this
+   stage mounts the real generate card, whose own Generate button sits at the very
+   end of the step. Reserve the nav's height plus its offset so that button clears
+   it instead of scrolling underneath. Desktop only: below 768px the navigation is
+   a fixed bar that .onboarding-content-steps already reserves room for. */
+@media (min-width: 769px) {
+    .scenario-generation-setup .content-step-inner {
+        padding-bottom: 5rem;
+    }
+}
+
 .scenario-generation-setup .sg-setup-mount-loading,
 .scenario-generation-setup .sg-setup-mount-error {
     margin: 0;
@@ -2863,13 +2973,13 @@
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
     gap: 1rem;
-    margin: 1rem 0;
+    margin: 1.5rem 0;
 }
 
 .writing-feedback-setup .wf-setup-intake-panel {
     display: grid;
     gap: 0.8rem;
-    margin-top: 1rem;
+    margin: 1.5rem 0;
     padding: 1rem 1.25rem;
     border: 1px solid var(--border-color);
     border-radius: 8px;
@@ -2909,7 +3019,7 @@
     display: flex;
     flex-direction: column;
     gap: 1rem;
-    margin: 1rem 0;
+    margin: 1.5rem 0;
 }
 
 .writing-feedback-setup .wf-setup-comment {
@@ -2957,7 +3067,7 @@
 }
 
 .writing-feedback-setup .wf-setup-approve-panel {
-    margin: 1rem 0;
+    margin: 1.5rem 0;
     padding: 1.25rem;
     border: 1px solid var(--border-color);
     border-radius: 8px;
@@ -2970,7 +3080,9 @@
     gap: 0.5rem;
     margin-top: 0.5rem;
     padding: 0.6rem 1.2rem;
-    border: none;
+    /* Transparent rather than none, so the approved state below can add its
+       border without the button changing size. */
+    border: 1px solid transparent;
     border-radius: 6px;
     background-color: var(--color-chbe-green);
     color: #fff;
@@ -2980,12 +3092,17 @@
 }
 
 .writing-feedback-setup .wf-setup-approve-btn:disabled {
-    background-color: var(--hover-bg);
+    /* Reads as done, not as unavailable. Grey said the control had been taken
+       away; the green tint says the approval it stands for has happened, and
+       matches the .wf-setup-approved panel that appears beneath it. */
+    border: 1px solid var(--color-chbe-green);
+    background-color: rgba(92, 138, 58, 0.1);
+    color: var(--color-chbe-green);
     cursor: default;
 }
 
 .writing-feedback-setup .wf-setup-approved {
-    margin-top: 1rem;
+    margin: 1.5rem 0;
     padding: 1.25rem;
     border: 1px solid var(--color-chbe-green);
     border-radius: 8px;

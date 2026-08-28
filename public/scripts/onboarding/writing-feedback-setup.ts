@@ -3,11 +3,12 @@
  *
  * Writing Feedback onboarding tutorial.
  *
- * Teaches assignment intake, the draft-then-approve rubric workflow, evidence-backed
- * feedback review, and the separation between approval and release. Everything on
- * screen is simulated: the Approve button reveals canned copy and never calls
- * `POST .../rubric-draft/approve` or `POST .../submissions/:id/approve`, so no
- * assignment, rubric, or feedback record is created.
+ * Teaches assignment intake, the rubric grid and its draft-then-approve workflow, the
+ * second technical rubric a lab report carries, evidence-backed feedback review, and the
+ * separation between approval and release. Everything on screen is simulated: the Approve
+ * button reveals canned copy and never calls `POST .../rubric-draft/approve` or
+ * `POST .../submissions/:id/approve`, so no assignment, rubric, or feedback record is
+ * created.
  *
  * @author: @rdschrs
  * @date: 2026-08-17
@@ -25,19 +26,20 @@ const definition: FeatureTutorialDefinition = {
     feature: 'writingFeedback',
     completionSlug: 'writing-feedback',
     completionEvent: 'writingFeedbackSetupComplete',
-    totalSteps: 5,
+    totalSteps: 6,
     stepTitles: {
         1: "Welcome to Writing Feedback",
-        2: "Building and Approving a Rubric",
-        3: "Reviewing Generated Feedback",
-        4: "Approving and Releasing",
-        5: "Writing Feedback Complete"
+        2: "Assignment Details and the Rubric",
+        3: "Lab Reports Carry a Second Rubric",
+        4: "Reviewing Generated Feedback",
+        5: "Approving and Releasing",
+        6: "Writing Feedback Complete"
     },
     initializeStep: (stepNumber: number, context: FeatureTutorialContext) => {
         if (stepNumber === 1) {
             initializeIntakeDemo();
         }
-        if (stepNumber === 4) {
+        if (stepNumber === 5) {
             initializeApproveDemo(context);
         }
     }
@@ -65,7 +67,7 @@ function initializeIntakeDemo(): void {
  * Wires the simulated Approve button.
  *
  * Reveals the release explanation already present in the component markup and
- * marks step 4 satisfied, which unlocks the gated completion step.
+ * marks step 5 satisfied, which unlocks the gated completion step.
  */
 function initializeApproveDemo(context: FeatureTutorialContext): void {
     const approveBtn = document.getElementById('wfSetupApproveBtn') as HTMLButtonElement | null;
@@ -76,7 +78,7 @@ function initializeApproveDemo(context: FeatureTutorialContext): void {
     approveBtn.addEventListener('click', () => {
         result.hidden = false;
         approveBtn.disabled = true;
-        context.markStepCompleted(4);
+        context.markStepCompleted(5);
 
         if (typeof (window as any).feather !== 'undefined') {
             (window as any).feather.replace();

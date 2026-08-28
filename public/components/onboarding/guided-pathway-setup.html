@@ -157,22 +157,26 @@
                         </ul>
                     </div>
 
-                    <fieldset class="form-group">
+                    <fieldset class="form-group choice-fieldset">
                         <legend>How would you like to proceed?</legend>
-                        <label class="radio-option" for="gpSetupKeepDefaults">
-                            <input type="radio" name="gpSetupChoice" id="gpSetupKeepDefaults" checked>
-                            <span class="radio-content">
-                                <strong>Keep recommended defaults</strong>
-                                <span>Recommended. The three pathways above stay active exactly as configured. You can change them any time from the Pathway Library.</span>
-                            </span>
-                        </label>
-                        <label class="radio-option" for="gpSetupCustomize">
-                            <input type="radio" name="gpSetupChoice" id="gpSetupCustomize">
-                            <span class="radio-content">
-                                <strong>Customize now</strong>
-                                <span>Opens the real Pathway Library below. Changes you make here are saved to your course immediately.</span>
-                            </span>
-                        </label>
+
+                        <div class="radio-options">
+                            <label class="radio-option" for="gpSetupKeepDefaults">
+                                <input type="radio" name="gpSetupChoice" id="gpSetupKeepDefaults" checked>
+                                <div class="radio-content">
+                                    <h3>Keep recommended defaults <span class="radio-badge">Recommended</span></h3>
+                                    <p>The three pathways above stay active exactly as configured. You can change them any time from the Pathway Library.</p>
+                                </div>
+                            </label>
+
+                            <label class="radio-option" for="gpSetupCustomize">
+                                <input type="radio" name="gpSetupChoice" id="gpSetupCustomize">
+                                <div class="radio-content">
+                                    <h3>Customize now</h3>
+                                    <p>Opens the real Pathway Library below. Changes you make here are saved to your course immediately.</p>
+                                </div>
+                            </label>
+                        </div>
                     </fieldset>
 
                     <div class="gp-setup-library-mount" id="gpSetupLibraryMount" hidden></div>
@@ -245,9 +249,9 @@
 
                         <div class="gp-setup-alert-actions">
                             <button type="button" class="gp-setup-dismiss-btn" id="gpSetupDismissBtn">Dismiss</button>
-                            <button type="button" class="gp-setup-escalate-btn" id="gpSetupEscalateBtn">Escalate to LTIC</button>
+                            <button type="button" class="gp-setup-escalate-btn" id="gpSetupEscalateBtn">Escalate to the admin team</button>
                         </div>
-                        <p class="gp-setup-escalation-note"><strong>Learning Technology Innovation Centre (LTIC):</strong> This button only records a request for internal administrator review. It does not contact LTIC, send email, or notify anyone outside EngE-AI.</p>
+                        <p class="gp-setup-escalation-note"><strong>What escalation does:</strong> This button only records a request for internal administrator review. It does not send email or notify anyone outside EngE-AI.</p>
                     </div>
 
                     <div class="gp-setup-outcome gp-setup-outcome-dismissed" id="gpSetupDismissedState" hidden>
@@ -334,7 +338,7 @@
             <p><strong>Responding to alerts</strong></p>
             <p>Alerts appear on the Flags page, which the Flag Setup stage covers later in this tutorial.</p>
             <p><strong>Dismiss</strong> closes an alert that did not reflect a real concern.</p>
-            <p><strong>Escalate to LTIC</strong> records an internal administrator-review decision. It does not send email or contact anyone externally. Use your institution's real channels for anything urgent.</p>
+            <p><strong>Escalate to the admin team</strong> records an internal administrator-review decision. It does not send email or contact anyone externally. Use your institution's real channels for anything urgent.</p>
             <p>The alert shown here is an example. Neither button sends a request or changes any record.</p>
         </div>
 

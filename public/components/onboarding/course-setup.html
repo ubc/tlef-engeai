@@ -206,36 +206,47 @@
                     </div>
 
                     <!-- Course capability opt-ins (also editable later in Settings) -->
-                    <fieldset class="form-group">
+                    <fieldset class="form-group feature-fieldset">
                         <legend>Course Features</legend>
-                        <label class="radio-option" for="reviewWritingFeedbackEnabled">
-                            <input type="checkbox" id="reviewWritingFeedbackEnabled">
-                            <span class="radio-content">
-                                <strong>Enable writing feedback and assessment tools for this course.</strong>
-                                <span>Instructors and TAs will receive a review workspace for evidence-based feedback and staff-approved release.</span>
-                            </span>
-                        </label>
-                        <label class="radio-option" for="reviewMemoryAgentEnabled">
-                            <input type="checkbox" id="reviewMemoryAgentEnabled">
-                            <span class="radio-content">
-                                <strong>Enable Memory Agent for this course.</strong>
-                                <span>Detects student struggle topics in Socratic chat and uses instructor struggle catalogs.</span>
-                            </span>
-                        </label>
-                        <label class="radio-option" for="reviewGuidedPathwayEnabled">
-                            <input type="checkbox" id="reviewGuidedPathwayEnabled">
-                            <span class="radio-content">
-                                <strong>Enable Guided Pathway for this course.</strong>
-                                <span>Unlocks the Pathway Library and guided pathway responses in chat.</span>
-                            </span>
-                        </label>
-                        <label class="radio-option" for="reviewScenarioGenerationEnabled">
-                            <input type="checkbox" id="reviewScenarioGenerationEnabled">
-                            <span class="radio-content">
-                                <strong>Enable Scenario Generation for this course.</strong>
-                                <span>Unlocks the Practice Scenarios question bank and AI-drafted practice scenarios for review before publishing.</span>
-                            </span>
-                        </label>
+                        <p class="form-help">Turn on the staff tools this course needs. Each one can be enabled or disabled later from course settings.</p>
+
+                        <div class="radio-options">
+                            <label class="radio-option feature-option" for="reviewWritingFeedbackEnabled">
+                                <input type="checkbox" id="reviewWritingFeedbackEnabled">
+                                <span class="feature-option-icon" aria-hidden="true"><i data-feather="edit-3"></i></span>
+                                <div class="radio-content">
+                                    <h3>Writing Feedback</h3>
+                                    <p>Gives instructors and TAs a review workspace for evidence-backed feedback on student writing, with staff approval required before release.</p>
+                                </div>
+                            </label>
+
+                            <label class="radio-option feature-option" for="reviewMemoryAgentEnabled">
+                                <input type="checkbox" id="reviewMemoryAgentEnabled">
+                                <span class="feature-option-icon" aria-hidden="true"><i data-feather="activity"></i></span>
+                                <div class="radio-content">
+                                    <h3>Memory Agent</h3>
+                                    <p>Detects the topics students struggle with during Socratic chat, using the struggle catalogs course staff maintain.</p>
+                                </div>
+                            </label>
+
+                            <label class="radio-option feature-option" for="reviewGuidedPathwayEnabled">
+                                <input type="checkbox" id="reviewGuidedPathwayEnabled">
+                                <span class="feature-option-icon" aria-hidden="true"><i data-feather="shield"></i></span>
+                                <div class="radio-content">
+                                    <h3>Guided Pathways</h3>
+                                    <p>Unlocks the Pathway Library and the approved responses the tutor gives when a message matches a pathway.</p>
+                                </div>
+                            </label>
+
+                            <label class="radio-option feature-option" for="reviewScenarioGenerationEnabled">
+                                <input type="checkbox" id="reviewScenarioGenerationEnabled">
+                                <span class="feature-option-icon" aria-hidden="true"><i data-feather="layers"></i></span>
+                                <div class="radio-content">
+                                    <h3>Scenario Generation</h3>
+                                    <p>Unlocks the Practice Scenarios question bank and AI-drafted scenarios that course staff review before publishing.</p>
+                                </div>
+                            </label>
+                        </div>
                     </fieldset>
                 </div>
             </div>
