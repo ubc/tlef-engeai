@@ -5,7 +5,7 @@
  */
 
 import type { GlobalUser, InstructorInfo, User, activeCourse } from '../../types/shared';
-import { getActiveCourse } from './course-mongo';
+import { getActiveCourse, updateActiveCourse } from './course-mongo';
 import { createStudent, findStudentByUserId } from './course-user-mongo';
 import {
     addCourseToGlobalUser,
@@ -15,7 +15,7 @@ import {
 import type { MongoDalContext } from './mongo-context';
 import { appLogger } from '../../utils/logger';
 import { isAdminUser } from '../../utils/admin';
-import { instructorEntryUserId } from '../../utils/course-staff';
+import { instructorEntryUserId, isCourseStaff } from '../../utils/course-staff';
 
 export interface RemoveInstructorsFromCourseOptions {
     /** Platform admin performing the removal — cannot remove their own userId. */
@@ -100,6 +100,48 @@ export async function enrollInstructorsOnCourse(
     }
 
     return instructors;
+}
+
+/**
+ * enrollFacultyInstructorViaCourseCode - Adds a faculty user to `instructors[]` when joining by PIN.
+ *
+ * Idempotent when the user is already course staff. Persists catalog `instructors[]` and runs
+ * `enrollUserInCourse` side effects (`coursesEnrolled`, `{courseName}_users` faculty row).
+ *
+ * @param ctx - MongoDalContext
+ * @param course - Active course resolved from the submitted course code
+ * @param globalUser - Signed-in faculty member presenting the code
+ * @returns Refreshed course document with updated `instructors[]`
+ * @throws Error when caller is not faculty
+ */
+export async function enrollFacultyInstructorViaCourseCode(
+    ctx: MongoDalContext,
+    course: activeCourse,
+    globalUser: GlobalUser
+): Promise<activeCourse> {
+    // Only global faculty may self-join via PIN; students use enter-by-code as students
+    if (globalUser.affiliation !== 'faculty') {
+        throw new Error('Only faculty may join as instructor via course code');
+    }
+
+    // Already listed on instructors[] or teachingAssistants[] — idempotent no-op
+    if (isCourseStaff(course, globalUser)) {
+        return course;
+    }
+
+    // Enroll side effects: coursesEnrolled, {courseName}_users faculty row, merged instructors[]
+    const instructors = await enrollInstructorsOnCourse(ctx, course, [globalUser.userId]);
+
+    // Persist catalog instructors[] — enrollInstructorsOnCourse returns the array only
+    const updated = await updateActiveCourse(ctx, course.id, { instructors });
+    if (!updated) {
+        throw new Error(`Course not found after instructor enrollment: ${course.id}`);
+    }
+
+    appLogger.log(
+        `[enrollment] Faculty ${globalUser.name} (${globalUser.userId}) joined course ${course.id} via course code`
+    );
+    return updated as activeCourse;
 }
 
 /**

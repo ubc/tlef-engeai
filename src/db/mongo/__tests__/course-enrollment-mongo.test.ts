@@ -8,16 +8,21 @@ jest.mock('../course-user-mongo', () => ({
     findStudentByUserId: jest.fn()
 }));
 jest.mock('../course-mongo', () => ({
-    getActiveCourse: jest.fn()
+    getActiveCourse: jest.fn(),
+    updateActiveCourse: jest.fn()
 }));
 jest.mock('../../../utils/logger', () => ({
     appLogger: { log: jest.fn(), warn: jest.fn(), error: jest.fn() }
 }));
 
-import { enrollInstructorsOnCourse, removeInstructorsFromCourse } from '../course-enrollment-mongo';
+import {
+    enrollFacultyInstructorViaCourseCode,
+    enrollInstructorsOnCourse,
+    removeInstructorsFromCourse
+} from '../course-enrollment-mongo';
 import { findGlobalUserByUserId, removeCourseFromGlobalUser } from '../global-user-mongo';
 import { createStudent, findStudentByUserId } from '../course-user-mongo';
-import { getActiveCourse } from '../course-mongo';
+import { getActiveCourse, updateActiveCourse } from '../course-mongo';
 import type { MongoDalContext } from '../mongo-context';
 import type { activeCourse, GlobalUser } from '../../../types/shared';
 
@@ -71,6 +76,87 @@ describe('enrollInstructorsOnCourse admin bypass', () => {
             expect.arrayContaining([expect.objectContaining({ userId: 'student-1' })])
         );
         expect(createStudent).not.toHaveBeenCalled();
+    });
+});
+
+describe('enrollFacultyInstructorViaCourseCode', () => {
+    const ctx = {} as MongoDalContext;
+    const course = {
+        id: 'course-1',
+        courseName: 'TestCourse',
+        instructors: [{ userId: 'fac-1', name: 'Lead Instructor' }]
+    } as unknown as activeCourse;
+
+    const newFaculty = {
+        userId: 'fac-2',
+        name: 'Co Instructor',
+        puid: 'puid-fac-2',
+        affiliation: 'faculty',
+        isAdmin: false,
+        coursesEnrolled: []
+    } as unknown as GlobalUser;
+
+    const listedFaculty = {
+        userId: 'fac-1',
+        name: 'Lead Instructor',
+        puid: 'puid-fac-1',
+        affiliation: 'faculty',
+        isAdmin: false,
+        coursesEnrolled: ['course-1']
+    } as unknown as GlobalUser;
+
+    const studentUser = {
+        userId: 'student-1',
+        name: 'Student One',
+        puid: 'puid-student',
+        affiliation: 'student',
+        isAdmin: false,
+        coursesEnrolled: []
+    } as unknown as GlobalUser;
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+        (getActiveCourse as jest.Mock).mockResolvedValue(course);
+        (findStudentByUserId as jest.Mock).mockResolvedValue(null);
+    });
+
+    it('adds a faculty user to instructors and persists the catalog row', async () => {
+        (findGlobalUserByUserId as jest.Mock).mockResolvedValue(newFaculty);
+        (updateActiveCourse as jest.Mock).mockResolvedValue({
+            ...course,
+            instructors: [
+                { userId: 'fac-1', name: 'Lead Instructor' },
+                { userId: 'fac-2', name: 'Co Instructor' }
+            ]
+        });
+
+        const result = await enrollFacultyInstructorViaCourseCode(ctx, course, newFaculty);
+
+        expect(updateActiveCourse).toHaveBeenCalledWith(ctx, 'course-1', {
+            instructors: expect.arrayContaining([
+                { userId: 'fac-1', name: 'Lead Instructor' },
+                { userId: 'fac-2', name: 'Co Instructor' }
+            ])
+        });
+        expect(createStudent).toHaveBeenCalled();
+        expect(result.instructors).toEqual(
+            expect.arrayContaining([expect.objectContaining({ userId: 'fac-2' })])
+        );
+    });
+
+    it('is idempotent when the faculty user is already course staff', async () => {
+        const result = await enrollFacultyInstructorViaCourseCode(ctx, course, listedFaculty);
+
+        expect(result).toBe(course);
+        expect(updateActiveCourse).not.toHaveBeenCalled();
+        expect(findGlobalUserByUserId).not.toHaveBeenCalled();
+    });
+
+    it('rejects non-faculty callers', async () => {
+        await expect(
+            enrollFacultyInstructorViaCourseCode(ctx, course, studentUser)
+        ).rejects.toThrow('Only faculty may join as instructor via course code');
+        expect(updateActiveCourse).not.toHaveBeenCalled();
     });
 });
 

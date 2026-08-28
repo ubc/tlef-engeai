@@ -1343,6 +1343,10 @@ export class EngEAI_MongoDB {
     public enrollInstructorsOnCourse = async (course: activeCourse, instructorUserIds: string[]) =>
         CourseEnrollmentMongo.enrollInstructorsOnCourse(this.ctx(), course, instructorUserIds);
 
+    /** Faculty enter-by-code: add caller to instructors[] when not already course staff. */
+    public enrollFacultyInstructorViaCourseCode = async (course: activeCourse, globalUser: GlobalUser) =>
+        CourseEnrollmentMongo.enrollFacultyInstructorViaCourseCode(this.ctx(), course, globalUser);
+
     public removeInstructorsFromCourse = async (
         course: activeCourse,
         userIdsToRemove: string[],

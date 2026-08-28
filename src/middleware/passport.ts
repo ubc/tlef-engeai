@@ -42,6 +42,17 @@ const FAKE_USERS = {
         sessionIndex: null,
         nameID: 'local-instructor',
         nameIDFormat: 'local'
+    },
+    staff: {
+        username: 'staff',
+        puid: 'FAKE_STAFF_PUID_001',
+        firstName: 'Test',
+        lastName: 'Staff',
+        affiliation: 'staff',
+        email: 'staff@test.local',
+        sessionIndex: null,
+        nameID: 'local-staff',
+        nameIDFormat: 'local'
     }
 };
 
@@ -197,16 +208,19 @@ const localStrategy = new LocalStrategy(
     (username: string, password: string, done: any) => {
         appLogger.log('[AUTH-LOCAL] 🔐 Login attempt for username:', username);
 
-        // Check if username is 'student' or 'instructor'
-        if (username !== 'student' && username !== 'instructor') {
+        // Check if username is a configured fake user
+        if (username !== 'student' && username !== 'instructor' && username !== 'staff') {
             appLogger.log('[AUTH-LOCAL] ❌ Invalid username:', username);
             return done(null, false, { message: 'Invalid username or password' });
         }
 
         // Verify password from environment variables
-        const expectedPassword = username === 'student'
-            ? process.env.FAKE_STUDENT_PASSWORD
-            : process.env.FAKE_INSTRUCTOR_PASSWORD;
+        const expectedPassword =
+            username === 'student'
+                ? process.env.FAKE_STUDENT_PASSWORD
+                : username === 'instructor'
+                  ? process.env.FAKE_INSTRUCTOR_PASSWORD
+                  : process.env.FAKE_STAFF_PASSWORD;
 
         if (password !== expectedPassword) {
             appLogger.log('[AUTH-LOCAL] ❌ Invalid password for user:', username);
@@ -214,7 +228,7 @@ const localStrategy = new LocalStrategy(
         }
 
         // Authentication successful - return fake user
-        const user = FAKE_USERS[username as 'student' | 'instructor'];
+        const user = FAKE_USERS[username as 'student' | 'instructor' | 'staff'];
         appLogger.log('[AUTH-LOCAL] ✅ Authentication successful for user:', username);
         appLogger.log('[AUTH-LOCAL] 👤 User data:', user);
 
