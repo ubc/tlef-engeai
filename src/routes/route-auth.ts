@@ -13,7 +13,7 @@ import { appLogger } from '../utils/logger';
 import { passport, ubcShibStrategy, isSamlAvailable } from '../middleware/passport';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { sanitizeGlobalUserForFrontend } from '../utils/user-utils';
-import { resolveAffiliation } from '../utils/affiliation';
+import { isAppEntryBlockedAffiliation, resolveAffiliation, type AffiliationValue } from '../utils/affiliation';
 import { isAdminName, isAdminUser } from '../utils/admin';
 import { getCourseSelectionRedirectPath } from '../helpers/course-selection-redirect';
 import { sendHtmlPageWithBuildComment } from '../utils/build-info';
@@ -128,7 +128,7 @@ const samlCallbackHandler = [
                 return res.redirect('/');
             }
 
-            const redirectPath = (affiliation === 'staff' || affiliation === 'empty') && !isAdminUser(globalUser)
+            const redirectPath = isAppEntryBlockedAffiliation(affiliation as AffiliationValue) && !isAdminUser(globalUser)
                 ? '/role-restricted'
                 : getCourseSelectionRedirectPath(globalUser);
             appLogger.log('[AUTH] 🚀 Session saved, redirecting to', redirectPath);
@@ -254,7 +254,7 @@ router.post('/login', (req: express.Request, res: express.Response, next: expres
                             return next(saveErr);
                         }
 
-                        const redirectPath = (affiliation === 'staff' || affiliation === 'empty') && !isAdminUser(globalUser)
+                        const redirectPath = isAppEntryBlockedAffiliation(affiliation as AffiliationValue) && !isAdminUser(globalUser)
                             ? '/role-restricted'
                             : getCourseSelectionRedirectPath(globalUser);
                         appLogger.log('[AUTH-LOCAL] 🚀 Redirecting to', redirectPath);

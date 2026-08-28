@@ -33,11 +33,9 @@ beforeEach(() => {
 });
 
 describe('migrateInstructorOnboardingStages', () => {
-    it.each(['faculty', 'staff'] as const)(
-        'seeds all three stages true for an onboarded %s user',
-        async (affiliation) => {
+    it('seeds all three stages true for an onboarded faculty user', async () => {
             const { updateOne } = mockInstance([
-                { puid: 'p-veteran', affiliation, instructorOnboardingCompleted: true },
+                { puid: 'p-veteran', affiliation: 'faculty', instructorOnboardingCompleted: true },
             ]);
 
             await migrateInstructorOnboardingStages();
@@ -56,7 +54,7 @@ describe('migrateInstructorOnboardingStages', () => {
     // instructorOnboardingCompleted is not trustworthy on students: earlier versions of
     // OB-001 and the roster role endpoint set it on students who never saw a tutorial.
     // A student escalated to TA must be taught, so they always start incomplete.
-    it.each(['student', 'empty'] as const)(
+    it.each(['student', 'staff', 'empty'] as const)(
         'seeds a %s user incomplete even when instructorOnboardingCompleted is true',
         async (affiliation) => {
             const { updateOne } = mockInstance([

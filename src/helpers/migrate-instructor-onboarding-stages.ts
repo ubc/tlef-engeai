@@ -54,10 +54,8 @@ export async function migrateInstructorOnboardingStages(): Promise<void> {
         const { puid } = globalUser;
         if (!puid) continue;
 
-        // 'faculty' and 'staff' are the instructor-side affiliations; 'student' and the
-        // 'empty' placeholder always start owing the tutorials.
-        const isInstructorAffiliation =
-            globalUser.affiliation === 'faculty' || globalUser.affiliation === 'staff';
+        // 'faculty' is the instructor-side affiliation; 'student', 'staff', and 'empty' start owing tutorials.
+        const isInstructorAffiliation = globalUser.affiliation === 'faculty';
         const seed = isInstructorAffiliation && globalUser.instructorOnboardingCompleted === true;
         const progress: InstructorOnboardingProgress = {
             contentSetup: seed,

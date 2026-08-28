@@ -12,6 +12,7 @@ import { appLogger } from '../utils/logger';
 import { refreshSessionGlobalUser } from '../helpers/session-global-user';
 import { isCourseStaff, isInCourseTAs } from '../utils/course-staff';
 import { isCourseAccessible } from '../helpers/course-access';
+import { courseScopedAffiliation, joinsCourseAsStudent } from '../utils/affiliation';
 import { resolveInstructorModeRedirect } from '../helpers/instructor-onboarding-redirect';
 
 const router = express.Router();
@@ -57,8 +58,8 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
 
         const courseData = course as unknown as activeCourse;
 
-        // Block removed faculty; students joining by code are allowed through below
-        if (globalUser.affiliation !== 'student' && !isCourseAccessible(courseData, globalUser)) {
+        // Block removed faculty; students and staff joining by code are allowed through below
+        if (!joinsCourseAsStudent(globalUser.affiliation) && !isCourseAccessible(courseData, globalUser)) {
             return res.status(403).json({ error: 'Course membership required' });
         }
 
@@ -79,13 +80,15 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
         if (!courseUser) {
             appLogger.log(`[COURSE-ENTRY] CourseUser not found, creating new one`);
             
+            const courseAffiliation = courseScopedAffiliation(globalUser.affiliation);
+
             const newCourseUserData: Partial<User> = {
                 name: globalUser.name,
                 userId: globalUser.userId,  // Reuse from GlobalUser
                 courseName: course.courseName,
                 courseId: course.id,
                 userOnboarding: false,
-                affiliation: globalUser.affiliation,
+                affiliation: courseAffiliation,
                 status: 'active',
                 chats: []
             };
@@ -100,7 +103,7 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
                     course.courseName,
                     globalUser.userId,
                     globalUser.name,
-                    globalUser.affiliation
+                    courseAffiliation
                 );
                 appLogger.log(`[COURSE-ENTRY] Memory agent initialized for user`);
             } catch (error) {
@@ -154,7 +157,7 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
         // Must precede the instructor redirect, which now reads per-user tutorial progress.
         const freshGlobalUser = await refreshSessionGlobalUser(req, mongoDB);
 
-        if (globalUser.affiliation === 'student' && !isStaff && !(courseUser as any).userOnboarding) {
+        if (joinsCourseAsStudent(globalUser.affiliation) && !isStaff && !(courseUser as any).userOnboarding) {
             redirect = `/course/${courseId}/student/onboarding/student`;
             requiresOnboarding = true;
             appLogger.log(`[COURSE-ENTRY] Redirecting student to onboarding`);
@@ -190,6 +193,11 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
 /**
  * POST /enter-by-code
  * Enters a course using a 6-character uppercase alphanumeric course code.
+ *
+ * Students join without prior enrollment. Faculty not on `instructors[]` are auto-added
+ * when they present a valid code (see `enrollFacultyInstructorViaCourseCode`). Other
+ * non-students without membership receive 403. Contrast with POST `/enter`, which never
+ * auto-adds faculty and blocks removed instructors who only have a course ID.
  *
  * @route POST /api/course/enter-by-code
  * @param {string} courseCode - 6-character course code (body)
@@ -233,10 +241,22 @@ router.post('/enter-by-code', asyncHandlerWithAuth(async (req: Request, res: Res
         appLogger.log(`[COURSE-ENTRY] Course found: ${course.courseName} (ID: ${course.id})`);
         
         const courseId = course.id;
-        const courseData = course as unknown as activeCourse;
+        let courseData = course as unknown as activeCourse;
 
-        // Students may join by code before they appear in coursesEnrolled
-        if (globalUser.affiliation !== 'student' && !isCourseAccessible(courseData, globalUser)) {
+        // ====================================================================
+        // STEP 2: Course-code access gate (differs from POST /enter by course ID)
+        // ====================================================================
+        //
+        // A valid PIN is the trust boundary for enter-by-code. Students may join before
+        // they appear in coursesEnrolled. Faculty not yet on instructors[] are auto-added
+        // so downstream isCourseStaff checks and instructor redirects succeed.
+        // POST /enter still blocks removed faculty who only have a bookmarked course ID.
+
+        // Faculty with a valid code join as instructor when not already course staff
+        if (globalUser.affiliation === 'faculty' && !isCourseAccessible(courseData, globalUser)) {
+            courseData = await mongoDB.enrollFacultyInstructorViaCourseCode(courseData, globalUser);
+        } else if (!joinsCourseAsStudent(globalUser.affiliation) && !isCourseAccessible(courseData, globalUser)) {
+            // Non-student, non-faculty (e.g. TA/staff) without roster membership cannot self-join
             return res.status(403).json({ error: 'Course membership required' });
         }
 
@@ -256,13 +276,15 @@ router.post('/enter-by-code', asyncHandlerWithAuth(async (req: Request, res: Res
         if (!courseUser) {
             appLogger.log(`[COURSE-ENTRY] CourseUser not found, creating new one`);
             
+            const courseAffiliation = courseScopedAffiliation(globalUser.affiliation);
+
             const newCourseUserData: Partial<User> = {
                 name: globalUser.name,
                 userId: globalUser.userId,  // Reuse from GlobalUser
                 courseName: course.courseName,
                 courseId: course.id,
                 userOnboarding: false,
-                affiliation: globalUser.affiliation,
+                affiliation: courseAffiliation,
                 status: 'active',
                 chats: []
             };
@@ -277,7 +299,7 @@ router.post('/enter-by-code', asyncHandlerWithAuth(async (req: Request, res: Res
                     course.courseName,
                     globalUser.userId,
                     globalUser.name,
-                    globalUser.affiliation
+                    courseAffiliation
                 );
                 appLogger.log(`[COURSE-ENTRY] Memory agent initialized for user`);
             } catch (error) {
@@ -331,7 +353,7 @@ router.post('/enter-by-code', asyncHandlerWithAuth(async (req: Request, res: Res
         // Must precede the instructor redirect, which now reads per-user tutorial progress.
         const freshGlobalUser = await refreshSessionGlobalUser(req, mongoDB);
 
-        if (globalUser.affiliation === 'student' && !isStaff && !(courseUser as any).userOnboarding) {
+        if (joinsCourseAsStudent(globalUser.affiliation) && !isStaff && !(courseUser as any).userOnboarding) {
             redirect = `/course/${courseId}/student/onboarding/student`;
             requiresOnboarding = true;
             appLogger.log(`[COURSE-ENTRY] Redirecting student to onboarding`);

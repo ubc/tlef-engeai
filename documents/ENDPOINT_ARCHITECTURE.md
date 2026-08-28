@@ -301,7 +301,7 @@ Live Canvas OAuth routes are intentionally absent from this table until the priv
 | Method | Path | Auth | Role | Description |
 |--------|------|------|------|-------------|
 | POST | `/api/course/enter` | Yes | Member | Enter course by ID; requires `isCourseAccessible` (403 if removed faculty); no longer auto-adds faculty to `instructors[]` |
-| POST | `/api/course/enter-by-code` | Yes | Any | Enter course by code; students may join without prior enrollment; non-students require `isCourseAccessible` |
+| POST | `/api/course/enter-by-code` | Yes | Any | Enter course by code; students and global `staff` join without prior enrollment (course user stored as `student`); faculty with a valid code auto-join `instructors[]` (idempotent); other non-students require `isCourseAccessible` |
 | GET | `/api/course/current` | Yes | Any | Get current course from session |
 
 ### 4.3 Courses & Content (`/api/courses`)

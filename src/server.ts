@@ -32,7 +32,7 @@ import { sessionActivityMiddleware } from './middleware/session-activity';
 import { EngEAI_MongoDB } from './db/enge-ai-mongodb';
 import { initAcademicPeriods } from './helpers/init-academic-periods';
 import { getCourseSelectionRedirectPath } from './helpers/course-selection-redirect';
-import { resolveAffiliation } from './utils/affiliation';
+import { isAppEntryBlockedAffiliation, resolveAffiliation, type AffiliationValue } from './utils/affiliation';
 import { isAdminUser, isAdminName } from './utils/admin';
 
 dotenv.config();
@@ -98,10 +98,11 @@ app.use((req: express.Request, res: express.Response, next: express.NextFunction
 // Root path handler: redirect authenticated users based on affiliation
 app.get('/', (req: any, res: any) => {
     if (req.session?.passport?.user) {
-        const affiliation = (req.session as any)?.globalUser?.affiliation;
-        const redirectPath = (affiliation === 'staff' || affiliation === 'empty')
+        const globalUser = (req.session as any)?.globalUser;
+        const affiliation = globalUser?.affiliation as AffiliationValue | undefined;
+        const redirectPath = affiliation && isAppEntryBlockedAffiliation(affiliation) && !isAdminUser(globalUser)
             ? '/role-restricted'
-            : getCourseSelectionRedirectPath((req.session as any).globalUser);
+            : getCourseSelectionRedirectPath(globalUser);
         logger.info(`[ROUTING] Authenticated user accessed root, redirecting to ${redirectPath}`);
         return res.redirect(redirectPath);
     }
@@ -210,7 +211,7 @@ app.post('/Shibboleth.sso/SAML2/POST', (req: express.Request, res: express.Respo
                 return res.redirect('/');
             }
 
-            const redirectPath = (affiliation === 'staff' || affiliation === 'empty') && !isAdminUser(globalUser)
+            const redirectPath = isAppEntryBlockedAffiliation(affiliation as AffiliationValue) && !isAdminUser(globalUser)
                 ? '/role-restricted'
                 : getCourseSelectionRedirectPath(globalUser);
             logger.info(`[AUTH] 🚀 Session saved, redirecting to ${redirectPath}`);
@@ -230,8 +231,8 @@ app.get('/role-restricted', (req: any, res: any) => {
         return res.redirect('/');
     }
     const globalUser = (req.session as any)?.globalUser;
-    const affiliation = globalUser?.affiliation;
-    if ((affiliation !== 'staff' && affiliation !== 'empty') || isAdminUser(globalUser)) {
+    const affiliation = globalUser?.affiliation as AffiliationValue | undefined;
+    if (!affiliation || !isAppEntryBlockedAffiliation(affiliation) || isAdminUser(globalUser)) {
         return res.redirect('/course-selection');
     }
     sendHtmlPageWithBuildComment(res, path.join(publicPath, 'pages/role-restricted.html'));
@@ -239,8 +240,8 @@ app.get('/role-restricted', (req: any, res: any) => {
 
 app.get('/course-selection', (req: any, res: any) => {
     const globalUser = (req.session as any)?.globalUser;
-    const affiliation = globalUser?.affiliation;
-    if ((affiliation === 'staff' || affiliation === 'empty') && !isAdminUser(globalUser)) {
+    const affiliation = globalUser?.affiliation as AffiliationValue | undefined;
+    if (affiliation && isAppEntryBlockedAffiliation(affiliation) && !isAdminUser(globalUser)) {
         return res.redirect('/role-restricted');
     }
     if (isAdminUser(globalUser)) {
@@ -255,8 +256,8 @@ app.get('/admin/course-selection', (req: any, res: any) => {
     }
     const globalUser = (req.session as any)?.globalUser;
     if (!isAdminUser(globalUser)) {
-        const affiliation = globalUser?.affiliation;
-        if (affiliation === 'staff' || affiliation === 'empty') {
+        const affiliation = globalUser?.affiliation as AffiliationValue | undefined;
+        if (affiliation && isAppEntryBlockedAffiliation(affiliation)) {
             return res.redirect('/role-restricted');
         }
         return res.redirect('/course-selection');
@@ -266,8 +267,8 @@ app.get('/admin/course-selection', (req: any, res: any) => {
 
 app.get('/settings', (req: any, res: any) => {
     const globalUser = (req.session as any)?.globalUser;
-    const affiliation = globalUser?.affiliation;
-    if ((affiliation === 'staff' || affiliation === 'empty') && !isAdminUser(globalUser)) {
+    const affiliation = globalUser?.affiliation as AffiliationValue | undefined;
+    if (affiliation && isAppEntryBlockedAffiliation(affiliation) && !isAdminUser(globalUser)) {
         return res.redirect('/role-restricted');
     }
     sendHtmlPageWithBuildComment(res, path.join(publicPath, 'pages/settings.html'));
