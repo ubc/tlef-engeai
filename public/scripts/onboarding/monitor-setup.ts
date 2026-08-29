@@ -27,6 +27,7 @@ import { loadComponentHTML } from "../api/api.js";
 import { activeCourse } from "../types.js";
 import { showErrorModal, showHelpModal } from "../ui/modal-overlay.js";
 import { updateStaffOnboardingProgress } from "./staff-onboarding-ui.js";
+import { completeInstructorOnboardingStage } from './onboarding-progress.js';
 
 // Make currentClass globally accessible
 declare global {
@@ -1038,31 +1039,12 @@ async function completeMonitorSetup(): Promise<void> {
             throw new Error("Course ID is missing. Cannot update database.");
         }
         
-        // Update the course's monitorSetup status to true locally
-        currentCourse.monitorSetup = true;
+        // Record the tutorial against the instructor, not the course, so a colleague who
+        // is new to EngE-AI still gets taught on this same course.
+        await completeInstructorOnboardingStage('monitorSetup');
         
-        const response = await fetch(`/api/courses/${currentCourse.id}`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            credentials: 'same-origin',
-            body: JSON.stringify({
-                monitorSetup: true
-            })
-        });
-        
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ error: 'Failed to update course in database' }));
-            throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-        }
-        
-        const result = await response.json();
-        if (!result.success) {
-            throw new Error(result.error || 'Failed to update course in database');
-        }
-        
-        // Set instructorOnboardingCompleted on GlobalUser for skip-onboarding feature
+        // Set instructorOnboardingCompleted on GlobalUser — the coarse "has been onboarded
+        // at least once" signal, still used to seed new users (OB-002)
         try {
             const instructorCompletedRes = await fetch('/api/user/onboarding/instructor-completed', {
                 method: 'PATCH',
@@ -1092,11 +1074,6 @@ async function completeMonitorSetup(): Promise<void> {
         //START DEBUG LOG : DEBUG-CODE(013)
         console.error("❌ Error completing monitor setup:", error);
         //END DEBUG LOG : DEBUG-CODE(013)
-        
-        // Revert local change on error
-        if (window.currentClass) {
-            window.currentClass.monitorSetup = false;
-        }
         
         await showErrorModal("Completion Error", `Failed to complete monitor setup: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`);
     }

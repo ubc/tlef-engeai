@@ -28,6 +28,26 @@ const httpUrl = z.string().trim().max(500).url().refine(
     { message: 'Course material links must use http or https' }
 );
 
+const courseMaterialMentionSchema = z.object({
+    id: z.string().trim().min(1).max(120),
+    label: z.string().trim().min(1).max(240),
+    courseId: z.string().trim().min(1).max(120).optional(),
+    topicOrWeekId: z.string().trim().min(1).max(120).optional(),
+    topicOrWeekTitle: z.string().trim().min(1).max(160).optional(),
+    itemId: z.string().trim().min(1).max(120).optional(),
+    itemTitle: z.string().trim().min(1).max(160).optional(),
+    materialId: z.string().trim().min(1).max(120).optional(),
+    materialName: z.string().trim().min(1).max(160).optional(),
+    version: z.string().trim().min(1).max(120).optional()
+});
+
+const glossarySnapshotSchema = z.object({
+    id: z.string().trim().min(1).max(120),
+    term: z.string().trim().min(1).max(80),
+    definition: z.string().trim().min(1).max(600),
+    version: z.number().int().min(1)
+});
+
 /**
  * Validated API shape for one staff-editable anchored comment.
  *
@@ -44,10 +64,13 @@ export const anchoredCommentInputSchema = z.object({
     comment: z.string().trim().min(1).max(2000),
     howToImprove: z.string().trim().min(1).max(2000).optional(),
     courseMaterialLink: httpUrl.optional(),
+    courseMaterialMention: courseMaterialMentionSchema.optional(),
     glossaryDefinition: z.object({
         term: z.string().trim().min(1).max(80),
         definition: z.string().trim().min(1).max(600)
     }).optional(),
+    glossaryEntryId: z.string().trim().min(1).max(120).optional(),
+    glossarySnapshot: glossarySnapshotSchema.optional(),
     origin: z.enum(['model_seed', 'staff']),
     functionTag: z.enum(['content', 'interpersonal', 'organizational']).optional(),
     levelTag: z.enum(['text', 'section', 'clause_word']).optional(),
@@ -107,6 +130,9 @@ export function seedCommentsFromRun(
                 comment: evidence.rationale,
                 howToImprove: criterion.explanation,
                 origin: 'model_seed',
+                ...(evidence.courseMaterialMention ? { courseMaterialMention: evidence.courseMaterialMention } : {}),
+                ...(evidence.glossaryEntryId ? { glossaryEntryId: evidence.glossaryEntryId } : {}),
+                ...(evidence.glossarySnapshot ? { glossarySnapshot: evidence.glossarySnapshot } : {}),
                 ...((functionTags.get(criterion.criterion) ?? CRITERION_FUNCTION_TAG[criterion.criterion])
                     ? { functionTag: functionTags.get(criterion.criterion) ?? CRITERION_FUNCTION_TAG[criterion.criterion] }
                     : {})

@@ -28,7 +28,6 @@ import {
 const definition: FeatureTutorialDefinition = {
     component: 'guided-pathway-setup',
     feature: 'guidedPathway',
-    completionSlug: 'guided-pathway',
     completionEvent: 'guidedPathwaySetupComplete',
     totalSteps: 5,
     stepTitles: {

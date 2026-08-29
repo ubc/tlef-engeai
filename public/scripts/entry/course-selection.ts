@@ -14,12 +14,12 @@ import { showConfirmModal,
     showSimpleErrorModal,
     showErrorModal, 
     showSuccessModal, 
-    showInactivityWarningModal, 
     showInputModal,
     ModalOverlay 
 } from '../ui/modal-overlay.js';
-import { inactivityTracker } from '../services/inactivity-tracker.js';
+import { startInactivityTracking } from '../services/inactivity-tracker.js';
 import { authService } from '../services/auth-service.js';
+import { initCanvasConnect, isCanvasEnabled, openCanvasConnectModal } from './canvas-connect.js';
 
 // Store current user's affiliation to check if they're an instructor
 let currentUserAffiliation: 'student' | 'faculty' | null = null;
@@ -92,7 +92,12 @@ async function initializeCourseSelection(): Promise<void> {
         // Setup period action buttons (delegated) and seed fixture
         setupPeriodActionDelegation();
         configureSeedReportFixtureButton();
-        
+
+        // Resolve Canvas availability before the first render, so the Connect to Canvas
+        // button is either present from the start or never appears. Deployments without
+        // Canvas configured must not advertise it.
+        await initCanvasConnect(loadCourses);
+
         // Fetch course data
         await loadCourses();
         
@@ -160,6 +165,15 @@ function renderPeriodSection(period: CourseSelectionPeriodSection, defaultPeriod
                         <span class="btn-text">Create New Course</span>
                     </button>`
         : '';
+    // Both roles get this button; the flow behind it branches on Canvas enrollment, not on
+    // EngE-AI affiliation. Omitted entirely when the deployment has no Canvas credentials.
+    const canvasBtn = isCanvasEnabled()
+        ? `
+                    <button type="button" class="add-new-course-btn period-canvas-connect-btn" data-period-id="${period.id}" aria-label="Connect to Canvas" title="Connect to Canvas">
+                        <i data-feather="link"></i>
+                        <span class="btn-text">Connect to Canvas</span>
+                    </button>`
+        : '';
 
     return `
         <section class="course-selection-container period-section" data-period-id="${period.id}">
@@ -176,6 +190,7 @@ function renderPeriodSection(period: CourseSelectionPeriodSection, defaultPeriod
                         <i data-feather="plus"></i>
                         <span class="btn-text">Add New Course</span>
                     </button>
+                    ${canvasBtn}
                     ${createCourseBtn}
                 </div>
             </header>
@@ -213,6 +228,12 @@ function setupPeriodActionDelegation(): void {
         }
         if (target.closest('.period-create-course-btn')) {
             void showFacultyCreateCourseModal();
+            return;
+        }
+        const canvasBtn = target.closest('.period-canvas-connect-btn');
+        if (canvasBtn) {
+            // An imported course lands in the period whose header launched the flow.
+            void openCanvasConnectModal(canvasBtn.getAttribute('data-period-id') ?? undefined);
         }
     });
 }
@@ -236,15 +257,6 @@ function escapeHtml(text: string): string {
     return div.innerHTML;
 }
 
-/** Instructor names to exclude from display (e.g. dev team members) */
-const EXCLUDED_INSTRUCTOR_NAMES = ['Charisma Rusdiyanto', 'Richard Tape'];
-
-/**
- * createCourseCard
- * 
- * @param course any — Course object (id, courseName, instructors, etc.)
- * @returns string — HTML for workspace row with course name, instructors, enter/restart buttons
- */
 function createCourseCard(course: activeCourse & { instructorDisplay?: string }): string {
     const instructorNames =
         course.instructorDisplay ??
@@ -258,7 +270,6 @@ function createCourseCard(course: activeCourse & { instructorDisplay?: string })
                 }
                 return inst.userId || 'Unknown';
             })
-            .filter((name: string) => !EXCLUDED_INSTRUCTOR_NAMES.includes(name))
             .join(', ') || 'No instructors');
     
     return `
@@ -488,51 +499,10 @@ async function restartOnboarding(courseId: string, courseName: string): Promise<
 }
 
 /**
- * Initialize inactivity tracking for course selection page
- * Shows countdown warning modal at 4 min idle, logs out at 5 min
- */
-/**
- * initializeInactivityTracking
- * 
- * @returns void
- * Sets up inactivityTracker warning and logout events. Shows modal on warning; redirects on timeout.
+ * Initialize server-directed inactivity tracking for course selection page.
  */
 function initializeInactivityTracking(): void {
-    inactivityTracker.on('warning', async (data: any) => {
-        inactivityTracker.pause();
-
-        const remainingSeconds = Math.floor((data.remainingTimeUntilLogout || 60000) / 1000);
-        const result = await showInactivityWarningModal(remainingSeconds, () => {
-            inactivityTracker.reset();
-        });
-
-        inactivityTracker.resume();
-
-        if (result.action === 'timeout') {
-            inactivityTracker.stop();
-            authService.logout();
-            return;
-        }
-    });
-
-    inactivityTracker.on('logout', async () => {
-        inactivityTracker.stop();
-
-        try {
-            await showConfirmModal(
-                'Session Expired',
-                'You have been inactive for too long. You will be logged out now.',
-                'OK',
-                ''
-            );
-        } catch (error) {
-            console.warn('[COURSE-SELECTION] ⚠️ Could not show logout modal:', error);
-        }
-
-        authService.logout();
-    });
-
-    inactivityTracker.start();
+    startInactivityTracking();
 }
 
 /**
@@ -777,9 +747,6 @@ async function redirectToInstructorOnboarding(courseName: string): Promise<void>
         id: '',
         date: new Date().toISOString(),
         courseSetup: false,
-        contentSetup: false,
-        flagSetup: false,
-        monitorSetup: false,
         courseName: trimmedName,
         instructors: [{ userId: currentUser.userId, name: currentUser.name }],
         teachingAssistants: [],
@@ -1014,15 +981,13 @@ async function handleCourseCodeSubmit(courseCode: string, inputElement: HTMLInpu
             return;
         }
         
-        // Skip onboarding: if requires onboarding and user has completed before, offer skip
+        // Student skip onboarding: if requires onboarding and the student has completed one before, offer skip.
         // Close course code modal first so skip modal is clearly visible (displayed after code validated)
         const courseId = data.courseId || data.courseUser?.courseId || data.redirect?.match(/\/course\/([^/]+)\//)?.[1];
         const isStudentOnboardingRedirect = data.redirect?.includes('/student/onboarding/');
-        const isInstructorOnboardingRedirect = data.redirect?.includes('/instructor/onboarding/');
         const showStudentSkip = data.requiresOnboarding && data.studentOnboardingCompleted === true && isStudentOnboardingRedirect && currentGlobalUser;
-        const showInstructorSkip = data.requiresOnboarding && data.instructorOnboardingCompleted === true && isInstructorOnboardingRedirect && currentGlobalUser && courseId;
 
-        if ((showStudentSkip || showInstructorSkip) && courseCodeModal) {
+        if (showStudentSkip && courseCodeModal) {
             courseCodeModal.close('success');
         }
 
@@ -1055,37 +1020,9 @@ async function handleCourseCodeSubmit(courseCode: string, inputElement: HTMLInpu
                 );
             }
         }
-        // Instructor skip: requires onboarding + completed instructor onboarding before
-        else if (showInstructorSkip) {
-            const skipResult = await showSkipOnboardingModal(
-                'Skip Setup?',
-                "You've completed instructor setup before. Skip the full setup for this course?"
-            );
-
-            if (skipResult.action === 'skip') {
-                const updateRes = await fetch(`/api/courses/${courseId}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'same-origin',
-                    body: JSON.stringify({
-                        courseSetup: true,
-                        contentSetup: true,
-                        flagSetup: true,
-                        monitorSetup: true,
-                        featureOnboarding: { scenarioGeneration: true, writingFeedback: true, guidedPathway: true }
-                    })
-                });
-                const updateData = await updateRes.json();
-                if (updateData.success) {
-                    window.location.href = `/course/${courseId}/instructor/documents`;
-                    return;
-                }
-                await showSimpleErrorModal(
-                    updateData.error || 'Could not update course. Continuing with setup.',
-                    'Skip setup failed'
-                );
-            }
-        }
+        // No instructor skip branch: instructor tutorial progress is per-user, so an
+        // instructor who has already been taught is routed past the tutorials by
+        // `resolveInstructorModeRedirect` and never reaches an onboarding URL.
 
         // Success - redirect to appropriate page
         window.location.href = data.redirect;

@@ -108,6 +108,25 @@ describe('computeReleaseFingerprint', () => {
     });
 });
 
+describe('technical run fingerprinting', () => {
+    const base = { submissionId: 'submission-1', feedbackRunId: 'run-1', rubricVersion: 1 };
+
+    it('changes the fingerprint when a technical run is added', () => {
+        expect(computeReleaseFingerprint({ ...base, technicalFeedbackRunId: 'run-2' }))
+            .not.toBe(computeReleaseFingerprint(base));
+    });
+
+    it('is stable for the same two runs', () => {
+        const payload = { submissionId: 'submission-1', feedbackRunId: 'run-1', technicalFeedbackRunId: 'run-2' };
+        expect(computeReleaseFingerprint(payload)).toBe(computeReleaseFingerprint({ ...payload }));
+    });
+
+    it('distinguishes a technical run id from a linguistic one with the same value', () => {
+        expect(computeReleaseFingerprint({ submissionId: 's', feedbackRunId: 'a', technicalFeedbackRunId: 'b' }))
+            .not.toBe(computeReleaseFingerprint({ submissionId: 's', feedbackRunId: 'b', technicalFeedbackRunId: 'a' }));
+    });
+});
+
 /** Release coordinator over an in-memory fingerprint store that counts inserts. */
 function buildRecordingService(): { service: SafeCanvasReleaseService; records: Map<string, WritingRelease>; saves: number } {
     const records = new Map<string, WritingRelease>();

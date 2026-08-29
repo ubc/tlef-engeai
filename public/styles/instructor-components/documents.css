@@ -25,32 +25,6 @@
 /* Main Content */
 .main-content {
     width: 100%;
-    overflow-y: auto;
-}
-
-.document-header {
-    background: var(--color-chbe-green);
-    border-radius: 12px;
-    padding: 20px;
-    margin-bottom: 20px;
-    border: 1px solid var(--border-color);
-    box-shadow: 
-        0px 2px 8px rgba(0, 0, 0, 0.1),
-        0px 0px 0px 20px white;
-    animation: slideInDown 0.5s ease-in-out;
-    position: sticky;
-    z-index: 10;
-    top: 0;
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-}
-
-.document-header h1 {
-    color: white;
-    margin: 0;
-    flex: 1;
-    min-width: 0;
 }
 
 /* Division overflow: desktop shows both delete buttons; mobile shows "..." dropdown */
@@ -130,7 +104,6 @@
 .documents-container {
     background: var(--chat-bg);
     overflow: hidden;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     /* animation: slideInUp 0.3s 0.1s forwads; */
 }
 
@@ -404,19 +377,26 @@ button.content-status {
         transform 0.2s ease;
 }
 
-@keyframes topicOrWeekEnter {
+@keyframes topic-or-week-appear {
     from {
         opacity: 0;
-        transform: translateY(8px);
+        transform: scale(0.96) translateY(10px);
     }
     to {
         opacity: 1;
-        transform: translateY(0);
+        transform: scale(1) translateY(0);
     }
 }
 
-.topic-or-week-instance.topic-or-week-instance--enter {
-    animation: topicOrWeekEnter 0.32s ease forwards;
+.topic-or-week-instance--is-appearing {
+    animation: topic-or-week-appear 0.36s cubic-bezier(0.22, 1, 0.36, 1) both;
+    pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .topic-or-week-instance--is-appearing {
+        animation: none;
+    }
 }
 
 /* Publish modal: expandable schedule */
@@ -950,33 +930,6 @@ button.content-status {
    =========================================== */
 
 @media (max-width: 768px) {
-    /* document-header.mobile-header-bar: about-like styling (single header, no duplicate) */
-    .document-header.mobile-header-bar {
-        padding: 12px 16px;
-        background: var(--chat-bg);
-        border: none !important;
-        border-radius: 12px;
-        margin-bottom: 20px;
-        box-shadow: none;
-    }
-
-    .document-header.mobile-header-bar h1,
-    .document-header.mobile-header-bar .mobile-header-title {
-        font-size: 1.25rem;
-        color: var(--color-chbe-green);
-        font-weight: 600;
-    }
-
-    .document-header.mobile-header-bar .instructor-mobile-hamburger-btn {
-        color: var(--color-chbe-green);
-        padding: 0 !important;
-    }
-
-    .document-header.mobile-header-bar .instructor-mobile-hamburger-btn:hover {
-        background-color: rgba(92, 138, 58, 0.1);
-        color: var(--color-chbe-green);
-    }
-
     /* Division control: hide desktop delete buttons, show overflow "..." on mobile */
     .division-actions-desktop {
         display: none;

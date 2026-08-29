@@ -15,9 +15,9 @@ import { studentUserFactory } from '../factories/student-user-factory.js';
 import { renderStudentOnboarding } from '../onboarding/student-onboarding.js';
 import { initializeStudentFlagHistory } from '../feature/student-flag-history.js';
 import { initializeScenariosStudent, isScenarioWorkspaceActive, confirmLeaveScenarioWorkspace, expandStudentSidebar, isScenariosStudentMounted, syncStudentScenariosFromURL } from '../feature/scenarios-student.js';
-import { showConfirmModal, showSkipOnboardingModal, showSimpleErrorModal, showInfoModal, showInactivityWarningModal } from '../ui/modal-overlay.js';
+import { showConfirmModal, showSkipOnboardingModal, showSimpleErrorModal, showInfoModal } from '../ui/modal-overlay.js';
 import { renderAbout } from '../about/about.js';
-import { inactivityTracker } from '../services/inactivity-tracker.js';
+import { startInactivityTracking } from '../services/inactivity-tracker.js';
 import { 
     getCourseIdFromURL, 
     getStudentViewFromURL, 
@@ -287,74 +287,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 /**
- * initializeInactivityTracking
- * 
- * @returns void
- * Sets up inactivityTracker warning and logout events. Shows modal on warning; calls authService.logout on timeout.
+ * initializeInactivityTracking - start server-directed idle poll loop
  */
 function initializeInactivityTracking(): void {
-    // console.log('[STUDENT-MODE] 🔍 Initializing inactivity tracking...'); // 🟢 MEDIUM: Initialization logging
-    
-    // Set up event listeners for inactivity tracker
-    inactivityTracker.on('warning', async (data: any) => {
-        // console.log('[STUDENT-MODE] ⚠️ Inactivity warning triggered'); // 🟢 MEDIUM: Warning notification
-        
-        // Pause tracker while modal is shown
-        inactivityTracker.pause();
-        
-        // Show warning modal with countdown
-        const remainingSeconds = Math.floor((data.remainingTimeUntilLogout || 60000) / 1000);
-        const result = await showInactivityWarningModal(remainingSeconds, () => {
-            // User clicked "Stay Active" - reset tracker
-            // console.log('[STUDENT-MODE] ✅ User chose to stay active'); // 🟢 MEDIUM: User action logging
-            inactivityTracker.reset();
-        });
-        
-        // Resume tracker after modal closes
-        inactivityTracker.resume();
-        
-        // If timeout occurred, logout will be triggered by logout event
-        if (result.action === 'timeout') {
-            // console.log('[STUDENT-MODE] ⏱️ Inactivity warning timeout - logout will be triggered'); // 🟢 MEDIUM: Timeout logging
-
-            // MANUALLY TRIGGER LOGOUT HERE since logout timer was cleared
-            inactivityTracker.stop();
-            authService.logout();
-            return; // Stop execution here - logout will be triggered by logout event
-        }
-    });
-    
-    inactivityTracker.on('logout', async (data: any) => {
-        // console.log('[STUDENT-MODE] 🚪 Inactivity logout triggered'); // 🟢 MEDIUM: Logout trigger logging
-        
-        // Stop tracking
-        inactivityTracker.stop();
-        
-        // Show logout message and redirect
-        try {
-            await showConfirmModal(
-                'Session Expired',
-                'You have been inactive for too long. You will be logged out now.',
-                'OK',
-                ''
-            );
-        } catch (error) {
-            // Modal might fail if already logged out, continue anyway
-            console.warn('[STUDENT-MODE] ⚠️ Could not show logout modal:', error);
-        }
-        
-        // Logout user
-        authService.logout();
-    });
-    
-    inactivityTracker.on('activity-reset', (data: any) => {
-        // console.log('[STUDENT-MODE] 🔄 Activity detected - inactivity timer reset'); // 🟢 MEDIUM: Activity reset logging
-    });
-    
-    // Start tracking
-    inactivityTracker.start();
-
-    // console.log('[STUDENT-MODE] ✅ Inactivity tracking initialized'); // 🟢 MEDIUM: Initialization success
+    startInactivityTracking();
 }
 
 /**
@@ -1253,7 +1189,7 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
         writingAnalysisBtn.addEventListener('click', async () => {
             await clearSelectedChatForTool();
             setStudentToolActive('writing-analysis-btn');
-            void showInfoModal('Writing Analysis', 'Writing analysis is coming soon.');
+            void showInfoModal('Writing Feedback', 'Writing feedback is coming soon.');
         });
     };
 

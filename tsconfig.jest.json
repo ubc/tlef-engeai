@@ -4,10 +4,5 @@
     "types": ["node", "jest"],
     "noEmit": true
   },
-  "include": [
-    "src/**/*",
-    "public/scripts/utils/instructor-response-carousel.ts",
-    "public/scripts/utils/onboarding-stage-order.ts",
-    "public/scripts/feature/writing-feedback-demo-mode.ts"
-  ]
+  "include": ["src/**/*", "public/scripts/**/*"]
 }

@@ -40,7 +40,7 @@ export const COURSE_FEATURE_DEFINITIONS = [
     },
     {
         id: 'scenarioGeneration',
-        label: 'Scenario Generation',
+        label: 'Scenario Questions',
         defaultEnabledForNewCourse: false,
     },
 ] as const satisfies readonly CourseFeatureDefinition[];

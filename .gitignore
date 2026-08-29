@@ -1,5 +1,8 @@
 # Environment variables
-.env
+# Ignore every .env variant (.env.local, .env.bak, .env.production) so a copy of the
+# real secrets can never be staged; the committed template is the single exception.
+.env*
+!.env.example
 
 # Dependencies
 /node_modules
@@ -25,6 +28,13 @@ coverage/
 
 # Chart.js UMD copied from npm by `npm run vendor:chart`
 public/vendor/chart.js/chart.umd.js
+
+# marked bundles copied from npm by `npm run vendor:marked`
+public/vendor/marked/marked.umd.js
+public/vendor/marked/marked.esm.js
+
+# Feather Icons copied from npm by `npm run vendor:feather`
+public/vendor/feather/feather.min.js
 
 # Dependency directories
 node_modules/
@@ -113,3 +123,5 @@ output/
 .claude/
 
 /scripts/new-worktree.sh
+# Brainstorming visual companion mockups
+.superpowers/

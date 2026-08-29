@@ -11,26 +11,47 @@
  * @description: Course-scoped Writing Feedback API endpoints and safe request validation.
  */
 
-import express, { Request, Response } from 'express';
+import express, { NextFunction, Request, Response } from 'express';
 import multer from 'multer';
-import { asyncHandlerWithAuth } from '../middleware/async-handler';
+import { asyncHandler, asyncHandlerWithAuth } from '../middleware/async-handler';
 import { requireCourseFeatureAPI, requireInstructorForCourseAPI } from '../middleware/require-course-role';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { LocalDocumentExtractionService } from '../writing-feedback/document-extraction-service';
 import { WritingFeedbackService } from '../writing-feedback/writing-feedback-service';
 import { MockCanvasGateway, SafeCanvasReleaseService } from '../writing-feedback/canvas-release-service';
-import type { WritingSourceType } from '../writing-feedback/contracts';
+import type { CanvasRubricRow, WritingSourceType } from '../writing-feedback/contracts';
 import { SafeCanvasImportService } from '../writing-feedback/canvas-import-service';
+import {
+    isLiveCanvasCourse,
+    resolveCanvasImportService,
+    resolveCanvasImportStatus
+} from '../writing-feedback/canvas-import-resolver';
+import { canvasConfig } from '../lms/canvas-config';
+import { canvas as canvasProvider } from '@ubc/ubc-genai-toolkit-lms-integration';
 import { anchoredCommentsInputSchema } from '../writing-feedback/anchored-comments';
 import {
     approveRubricDraft,
-    assertApprovedRubricIdsStable,
+    assertRetiredIdsNotReused,
     buildRubricDraft,
     gradeMappingFromApprovedRubric,
+    requireCompleteRubricCells,
     writingRubricDraftInputSchema
 } from '../writing-feedback/rubric-schema';
+import { requireCompleteSflProfile } from '../writing-feedback/sfl-analysis';
 import { listCriterionLibrary } from '../writing-feedback/criterion-library';
 import { isCourseStaff } from '../utils/course-staff';
+import { parseLens, selectRubric } from '../writing-feedback/rubric-lens';
+import { buildLabReportRubric } from '../writing-feedback/lab-report-profile';
+import { seedRubricForLens } from '../writing-feedback/rubric-seed';
+import { canvasRubricToSeedShape } from '../writing-feedback/canvas-rubric-mapping';
+import {
+    autofillMergeRules,
+    gridSourceFor,
+    mergeAutofill,
+    proposeRubricFromInstructions,
+    type RubricGridSource
+} from '../writing-feedback/rubric-autofill';
+import type { WritingFeedbackLens, WritingRubricDefinition } from '../writing-feedback/contracts';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -56,6 +77,18 @@ function cleanOptionalText(value: unknown, field: string): string | undefined {
     if (text.length > MAX_TEXT_CHARS) throw new Error(`${field} exceeds the 30,000-character limit`);
     return text;
 }
+function cleanBoundedText(value: unknown, field: string, max: number): string {
+    if (typeof value !== 'string') throw new Error(`${field} is required`);
+    const text = value.replace(/\u0000/g, '').trim();
+    if (!text) throw new Error(`${field} is required`);
+    if (text.length > max) throw new Error(`${field} exceeds the ${max}-character limit`);
+    return text;
+}
+function isDuplicateKey(error: unknown): boolean {
+    return typeof error === 'object' && error !== null
+        && 'code' in error
+        && (error as { code?: unknown }).code === 11000;
+}
 function safeError(error: unknown): string {
     const message = error instanceof Error ? error.message : 'Writing feedback request failed';
     const safePrefixes = [
@@ -65,17 +98,46 @@ function safeError(error: unknown): string {
         'Verified submission text is required', 'Feedback evidence did not match',
         'Generate feedback before', 'Staff approval is required', 'Numeric release is blocked',
         'A draft-ready submission is required', 'Released feedback cannot be edited',
-        'Canvas import is not configured', 'Canvas release is not configured', 'Canvas demo assignment not found',
+        'Canvas import is not configured', 'Canvas release is not configured',
+        'Canvas assignment not found', 'Canvas demo assignment not found',
+        'Canvas assignment uses anonymous grading', 'Canvas release is not available',
         'An approved rubric is required', 'Rubric changed after feedback generation',
         'Generate feedback before staff approval',
         'Feedback comments no longer match', 'Feedback comments failed validation',
         'Assignment title is required', 'Assignment deadline is invalid',
-        'Assignment instructions must be text', 'Assignment instructions exceeds'
+        'Assignment instructions must be text', 'Assignment instructions exceeds',
+        'Complete the genre and register profile', 'Confirm the genre and register profile',
+        'Add at least one reviewed stage', 'Add task requirements',
+        'Complete the rubric grid before approving',
+        'Glossary term is required', 'Glossary definition is required',
+        'Glossary term exceeds', 'Glossary definition exceeds'
     ];
     return safePrefixes.some((prefix) => message.startsWith(prefix))
         ? message
         : 'Writing feedback request could not be completed.';
 }
+
+/**
+ * Attaches an authenticated Canvas client, but only for a course that came from Canvas.
+ *
+ * A course with no `lmsLink` has nothing to read from Canvas, so demanding a Canvas
+ * authorization for it would block the local demo workflow behind an OAuth flow that could not
+ * help. A linked course does reach the package's `requireAuth`, which responds `401` with a
+ * `connectUrl` the workspace turns into a "Connect Canvas" action — deliberately not a silent
+ * fallback to synthetic data, which would look like the course's real submissions.
+ *
+ * Uses the plain `asyncHandler`, not the auth variant: the router-level guards below already
+ * establish staff access, and the auth variant would re-run the scheduled-publish sweep on
+ * every Canvas call in the workspace.
+ */
+const requireCanvasAuth = canvasConfig ? canvasProvider.requireAuth(canvasConfig) : null;
+const withCanvasClientWhenLinked = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const mongo = await EngEAI_MongoDB.getInstance();
+    if (!requireCanvasAuth || !(await isLiveCanvasCourse(mongo, courseId(req)))) {
+        return next();
+    }
+    return requireCanvasAuth(req, res, next);
+});
 
 // Authorize course staff before checking capability state; feature flags never grant access.
 //
@@ -147,7 +209,7 @@ router.get('/:courseId/writing-feedback/workspace-context', asyncHandlerWithAuth
     const mongo = await EngEAI_MongoDB.getInstance();
     const currentCourse = await mongo.getActiveCourse(courseId(req));
     const globalUser = (req.session as any).globalUser;
-    const canvas = await new SafeCanvasImportService(mongo).getStatus();
+    const canvas = await resolveCanvasImportStatus(req, mongo, courseId(req));
     res.json({
         success: true,
         data: {
@@ -157,34 +219,135 @@ router.get('/:courseId/writing-feedback/workspace-context', asyncHandlerWithAuth
     });
 }));
 
-router.get('/:courseId/writing-feedback/canvas/status', asyncHandlerWithAuth(async (_req: Request, res: Response) => {
+router.get('/:courseId/writing-feedback/glossary', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     const mongo = await EngEAI_MongoDB.getInstance();
-    res.json({ success: true, data: await new SafeCanvasImportService(mongo).getStatus() });
+    const search = typeof req.query.search === 'string' ? req.query.search.slice(0, 120) : undefined;
+    res.json({ success: true, data: await mongo.listWritingGlossaryEntries(courseId(req), search) });
 }));
 
-router.get('/:courseId/writing-feedback/canvas/assignments', asyncHandlerWithAuth(async (_req: Request, res: Response) => {
-    const mongo = await EngEAI_MongoDB.getInstance();
-    res.json({ success: true, data: await new SafeCanvasImportService(mongo).listAssignments() });
+router.post('/:courseId/writing-feedback/glossary', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const globalUser = (req.session as any).globalUser;
+        const mongo = await EngEAI_MongoDB.getInstance();
+        const entry = await mongo.createWritingGlossaryEntry({
+            courseId: courseId(req),
+            term: cleanBoundedText(req.body?.term, 'Glossary term', 80),
+            definition: cleanBoundedText(req.body?.definition, 'Glossary definition', 600),
+            actorUserId: globalUser.userId
+        });
+        res.status(201).json({ success: true, data: entry });
+    } catch (error) {
+        res.status(isDuplicateKey(error) ? 409 : 400).json({
+            success: false,
+            error: isDuplicateKey(error)
+                ? 'A glossary entry for that term already exists'
+                : safeError(error)
+        });
+    }
 }));
 
-router.get('/:courseId/writing-feedback/canvas/assignments/:canvasAssignmentId/preview', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.put('/:courseId/writing-feedback/glossary/:entryId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const expectedVersion = Number(req.body?.expectedVersion);
+        if (!Number.isInteger(expectedVersion) || expectedVersion < 1) {
+            return res.status(400).json({ success: false, error: 'A glossary version is required' });
+        }
+        if (req.body?.confirmDefinitionChange !== true) {
+            return res.status(409).json({
+                success: false,
+                error: 'Confirm glossary definition changes before updating',
+                needsConfirmation: true
+            });
+        }
+        const globalUser = (req.session as any).globalUser;
+        const mongo = await EngEAI_MongoDB.getInstance();
+        const updated = await mongo.updateWritingGlossaryEntry(
+            courseId(req),
+            String(req.params.entryId),
+            {
+                term: cleanBoundedText(req.body?.term, 'Glossary term', 80),
+                definition: cleanBoundedText(req.body?.definition, 'Glossary definition', 600),
+                expectedVersion,
+                actorUserId: globalUser.userId
+            }
+        );
+        if (!updated) {
+            return res.status(409).json({ success: false, error: 'The glossary entry changed while you were editing. Reload and try again.' });
+        }
+        res.json({ success: true, data: updated });
+    } catch (error) {
+        res.status(isDuplicateKey(error) ? 409 : 400).json({
+            success: false,
+            error: isDuplicateKey(error)
+                ? 'A glossary entry for that term already exists'
+                : safeError(error)
+        });
+    }
+}));
+
+// Status must never require a Canvas credential: it is what tells the workspace to offer one.
+router.get('/:courseId/writing-feedback/canvas/status', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    const mongo = await EngEAI_MongoDB.getInstance();
+    res.json({ success: true, data: await resolveCanvasImportStatus(req, mongo, courseId(req)) });
+}));
+
+router.get('/:courseId/writing-feedback/canvas/assignments', withCanvasClientWhenLinked, asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    const mongo = await EngEAI_MongoDB.getInstance();
+    const service = await resolveCanvasImportService(req, mongo, courseId(req));
+    res.json({ success: true, data: await service.listAssignments() });
+}));
+
+router.get('/:courseId/writing-feedback/canvas/assignments/:canvasAssignmentId/preview', withCanvasClientWhenLinked, asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const mongo = await EngEAI_MongoDB.getInstance();
-        const preview = await new SafeCanvasImportService(mongo).previewAssignment(String(req.params.canvasAssignmentId));
-        res.json({ success: true, data: preview });
+        const service = await resolveCanvasImportService(req, mongo, courseId(req));
+        const preview = await service.previewAssignment(String(req.params.canvasAssignmentId));
+        // Preview is staff-facing but must not ship raw source internals to the browser:
+        // attachment download URLs are Canvas-authenticated and the record key is an
+        // ephemeral identity input, neither of which the UI has any use for.
+        res.json({
+            success: true,
+            data: {
+                assignment: preview.assignment,
+                submissions: preview.submissions.map((submission) => ({
+                    studentLabel: submission.studentLabel,
+                    attempt: submission.attempt,
+                    submittedAt: submission.submittedAt,
+                    contentKind: submission.contentKind,
+                    attachmentNames: submission.attachments.map((attachment) => attachment.fileName),
+                    synthetic: submission.synthetic
+                }))
+            }
+        });
     } catch (error) {
         res.status(400).json({ success: false, error: safeError(error) });
     }
 }));
 
-router.post('/:courseId/writing-feedback/canvas/import', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.post('/:courseId/writing-feedback/canvas/import', withCanvasClientWhenLinked, asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const canvasAssignmentId = cleanId(req.body?.canvasAssignmentId, 'canvasAssignmentId');
         const mongo = await EngEAI_MongoDB.getInstance();
-        const service = new SafeCanvasImportService(mongo);
+        const service = await resolveCanvasImportService(req, mongo, courseId(req));
 
         // Preview through the configured safe gateway before creating any local records.
         const preview = await service.previewAssignment(canvasAssignmentId);
+
+        // The rubric is read before the assignment exists because it seeds that assignment's
+        // first draft rather than sitting beside it. A rubric Canvas cannot express within the
+        // grid contract maps to null, and the built-in profile seeds the draft instead.
+        const context = await service.loadAssignmentContext(canvasAssignmentId);
+        const seedGrid = canvasRubricToSeedShape(context?.rubric) ?? undefined;
+
+        // The assignment brief is what becomes the local assignment instructions, and the
+        // two gateways carry it in different places: the demo gateway puts it on the summary,
+        // while the live one reads Canvas\u2019s rich-editor HTML in loadAssignmentContext and
+        // returns it already converted to plain text. Preferring the converted text means a
+        // live import arrives with instructions rather than an empty field \u2014 without them
+        // auto-fill refuses outright, since it has nothing to propose a rubric from.
+        const importedInstructions = context?.details?.descriptionText?.trim()
+            || preview.assignment.description?.trim()
+            || undefined;
 
         // Reuse the Canvas mapping when present so repeated imports remain assignment-idempotent.
         const existing = await mongo.getWritingAssignmentByCanvasId(courseId(req), canvasAssignmentId);
@@ -192,9 +355,16 @@ router.post('/:courseId/writing-feedback/canvas/import', asyncHandlerWithAuth(as
             courseId(req),
             canvasAssignmentId,
             preview.assignment.title,
-            preview.assignment.description,
-            preview.assignment.dueAt ? new Date(preview.assignment.dueAt) : undefined
+            importedInstructions,
+            preview.assignment.dueAt ? new Date(preview.assignment.dueAt) : undefined,
+            seedGrid
         );
+
+        // The brief is stored whether or not the assignment is new: an instructor who edited it
+        // in Canvas expects a re-import to bring the current text across.
+        if (context?.details) {
+            await mongo.saveCanvasAssignmentDetails(courseId(req), target.id, context.details);
+        }
 
         // Import local submission records only; this operation performs no Canvas write-back.
         const result = await service.importAssignment({
@@ -202,28 +372,61 @@ router.post('/:courseId/writing-feedback/canvas/import', asyncHandlerWithAuth(as
             targetAssignmentId: target.id,
             canvasAssignmentId
         });
+        // Re-read: the brief was written after the assignment was fetched or created.
+        const imported = await mongo.getWritingAssignment(courseId(req), target.id) ?? target;
         res.status(existing ? 200 : 201).json({
             success: true,
-            data: { ...result, targetAssignment: target, rubricImport: 'not_imported' }
+            data: {
+                ...result,
+                targetAssignment: imported,
+                /*
+                 * How the Canvas rubric was treated. `seeded_draft` means it became this
+                 * assignment's unapproved rubric draft and still needs staff approval before it
+                 * can reach the model. `unrepresentable` means Canvas held a rubric outside the
+                 * grid contract (over 10 criteria, or not 2-8 ratings) and the built-in profile
+                 * seeded the draft instead — a distinction staff need, since the rubric they see
+                 * is then not the one they authored.
+                 */
+                rubricImport: existing
+                    ? 'existing_assignment'
+                    : seedGrid
+                        ? 'seeded_draft'
+                        : context?.rubric
+                            ? 'unrepresentable'
+                            : 'no_canvas_rubric'
+            }
         });
     } catch (error) {
         res.status(400).json({ success: false, error: safeError(error) });
     }
 }));
 
+
 router.get('/:courseId/writing-feedback/assignments/:assignmentId/rubric', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    let lens: WritingFeedbackLens;
+    try {
+        lens = parseLens(req.query.lens);
+    } catch {
+        return res.status(400).json({ success: false, error: 'Unknown feedback lens' });
+    }
     const mongo = await EngEAI_MongoDB.getInstance();
     const assignment = await mongo.getWritingAssignment(courseId(req), String(req.params.assignmentId));
     if (!assignment) return res.status(404).json({ success: false, error: 'Writing assignment not found' });
+    if (lens === 'technical' && !assignment.isLabReport) {
+        return res.status(409).json({ success: false, error: 'Mark this assignment as a lab report before editing its technical rubric' });
+    }
+    const selected = selectRubric(assignment, lens);
     const currentCourse = await mongo.getActiveCourse(courseId(req));
     const globalUser = (req.session as any).globalUser;
     res.json({
         success: true,
         data: {
-            approved: assignment.rubric.status === 'approved' ? assignment.rubric : undefined,
-            draft: assignment.rubricDraft ?? (assignment.rubric.status === 'draft' ? assignment.rubric : undefined),
-            history: assignment.rubricHistory ?? [],
-            library: listCriterionLibrary(),
+            lens,
+            approved: selected.approved,
+            draft: selected.draft,
+            history: selected.history,
+            // The optional criterion library applies to the linguistic lens only.
+            library: lens === 'linguistic' ? listCriterionLibrary() : [],
             permissions: { canEdit: Boolean(currentCourse && isCourseStaff(currentCourse, globalUser)) }
         }
     });
@@ -232,6 +435,12 @@ router.get('/:courseId/writing-feedback/assignments/:assignmentId/rubric', async
 router.put(
     '/:courseId/writing-feedback/assignments/:assignmentId/rubric-draft',
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        let lens: WritingFeedbackLens;
+        try {
+            lens = parseLens(req.query.lens);
+        } catch {
+            return res.status(400).json({ success: false, error: 'Unknown feedback lens' });
+        }
         const parsed = writingRubricDraftInputSchema.safeParse(req.body);
         if (!parsed.success) {
             return res.status(400).json({
@@ -242,30 +451,105 @@ router.put(
         const mongo = await EngEAI_MongoDB.getInstance();
         const assignment = await mongo.getWritingAssignment(courseId(req), String(req.params.assignmentId));
         if (!assignment) return res.status(404).json({ success: false, error: 'Writing assignment not found' });
-        try {
-            assertApprovedRubricIdsStable(assignment.rubric, parsed.data);
-        } catch (error) {
-            return res.status(400).json({
-                success: false,
-                error: error instanceof Error ? error.message : 'Approved rubric ids cannot be changed'
-            });
+        if (lens === 'technical' && !assignment.isLabReport) {
+            return res.status(409).json({ success: false, error: 'Mark this assignment as a lab report before editing its technical rubric' });
+        }
+        const selected = selectRubric(assignment, lens);
+        const currentApproved = selected.approved;
+        if (currentApproved) {
+            try {
+                assertRetiredIdsNotReused([currentApproved, ...(selected.history ?? [])], parsed.data);
+            } catch (error) {
+                return res.status(400).json({
+                    success: false,
+                    error: error instanceof Error ? error.message : 'That name was used by a removed criterion'
+                });
+            }
         }
         const globalUser = (req.session as any).globalUser;
-        const version = assignment.rubricDraft?.version
-            ?? (assignment.rubric.status === 'draft' ? assignment.rubric.version : assignment.rubric.version + 1);
+        const version = selected.draft?.version
+            ?? (currentApproved ? currentApproved.version + 1 : 1);
         const draft = buildRubricDraft(parsed.data, version, globalUser.userId);
 
         // Saving is deliberately separate from approval and does not change the active rubric.
-        const updated = await mongo.saveWritingRubricDraft(courseId(req), assignment.id, draft);
+        const updated = await mongo.saveWritingRubricDraft(courseId(req), assignment.id, draft, lens);
         res.json({ success: true, data: updated });
+    })
+);
+
+/**
+ * Proposes a rubric draft from the assignment instructions and merges it into the
+ * current draft. How much of the grid the proposal may overwrite depends on where
+ * the grid came from — an instructor's imported rubric and the department's APSC
+ * 182 evaluation form both outrank anything a model proposes. Never touches the
+ * approved rubric; approval stays the gate that lets a rubric reach the model.
+ */
+router.post(
+    '/:courseId/writing-feedback/assignments/:assignmentId/rubric-draft/fill',
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        let lens: WritingFeedbackLens;
+        try {
+            lens = parseLens(req.query.lens);
+        } catch {
+            return res.status(400).json({ success: false, error: 'Unknown feedback lens' });
+        }
+        const mongo = await EngEAI_MongoDB.getInstance();
+        const assignment = await mongo.getWritingAssignment(courseId(req), String(req.params.assignmentId));
+        if (!assignment) return res.status(404).json({ success: false, error: 'Writing assignment not found' });
+        if (lens === 'technical' && !assignment.isLabReport) {
+            return res.status(409).json({ success: false, error: 'Mark this assignment as a lab report before editing its technical rubric' });
+        }
+        if (!assignment.instructions?.trim()) {
+            return res.status(409).json({ success: false, error: 'Add the assignment instructions first' });
+        }
+
+        const selected = selectRubric(assignment, lens);
+        const globalUser = (req.session as any).globalUser;
+        // Prefer the current draft; failing that, continue from the approved rubric
+        // (matching the version computation the sibling PUT handler uses above) rather
+        // than discarding an instructor's approved grid for a freshly seeded one. Only
+        // an assignment with neither a draft nor an approval falls back to the seed.
+        const draft: WritingRubricDefinition = selected.draft
+            ?? (selected.approved
+                ? { ...selected.approved, status: 'draft', version: selected.approved.version + 1 }
+                : seedRubricForLens({ lens, actorUserId: globalUser.userId }));
+
+        // The grid source decides how much of the proposal the merge may apply — see
+        // `gridSourceFor` for why the lens is checked before `rubricSource`.
+        const source: RubricGridSource = gridSourceFor(assignment, lens);
+
+        try {
+            const proposal = await proposeRubricFromInstructions(assignment.instructions, draft);
+            const merged = mergeAutofill(draft, proposal, autofillMergeRules(source));
+
+            // Reuse the same validation the PUT path enforces (band ordering, cells keyed
+            // to real levels) rather than writing a second one; a proposal that would leave
+            // the draft invalid is refused before it is ever saved.
+            if (!writingRubricDraftInputSchema.safeParse(merged).success) {
+                throw new Error('Auto-fill response was not usable');
+            }
+
+            const saved = await mongo.saveWritingRubricDraft(courseId(req), assignment.id, merged, lens);
+            res.json({ success: true, data: saved });
+        } catch {
+            // Model errors and responses can carry the prompt body, which includes the
+            // instructions. Never log or return them; staff see a fixed, generic message.
+            res.status(502).json({ success: false, error: 'Could not read the instructions. Fill the rubric in by hand.' });
+        }
     })
 );
 
 router.delete(
     '/:courseId/writing-feedback/assignments/:assignmentId/rubric-draft',
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        let lens: WritingFeedbackLens;
+        try {
+            lens = parseLens(req.query.lens);
+        } catch {
+            return res.status(400).json({ success: false, error: 'Unknown feedback lens' });
+        }
         const mongo = await EngEAI_MongoDB.getInstance();
-        const updated = await mongo.discardWritingRubricDraft(courseId(req), String(req.params.assignmentId));
+        const updated = await mongo.discardWritingRubricDraft(courseId(req), String(req.params.assignmentId), lens);
         if (!updated) return res.status(404).json({ success: false, error: 'Writing assignment not found' });
         res.json({ success: true, data: updated });
     })
@@ -274,24 +558,95 @@ router.delete(
 router.post(
     '/:courseId/writing-feedback/assignments/:assignmentId/rubric-draft/approve',
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        let lens: WritingFeedbackLens;
+        try {
+            lens = parseLens(req.query.lens);
+        } catch {
+            return res.status(400).json({ success: false, error: 'Unknown feedback lens' });
+        }
         const mongo = await EngEAI_MongoDB.getInstance();
         const assignment = await mongo.getWritingAssignment(courseId(req), String(req.params.assignmentId));
         if (!assignment) return res.status(404).json({ success: false, error: 'Writing assignment not found' });
-        if (!assignment.rubricDraft) {
+        if (lens === 'technical' && !assignment.isLabReport) {
+            return res.status(409).json({ success: false, error: 'Mark this assignment as a lab report before editing its technical rubric' });
+        }
+        const selected = selectRubric(assignment, lens);
+        if (!selected.draft) {
             return res.status(409).json({ success: false, error: 'Save a rubric draft before approval' });
         }
         const globalUser = (req.session as any).globalUser;
 
         // Promote only the persisted draft version; the delegate rejects concurrent rubric changes.
-        const approved = approveRubricDraft(assignment.rubricDraft, globalUser.userId);
+        try {
+            if (lens === 'linguistic') requireCompleteSflProfile(selected.draft.sflContext);
+            requireCompleteRubricCells(selected.draft);
+        } catch (error) {
+            return res.status(400).json({ success: false, error: safeError(error) });
+        }
+
+        const approved = approveRubricDraft(selected.draft, globalUser.userId);
         const updated = await mongo.approveWritingRubricDraft(
             courseId(req),
             assignment.id,
             approved,
-            gradeMappingFromApprovedRubric(approved)
+            lens === 'linguistic' ? gradeMappingFromApprovedRubric(approved) : undefined,
+            lens
         );
         if (!updated) {
             return res.status(409).json({ success: false, error: 'The rubric changed while you were editing. Reload and try again.' });
+        }
+        res.json({ success: true, data: updated });
+    })
+);
+
+/**
+ * Marks or clears an assignment as a lab report.
+ *
+ * Marking seeds an editable technical rubric draft so staff have something to
+ * edit. Clearing is refused once the technical rubric is approved or any
+ * technical feedback exists, because those records reference its criterion ids.
+ */
+router.patch(
+    '/:courseId/writing-feedback/assignments/:assignmentId/lab-report',
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        const isLabReport = req.body?.isLabReport;
+        if (typeof isLabReport !== 'boolean') {
+            return res.status(400).json({ success: false, error: 'isLabReport must be true or false' });
+        }
+        const mongo = await EngEAI_MongoDB.getInstance();
+        const assignmentId = String(req.params.assignmentId);
+        const assignment = await mongo.getWritingAssignment(courseId(req), assignmentId);
+        if (!assignment) return res.status(404).json({ success: false, error: 'Writing assignment not found' });
+
+        if (!isLabReport) {
+            if (assignment.technicalRubric?.status === 'approved') {
+                return res.status(409).json({
+                    success: false,
+                    error: 'This assignment has an approved technical rubric and can no longer be unmarked as a lab report'
+                });
+            }
+            const technicalRunCount = await mongo.countWritingFeedbackRunsByLens(courseId(req), assignmentId, 'technical');
+            if (technicalRunCount > 0) {
+                return res.status(409).json({
+                    success: false,
+                    error: 'Technical feedback already exists for this assignment'
+                });
+            }
+        }
+
+        const globalUser = (req.session as any).globalUser;
+        const updated = await mongo.setWritingAssignmentLabReport(courseId(req), assignmentId, isLabReport);
+        if (!updated) return res.status(404).json({ success: false, error: 'Writing assignment not found' });
+
+        // Seed an editable technical draft so staff open a populated editor, never a blank one.
+        if (isLabReport && !updated.technicalRubric && !updated.technicalRubricDraft) {
+            const seeded = await mongo.saveWritingRubricDraft(
+                courseId(req),
+                assignmentId,
+                buildLabReportRubric(globalUser.userId),
+                'technical'
+            );
+            return res.json({ success: true, data: seeded ?? updated });
         }
         res.json({ success: true, data: updated });
     })
@@ -410,11 +765,25 @@ router.post('/:courseId/writing-feedback/submissions/:submissionId/verify', asyn
     }
 }));
 
+/**
+ * Queues a feedback draft for every lens the assignment requires.
+ *
+ * The queued job stores only internal ids; the worker reloads verified text
+ * inside the Writing Feedback boundary. Clients poll submission detail until
+ * the status reaches `draft_ready` or `failed`.
+ */
 router.post('/:courseId/writing-feedback/submissions/:submissionId/generate', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const mongo = await EngEAI_MongoDB.getInstance();
-        const result = await new WritingFeedbackService(mongo).generate(courseId(req), String(req.params.submissionId));
-        res.json({ success: true, data: result });
+        const job = await new WritingFeedbackService(mongo).enqueueGeneration(courseId(req), String(req.params.submissionId));
+        res.status(202).json({
+            success: true,
+            data: {
+                status: 'queued',
+                jobId: job.id,
+                submissionId: String(req.params.submissionId)
+            }
+        });
     } catch (error) {
         res.status(400).json({ success: false, error: safeError(error) });
     }
@@ -487,6 +856,34 @@ router.get('/:courseId/writing-feedback/submissions/:submissionId/feedback.pdf',
     }
 }));
 
+/**
+ * assertMockReleaseAvailable — refuses release for anything but the labelled local mock.
+ *
+ * Release write-back to a real Canvas course is not implemented: it would need a comment-file
+ * upload, an idempotent grade/comment/rubric submission, and timeout reconciliation, none of
+ * which exist yet. Live import must therefore not inherit release from the demo path.
+ *
+ * Resolved per request rather than from a default-constructed service, because the default is
+ * the local adapter — asking it would report `mock_canvas` for a live Canvas course and arm the
+ * mock release against real imported submissions.
+ *
+ * @throws Error when the active integration is anything other than the local mock
+ */
+async function assertMockReleaseAvailable(
+    req: Request,
+    mongo: EngEAI_MongoDB
+): Promise<void> {
+    const status = await resolveCanvasImportStatus(req, mongo, courseId(req));
+    if (status.integration === 'canvas') {
+        throw new Error(
+            'Canvas release is not available: this course reads submissions from Canvas, and writing feedback back to Canvas is not enabled. Download the feedback PDF to return it.'
+        );
+    }
+    if (!status.canImport || status.integration !== 'mock_canvas') {
+        throw new Error('Canvas release is not configured');
+    }
+}
+
 function releaseService(mongo: EngEAI_MongoDB): SafeCanvasReleaseService {
     // Bind release persistence to payload fingerprints so retries reconcile instead of duplicating.
     return new SafeCanvasReleaseService(
@@ -501,11 +898,8 @@ router.post('/:courseId/writing-feedback/submissions/:submissionId/release-previ
     try {
         const mongo = await EngEAI_MongoDB.getInstance();
 
-        // Keep demo and future live Canvas modes technically distinct before preparing a payload.
-        const canvasStatus = await new SafeCanvasImportService(mongo).getStatus();
-        if (!canvasStatus.canImport || canvasStatus.integration !== 'mock_canvas') {
-            throw new Error('Canvas release is not configured');
-        }
+        // Keep demo and live Canvas modes technically distinct before preparing a payload.
+        await assertMockReleaseAvailable(req, mongo);
         const release = await new WritingFeedbackService(mongo).previewRelease(courseId(req), String(req.params.submissionId), releaseService(mongo));
         res.json({ success: true, data: release, integration: 'mock_canvas' });
     } catch (error) {
@@ -518,10 +912,7 @@ router.post('/:courseId/writing-feedback/submissions/:submissionId/release', asy
         const mongo = await EngEAI_MongoDB.getInstance();
 
         // Refuse external-style release unless the explicitly labelled local mock is active.
-        const canvasStatus = await new SafeCanvasImportService(mongo).getStatus();
-        if (!canvasStatus.canImport || canvasStatus.integration !== 'mock_canvas') {
-            throw new Error('Canvas release is not configured');
-        }
+        await assertMockReleaseAvailable(req, mongo);
         const release = await new WritingFeedbackService(mongo).release(courseId(req), String(req.params.submissionId), releaseService(mongo));
         res.json({ success: true, data: release, integration: 'mock_canvas' });
     } catch (error) {

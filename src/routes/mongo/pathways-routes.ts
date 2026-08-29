@@ -5,8 +5,8 @@
  *
  * @author: EngE-AI Team
  * @date: 2026-07-24
- * @version: 1.1.0
- * @description: Instructor CRUD for course pathways.
+ * @version: 1.2.0
+ * @description: Instructor CRUD for course pathways and evaluation-prompt shell.
  */
 
 import { Router, Request, Response } from 'express';
@@ -29,7 +29,7 @@ const pathwayGates = [
  */
 export function mountPathwaysRoutes(router: Router): void {
     /**
-     * GET /:courseId/pathways — list pathways (ensure + seed first).
+     * GET /:courseId/pathways — list pathways (ensure first; GP-001 heal).
      */
     router.get(
         '/:courseId/pathways',
@@ -70,7 +70,57 @@ export function mountPathwaysRoutes(router: Router): void {
     );
 
     /**
-     * POST /:courseId/pathways/reset — wipe and re-seed platform defaults.
+     * GET /:courseId/pathways/evaluation-prompt — load classifier shell.
+     * Registered before :pathwayId so "evaluation-prompt" is not captured as an id.
+     */
+    router.get(
+        '/:courseId/pathways/evaluation-prompt',
+        ...pathwayGates,
+        asyncHandlerWithAuth(async (req: Request, res: Response) => {
+            const { courseId } = normalizeRouteParams(req.params);
+            const instance = await EngEAI_MongoDB.getInstance();
+            const courseName = await instance.ensurePathwaysCollection(courseId);
+            const data = await instance.getPathwayEvaluationPrompt(courseName);
+            res.json({ success: true, data });
+        })
+    );
+
+    /**
+     * PUT /:courseId/pathways/evaluation-prompt — save customized classifier shell.
+     */
+    router.put(
+        '/:courseId/pathways/evaluation-prompt',
+        ...pathwayGates,
+        asyncHandlerWithAuth(async (req: Request, res: Response) => {
+            const { courseId } = normalizeRouteParams(req.params);
+            const body = typeof req.body?.body === 'string' ? req.body.body.trim() : '';
+            if (!body) {
+                return res.status(400).json({ success: false, error: 'body must be a non-empty string' });
+            }
+            const instance = await EngEAI_MongoDB.getInstance();
+            const courseName = await instance.ensurePathwaysCollection(courseId);
+            const data = await instance.updatePathwayEvaluationPrompt(courseName, body);
+            res.json({ success: true, data });
+        })
+    );
+
+    /**
+     * POST /:courseId/pathways/evaluation-prompt/reset — restore platform classifier shell.
+     */
+    router.post(
+        '/:courseId/pathways/evaluation-prompt/reset',
+        ...pathwayGates,
+        asyncHandlerWithAuth(async (req: Request, res: Response) => {
+            const { courseId } = normalizeRouteParams(req.params);
+            const instance = await EngEAI_MongoDB.getInstance();
+            const courseName = await instance.ensurePathwaysCollection(courseId);
+            const data = await instance.resetPathwayEvaluationPrompt(courseName);
+            res.json({ success: true, data });
+        })
+    );
+
+    /**
+     * POST /:courseId/pathways/reset — wipe and re-seed platform defaults (pathways + shell).
      * Registered before :pathwayId so "reset" is not captured as an id.
      */
     router.post(

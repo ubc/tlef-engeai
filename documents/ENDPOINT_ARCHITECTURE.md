@@ -31,6 +31,15 @@ All API routes are prefixed with `/api/`. Page routes are served from `/` and `/
 | `/api/user` | userManagementRoutes | User profile, onboarding, activity |
 | `/api/health` | healthRoutes | Health check |
 | `/api/version` | versionRoutes | App version (SemVer) |
+| `/api/lms` | lmsRoutes | Canvas + Moodle per-user connections |
+
+Public HTML (no auth), registered in `server.ts` before `express.static`:
+
+| Path | File | Purpose |
+|------|------|---------|
+| `GET /` | `public/index.html` | Marketing home (authenticated users are redirected) |
+| `GET /team` | `public/pages/team.html` | Project team |
+| `GET /docs` and `GET /docs/*` | `public/pages/docs.html` | Markdown docs shell. `express.static` for `public/docs/` is mounted first (`index: false`) so `.md` / `nav.json` are real files, not the HTML shell. |
 
 ---
 
@@ -102,23 +111,33 @@ Optional course capabilities live on `activeCourse.features`. Missing entries ar
 **Success (200):** `{ success: true, data: activeCourse, message }`  
 **Errors:** `400` invalid body, `403` non–roster-manager, `404` course missing
 
-#### Feature Onboarding Progress
+#### Instructor Onboarding Stage Order
 
-Per-feature tutorial progress lives on `activeCourse.featureOnboarding`. A missing or `false` entry means the tutorial is still owed whenever its feature is enabled, which routes courses created before this field through the new stages. Completion survives disabling and re-enabling a feature.
-
-| Method | Path | Description |
-|---|---|---|
-| PATCH | `/api/courses/:courseId/onboarding/features/:feature/complete` | Marks one tutorial complete. `:feature` is `scenario-generation`, `writing-feedback`, or `guided-pathway`. No body. Idempotent. Writes a single dotted `featureOnboarding.<key>` path so a sibling flag set by a concurrent tab survives. |
-
-- **Auth:** course staff (`requireInstructorForCourseAPI`, which resolves to `isCourseStaff`) — instructors, platform administrators, and teaching assistants. TAs are routed through onboarding by the same predicate in `route-course-entry.ts`, so an instructor-only guard here left them unable to finish a tutorial they had been sent into: the PATCH returned 403, progress never persisted, and the same stage was served again on every course entry. Course *configuration* stays narrower — `/:id/complete-course-setup` and `/:courseId/features/*` both still require roster-management authority.
-- **Success (200):** `{ success: true, data: activeCourse, message }`
-- **Errors:** `400` unknown feature slug (`memory-agent` has no tutorial), `403` non-staff, `404` course missing
+Tutorial progress lives on the user (`GlobalUser.instructorOnboarding`, OB-002), including the three feature tutorials; only `courseSetup` is read from the course. Recorded through `PATCH /api/user/onboarding/instructor-stage`. A missing or `false` entry means the tutorial is still owed whenever its feature is enabled, which routes users who predate a stage through it. Completion survives disabling and re-enabling a feature, and follows the person across courses.
 
 Stage ordering is resolved by `resolveNextOnboardingStage` in `src/helpers/instructor-onboarding-redirect.ts`, mirrored for the browser in `public/scripts/utils/onboarding-stage-order.ts`. Sequence: Course, Document, then each enabled-and-incomplete feature tutorial in Scenario Generation, Writing Feedback, Guided Pathway order, then Flag and Monitor.
 
 Both resolvers take a `canManageRoster` flag, defaulting to `true`. Course Setup is offered only to roster managers, because `POST /:id/complete-course-setup` requires roster-management authority and the stage defines `frameType` and `tilesNumber` — the divisions every later stage files content under. A teaching assistant reaching a course whose `courseSetup` is still `false` is therefore owed no stage at all and goes to the Dashboard, rather than being sent into a stage they cannot finish or a document step with no structure to populate. Course entry passes the flag from `canManageCourseRoster`. Every stage after Course Setup resolves identically for both authorities, and the parity test in `src/helpers/__tests__/instructor-onboarding-redirect.test.ts` pins that.
 
 Struggle-topic document APIs require `requireCourseFeatureAPI('memoryAgent')`. Pathway Library APIs require `requireCourseFeatureAPI('guidedPathway')`.
+
+### 4.0.0 Guided Pathway Library (`/api/courses/:courseId/pathways`)
+
+Instructor APIs for pathway cards and the shared evaluation system-prompt shell. All routes use instructor RBAC + `requireCourseFeatureAPI('guidedPathway')`. Ensure provisions the `{courseName}_pathways` collection, runs GP-001 (removes legacy `off-topic` docs), and upserts the evaluation-prompt singleton when missing.
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/api/courses/:courseId/pathways` | List pathway cards (excludes evaluation-prompt singleton) |
+| POST | `/api/courses/:courseId/pathways` | Create pathway card |
+| PUT | `/api/courses/:courseId/pathways/reorder` | Body `{ orderedIds: string[] }` — rewrite list order |
+| POST | `/api/courses/:courseId/pathways/reset` | Wipe cards + shell; re-seed platform defaults (2 pathways + evaluation shell) |
+| GET | `/api/courses/:courseId/pathways/evaluation-prompt` | Load classifier shell (`PathwayEvaluationPromptConfig`) |
+| PUT | `/api/courses/:courseId/pathways/evaluation-prompt` | Body `{ body: string }` — save customized shell (`usePlatformDefault: false`) |
+| POST | `/api/courses/:courseId/pathways/evaluation-prompt/reset` | Restore platform default classifier shell |
+| PUT | `/api/courses/:courseId/pathways/:pathwayId` | Update one pathway card |
+| DELETE | `/api/courses/:courseId/pathways/:pathwayId` | Delete one pathway card |
+
+**Evaluation prompt success data:** `{ usePlatformDefault: boolean, body: string, updatedAt: number }`. Runtime fills `{{pathway_trigger_sections}}` from enabled pathway triggers. Off-topic student messages are **not** intercepted by a pathway; teaching system prompts handle LO scope.
 
 **Chat unstruggle gating:** When `memoryAgent` is disabled, chat never injects `<questionUnstruggle>` / struggle tags, the Yes/No special send path is skipped, and any model-emitted unstruggle tags are stripped before persistence. When `memoryAgent` is enabled but `scenarioGeneration` is disabled, unstruggle Yes still clears the struggle topic but returns a No-style hardcoded reply with no `<scenarioSuggestions>` list (even if published scenarios exist). Chat FE always renders those tags when present in message text; capability policy is server-side only.
 
@@ -146,20 +165,29 @@ Each `models[]` entry: `{ id, label, costTier, reasoningOptions: [{ id, label }]
 ```json
 {
   "chat": { "modelId": "gpt-5.6-luna", "reasoningLevel": "high" },
-  "scenarioGeneration": { "modelId": "gpt-5.4-mini", "reasoningLevel": "medium" },
-  "writingFeedback": { "modelId": "gpt-4o-mini", "reasoningLevel": "low" },
-  "guidedPathway": { "modelId": "gpt-5.4-mini", "reasoningLevel": "medium" },
-  "memoryAgent": { "modelId": "gpt-5.4-mini", "reasoningLevel": "low" }
+  "scenarioGeneration": { "modelId": "gpt-5.6-luna", "reasoningLevel": "medium" },
+  "writingFeedback": { "modelId": "gpt-5.6-luna", "reasoningLevel": "low" },
+  "guidedPathway": { "modelId": "gpt-5.6-luna", "reasoningLevel": "medium" },
+  "memoryAgent": { "modelId": "gpt-5.6-luna", "reasoningLevel": "low" }
 }
 ```
 
-**Provider catalog** (`supportedReasoningLevels` in `LLM_MODEL_SPECS` / `model-selection-list.ts` — verbatim from OpenAI docs):
+**Provider catalog** (`supportedReasoningLevels` in `LLM_MODEL_SPECS` / `model-selection-list.ts` — verbatim from provider docs):
 
 | `modelId` | Display | Official `supportedReasoningLevels` | Provider docs |
 |---|---|---|---|
 | `gpt-5.6-luna` | GPT 5.6 Luna | `none`, `low`, `medium`, `high`, `xhigh`, `max` | [GPT-5.6 Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna) · [Reasoning guide](https://developers.openai.com/api/docs/guides/reasoning) |
-| `gpt-5.4-mini` | GPT 5.4 Mini | `none`, `low`, `medium`, `high`, `xhigh` | [GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini) |
-| `gpt-4o-mini` | GPT 4o Mini | _(empty)_ | [GPT-4o mini](https://developers.openai.com/api/docs/models/gpt-4o-mini) |
+| `qwen3.8-27b` | Qwen 3.8 27B | _(empty)_ | — (platform API) |
+| `qwen3.6-35b-a3b` | Qwen 3.6 35B A3B | _(empty)_ | — (platform API) |
+| `gpt-4.1-mini-engeai-local` | GPT 4.1 Mini (EngE-AI Local) | _(empty)_ | — (platform API) |
+
+**Only `gpt-5.6-luna` may advertise reasoning, and that is a toolkit constraint as much as a provider one.** `ubc-genai-toolkit-llm@0.5.0` derives reasoning capability from the model id (`getOpenAIReasoningCapability`, `providers/openai-compat-mapping`): only ids starting `gpt-5` / `o1` / `o3` / `o4-mini` are capable, and sending `reasoningEffort` for any other id throws a client-side `APIError` 400 before the request goes out. The `openai` and `ubc-llm-sandbox` providers share that gate, so a non-empty list on the other three ids would break every call for those models. A catalog test enforces this rule.
+
+Independently, Qwen3 ignores `reasoning_effort` altogether — its thinking is a chat-template flag (`chat_template_kwargs.enable_thinking`), not an effort scale — and `gpt-4.1-mini-engeai-local` is not a reasoning model. Empty lists are correct for all three: provider options omit `reasoningEffort` and the picker drops the reasoning row.
+
+> **Open item — Qwen thinks by default.** Because we send nothing to disable it, Qwen spends completion tokens on chain-of-thought before any visible content. Turning it off requires a toolkit new enough to translate `reasoningEffort: 'none'` into `enable_thinking: false`; 0.5.0 has no such translation. The app sets no `maxTokens` anywhere, so the "empty response with `stopReason: 'length'`" failure mode does not apply today — but a future caller that adds a tight token budget on a Qwen model would hit it. Revisit these lists on a toolkit upgrade.
+
+**TEMPORARY — withheld models:** the platform LLM API key is currently provisioned for `gpt-5.6-luna` only, so `TEMPORARILY_UNAVAILABLE_MODEL_IDS` in `model-selection-list.ts` holds `qwen3.8-27b`, `qwen3.6-35b-a3b`, and `gpt-4.1-mini-engeai-local` — they are visible in Model Settings ahead of the new API going live, but not selectable until it does. Withheld ids are still returned in the GET catalog `models[]` carrying `unavailable: true`, but are rejected by PATCH (400) and clamped to `gpt-5.6-luna` when read from Mongo. The dashboard picker renders an `unavailable` row disabled with an "Unavailable" badge instead of hiding it, so an instructor whose course previously named a withheld model sees why the selection changed. Because staff course GET returns raw stored `llmSettings`, the client applies the same clamp — an `unavailable` model is listed but never adopted as a feature's selection. Emptying the list restores full selection with no other change.
 
 **App picker / PATCH `reasoningLevel`:** `AppReasoningLevel` = `none` \| `low` \| `medium` \| `high` only. Dashboard `reasoningOptions` are APP ∩ provider for that model (`xhigh` / `max` stay on the catalog, not in the picker or Mongo). When `supportedReasoningLevels` is empty, any app level may be stored but provider options omit `reasoningEffort`.
 
@@ -185,35 +213,82 @@ Canvas endpoints report their integration mode honestly. `demo` with `integratio
 |---|---|---|
 | GET | `/workspace-context` | Returns UI permissions (including rubric management) and non-secret integration context for the current staff member |
 | GET | `/assignments` | Lists assignments with per-assignment `submissionCount`; an empty course stays empty until an explicit create/import action |
-| POST | `/assignments` | Creates a manual assignment from `{ title, dueAt?, instructions? }` with a neutral, unapproved rubric draft; instructor/admin only |
-| POST | `/instructions/extract` | Multipart `file` extraction for assignment directions (TXT, DOCX, text-PDF, HTML/HTM, or Markdown); returns text for staff review before create; instructor/admin only |
-| GET | `/canvas/status` | Returns `demo` or `not_configured` status and safe staff-facing setup guidance; never returns tokens |
-| GET | `/canvas/assignments` | Lists selectable synthetic assignments in local demo mode; live listing remains OAuth-gated |
-| GET | `/canvas/assignments/:canvasAssignmentId/preview` | Read-only preview of the selected synthetic assignment/submissions before import |
-| POST | `/canvas/import` | Creates/reuses the mapped writing assignment, imports/reconciles its selected demo submissions, and reports imported/skipped counts; allowed for instructors/TAs |
+| POST | `/assignments` | Creates a manual assignment from `{ title, dueAt?, instructions? }` with a neutral, unapproved rubric draft; any course staff |
+| POST | `/instructions/extract` | Multipart `file` extraction for assignment directions (TXT, DOCX, text-PDF, HTML/HTM, or Markdown); returns text for staff review before create; any course staff |
+| GET | `/glossary?search=` | Lists course-scoped Writing Feedback glossary entries, optionally filtered by term/definition |
+| POST | `/glossary` | Creates a glossary entry from `{ term, definition }`; normalized term conflicts return `409` |
+| PUT | `/glossary/:entryId` | Version-checked glossary update from `{ term, definition, expectedVersion, confirmDefinitionChange: true }`; missing confirmation or stale version returns `409` |
+| GET | `/canvas/status` | Returns `live`, `demo`, or `not_configured` status plus safe staff-facing guidance, and a `connectUrl` when the only blocker is this staff member's Canvas authorization. Never requires a Canvas credential (it is what tells the UI to ask for one) and never returns tokens |
+| GET | `/canvas/assignments` | Lists importable assignments: real ones from the linked Canvas course, or synthetic ones in local demo mode. `401` + `connectUrl` when the course is Canvas-linked and the caller has not authorized Canvas |
+| GET | `/canvas/assignments/:canvasAssignmentId/preview` | Read-only preview before import. Returns display label, attempt, timestamp, `contentKind`, and attachment file names only — never source record keys or Canvas file URLs, and it downloads no attachment bytes |
+| POST | `/canvas/import` | Creates/reuses the mapped writing assignment, seeds its **unapproved rubric draft** from the Canvas rubric, stores the assignment brief, imports/reconciles its submissions, and reports imported/skipped/unsupported/failed counts plus `rubricImport`; allowed for instructors/TAs |
 | POST | `/assignments/:assignmentId/canvas-import-fixture` | Backward-compatible, clearly labelled synthetic import helper for local testing only |
 | DELETE | `/assignments/:assignmentId` | Deletes an assignment; `409` while it still has any submissions (delete those first). Any course staff |
-| GET | `/assignments/:assignmentId/rubric` | Returns optional approved rubric, current draft, immutable history, optional criterion library, and caller edit permission |
-| PUT | `/assignments/:assignmentId/rubric-draft` | Validates and saves the next rubric draft version without changing the approved rubric; instructor/admin only |
-| DELETE | `/assignments/:assignmentId/rubric-draft` | Explicitly discards the inactive saved draft; instructor/admin only |
-| POST | `/assignments/:assignmentId/rubric-draft/approve` | Explicitly promotes the saved draft to a new immutable approved version and derives a numeric mapping only when every level has points; instructor/admin only |
+| PATCH | `/assignments/:assignmentId/lab-report` | Body `{ isLabReport: boolean }`. Marking seeds an editable technical rubric draft when one does not already exist. Unmarking is `409` once the technical rubric is approved, or once any technical feedback run exists for the assignment |
+| GET | `/assignments/:assignmentId/rubric` | Returns optional approved rubric, current draft, immutable history, optional criterion library (linguistic lens only), and caller edit permission for the selected lens. `?lens=linguistic\|technical` selects which rubric is read (default `linguistic`); requesting `technical` on an assignment not marked as a lab report is `409` |
+| PUT | `/assignments/:assignmentId/rubric-draft` | Validates and saves the next rubric draft version for the selected lens (`?lens=linguistic\|technical`, default `linguistic`) without changing that lens's approved rubric; linguistic drafts include `sflContext`; any course staff. `409` when `technical` is requested and the assignment is not marked as a lab report |
+| POST | `/assignments/:assignmentId/rubric-draft/fill` | Proposes and saves an editable rubric/profile draft from assignment instructions for the selected lens (`?lens=linguistic\|technical`, default `linguistic`); Canvas rubrics/staff grids remain authoritative. Any course staff. `409` when instructions are missing or when `technical` is requested for a non-lab assignment; `502` when the model proposal cannot be used |
+| DELETE | `/assignments/:assignmentId/rubric-draft` | Explicitly discards the inactive saved draft for the selected lens (`?lens=linguistic\|technical`, default `linguistic`); any course staff. Unlike the other rubric routes, this one does not reject `technical` on a non-lab-report assignment — discarding a draft that cannot exist is a no-op, not a conflict |
+| POST | `/assignments/:assignmentId/rubric-draft/approve` | Explicitly promotes the saved draft to a new immutable approved version for the selected lens (`?lens=linguistic\|technical`, default `linguistic`) and derives a numeric mapping only when every level has points (linguistic lens only); linguistic approval rejects incomplete SFL profiles; any course staff. `409` when `technical` is requested and the assignment is not marked as a lab report |
 | GET/POST | `/submissions` | Staff queue / manual verified-text intake |
 | POST | `/submissions/file` | TXT, DOCX, text-PDF, or HTML extraction; requires staff verification |
 | GET | `/submissions/:submissionId` | Submission, history, latest feedback run, stored anchored `comments` (stale-flagged against the current verified text), and `seedComments` derived from run evidence while no revision has stored comments |
 | DELETE | `/submissions/:submissionId` | Deletes a submission at any status (including `released`) and cascades its feedback runs, releases, and queued jobs. Any course staff |
 | POST | `/submissions/:submissionId/verify` | Saves staff-verified transcript |
-| POST | `/submissions/:submissionId/generate` | Generates validated structured feedback; never releases |
+| POST | `/submissions/:submissionId/generate` | Validates prerequisites, marks the submission `generating`, enqueues a job containing only ids, and returns `202` with `{ status: 'queued', jobId, submissionId }`. Clients poll `GET /submissions/:submissionId` until `draft_ready` or `failed`. Never releases |
 | POST | `/submissions/:submissionId/reviews` | Appends a staff review revision; optional `comments` array of anchored comments is schema-validated and every anchor re-checked as an exact slice of the verified text. `authorName` is server-stamped (prior attribution carried by comment id; new staff comments attributed to the saving user's display name) — any client-sent value is discarded |
 | POST | `/submissions/:submissionId/approve` | Explicit staff approval |
 | GET | `/submissions/:submissionId/feedback.pdf` | Student-safe feedback PDF; `?include=general\|annotated\|both` selects the summary document, the verified text with Canvas-style `/Highlight` popup annotations, or both (default `general`; legacy `specific` maps to `annotated`) |
-| POST | `/submissions/:submissionId/release-preview` | Dry-run Canvas payload preview |
-| POST | `/submissions/:submissionId/release` | Mock-only release; real Canvas requires OAuth gates |
+| POST | `/submissions/:submissionId/release-preview` | Dry-run Canvas payload preview; refused in live mode |
+| POST | `/submissions/:submissionId/release` | Mock-only release. Refused for a live Canvas course — write-back is not implemented, and the feedback PDF is the return path |
 
 `POST /canvas/import` reads a selected source and writes local writing records only. It creates or reuses one writing assignment per Canvas assignment mapping and carries the source description into local assignment instructions when available. The current response explicitly reports `rubricImport: not_imported`; native Canvas rubric ingestion remains future work. Import does not approve a rubric, generate feedback, or call a Canvas write endpoint. Repeating the same assignment/student/attempt import is idempotent and is returned as skipped/reconciled rather than duplicated.
 
-The rubric draft body contains complete task, audience, purpose, constraints, learning outcomes, grading intent, 1–10 assignment-specific criteria, and 2–8 ranked ordinal levels. Criterion/level ids are unique lowercase slugs; ranks are unique and contiguous from 1; points are supplied for every level or none. Before the first approval, instructors may shape the criterion/level sets. After approval, those id sets are frozen while labels, descriptions, order/rank, lenses, and points remain versioned and editable. Draft validation failures return field-safe `400` responses. Approving without a saved draft is a conflict; TAs receive `403` for rubric mutation routes. Saving or approving a rubric never updates Canvas automatically.
+The linguistic rubric draft body contains complete task, audience, purpose, constraints, learning outcomes, grading intent, SFL context profile, 1–10 assignment-specific criteria, and 2–8 ranked ordinal levels. `sflContext` contains the staff-reviewed genre/register profile: genre label/state/id, task, purpose, audience, field, tenor, mode, actual evaluator, production conditions, stages, embedded genres, task requirements, learning outcomes, and approved glossary terms. Criterion/level ids are unique lowercase slugs; ranks are unique and contiguous from 1; points may live on criteria as row weights, and sparse `cells` maps may carry per-level point bands plus descriptors. Criteria and levels may be added or removed after approval because every feedback run records the `rubricVersion` that produced it and resolves against that version through `rubricHistory`. Reusing a retired id is refused because `AnchoredComment.criterion` stores a bare id with no version. Draft validation failures return field-safe `400` responses. Approving without a saved draft is a conflict (`409`). Rubric mutation routes carry no guard narrower than the router-level course-staff check, so TAs have the same access as instructors (see D-049 above). Saving, filling, or approving a rubric never updates Canvas automatically.
 
-Anchored comments carry `{ id, criterion?, quote, startOffset, endOffset, comment, howToImprove?, courseMaterialLink?, glossaryDefinition?, origin, functionTag?, levelTag?, priority? }` with UTF-16 offsets into the verified text, a 50-comment cap, and http(s)-only links. `functionTag` (`content|interpersonal|organizational`), `levelTag` (`text|section|clause_word`), and `priority` (`high|medium|low`) mirror the Academic Writing Matrix taxonomy; they are staff-facing triage metadata, seeded only as a criterion→function mapping, and never printed in the student PDF. Offsets are the anchor source of truth and the quote is a checksum: saving rejects any comment whose slice no longer matches, and reads mark such comments `stale` instead of re-anchoring them. Seed comments derive from immutable model-run evidence at read time and are only persisted when staff save a revision. The student PDF includes only comments whose anchors still validate and never exposes `origin`, confidence, internal flags, or staff notes.
+### Canvas import modes
+
+Which adapter serves a request is resolved per request from three inputs — whether Canvas is configured in the environment, whether the EngE-AI course carries an `lmsLink` (i.e. it was imported from Canvas), and whether the signed-in staff member has a stored Canvas authorization:
+
+| Canvas env | Course `lmsLink` | Staff token | Mode | Behaviour |
+|---|---|---|---|---|
+| configured | present | present | `live` | Reads the real Canvas course through that staff member's own OAuth client |
+| configured | present | absent | `not_configured` + `connectUrl` | Offers a Canvas authorization link; never falls back to demo data |
+| configured | absent | — | `demo` / `not_configured` | Course has no Canvas counterpart; env-selected local adapter applies |
+| absent | — | — | `demo` / `not_configured` | Demo outside production, fail-closed in production |
+
+Live reads go through the LMS package's generic authenticated client (`GET /courses/:id/assignments` and `.../assignments/:id/submissions`), because the package has no submissions resource. Each course staff connects Canvas separately and reads with their own Canvas permissions; there is no shared service credential.
+
+Assignment listing offers only what can actually be imported: the assignment must accept text-entry or file-upload submissions, must already have submissions, and must not use anonymous grading (which withholds the identity staff review by — selecting one anyway returns an explanatory `400`). Canvas reports no submitted count on an assignment payload, so `submissionCount` is omitted in live mode and the exact figure arrives with the preview rather than being approximated from `needs_grading_count`.
+
+Two intake paths land in deliberately different states. `online_text_entry` bodies are converted from Canvas RCE HTML and stored verified (`sourceType: canvas_text`, `status: imported`). `online_upload` attachments are downloaded during the import only — never during a preview — parsed locally through the same extractor as manual uploads, and stored `requiresVerification: true` / `status: verification_needed`, because extraction from bytes can silently mangle content. Everything else (`online_url`, `media_recording`, unreadable uploads) is counted in `unsupportedCount` rather than dropped silently. Each submission is intaken independently: a download or parse failure increments `failedCount` and the run continues, and because import is idempotent, re-running retries only what failed. Attachment downloads are capped at 25 MB and constrained by the package's download guard (first hop must match the configured Canvas origin, the bearer token is dropped after any off-origin redirect, and an HTML response is rejected).
+
+Submission text never enters the course-material RAG/Qdrant pipeline. Canvas write-back is not implemented in any mode, so `release`/`release-preview` refuse for a live course with an explanatory message.
+
+### Canvas rubric import
+
+Import also pulls the assignment's rubric and brief. Canvas serializes `rubric`, `rubric_settings`, and `description` inline on the assignment payload, so this costs no extra request and no extra OAuth scope. A rubric failure never loses the submissions: it is logged (message only — a Canvas payload can carry assignment text) and the submission import continues.
+
+The imported rubric is stored as `WritingAssignment.canvasRubric`, **separate from** `WritingAssignment.rubric`. That separation is deliberate and is the whole reason this phase is small. `WritingRubricDefinition` is the A2 contract the feedback engine, PDF renderer, and release path are built on — exactly four criteria and four shared levels, enforced both in the type system (`A2CriterionId`, `A2Level`) and in Zod (`.length(4)` plus `z.enum` on ids). A Canvas rubric has a variable row count and per-row ratings and cannot be expressed in it.
+
+Consequences staff must be told, and are, in the workspace banner:
+
+- **The imported rubric does not govern feedback generation.** `governsGeneration` is always `false`; the approved A2 rubric still drives every run. A later phase generalises the assessment pipeline and switches over.
+- **Rows are fixed at import.** Cell text and the SFL lens are editable in EngE-AI; adding or removing a row is done in Canvas. `updateCanvasRubricCells` rebuilds row structure from storage and rejects any Canvas criterion id it does not already hold, so a crafted request cannot change the shape.
+- **Ragged rubrics are preserved.** Canvas defines ratings per criterion, so one row may have two ratings and the next five. Rows keep their own rating lists rather than being padded to a rectangle, which would invent cells the instructor never wrote.
+- **A Canvas rubric becomes the assignment's rubric draft.** `canvasRubricToSeedShape` maps Canvas criteria and ratings onto the grid model and `seedRubricForLens` makes the result the new assignment's starting rubric. It is created **unapproved**, so it cannot reach the model until an instructor approves it, and `rubricSource` is set to `canvas`. There is no separate stored Canvas rubric and no separate editor: the existing rubric page edits it.
+- **Canvas points are inert.** Both per-criterion weights and per-rating points are stored and displayed, and neither feeds grading — EngE-AI averages criteria equally today, and the rubric rules forbid inferring criterion weights.
+- **Re-import refreshes the brief, never the rubric.** The rubric seeds once, at assignment creation; a later re-import updates `canvasDetails` and imports new submissions but leaves `rubric`/`rubricDraft` alone, because by then they carry staff edits.
+- **`rubricImport` reports what happened to the Canvas rubric.** `seeded_draft` (it became the draft), `unrepresentable` (Canvas held a rubric outside the 1–10 criteria / 2–8 levels grid contract, so the built-in profile seeded the draft instead), `no_canvas_rubric`, or `existing_assignment` (the assignment already existed and its rubric was untouched).
+- **Ragged Canvas rubrics map from the weakest rating up.** Canvas defines ratings per criterion; the grid has shared columns. The richest row supplies the columns, and each row's ratings align from the lowest band, leaving the strongest columns empty where a row carries fewer. A rubric whose rows share one scale maps exactly.
+
+The import response reports `rubricImport: 'reference_only'` when a rubric was imported and `'no_canvas_rubric'` when the Canvas assignment had none. An assignment with no Canvas rubric uses the existing manual authoring path, unchanged.
+
+The rubric draft body contains complete task, audience, purpose, constraints, learning outcomes, grading intent, four A2 criteria/SFL descriptions, and four ordinal levels with optional points. Draft validation failures return field-safe `400` responses. Approving without a saved draft is a conflict; TAs receive `403` for both rubric mutation routes. Saving or approving a rubric never updates Canvas automatically.
+
+Anchored comments carry `{ id, criterion?, quote, startOffset, endOffset, comment, howToImprove?, courseMaterialLink?, courseMaterialMention?, glossaryDefinition?, glossaryEntryId?, glossarySnapshot?, origin, functionTag?, levelTag?, priority? }` with UTF-16 offsets into the verified text, a 50-comment cap, and http(s)-only links. `courseMaterialMention` is a server-resolved label from retrieved published course materials; `glossarySnapshot` preserves the term/definition/version shown to the student even if a course glossary entry later changes. `functionTag` (`content|interpersonal|organizational`), `levelTag` (`text|section|clause_word`), and `priority` (`high|medium|low`) mirror the Academic Writing Matrix taxonomy; they are staff-facing triage metadata, seeded only as a criterion→function mapping, and never printed in the student PDF. Offsets are the anchor source of truth and the quote is a checksum: saving rejects any comment whose slice no longer matches, and reads mark such comments `stale` instead of re-anchoring them. Seed comments derive from immutable model-run evidence at read time and are only persisted when staff save a revision. The student PDF includes only comments whose anchors still validate and never exposes `origin`, confidence, internal flags, or staff notes.
+
+V2 linguistic runs expose `schemaVersion: "writing-feedback-v2"` in the settled submission detail payload. Evidence items may reference validated SFL finding ids, a resolved `courseMaterialMention`, and glossary ids/snapshots. Run metadata stores schema/foundation/prompt/model/source versions and the validated SFL trace, but not prompt bodies or student text. Older V1 linguistic runs continue to render through compatibility fallbacks.
 
 Live Canvas OAuth routes are intentionally absent from this table until the privacy/security and developer-key gates are satisfied. The future implementation must preserve the same status/list/import contract while adding encrypted refresh-token storage, pagination, throttling, and explicit instructor connection management.
 
@@ -236,8 +311,8 @@ Live Canvas OAuth routes are intentionally absent from this table until the priv
 
 | Method | Path | Auth | Role | Description |
 |--------|------|------|------|-------------|
-| POST | `/api/course/enter` | Yes | Any | Enter course by ID; syncs session `globalUser.coursesEnrolled` from DB after enroll |
-| POST | `/api/course/enter-by-code` | Yes | Any | Enter course by code; syncs session `globalUser.coursesEnrolled` from DB after enroll |
+| POST | `/api/course/enter` | Yes | Member | Enter course by ID; requires `isCourseAccessible` (403 if removed faculty); no longer auto-adds faculty to `instructors[]` |
+| POST | `/api/course/enter-by-code` | Yes | Any | Enter course by code; students and global `staff` join without prior enrollment (course user stored as `student`); faculty with a valid code auto-join `instructors[]` (idempotent); other non-students require `isCourseAccessible` |
 | GET | `/api/course/current` | Yes | Any | Get current course from session |
 
 ### 4.3 Courses & Content (`/api/courses`)
@@ -259,7 +334,7 @@ Live Canvas OAuth routes are intentionally absent from this table until the priv
 | GET | `/admin/course-selection` | Yes | Admin | Admin course selection HTML |
 | GET | `/api/admin/course-selection` | Yes | Admin | BFF: periods + all courses grouped |
 | POST | `/api/admin/courses` | Yes | Admin | Create course in period; enroll admin + instructors |
-| PUT | `/api/admin/courses/:id` | Yes | Admin | Edit course name, period, instructors |
+| PUT | `/api/admin/courses/:id` | Yes | Admin | Edit course name, period, merge-add instructors (`instructorUserIds`), remove instructors (`removeInstructorUserIds` — admin-only; blocks self-removal and platform-admin removal; pulls `coursesEnrolled`, preserves `{courseName}_users` history) |
 | POST | `/api/admin/courses/:id/ensure-enrollment` | Yes | Admin | Idempotent admin roster enroll on enter |
 | GET | `/api/admin/users/search?q=` | Yes | Admin | Faculty search for instructor picker |
 | PUT | `/api/admin/instructor-allowances` | Yes | Admin | Set allowed course names per puid + period |
@@ -275,7 +350,7 @@ Live Canvas OAuth routes are intentionally absent from this table until the priv
 | GET | `/api/courses/:id` | Yes* | Any | Get course by ID. \*Auth preferred; course staff receive full `features` + `llmSettings`. Students / non-staff / unauthenticated get a projection that **omits** `features` and `llmSettings` (`toStudentCoursePayload`). Same projection applies to `GET /api/courses` (list/by name) and course-selection course cards. |
 | GET | `/api/courses/:courseId/student-capabilities` | Yes | Member | Student-safe booleans only: `{ scenarioGeneration }` — for shell UI; never returns guidedPathway / full features / llmSettings |
 | POST | `/api/courses/:id/complete-course-setup` | Yes | Instructor | Finish course-setup on existing shell (`frameType`, `tilesNumber`); sets `courseSetup: true` |
-| PUT | `/api/courses/:id` | Yes | Instructor | Update course |
+| PUT | `/api/courses/:id` | Yes | Instructor | Update course. Strips `features` (roster-manager gated) and the deprecated `contentSetup` / `flagSetup` / `monitorSetup` flags, which moved to `GlobalUser.instructorOnboarding` (OB-002) |
 | DELETE | `/api/courses/:id` | Yes | Instructor | Delete course |
 | DELETE | `/api/courses/:id/restart-onboarding` | Yes | Instructor | Restart onboarding |
 | DELETE | `/api/courses/:id/remove` | Yes | Instructor | Remove course (soft) |
@@ -321,7 +396,8 @@ Live Canvas OAuth routes are intentionally absent from this table until the priv
 | GET | `/api/courses/:courseId/flags/statistics` | Yes | Instructor | Flag counts for the course |
 | GET | `/api/courses/:courseId/flags/student/:userId` | Yes | **Record owner or course staff** | One student's flag history |
 | GET | `/api/courses/:courseId/flags/:flagId` | Yes | Instructor | Get flag report |
-| PUT | `/api/courses/:courseId/flags/:flagId` | Yes | Instructor | Update flag |
+| PUT | `/api/courses/:courseId/flags/:flagId` | Yes | Instructor (faculty, TA, admin) | Update flag (`unresolved` / `resolved` only; blocked when `escalated`) |
+| PATCH | `/api/courses/:courseId/flags/:flagId/escalate` | Yes | Instructor (faculty, TA, admin) | Escalate unresolved manual flag to platform admins |
 | PATCH | `/api/courses/:courseId/flags/:flagId/response` | Yes | Instructor | Update response |
 
 `GET /flags/student/:userId` is student-facing — a student reads their own history — so it uses
@@ -340,7 +416,7 @@ and platform admins may configure pathways; teaching assistants cannot. `enabled
 a pathway can trigger. The independent `notifyInstructorOnTrigger` setting controls whether a
 successful trigger creates an automatic alert, and defaults to `true` for new, seeded, and legacy
 records where the field is missing. Manually created and seeded pathways use the same evaluator.
-When a listed faculty instructor exercises a notification-enabled pathway in normal instructor chat,
+When course staff exercise a notification-enabled pathway in chat,
 the server records a course-local `instructor-test` alert; the client cannot request or forge test mode.
 
 | Method | Path | Auth | Role | Description |
@@ -356,6 +432,19 @@ the server records a course-local `instructor-test` alert; the client cannot req
 | GET | `/api/admin/guided-pathway-flags` | Yes | **Admin** | Cross-course anonymous student-alert queue with period/course/pathway/status/reviewer/date filters; instructor tests excluded |
 | PATCH | `/api/admin/guided-pathway-flags/:courseId/:flagId/review` | Yes | **Admin** | Mark an escalated student alert reviewed in its owning course without deleting it; tests rejected |
 | POST | `/api/admin/guided-pathway-flags/:courseId/:flagId/reveal-identity` | Yes | **Admin** | Audit an escalated student-alert reveal in its owning course, then return only the current roster display name; tests rejected |
+
+#### Manual flag escalations (platform admin)
+
+| Method | Path | Auth | Role | Description |
+|--------|------|------|------|-------------|
+| GET | `/api/admin/manual-flags` | Yes | **Admin** | Cross-course escalated manual flag queue; optional `reviewState`, period/course/date filters |
+| PATCH | `/api/admin/manual-flags/:courseId/:flagId/review` | Yes | **Admin** | Mark an escalated manual flag reviewed |
+
+**Unified instructor Flag Management UI** merges manual flags and course-scoped Guided Pathway alerts client-side. RBAC split: TAs may list/resolve/escalate manual flags (`requireInstructorForCourseAPI`) but cannot access Guided Pathway alert APIs (`requireInstructorOrAdminForCourseAPI`).
+
+Automatic alerts are created when an enabled pathway with `notifyInstructorOnTrigger` wins for an eligible chat sender. Enrolled non-staff users produce production `student` alerts; course staff (listed faculty instructors, TAs, and platform admins) produce non-escalatable `instructor-test` alerts. Staff are classified before enrollment so dual-role users never get a production alert. TAs may trigger test alerts while chatting but still cannot list or act on GP flags in Flag Management (`requireInstructorOrAdminForCourseAPI`). The stored `studentUserId` field holds the triggering user's id for production student alerts only; admin identity reveal resolves the display name from the course roster, then `active-users` when the sender is staff not on the roster.
+
+**Guided Pathway category filters** (faculty/admin Flag Management UI only) are client-side: checkboxes mirror the current Pathway Library; each GP flag is classified by its persisted `pathwayId` against that library. Flags whose `pathwayId` is missing or no longer in the library appear under **Others** — never by title inference.
 
 List and action responses use an explicit anonymous projection: `origin`, pathway/course snapshots,
 exact message, trigger/decision/review times, state, and staff reviewer display names. They never
@@ -395,12 +484,14 @@ registered targets under a Mongo-backed lease. See
 [DATA_MIGRATIONS.md](DATA_MIGRATIONS.md#gpf-002-guided-pathway-registered-collection-normalization).
 
 `GET /api/admin/course-selection` also returns
-`data.guidedPathwayEscalationsAwaitingReview`, counting escalated records with no admin review time.
-The course-selection dashboard renders that count as a bell badge between the welcome text and logout.
-Clicking the bell opens the same anonymous admin queue, prefiltered to escalated items needing review;
-the badge refreshes after review actions. Instructor tests are excluded from the queue, all filter
-facets and totals, reviewer facets, and this bell count. There is no polling, email, or external
-notification.
+`data.guidedPathwayEscalationsAwaitingReview`, the combined count of unreviewed escalated **Guided
+Pathway alerts and manual flags** awaiting platform-admin review (GP count plus manual count from
+dedicated Mongo count helpers — no list rows fetched for the badge). Instructor tests are excluded
+from the GP portion of this count. The admin course-selection page renders that count as a bell
+badge between the welcome text and logout. Clicking the bell toggles a side-by-side escalations
+panel (same anonymous admin queue, prefiltered to escalated items needing review); the badge
+refreshes from the same course-selection count after review actions. There is no polling, email, or
+external notification.
 
 #### Monitor (instructor roster; post-period analytics)
 
@@ -518,7 +609,7 @@ Two auth tiers: `requireCourseMemberForScenarioAPI` (enrolled student **or** sta
 | POST | `/api/rag/search` | Yes | Any | Vector search |
 | DELETE | `/api/rag/wipe-all` | Yes | Instructor | Wipe all RAG data for course |
 
-**Post-upload struggle generation:** After a successful material save, when **Memory Agent** (`features.memoryAgent.enabled`) is on, the server may append instructor struggle-topic labels to the section catalog. When Memory Agent is off, generation is skipped (`struggleGenerationSkipped: true`) and the upload still succeeds. For course **`Test 3`**, labels are loaded deterministically from `src/fixtures/APSC183-instructor-struggle-topics.json` (matched by `Topic N` in section title or filename; up to 5 labels per upload, FIFO dedup). Other courses use LLM structured generation (or mock-response mode when `MOCK_RESPONSE=true`).
+**Post-upload struggle generation:** After a successful material save, when **Memory Agent** (`features.memoryAgent.enabled`) is on, the server may append instructor struggle-topic labels to the section catalog. When Memory Agent is off, generation is skipped (`struggleGenerationSkipped: true`) and the upload still succeeds. Labels come from LLM structured generation (or mock-response mode when `MOCK_RESPONSE=true`).
 
 ### 4.5 Chat (`/api/chat`)
 
@@ -534,7 +625,7 @@ Chat metadata is ordered by most recent activity and contains no conversation-le
 | POST | `/api/chat/newchat` | Yes | Any | Create new welcome-only chat with persisted `conversationMode: 'undeclared'` |
 | POST | `/api/chat/restore/:chatId` | Yes | Any | Restore chat into server memory; lazy mode migration uses message history |
 | PATCH | `/api/chat/:chatId/conversation-mode` | Yes | Any | Update teaching mode before the first user message; rejects chats that already contain a user turn |
-| POST | `/api/chat/:chatId` | Yes | Any (admin for `/DEBUG`) | Send message; first user message finalizes an undeclared chat to `socratic` or `explanatory` before LLM processing. Platform admins may send `/DEBUG` to toggle sticky prompt-engineer inspection for that chat only. Unstruggle **Yes** (`yes, I am confident with "topic"`) removes the struggle label, strips the prior bot `<questionUnstruggle>` tag, runs a forked LLM call to pick up to 3 verbatim learning-objective **texts** (not ids), randomly samples up to 3 published scenario questions matching those LO texts, and returns a bot message with a random preconfigured encouragement (`{topic}` substitution) plus optional `<scenarioSuggestions>` JSON tag (no main chat LLM). |
+| POST | `/api/chat/:chatId` | Yes | Any (admin for `/DEBUG` and sticky-DEBUG `/scenario`) | Send message; first user message finalizes an undeclared chat to `socratic` or `explanatory` before LLM processing. Platform admins may send `/DEBUG` to toggle sticky prompt-engineer inspection for that chat only. While sticky DEBUG is on, admins may send `/scenario` or `/scenario <topic>` to short-circuit into the unstruggle-Yes practice suggestion path (chips). Unstruggle **Yes** (`yes, I am confident with "topic"`) removes the struggle label, strips the prior bot `<questionUnstruggle>` tag, runs a forked LLM call to pick up to 3 verbatim learning-objective **texts** (not ids), randomly samples up to 3 published scenario questions matching those LO texts, and returns a bot message with a random preconfigured encouragement (`{topic}` substitution) plus optional `<scenarioSuggestions>` JSON tag (no main chat LLM). |
 | POST | `/api/chat/:chatId/dismiss-unstruggle` | Yes | Any | Dismiss unstruggle |
 | GET | `/api/chat/:chatId/history` | Yes | Any | Get chat history |
 | GET | `/api/chat/:chatId/message/:messageId` | Yes | Any | Get single message |
@@ -547,7 +638,60 @@ Chat metadata is ordered by most recent activity and contains no conversation-le
 |--------|------|------|------|-------------|
 | GET | `/api/user/current` | Yes | Any | Current user info |
 | POST | `/api/user/update-onboarding` | Yes | Any | Update onboarding state |
-| POST | `/api/user/activity` | Yes | Any | Record activity |
+| PATCH | `/api/user/onboarding/instructor-completed` | Yes | Any | Set `instructorOnboardingCompleted` on the caller's `GlobalUser` |
+| PATCH | `/api/user/onboarding/instructor-stage` | Yes | Any | Mark one instructor tutorial stage complete on the caller's `GlobalUser`. Body `{ stage: 'contentSetup' \| 'flagSetup' \| 'monitorSetup' \| 'scenarioGeneration' \| 'writingFeedback' \| 'guidedPathway' }`. The last three are the feature tutorials; whether one is owed is decided by `resolveNextOnboardingStage`, which gates each on its course capability, so no course id is needed here. Writes only the caller's own record, so no course-scoped RBAC applies |
+| GET | `/api/user/activity` | Yes | Any | Idle poll (read-only; does not bump `lastActivityAt`) |
+| POST | `/api/user/activity` | Yes | Any | Bump activity when `{ userActivity: true }`; same response shape as GET |
+
+#### User activity (session idle UX)
+
+Server-owned idle thresholds and client directives. Authenticated `/api/*` (except `GET`/`POST` `/api/user/activity`) bumps `session.lastActivityAt` via `sessionActivityMiddleware`. Expired sessions receive `401` with `code: "INACTIVITY_EXPIRED"` **without** destroying the session (teardown is deferred so SAML SLO can run).
+
+On expiry the frontend redirects to `GET /auth/logout` (same as the Logout button). When SAML is configured, that triggers full IdP Single Log-Out via `SAML_LOGOUT_URL` (e.g. Docker SimpleSAMLphp `SingleLogoutService.php`). `GET /auth/logout` without `req.user` still runs local teardown and clears `engeai.sid`.
+
+**Environment variables**
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `INACTIVITY_IDLE_BEFORE_WARNING_MS` | `240000` (4 min) | Ms idle before `state → warning`. Legacy alias: `INACTIVITY_WARNING_MS` |
+| `INACTIVITY_GRACE_AFTER_WARNING_MS` | `60000` (1 min) | Ms grace after `warningAt` before `state → expired`. Legacy alias: `INACTIVITY_LOGOUT_MS` |
+| `INACTIVITY_POLL_INTERVAL_DURING_GRACE_MS` | `5000` | Fixed poll interval while `state === warning` |
+| `INACTIVITY_POLL_JITTER_MS` | `250` | Added to active-phase poll so boundary poll lands just after warning |
+| `INACTIVITY_POLL_MAX_DELAY_MS` | unset | Optional cap on `pollAfterMs` while `active` |
+
+**Threshold math:** `warningAt = lastActivityAt + idleBeforeWarning`; `expiresAt = warningAt + graceAfterWarning` (not `lastActivityAt + grace`).
+
+**Response shape (200 or 401 when expired):**
+
+```json
+{
+  "success": true,
+  "idle": {
+    "serverTime": 0,
+    "lastActivityAt": 0,
+    "state": "active",
+    "warningAt": 0,
+    "expiresAt": 0,
+    "remainingMsUntilWarning": 0,
+    "remainingMsUntilGraceExpiry": 0
+  },
+  "client": {
+    "pollAfterMs": 240250,
+    "uiAction": "none",
+    "warningCountdownSec": 60
+  }
+}
+```
+
+`client.uiAction`: `none` | `show_inactivity_warning` | `force_logout`. Frontend must schedule the next poll only via `client.pollAfterMs` (`setTimeout`, not `setInterval`) and must not open the warning modal from `idle.state` alone.
+
+**`pollAfterMs` formulas**
+
+| `idle.state` | Formula |
+|--------------|---------|
+| `active` | `remainingMsUntilWarning + jitter` (optionally `min(..., INACTIVITY_POLL_MAX_DELAY_MS)`) |
+| `warning` | `min(remainingMsUntilGraceExpiry + jitter, INACTIVITY_POLL_INTERVAL_DURING_GRACE_MS)` |
+| `expired` | `0` |
 
 ### 4.7 Health & Version
 
@@ -555,6 +699,132 @@ Chat metadata is ordered by most recent activity and contains no conversation-le
 |--------|------|------|-------------|
 | GET | `/api/health` | No | Health check (DB ping) |
 | GET | `/api/version` | No | App version (SemVer) |
+
+---
+
+### 4.8 LMS Integration (`/api/lms`)
+
+Per-user connections to Canvas (OAuth 2.0) and Moodle (pasted web service token),
+provided by `@ubc/ubc-genai-toolkit-lms-integration`. Implemented in
+`src/routes/route-lms.ts`, with the enrollment-sync logic in
+`src/lms/canvas-course-sync.ts`.
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/lms/status` | Authenticated | Which providers are enabled; configuration presence only, never secrets |
+| GET | `/api/lms/canvas/auth/login` | Authenticated | Redirect to the Canvas authorize screen |
+| GET | `/api/lms/canvas/auth/callback` | Authenticated | Exchange the OAuth code and store tokens |
+| POST | `/api/lms/canvas/auth/logout` | Authenticated | Revoke and clear stored Canvas tokens |
+| GET | `/api/lms/canvas/available-courses` | Authenticated + Canvas connection | The user's Canvas courses, annotated with whether EngE-AI already has each one |
+| POST | `/api/lms/canvas/connect-course` | Authenticated + Canvas connection | Import (instructor) or join (student) one Canvas course; body `{ canvasCourseId, academicPeriodId? }` |
+| GET | `/api/lms/canvas/courses` | Instructor + Canvas connection | Raw Canvas course list including provider `raw`; diagnostics only |
+| POST | `/api/lms/moodle/auth/connect` | Instructor | Validate and store a pasted `wstoken` (body `{ token }`) |
+| POST | `/api/lms/moodle/auth/disconnect` | Instructor | Delete the stored Moodle token (does not revoke it in Moodle) |
+| GET | `/api/lms/moodle/courses` | Instructor + Moodle connection | Moodle courses the user is enrolled in |
+
+**Course enrollment sync**
+
+- EngE-AI has two kinds of course. **Admin-created** courses are unchanged: students
+  join with the six-character `courseCode`. **Canvas-imported** courses carry an
+  `activeCourse.lmsLink` and are joined by connecting Canvas.
+- An instructor's import creates the EngE-AI course immediately with
+  `courseSetup: false`, so the existing setup redirect walks them through week/topic
+  configuration on first entry. Canvas supplies a name and code and nothing else.
+- A second instructor importing the same Canvas course **joins** the existing EngE-AI
+  course rather than creating a duplicate; otherwise co-taught courses would split
+  their students across two copies.
+- A student connecting a Canvas course their instructor has not imported gets
+  `status: 'awaiting_instructor'` on a `200`, not an error — nothing is wrong, and
+  only the instructor can resolve it.
+- **Sync only ever adds enrollment.** A student whose Canvas enrollment disappears
+  keeps EngE-AI access and chat history: a transient Canvas error, a revoked token,
+  and a genuine drop are indistinguishable, and silently locking someone out of their
+  own conversations is the worse failure.
+- **Enrollment is per-user, not roster-matched.** Each user authorizes Canvas as
+  themselves, so `getCourses` already returns their own enrollments; there is no
+  roster-wide matching of Canvas users to EngE-AI accounts.
+
+**Instructor identity verification**
+
+- An instructor import requires the Canvas `integration_id` — the PUID at UBC — of the
+  account **the stored token belongs to** to match the PUID CWL authenticated. OAuth
+  alone proves only that *some* Canvas account with a teacher enrollment was authorized,
+  not that it belongs to the signed-in user; a shared machine or a colleague still signed
+  in would satisfy it.
+- **It is not enough to find someone on the roster carrying the user's PUID.** That only
+  proves the EngE-AI user teaches the course, which they may do while the token in hand
+  belongs to a different teacher on the same course — the exact case a co-taught course
+  on a shared browser produces. The connected account is therefore resolved first via
+  `GET /users/self` (which returns the account id for anyone, but withholds
+  `integration_id` from an ordinary instructor), and the roster is searched **by Canvas
+  user id** so the identifier compared is that account's own.
+- Reading that identifier requires a roster read. Canvas grants `read_sis` through a
+  `TeacherEnrollment` on a **course**, not at the account level, so `GET /users/self`
+  returns no `integration_id` for an instructor. Verified against Canvas's
+  `lib/api/v1/user.rb` (`user_can_read_sis_data?` resolves against the course context)
+  and `permissions_registry.rb` (`read_sis` is `true_for: [AccountAdmin, TeacherEnrollment]`).
+- The read is narrowed accordingly: **teacher roster only** (`enrollmentTypes: ['teacher']`
+  passed explicitly, since `getCourseUsers` defaults to students), **instructor paths only**,
+  compared in memory and never persisted or logged. No student roster is ever read,
+  and this path persists no PUID.
+- **The check runs when listing courses, not only when importing one.** Canvas
+  re-authorizes whoever is already signed in to it, so two EngE-AI users sharing a
+  browser end up with the second account holding the first user's Canvas token.
+  Verifying only at import would mean `available-courses` had already returned the
+  other person's course names. One check settles the whole list: `integration_id`
+  identifies the Canvas *account*, not the enrollment, so confirming it against the
+  first course they teach covers every row and costs one extra request.
+- **A genuine mismatch deletes the stored token** (`handleCanvasIdentityError` in
+  `route-lms.ts`). Keeping it traps the user: every retry reaches the same wrong Canvas
+  account, and the "reconnect" advice cannot work while the bad credential is on file.
+  `identifiers_withheld` and `no_puid` deliberately keep the token — the credential may
+  be entirely correct, and only Canvas's answer was incomplete.
+- Failures raise `CanvasIdentityError` carrying a `reason` (`mismatch` |
+  `identifiers_withheld` | `no_puid` | `self_not_on_roster`), which is what the route
+  branches on. The reason is also returned in the 403 body. Matching on message text
+  would couple credential deletion to wording that exists to be read by humans and changed.
+- `self_not_on_roster` means Canvas listed the course under the account's teacher
+  enrollments but the account is absent from the teacher roster — a concluded or
+  restricted enrolment. No identifier to read and no evidence of impersonation, so the
+  credential is kept.
+- A roster where *nobody* carried an `integration_id` is reported as a distinct error
+  ("Canvas did not return SIS identifiers") rather than as a mismatch. The symptoms are
+  identical, and only one is the instructor's to fix — re-authorizing cannot resolve a
+  missing account permission. `rosterFieldCoverage` makes the distinction.
+- **Students are not verified this way, and cannot be.** Canvas grants `read_sis` to
+  teachers, not students, so a student token cannot read `integration_id` for anyone
+  including itself. The exposure is bounded — joining this way reaches exactly what the
+  course code already grants — but it is a known gap, not an oversight. Closing it needs
+  an identity source outside Canvas.
+
+**Notes**
+
+- Not course-scoped — these are per-user LMS connections, so the course-scoped
+  guards do not apply. Every route sits behind `requireAuthAPI`.
+- **A provider's `requireAuth` proves a usable LMS credential exists, not that the
+  holder may act on a course.** Every write therefore re-derives the caller's Canvas
+  enrollment from Canvas (`enrollment_type: teacher|student`) and refuses a course id
+  absent from it, so a forged `canvasCourseId` cannot import a course the caller does
+  not teach.
+- Canvas connection is **open to students**, because enrollment sync is a genuine
+  student-facing feature — the earlier instructor-only gate existed to avoid storing
+  tokens EngE-AI had no use for. **Moodle stays instructor-only**: it has no
+  equivalent student feature, so that reasoning still applies there.
+- `/api/lms/canvas/courses` remains instructor-only because it returns each course's
+  provider `raw` payload verbatim. `/canvas/available-courses` returns normalized
+  fields only and is what the UI calls.
+- Each provider **self-disables** when its environment variables are unset
+  (`CANVAS_DOMAIN`, `CANVAS_CLIENT_ID`, `CANVAS_CLIENT_SECRET`,
+  `CANVAS_REDIRECT_URI`; `MOODLE_DOMAIN`). The app boots normally without LMS
+  configuration; `GET /api/lms/status` reports `missingEnv`, and the course-selection
+  page renders no Canvas button at all.
+- The course routes use the package's `requireAuth`, which answers `401` with a
+  `connectUrl` rather than redirecting. A browser-facing LMS **page** route
+  should use `canvas.ensureAuth` instead, which redirects to `/login`.
+- `CANVAS_REDIRECT_URI` must match the Canvas Developer Key byte-for-byte,
+  including port, and its path is this router's `/canvas/auth/callback`.
+- Token persistence and PUID handling on this path are documented in
+  `MONGO_DATA_LAYER.md`.
 
 ---
 
@@ -689,7 +959,7 @@ and exact message before hashing it; a unique Mongo key prevents duplicate autom
 
 Before RAG, an enabled Guided Pathway may intercept the message and return its predefined response.
 When its independent notification setting is on, the chat route attempts to create one anonymous
-alert in a separate failure boundary. An alert-write failure never blocks the predefined safety or
+alert in a separate failure boundary for enrolled users and course staff senders. An alert-write failure never blocks the predefined safety or
 redirection response. Trigger metadata remains backend-only and is not stored on `ChatMessage` or
 returned to the student.
 
@@ -704,6 +974,8 @@ When no pathway intercepts, `ChatApp` orchestrates retrieval through two RAG cla
 **Conversation mode lifecycle:** `undeclared` is a persisted chat lifecycle state, not an LLM prompt mode. New chats are stored as `conversationMode === 'undeclared'` while they contain only the welcome message. The first `POST /api/chat/:chatId` includes the selected real mode (`socratic` or `explanatory`); the backend persists that mode, rebuilds the LLM conversation, and only then processes the user turn. `PATCH /api/chat/:chatId/conversation-mode` remains available for welcome-only chats, but chats with a user message reject mode changes.
 
 **Admin `/DEBUG`:** Platform admins (`ADMINS` / `GlobalUser.isAdmin`) may send exactly `/DEBUG` to toggle a sticky in-memory debug flag for that chat. While on, subsequent messages skip pathways/RAG/MOCK_RESPONSE and use a prompt-engineer system prompt that includes the full teaching system prompt; replies are wrapped as `**DEBUG MODE**`. Non-admins receive 403. Flag clears when the chat is evicted from memory.
+
+**Admin `/scenario` (sticky DEBUG only):** While sticky DEBUG is on, platform admins may send `/scenario` or `/scenario <topic>` to invoke the same practice-suggestion pipeline as unstruggle Yes (`suggestPracticeAfterUnstruggleYes`) without clearing struggle labels or requiring a prior `<questionUnstruggle>` tag. Optional topic defaults to `debug`. Outside sticky DEBUG the text is treated as a normal user message. Non-admins receive 403 if they send `/scenario…`.
 
 **Lazy restore migration:** if `conversationMode` is already `socratic` or `explanatory`, restore leaves it unchanged. Missing, invalid, or `undeclared` rows with any user message are backfilled to `socratic` to preserve historical default behavior. Missing, invalid, or `undeclared` rows with no user messages are written as `undeclared` so the picker remains editable.
 

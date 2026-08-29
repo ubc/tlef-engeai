@@ -11,13 +11,23 @@ import {
     createUserSearchMultiSelect,
     type FacultyPickerUser
 } from '../ui/user-search-multi-select.js';
+import {
+    createCourseStaffPicker,
+    type CourseStaffMember
+} from '../ui/course-staff-picker.js';
 import { authService } from '../services/auth-service.js';
-import { inactivityTracker } from '../services/inactivity-tracker.js';
+import { startInactivityTracking } from '../services/inactivity-tracker.js';
+import { initCanvasConnect, isCanvasEnabled, openCanvasConnectModal } from './canvas-connect.js';
 import { AdminGuidedPathwayFlagsController } from '../feature/admin-guided-pathway-flags.js';
+
+type AdminCourseRow = Omit<activeCourse, 'instructors'> & {
+    instructorDisplay?: string;
+    instructors?: CourseStaffMember[];
+};
 
 interface AdminPeriodSection extends AcademicPeriodDocument {
     courseCount: number;
-    courses: (activeCourse & { instructorDisplay?: string })[];
+    courses: AdminCourseRow[];
 }
 
 interface AdminCourseSelectionPayload {
@@ -30,7 +40,84 @@ interface AdminCourseSelectionPayload {
 let currentGlobalUser: GlobalUser | null = null;
 let pageData: AdminCourseSelectionPayload | null = null;
 let notificationButtonBound = false;
-let notificationModalOpen = false;
+let escalationsPanelOpen = false;
+let escalationsPanelClosing = false;
+let escalationsController: AdminGuidedPathwayFlagsController | null = null;
+let escalationsModal: ModalOverlay | null = null;
+let escalationsEscapeHandler: ((event: KeyboardEvent) => void) | null = null;
+const ESCALATIONS_CLOSE_MS = 350;
+const COURSE_COL_MIN_PCT = 40;
+const COURSE_COL_MAX_PCT = 60;
+let splitHandleBound = false;
+
+function setSplitHandleVisible(visible: boolean): void {
+    const handle = document.getElementById('admin-split-handle');
+    if (!handle) return;
+    if (visible) {
+        handle.removeAttribute('hidden');
+        handle.removeAttribute('inert');
+    } else {
+        handle.setAttribute('hidden', '');
+        handle.setAttribute('inert', '');
+    }
+}
+
+function courseColPctFromWrapper(wrapper: HTMLElement): number {
+    const raw = wrapper.style.getPropertyValue('--admin-course-col').trim();
+    const parsed = parseFloat(raw);
+    return Number.isFinite(parsed) ? parsed : 50;
+}
+
+function setCourseColPct(wrapper: HTMLElement, pct: number): void {
+    const clamped = Math.min(COURSE_COL_MAX_PCT, Math.max(COURSE_COL_MIN_PCT, pct));
+    wrapper.style.setProperty('--admin-course-col', `${clamped}%`);
+    const handle = document.getElementById('admin-split-handle');
+    handle?.setAttribute('aria-valuenow', String(Math.round(clamped)));
+}
+
+function setupSplitHandle(): void {
+    if (splitHandleBound) return;
+    const handle = document.getElementById('admin-split-handle');
+    const wrapper = document.querySelector<HTMLElement>('.admin-course-selection-wrapper');
+    if (!handle || !wrapper) return;
+    splitHandleBound = true;
+
+    handle.addEventListener('pointerdown', (event) => {
+        if (!escalationsPanelOpen || window.matchMedia('(max-width: 768px)').matches) return;
+        event.preventDefault();
+        handle.setPointerCapture(event.pointerId);
+        wrapper.classList.add('admin-course-selection-wrapper--resizing');
+        const startX = event.clientX;
+        const width = wrapper.getBoundingClientRect().width || 1;
+        const main = wrapper.querySelector('.admin-course-selection-main');
+        const startPct = main
+            ? (main.getBoundingClientRect().width / width) * 100
+            : courseColPctFromWrapper(wrapper);
+
+        const onMove = (moveEvent: PointerEvent) => {
+            setCourseColPct(wrapper, startPct + ((moveEvent.clientX - startX) / width) * 100);
+        };
+        const onUp = () => {
+            wrapper.classList.remove('admin-course-selection-wrapper--resizing');
+            handle.removeEventListener('pointermove', onMove);
+            handle.removeEventListener('pointerup', onUp);
+        };
+        handle.addEventListener('pointermove', onMove);
+        handle.addEventListener('pointerup', onUp);
+    });
+
+    handle.addEventListener('keydown', (event) => {
+        if (!escalationsPanelOpen) return;
+        if (event.key === 'ArrowLeft') {
+            event.preventDefault();
+            setCourseColPct(wrapper, courseColPctFromWrapper(wrapper) - 2);
+        }
+        if (event.key === 'ArrowRight') {
+            event.preventDefault();
+            setCourseColPct(wrapper, courseColPctFromWrapper(wrapper) + 2);
+        }
+    });
+}
 
 async function initializeAdminCourseSelection(): Promise<void> {
     try {
@@ -57,7 +144,12 @@ async function initializeAdminCourseSelection(): Promise<void> {
 
         setupLogoutButton();
         setupCreatePeriodButton();
-        setupNotificationButton();
+
+        // Resolve Canvas availability before the first render, so the Connect to Canvas button is
+        // either present from the start or never appears. A deployment without Canvas credentials
+        // must not advertise a connection it cannot make.
+        await initCanvasConnect(refreshAdminData);
+
         await loadAdminData();
     } catch (error) {
         console.error('[ADMIN-COURSE-SELECTION]', error);
@@ -66,7 +158,7 @@ async function initializeAdminCourseSelection(): Promise<void> {
     }
 }
 
-async function loadAdminData(): Promise<void> {
+async function loadAdminData(options?: { promptEscalations?: boolean }): Promise<void> {
     const response = await fetch('/api/admin/course-selection', { credentials: 'same-origin' });
     if (!response.ok) {
         throw new Error('Failed to load admin course selection');
@@ -78,6 +170,42 @@ async function loadAdminData(): Promise<void> {
     showLoading(false);
     showError(false);
     replaceFeather();
+    if (options?.promptEscalations) {
+        await maybePromptEscalations();
+    }
+}
+
+async function maybePromptEscalations(): Promise<void> {
+    const count = pageData?.guidedPathwayEscalationsAwaitingReview ?? 0;
+    if (count <= 0 || escalationsPanelOpen || escalationsPanelClosing) return;
+
+    const noun = count === 1 ? 'message' : 'messages';
+    const result = await showConfirmModal(
+        'Escalations awaiting review',
+        `You have ${count} unreviewed escalated ${noun}. Open the escalations panel to review them.`,
+        'View escalations',
+        'Not now'
+    );
+    if (result.action === 'view-escalations') {
+        await openEscalationsPanel();
+    }
+}
+
+/**
+ * Reloads periods and courses for callers outside the initial bootstrap.
+ *
+ * `loadAdminData` throws on failure and leaves reporting to its caller. The Canvas flow calls back
+ * from a modal that has already closed, so a thrown error there would surface on a detached
+ * element — invisible, with a stale course list left behind. Report it on the page instead.
+ */
+async function refreshAdminData(): Promise<void> {
+    try {
+        await loadAdminData();
+    } catch (error) {
+        console.error('[ADMIN-COURSE-SELECTION]', error);
+        showLoading(false);
+        showError(true);
+    }
 }
 
 function renderPeriodSections(): void {
@@ -100,6 +228,17 @@ function renderPeriodSection(period: AdminPeriodSection): string {
         .map((course) => renderCourseRow(course, period.id))
         .join('');
 
+    // Per period rather than page-level: an imported course has to land in some period, and the
+    // header that launched the flow is the one unambiguous answer to which. Omitted entirely when
+    // the deployment has no Canvas credentials.
+    const canvasBtn = isCanvasEnabled()
+        ? `
+                    <button type="button" class="add-new-course-btn period-canvas-connect-btn" data-period-id="${period.id}" aria-label="Connect to Canvas" title="Connect to Canvas">
+                        <i data-feather="link"></i>
+                        <span class="btn-text">Connect to Canvas</span>
+                    </button>`
+        : '';
+
     return `
         <section class="course-selection-container period-section" data-period-id="${period.id}">
             <header class="course-selection-header period-section-header">
@@ -111,6 +250,7 @@ function renderPeriodSection(period: AdminPeriodSection): string {
                     <span class="period-count-pill">${period.courseCount} courses</span>
                 </div>
                 <div class="period-header-actions">
+                    ${canvasBtn}
                     <button type="button" class="create-new-course-btn period-create-course-btn" data-period-id="${period.id}">
                         <i data-feather="file-plus"></i>
                         <span class="btn-text">Create New Course</span>
@@ -129,7 +269,7 @@ function renderPeriodSection(period: AdminPeriodSection): string {
     `;
 }
 
-function renderCourseRow(course: activeCourse & { instructorDisplay?: string }, periodId: string): string {
+function renderCourseRow(course: AdminCourseRow, periodId: string): string {
     const instructors = course.instructorDisplay ?? formatInstructors(course.instructors);
     return `
         <div class="workspace-row admin-course-row" data-course-id="${course.id}" data-period-id="${periodId}">
@@ -175,6 +315,13 @@ function attachPeriodListeners(): void {
             if (periodId) {
                 void openCourseModal('create', periodId);
             }
+        });
+    });
+
+    document.querySelectorAll('.period-canvas-connect-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            // An imported course lands in the period whose header launched the flow.
+            void openCanvasConnectModal(btn.getAttribute('data-period-id') ?? undefined);
         });
     });
 
@@ -349,7 +496,7 @@ async function openPeriodModal(mode: 'create' | 'edit', period?: AdminPeriodSect
 async function openCourseModal(
     mode: 'create' | 'edit',
     periodId: string,
-    course?: activeCourse
+    course?: AdminCourseRow
 ): Promise<void> {
     if (!pageData) {
         return;
@@ -377,27 +524,48 @@ async function openCourseModal(
     }
 
     let selectedInstructors: FacultyPickerUser[] = [];
-    if (mode === 'edit' && course?.instructors) {
-        selectedInstructors = (course.instructors as InstructorInfo[])
-            .filter((i): i is InstructorInfo => typeof i !== 'string')
-            .map((i) => ({ userId: i.userId, name: i.name, affiliation: 'faculty' }));
-    }
+    let staffPicker: ReturnType<typeof createCourseStaffPicker> | null = null;
+
+    const removalDivider = document.createElement('hr');
+    removalDivider.className = 'admin-modal-divider';
+    removalDivider.hidden = true;
+
+    const removalMount = document.createElement('div');
+    removalMount.className = 'course-staff-removal-mount';
+
     if (mode === 'edit' && course) {
         nameInput.value = course.courseName;
+
+        const roster: CourseStaffMember[] =
+            course.instructors?.map((i) => ({
+                userId: i.userId,
+                name: i.name,
+                isPlatformAdmin: i.isPlatformAdmin ?? false
+            })) ?? [];
+
+        staffPicker = createCourseStaffPicker({ staff: roster });
+        removalMount.appendChild(staffPicker.confirmationContainer);
+
+        content.append(
+            labelField('Course name', nameInput),
+            labelField('Academic period', periodSelect),
+            fieldGroup('Course Staff', staffPicker.root),
+            removalDivider,
+            removalMount
+        );
+    } else {
+        const instructorPicker = createUserSearchMultiSelect({
+            selected: selectedInstructors,
+            onChange: (sel) => {
+                selectedInstructors = sel;
+            }
+        });
+        content.append(
+            labelField('Course name', nameInput),
+            labelField('Academic period', periodSelect),
+            fieldGroup('Course Staff', instructorPicker)
+        );
     }
-
-    const instructorPicker = createUserSearchMultiSelect({
-        selected: selectedInstructors,
-        onChange: (sel) => {
-            selectedInstructors = sel;
-        }
-    });
-
-    content.append(
-        labelField('Course name', nameInput),
-        labelField('Academic period', periodSelect),
-        labelField('Instructors (faculty)', instructorPicker)
-    );
 
     const actions = document.createElement('div');
     actions.className = 'admin-modal-actions';
@@ -413,6 +581,23 @@ async function openCourseModal(
     actions.append(cancelBtn, submitBtn);
     content.appendChild(actions);
 
+    const updateSaveEnabled = () => {
+        if (!staffPicker) {
+            submitBtn.disabled = false;
+            return;
+        }
+        const pending = staffPicker.hasPendingRemovals();
+        removalDivider.hidden = !pending;
+        submitBtn.disabled = pending && !staffPicker.areRemovalsConfirmed();
+    };
+
+    if (staffPicker) {
+        staffPicker.onSaveStateChange(updateSaveEnabled);
+        updateSaveEnabled();
+        // Icons render after modal content is in the document
+        requestAnimationFrame(() => staffPicker?.refreshChipIcons());
+    }
+
     const showPromise = modal.show({
         type: 'custom',
         title: mode === 'edit' ? 'Edit course' : 'Create new course',
@@ -427,22 +612,38 @@ async function openCourseModal(
     submitBtn.addEventListener('click', async () => {
         const courseName = nameInput.value.trim();
         const academicPeriodId = periodSelect.value;
-        const instructorUserIds = selectedInstructors.map((u) => u.userId);
 
         if (!courseName) {
             await showErrorModal('Validation', 'Course name is required.');
             return;
         }
 
+        if (staffPicker && staffPicker.hasPendingRemovals() && !staffPicker.areRemovalsConfirmed()) {
+            await showErrorModal('Validation', 'Confirm each removal by typing the full name.');
+            return;
+        }
+
+        const instructorUserIds = staffPicker
+            ? staffPicker.getInstructorUserIdsToAdd()
+            : selectedInstructors.map((u) => u.userId);
+        const removeInstructorUserIds = staffPicker
+            ? staffPicker.getRemoveInstructorUserIds()
+            : undefined;
+
         const url =
             mode === 'edit' && course ? `/api/admin/courses/${course.id}` : '/api/admin/courses';
         const method = mode === 'edit' ? 'PUT' : 'POST';
+
+        const body: Record<string, unknown> = { courseName, academicPeriodId, instructorUserIds };
+        if (removeInstructorUserIds && removeInstructorUserIds.length > 0) {
+            body.removeInstructorUserIds = removeInstructorUserIds;
+        }
 
         const res = await fetch(url, {
             method,
             headers: { 'Content-Type': 'application/json' },
             credentials: 'same-origin',
-            body: JSON.stringify({ courseName, academicPeriodId, instructorUserIds })
+            body: JSON.stringify(body)
         });
         const data = await res.json();
         if (!res.ok || !data.success) {
@@ -454,6 +655,31 @@ async function openCourseModal(
     });
 
     await showPromise;
+}
+
+let fieldGroupIdCounter = 0;
+
+/**
+ * fieldGroup - Labelled wrapper for composite controls (chips, buttons, inputs).
+ *
+ * Uses a div rather than a label: an implicit label forwards clicks anywhere in
+ * its box to its first labelable descendant, which made clicking the section
+ * label or an admin chip press the first instructor's remove button.
+ *
+ * @param label - Visible group label
+ * @param control - Composite control root
+ * @returns Group element labelled for assistive tech via aria-labelledby
+ */
+function fieldGroup(label: string, control: HTMLElement): HTMLElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'admin-modal-field';
+    wrap.setAttribute('role', 'group');
+    const span = document.createElement('span');
+    span.id = `admin-modal-field-${++fieldGroupIdCounter}`;
+    span.textContent = label;
+    wrap.setAttribute('aria-labelledby', span.id);
+    wrap.append(span, control);
+    return wrap;
 }
 
 function labelField(label: string, control: HTMLElement): HTMLElement {
@@ -497,50 +723,202 @@ function updateNotificationCount(count: number): void {
     if (badge) badge.textContent = String(safeCount);
     button?.setAttribute(
         'aria-label',
-        `Open Guided Pathway notifications, ${safeCount} awaiting review`
+        `Open escalations, ${safeCount} awaiting review`
     );
     if (pageData) pageData.guidedPathwayEscalationsAwaitingReview = safeCount;
 }
 
-async function openGuidedPathwayNotifications(): Promise<void> {
-    if (!pageData || notificationModalOpen) return;
-    notificationModalOpen = true;
+function prefersReducedMotion(): boolean {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+function isPhoneEscalationsModal(): boolean {
+    return window.matchMedia('(max-width: 768px)').matches;
+}
+
+function finishEscalationsClose(): void {
+    const panel = document.getElementById('admin-escalations-panel');
     const button = document.getElementById('admin-notification-btn');
+
+    escalationsController?.destroy();
+    escalationsController = null;
+    escalationsPanelClosing = false;
+
+    panel?.classList.remove('admin-escalations-panel--closing');
+    panel?.setAttribute('hidden', '');
+    panel?.setAttribute('inert', '');
+    setSplitHandleVisible(false);
+    button?.focus();
+}
+
+function closeEscalationsPanel(): void {
+    if (escalationsModal) {
+        escalationsModal.close('hide');
+        return;
+    }
+    if (!escalationsPanelOpen || escalationsPanelClosing) return;
+
+    const wrapper = document.querySelector('.admin-course-selection-wrapper');
+    const panel = document.getElementById('admin-escalations-panel');
+    const button = document.getElementById('admin-notification-btn');
+    if (!panel) return;
+
+    escalationsPanelOpen = false;
+    escalationsPanelClosing = true;
+    panel.classList.remove('admin-escalations-panel--open');
+    panel.classList.add('admin-escalations-panel--closing');
+    wrapper?.classList.remove('admin-course-selection-wrapper--split');
+    wrapper?.classList.remove('admin-course-selection-wrapper--resizing');
+    setSplitHandleVisible(false);
+    panel.setAttribute('inert', '');
+
+    button?.classList.remove('admin-notification-btn--active');
+    button?.setAttribute('aria-expanded', 'false');
+
+    if (escalationsEscapeHandler) {
+        document.removeEventListener('keydown', escalationsEscapeHandler);
+        escalationsEscapeHandler = null;
+    }
+
+    if (prefersReducedMotion()) {
+        finishEscalationsClose();
+        return;
+    }
+
+    let finished = false;
+    const complete = () => {
+        if (finished) return;
+        finished = true;
+        panel.removeEventListener('transitionend', onEnd);
+        finishEscalationsClose();
+    };
+    const onEnd = (event: TransitionEvent) => {
+        if (event.target !== panel) return;
+        if (event.propertyName !== 'transform' && event.propertyName !== 'flex-grow' && event.propertyName !== 'opacity') {
+            return;
+        }
+        complete();
+    };
+    panel.addEventListener('transitionend', onEnd);
+    window.setTimeout(complete, ESCALATIONS_CLOSE_MS + 50);
+}
+
+async function openEscalationsPanel(): Promise<void> {
+    if (!pageData || escalationsPanelOpen || escalationsPanelClosing) return;
+    if (isPhoneEscalationsModal()) {
+        await openEscalationsAsModal();
+        return;
+    }
+    await openEscalationsAsSplit();
+}
+
+async function openEscalationsAsModal(): Promise<void> {
+    if (!pageData) return;
+    const button = document.getElementById('admin-notification-btn');
+
+    escalationsPanelOpen = true;
+    button?.classList.add('admin-notification-btn--active');
     button?.setAttribute('aria-expanded', 'true');
 
     const queueRoot = document.createElement('section');
-    queueRoot.setAttribute('aria-label', 'Guided Pathway notifications requiring administrator review');
+    queueRoot.className = 'admin-escalations-modal-root';
     const controller = new AdminGuidedPathwayFlagsController(queueRoot, {
         periods: pageData.periods,
         initialAwaitingReviewCount: pageData.guidedPathwayEscalationsAwaitingReview,
         initialFilters: { status: 'escalated', reviewState: 'needs-review' },
         onAwaitingReviewCountChange: updateNotificationCount,
+        showCloseButton: false,
+        onClose: () => escalationsModal?.close('hide'),
     });
+    escalationsController = controller;
+
+    const modal = new ModalOverlay();
+    escalationsModal = modal;
 
     try {
         await controller.initialize();
-        const modal = new ModalOverlay();
-        const modalClosed = modal.show({
+        const closed = modal.show({
             type: 'custom',
-            title: 'Guided Pathway notifications',
+            title: 'Flag Escalations',
             content: queueRoot,
             showCloseButton: true,
             closeOnOverlayClick: true,
             closeOnEscape: true,
-            maxWidth: '1120px',
-            customClass: 'admin-guided-alerts-modal',
+            maxWidth: 'calc(100vw - 1rem)',
+            customClass: 'admin-escalations-mobile-modal',
         });
         await controller.activate();
-        await modalClosed;
+        replaceFeather();
+        await closed;
     } catch (error) {
         await showErrorModal(
-            'Unable to open notifications',
-            error instanceof Error ? error.message : 'Guided Pathway notifications could not be opened.'
+            'Unable to open escalations',
+            error instanceof Error ? error.message : 'Escalations could not be opened.'
         );
     } finally {
         controller.destroy();
-        notificationModalOpen = false;
+        if (escalationsController === controller) escalationsController = null;
+        escalationsModal = null;
+        escalationsPanelOpen = false;
+        button?.classList.remove('admin-notification-btn--active');
         button?.setAttribute('aria-expanded', 'false');
+        button?.focus();
+    }
+}
+
+async function openEscalationsAsSplit(): Promise<void> {
+    if (!pageData) return;
+
+    const wrapper = document.querySelector('.admin-course-selection-wrapper');
+    const panel = document.getElementById('admin-escalations-panel');
+    const root = document.getElementById('admin-escalations-panel-root');
+    const button = document.getElementById('admin-notification-btn');
+    if (!wrapper || !panel || !root || !button) return;
+
+    escalationsPanelOpen = true;
+    wrapper.classList.add('admin-course-selection-wrapper--split');
+    panel.removeAttribute('hidden');
+    panel.removeAttribute('inert');
+    setSplitHandleVisible(true);
+    requestAnimationFrame(() => panel.classList.add('admin-escalations-panel--open'));
+    button.classList.add('admin-notification-btn--active');
+    button.setAttribute('aria-expanded', 'true');
+
+    escalationsController = new AdminGuidedPathwayFlagsController(root, {
+        periods: pageData.periods,
+        initialAwaitingReviewCount: pageData.guidedPathwayEscalationsAwaitingReview,
+        initialFilters: { status: 'escalated', reviewState: 'needs-review' },
+        onAwaitingReviewCountChange: updateNotificationCount,
+        showCloseButton: true,
+        onClose: closeEscalationsPanel,
+    });
+
+    try {
+        await escalationsController.initialize();
+        await escalationsController.activate();
+        const heading = root.querySelector<HTMLElement>('h1');
+        heading?.focus();
+    } catch (error) {
+        closeEscalationsPanel();
+        await showErrorModal(
+            'Unable to open escalations',
+            error instanceof Error ? error.message : 'Escalations could not be opened.'
+        );
+        return;
+    }
+
+    escalationsEscapeHandler = (event: KeyboardEvent) => {
+        if (event.key === 'Escape') closeEscalationsPanel();
+    };
+    document.addEventListener('keydown', escalationsEscapeHandler);
+    replaceFeather();
+}
+
+function toggleEscalationsPanel(): void {
+    if (escalationsPanelOpen) {
+        closeEscalationsPanel();
+    } else {
+        void openEscalationsPanel();
     }
 }
 
@@ -548,7 +926,7 @@ function setupNotificationButton(): void {
     if (notificationButtonBound) return;
     const button = document.getElementById('admin-notification-btn');
     if (!button) return;
-    button.addEventListener('click', () => void openGuidedPathwayNotifications());
+    button.addEventListener('click', () => toggleEscalationsPanel());
     notificationButtonBound = true;
 }
 
@@ -570,5 +948,5 @@ document.getElementById('retry-btn')?.addEventListener('click', () => {
 
 document.addEventListener('DOMContentLoaded', () => {
     void initializeAdminCourseSelection();
-    inactivityTracker.start();
+    startInactivityTracking();
 });

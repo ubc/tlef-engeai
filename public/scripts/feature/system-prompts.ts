@@ -47,7 +47,8 @@ let isSaving = false;
 /** Aborts UI listeners from the previous mount when the component HTML is reloaded. */
 let uiListenersAbort: AbortController | null = null;
 
-const NEW_MODULE_BODY_TEMPLATE = '*Module Purpose*\nDescribe what this module controls in conversation.\n\n*Module Content*\n';
+const NEW_MODULE_BODY_TEMPLATE =
+    '# Identity\nDescribe what this module controls in conversation and when it applies.\n\n# Instruction\n\n# Examples\n\n# Checklists\n\n- [ ] \n';
 
 const MODULE_TEXTAREA_MAX_HEIGHT_PX = 500;
 

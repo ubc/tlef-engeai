@@ -19,30 +19,62 @@ export const COURSE_LEARNING_OBJECTIVES_PLACEHOLDER = '{{course_learning_objecti
 
 const EMPTY_LEARNING_OBJECTIVES_BLOCK = '<course_learning_objectives></course_learning_objectives>';
 
+/**
+ * Socratic modules that only ever apply to a matched struggle topic. With the Memory Agent off
+ * the injected struggle list is always empty, so these branches are unreachable — shipping them
+ * anyway costs ~9KB per turn and keeps a worked-solution exemplar in front of a model that is
+ * supposed to stay in guided discovery.
+ */
+const STRUGGLE_DEPENDENT_MODULE_IDS = new Set([
+    'interpretive conversation',
+    'practice questions',
+    'socratic analyser',
+]);
+
 export interface AssembleCourseSystemPromptInput {
     mode: ConversationModeId;
     courseName?: string;
     learningObjectives?: LearningObjectiveForDisplay[];
     config?: CourseSystemPromptConfig | null;
+    memoryAgentEnabled?: boolean;
 }
 
 /**
- * Builds the XML system message sent to the LLM for a chat session.
+ * assembleCourseSystemPrompt - build the XML system message sent to the LLM for a chat session.
+ *
+ * Instructor modules in manifest order, with learning objectives injected into course main intro.
+ * When `memoryAgentEnabled` is explicitly false on a platform-default Socratic course, the
+ * struggle-dependent modules are pruned because those branches cannot fire.
+ *
+ * @param input - Mode, course context, learning objectives, stored config, and capability flags
+ * @returns Full `<system_prompt>` XML string
  */
 export function assembleCourseSystemPrompt(input: AssembleCourseSystemPromptInput): string {
     const mode = input.mode;
     const modeState = input.config?.modes?.[mode];
 
     const modules: SystemPromptModule[] = [];
-    const instructorModules = resolveInstructorModules(mode, modeState);
+    const usingPlatformDefaults = !modeState || modeState.usePlatformDefault;
+
+    // Only prune platform-default ids: a customized course owns its module list, and its ids may
+    // mean something else entirely.
+    const pruneStruggleModules =
+        (mode === 'socratic') &&
+        (input.memoryAgentEnabled === false) &&
+        (usingPlatformDefaults);
+
+    // Resolve instructor modules.
+    const instructorModules = resolveInstructorModules(mode, modeState).filter(
+        (mod) => !(pruneStruggleModules && STRUGGLE_DEPENDENT_MODULE_IDS.has(mod.id))
+    );
     const loBlock = formatRuntimeLearningObjectives(input.learningObjectives);
 
+    // Inject learning objectives into course main intro.
     for (let index = 0; index < instructorModules.length; index++) {
         const mod = instructorModules[index];
-        const body =
-            mod.id === COURSE_MAIN_INTRO_MODULE_ID
-                ? injectLearningObjectivesIntoCourseMainIntro(mod.body, loBlock)
-                : mod.body;
+        const body = (mod.id === COURSE_MAIN_INTRO_MODULE_ID) ?
+                        injectLearningObjectivesIntoCourseMainIntro(mod.body, loBlock)
+                        : mod.body;
         modules.push({
             id: mod.id,
             body,

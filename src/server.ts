@@ -10,9 +10,11 @@ import ragAppRoutes from './routes/route-rag';
 import mongodbRoutes from './routes/route-mongo';
 // @rdschrs: Implemented the Writing Feedback API router mount.
 import writingFeedbackRoutes from './routes/route-writing-feedback';
+import { startWritingFeedbackWorker } from './writing-feedback/worker';
 import healthRoutes from './routes/route-health';
 import versionRoutes from './routes/route-version';
 import onboardingRoutes from './routes/route-onboarding';
+import lmsRoutes from './routes/route-lms';  // Canvas + Moodle integration routes
 import authRoutes from './routes/route-auth';  // Import authentication routes
 import courseEntryRoutes from './routes/route-course-entry';  // Import course entry routes
 import userManagementRoutes from './routes/route-user-management';  // Import user management routes
@@ -21,16 +23,16 @@ import { sendHtmlPageWithBuildComment } from './utils/build-info';
 import academicPeriodRoutes from './routes/mongo/academic-period-routes';
 import adminCourseRoutes from './routes/mongo/admin-course-routes';
 import adminGuidedPathwayFlagRoutes from './routes/mongo/admin-guided-pathway-flag-routes';
+import adminManualFlagRoutes from './routes/mongo/admin-manual-flag-routes';
 
 // Import SAML authentication middleware
 import sessionMiddleware from './middleware/session';
 import { passport } from './middleware/passport';
+import { sessionActivityMiddleware } from './middleware/session-activity';
 import { EngEAI_MongoDB } from './db/enge-ai-mongodb';
 import { initAcademicPeriods } from './helpers/init-academic-periods';
-import { migrateInstructorAllowances } from './helpers/migrate-instructor-allowances';
-import { migrateOnboardingFlags } from './helpers/migrate-onboarding-flags';
 import { getCourseSelectionRedirectPath } from './helpers/course-selection-redirect';
-import { resolveAffiliation } from './utils/affiliation';
+import { isAppEntryBlockedAffiliation, resolveAffiliation, type AffiliationValue } from './utils/affiliation';
 import { isAdminUser, isAdminName } from './utils/admin';
 
 dotenv.config();
@@ -54,6 +56,9 @@ app.use(sessionMiddleware);
 // Passport middleware
 app.use(passport.initialize());
 app.use(passport.session());
+
+// Session idle: bump activity on /api/* (except poll endpoint); block expired sessions
+app.use(sessionActivityMiddleware);
 
 // When running from src/server.ts, __dirname is .../src
 // When running from dist/server.js, __dirname is .../dist
@@ -93,10 +98,11 @@ app.use((req: express.Request, res: express.Response, next: express.NextFunction
 // Root path handler: redirect authenticated users based on affiliation
 app.get('/', (req: any, res: any) => {
     if (req.session?.passport?.user) {
-        const affiliation = (req.session as any)?.globalUser?.affiliation;
-        const redirectPath = (affiliation === 'staff' || affiliation === 'empty')
+        const globalUser = (req.session as any)?.globalUser;
+        const affiliation = globalUser?.affiliation as AffiliationValue | undefined;
+        const redirectPath = affiliation && isAppEntryBlockedAffiliation(affiliation) && !isAdminUser(globalUser)
             ? '/role-restricted'
-            : getCourseSelectionRedirectPath((req.session as any).globalUser);
+            : getCourseSelectionRedirectPath(globalUser);
         logger.info(`[ROUTING] Authenticated user accessed root, redirecting to ${redirectPath}`);
         return res.redirect(redirectPath);
     }
@@ -107,6 +113,14 @@ app.get('/', (req: any, res: any) => {
 // Public marketing team page (no auth)
 app.get('/team', (_req: any, res: any) => {
     sendHtmlPageWithBuildComment(res, path.join(publicPath, 'pages/team.html'));
+});
+
+// Public markdown files first so /docs/overview.md is never the HTML shell.
+app.use('/docs', express.static(path.join(publicPath, 'docs'), { index: false }));
+
+// Public markdown docs shell (no auth). Unmatched /docs paths get the viewer.
+app.get(/^\/docs(\/.*)?$/, (_req: any, res: any) => {
+    sendHtmlPageWithBuildComment(res, path.join(publicPath, 'pages/docs.html'));
 });
 
 // Serve static files from the 'public' directory (but not for root path)
@@ -197,7 +211,7 @@ app.post('/Shibboleth.sso/SAML2/POST', (req: express.Request, res: express.Respo
                 return res.redirect('/');
             }
 
-            const redirectPath = (affiliation === 'staff' || affiliation === 'empty') && !isAdminUser(globalUser)
+            const redirectPath = isAppEntryBlockedAffiliation(affiliation as AffiliationValue) && !isAdminUser(globalUser)
                 ? '/role-restricted'
                 : getCourseSelectionRedirectPath(globalUser);
             logger.info(`[AUTH] 🚀 Session saved, redirecting to ${redirectPath}`);
@@ -217,8 +231,8 @@ app.get('/role-restricted', (req: any, res: any) => {
         return res.redirect('/');
     }
     const globalUser = (req.session as any)?.globalUser;
-    const affiliation = globalUser?.affiliation;
-    if ((affiliation !== 'staff' && affiliation !== 'empty') || isAdminUser(globalUser)) {
+    const affiliation = globalUser?.affiliation as AffiliationValue | undefined;
+    if (!affiliation || !isAppEntryBlockedAffiliation(affiliation) || isAdminUser(globalUser)) {
         return res.redirect('/course-selection');
     }
     sendHtmlPageWithBuildComment(res, path.join(publicPath, 'pages/role-restricted.html'));
@@ -226,8 +240,8 @@ app.get('/role-restricted', (req: any, res: any) => {
 
 app.get('/course-selection', (req: any, res: any) => {
     const globalUser = (req.session as any)?.globalUser;
-    const affiliation = globalUser?.affiliation;
-    if ((affiliation === 'staff' || affiliation === 'empty') && !isAdminUser(globalUser)) {
+    const affiliation = globalUser?.affiliation as AffiliationValue | undefined;
+    if (affiliation && isAppEntryBlockedAffiliation(affiliation) && !isAdminUser(globalUser)) {
         return res.redirect('/role-restricted');
     }
     if (isAdminUser(globalUser)) {
@@ -242,8 +256,8 @@ app.get('/admin/course-selection', (req: any, res: any) => {
     }
     const globalUser = (req.session as any)?.globalUser;
     if (!isAdminUser(globalUser)) {
-        const affiliation = globalUser?.affiliation;
-        if (affiliation === 'staff' || affiliation === 'empty') {
+        const affiliation = globalUser?.affiliation as AffiliationValue | undefined;
+        if (affiliation && isAppEntryBlockedAffiliation(affiliation)) {
             return res.redirect('/role-restricted');
         }
         return res.redirect('/course-selection');
@@ -253,8 +267,8 @@ app.get('/admin/course-selection', (req: any, res: any) => {
 
 app.get('/settings', (req: any, res: any) => {
     const globalUser = (req.session as any)?.globalUser;
-    const affiliation = globalUser?.affiliation;
-    if ((affiliation === 'staff' || affiliation === 'empty') && !isAdminUser(globalUser)) {
+    const affiliation = globalUser?.affiliation as AffiliationValue | undefined;
+    if (affiliation && isAppEntryBlockedAffiliation(affiliation) && !isAdminUser(globalUser)) {
         return res.redirect('/role-restricted');
     }
     sendHtmlPageWithBuildComment(res, path.join(publicPath, 'pages/settings.html'));
@@ -269,11 +283,15 @@ app.use('/api/courses', writingFeedbackRoutes);
 app.use('/api/academic-periods', academicPeriodRoutes);
 app.use('/api/admin', adminCourseRoutes);
 app.use('/api/admin/guided-pathway-flags', adminGuidedPathwayFlagRoutes);
+app.use('/api/admin/manual-flags', adminManualFlagRoutes);
 app.use('/api/course', courseEntryRoutes);  // Course entry routes
 app.use('/api/user', userManagementRoutes);  // User management routes
 app.use('/api/health', healthRoutes);    // Health check routes
 app.use('/api/version', versionRoutes);  // Version endpoint for UI display
 app.use('/api/onboarding', onboardingRoutes);  // Onboarding demo routes (e.g. sample chat download)
+// Canvas/Moodle per-user connections. Each provider self-disables when its env
+// vars are unset, so this mount is safe without LMS configuration present.
+app.use('/api/lms', lmsRoutes);
 
 // Final 404 handler for any requests that do not match a route
 app.use((req: express.Request, res: express.Response) => {
@@ -306,16 +324,24 @@ app.listen(port, async () => {
         logger.error('Guided Pathway GPF-002 storage migration failed:', err as any);
     }
 
+    // Guards against two EngE-AI courses claiming the same LMS course, which would make
+    // student enrollment sync ambiguous. Best-effort inside the helper — a failure here
+    // must not stop the server, and the import path checks for a conflict before writing.
     try {
-        await migrateInstructorAllowances();
+        await (await EngEAI_MongoDB.getInstance()).createCourseLmsLinkIndex();
     } catch (err) {
-        logger.error('Failed to migrate instructor allowances:', err as any);
+        logger.error('Failed to create LMS course-link index:', err as any);
     }
 
+    // Guards against two EngE-AI courses claiming the same LMS course, which would make
+    // student enrollment sync ambiguous. Best-effort inside the helper — a failure here
+    // must not stop the server, and the import path checks for a conflict before writing.
     try {
-        await migrateOnboardingFlags();
+        const mongo = await EngEAI_MongoDB.getInstance();
+        await mongo.createCourseLmsLinkIndex();
+        startWritingFeedbackWorker(mongo);
     } catch (err) {
-        logger.error('Onboarding migration failed:', err as any);
+        logger.error('Failed to create LMS course-link index:', err as any);
     }
 
 });

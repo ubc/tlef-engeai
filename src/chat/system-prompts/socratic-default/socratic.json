@@ -1,5 +1,5 @@
 {
-  "version": "1.4.0",
+  "version": "1.7.1",
   "conversationMode": "socratic",
   "systemModules": [],
   "instructorModules": [
@@ -8,48 +8,44 @@
       "bodyFile": "shared-default/system_prompt_guidance.md"
     },
     {
+      "id": "course main intro",
+      "bodyFile": "shared-default/course_main_intro.md"
+    },
+    {
+      "id": "course material referencing",
+      "bodyFile": "shared-default/course_material_referencing.md"
+    },
+    {
       "id": "struggle topics",
       "bodyFile": "struggle_topics.md"
     },
     {
-      "id": "text list formatting",
-      "bodyFile": "shared-default/text_list_formatting.md"
+      "id": "socratic context management",
+      "bodyFile": "socratic_context_management.md"
     },
     {
-      "id": "latex formatting",
-      "bodyFile": "shared-default/latex_formatting.md"
+      "id": "socratic conversation",
+      "bodyFile": "socratic_conversation.md"
     },
     {
-      "id": "diagram and mermaid",
-      "bodyFile": "shared-default/diagram_and_mermaid.md"
-    },
-    {
-      "id": "socratic diagram followup",
-      "bodyFile": "socratic_diagram_followup.md"
-    },
-    {
-      "id": "correctness restrictions",
-      "bodyFile": "shared-default/correctness_restrictions.md"
-    },
-    {
-      "id": "teaching methodology",
-      "bodyFile": "teaching_methodology.md"
+      "id": "interpretive conversation",
+      "bodyFile": "interpretive_conversation.md"
     },
     {
       "id": "practice questions",
       "bodyFile": "practice_questions.md"
     },
     {
-      "id": "conversation management",
-      "bodyFile": "conversation_management.md"
+      "id": "socratic analyser",
+      "bodyFile": "socratic_analyser.md"
     },
     {
-      "id": "socratic correctness restrictions",
-      "bodyFile": "socratic_correctness_restrictions.md"
+      "id": "markdown synthax",
+      "bodyFile": "shared-default/markdown_synthax.md"
     },
     {
-      "id": "course main intro",
-      "bodyFile": "shared-default/course_main_intro.md"
+      "id": "mermaid synthax",
+      "bodyFile": "shared-default/mermaid_synthax.md"
     }
   ]
 }

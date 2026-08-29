@@ -19,6 +19,7 @@ import { activeCourse } from "../types.js";
 import { showErrorModal, showHelpModal } from "../ui/modal-overlay.js";
 import type { OnboardingFeatureKey } from "../utils/onboarding-stage-order.js";
 import { updateStaffOnboardingProgress } from "./staff-onboarding-ui.js";
+import { completeInstructorOnboardingStage } from "./onboarding-progress.js";
 
 /** Component names for the three feature tutorials. */
 export type FeatureTutorialComponent =
@@ -43,10 +44,13 @@ export interface FeatureTutorialContext {
 
 export interface FeatureTutorialDefinition {
     component: FeatureTutorialComponent;
-    /** Capability marked complete when the instructor finishes the tutorial. */
+    /**
+     * Capability marked complete when the instructor finishes the tutorial.
+     *
+     * Doubles as the stage key on the user's own progress record, which is where
+     * tutorial completion lives (OB-002).
+     */
     feature: OnboardingFeatureKey;
-    /** Slug used by the completion endpoint. */
-    completionSlug: 'scenario-generation' | 'writing-feedback' | 'guided-pathway';
     /** Window event dispatched after progress is persisted. */
     completionEvent: string;
     totalSteps: number;
@@ -134,16 +138,16 @@ function updateNavigationButtons(state: FeatureTutorialState): void {
     setNextButtonText(nextBtn, 'Next');
 }
 
-/** Persists tutorial completion. Resolves false so the caller can keep the instructor in place. */
-async function persistCompletion(courseId: string, slug: string): Promise<boolean> {
+/**
+ * Persists tutorial completion on the signed-in user's own record.
+ *
+ * Resolves false so the caller can keep the instructor in place behind an error
+ * modal rather than advancing past a stage that was never recorded.
+ */
+async function persistCompletion(feature: OnboardingFeatureKey): Promise<boolean> {
     try {
-        const response = await fetch(
-            `/api/courses/${courseId}/onboarding/features/${slug}/complete`,
-            { method: 'PATCH', credentials: 'same-origin' }
-        );
-        if (!response.ok) return false;
-        const result = await response.json();
-        return result?.success === true;
+        await completeInstructorOnboardingStage(feature);
+        return true;
     } catch {
         return false;
     }
@@ -215,7 +219,7 @@ export async function runFeatureTutorial(
         };
 
         const complete = async (): Promise<void> => {
-            const persisted = await persistCompletion(instructorCourse.id, definition.completionSlug);
+            const persisted = await persistCompletion(definition.feature);
             if (!persisted) {
                 await showErrorModal(
                     "Save Error",

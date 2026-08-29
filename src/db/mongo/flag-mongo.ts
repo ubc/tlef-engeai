@@ -6,11 +6,17 @@
  */
 
 import type { Collection } from 'mongodb';
-import type { FlagReport } from '../../types/shared';
+import type {
+    FlagReport,
+    FlagReportActor,
+    ManualFlagEscalationListPage,
+    ManualFlagEscalationView
+} from '../../types/shared';
 import {
     isManualFlagType,
     validateManualFlagStatusTransition
 } from '../../flags/manual-flag-policy';
+import { getAllActiveCourses } from './course-mongo';
 import { batchFindUsersByUserIds } from './course-user-mongo';
 import { getCollectionNames } from './collection-registry-mongo';
 import type { MongoDalContext } from './mongo-context';
@@ -62,8 +68,8 @@ function validateFlagDocument(flagDocument: any): { isValid: boolean; issues: st
     if (flagDocument.userId && typeof flagDocument.userId !== 'number') {
         issues.push('Field "userId" must be a number');
     }
-    if (flagDocument.status && !['unresolved', 'resolved'].includes(flagDocument.status)) {
-        issues.push('Field "status" must be "unresolved" or "resolved"');
+    if (flagDocument.status && !['unresolved', 'resolved', 'escalated'].includes(flagDocument.status)) {
+        issues.push('Field "status" must be "unresolved", "resolved", or "escalated"');
     }
     if (flagDocument.flagType && !isManualFlagType(flagDocument.flagType)) {
         issues.push('Field "flagType" has invalid value');
@@ -500,4 +506,183 @@ export async function getFlagReportsWithUserNames(
         appLogger.error(`[MONGODB] 🚨 Error getting flag reports with user names:`, error);
         throw error;
     }
+}
+
+/** Thrown when a flag id does not exist in the requested course collection. */
+export class FlagReportNotFoundError extends Error {
+    constructor(message = 'Flag report not found') {
+        super(message);
+        this.name = 'FlagReportNotFoundError';
+    }
+}
+
+/** Thrown when a flag lifecycle action conflicts with the current status. */
+export class FlagReportConflictError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'FlagReportConflictError';
+    }
+}
+
+export interface ManualFlagAdminListFilters {
+    page?: number;
+    pageSize?: number;
+    courseId?: string;
+    courseIds?: string[];
+    reviewState?: 'needs-review' | 'reviewed' | 'all';
+    dateFrom?: Date;
+    dateTo?: Date;
+}
+
+function normalizedManualFlagPagination(filters: ManualFlagAdminListFilters): { page: number; pageSize: number } {
+    const page = filters.page && filters.page > 0 ? filters.page : 1;
+    const pageSize = filters.pageSize && filters.pageSize > 0 ? Math.min(filters.pageSize, 200) : 50;
+    return { page, pageSize };
+}
+
+function toManualEscalationView(courseId: string, flag: FlagReport): ManualFlagEscalationView {
+    return {
+        id: flag.id,
+        courseId,
+        courseName: flag.courseName,
+        flagType: flag.flagType,
+        reportType: flag.reportType,
+        chatContent: flag.chatContent,
+        status: 'escalated',
+        escalatedAt: (flag.escalatedAt ?? flag.updatedAt).toISOString(),
+        escalatedByName: flag.escalatedBy?.name,
+        adminReviewedAt: flag.adminReviewedAt?.toISOString(),
+        adminReviewedByName: flag.adminReviewedBy?.name,
+        createdAt: flag.createdAt.toISOString()
+    };
+}
+
+/**
+ * escalateFlagReport - Moves one unresolved manual flag into the platform-admin queue.
+ *
+ * @param ctx - MongoDalContext
+ * @param courseName - Owning course namespace
+ * @param flagId - Flag document id
+ * @param actor - Staff identity snapshot recorded on the escalation
+ * @returns Updated flag document
+ */
+export async function escalateFlagReport(
+    ctx: MongoDalContext,
+    courseName: string,
+    flagId: string,
+    actor: FlagReportActor
+): Promise<FlagReport> {
+    const flagsCollection = await getFlagsCollection(ctx, courseName);
+    const updated = await flagsCollection.findOneAndUpdate(
+        { id: flagId, status: 'unresolved' },
+        {
+            $set: {
+                status: 'escalated',
+                escalatedAt: new Date(),
+                escalatedBy: actor,
+                updatedAt: new Date()
+            }
+        },
+        { returnDocument: 'after' }
+    );
+    if (!updated) {
+        const existing = await flagsCollection.findOne({ id: flagId });
+        if (!existing) throw new FlagReportNotFoundError();
+        throw new FlagReportConflictError('Only unresolved flags can be escalated to administrators');
+    }
+    return updated as unknown as FlagReport;
+}
+
+/**
+ * markManualFlagAdminReviewed - Records platform-admin review on an escalated manual flag.
+ *
+ * @param ctx - MongoDalContext
+ * @param courseName - Owning course namespace
+ * @param flagId - Flag document id
+ * @param actor - Platform-admin identity snapshot
+ * @returns Updated flag document
+ */
+export async function markManualFlagAdminReviewed(
+    ctx: MongoDalContext,
+    courseName: string,
+    flagId: string,
+    actor: FlagReportActor
+): Promise<FlagReport> {
+    const flagsCollection = await getFlagsCollection(ctx, courseName);
+    const updated = await flagsCollection.findOneAndUpdate(
+        { id: flagId, status: 'escalated', adminReviewedAt: { $exists: false } },
+        {
+            $set: {
+                adminReviewedAt: new Date(),
+                adminReviewedBy: actor,
+                updatedAt: new Date()
+            }
+        },
+        { returnDocument: 'after' }
+    );
+    if (!updated) {
+        const existing = await flagsCollection.findOne({ id: flagId });
+        if (!existing) throw new FlagReportNotFoundError();
+        if (existing.status !== 'escalated') {
+            throw new FlagReportConflictError('Only escalated flags can be marked reviewed');
+        }
+        throw new FlagReportConflictError('Escalated flag has already been reviewed');
+    }
+    return updated as unknown as FlagReport;
+}
+
+/**
+ * listEscalatedManualFlagsForAdmin - Cross-course escalated manual flag queue for platform admins.
+ *
+ * ponytail: scans active courses in memory — fine for moderate volumes; upgrade to aggregation if needed.
+ *
+ * @param ctx - MongoDalContext
+ * @param filters - Pagination, course scope, review state, and optional date window
+ * @returns Paginated safe escalation rows
+ */
+export async function listEscalatedManualFlagsForAdmin(
+    ctx: MongoDalContext,
+    filters: ManualFlagAdminListFilters
+): Promise<ManualFlagEscalationListPage> {
+    const pagination = normalizedManualFlagPagination(filters);
+    const courses = await getAllActiveCourses(ctx);
+    const allowedCourseIds = filters.courseIds
+        ? new Set(filters.courseIds)
+        : filters.courseId
+          ? new Set([filters.courseId])
+          : null;
+
+    const rows: Array<{ sortAt: Date; view: ManualFlagEscalationView }> = [];
+
+    for (const course of courses) {
+        if (allowedCourseIds && !allowedCourseIds.has(course.id)) continue;
+        const flags = await getAllFlagReports(ctx, course.courseName);
+        for (const flag of flags) {
+            if (flag.status !== 'escalated') continue;
+            const sortAt = flag.escalatedAt ?? flag.updatedAt ?? flag.createdAt;
+            if (filters.dateFrom && sortAt < filters.dateFrom) continue;
+            if (filters.dateTo && sortAt > filters.dateTo) continue;
+            if (filters.reviewState === 'needs-review' && flag.adminReviewedAt) continue;
+            if (filters.reviewState === 'reviewed' && !flag.adminReviewedAt) continue;
+            rows.push({ sortAt, view: toManualEscalationView(course.id, flag) });
+        }
+    }
+
+    rows.sort((a, b) => b.sortAt.getTime() - a.sortAt.getTime());
+    const total = rows.length;
+    const start = (pagination.page - 1) * pagination.pageSize;
+    const items = rows.slice(start, start + pagination.pageSize).map((row) => row.view);
+    return { items, page: pagination.page, pageSize: pagination.pageSize, total };
+}
+
+/**
+ * countManualFlagsAwaitingAdminReview - Counts unreviewed escalated manual flags across active courses.
+ */
+export async function countManualFlagsAwaitingAdminReview(ctx: MongoDalContext): Promise<number> {
+    const page = await listEscalatedManualFlagsForAdmin(ctx, {
+        page: 1,
+        pageSize: 1,
+        reviewState: 'needs-review'
+    });
+    return page.total;
 }

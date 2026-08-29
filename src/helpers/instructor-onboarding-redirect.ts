@@ -1,10 +1,10 @@
 /**
  * instructor-onboarding-redirect.ts
  *
- * Resolves instructor-mode redirect URLs from course onboarding flags.
+ * Resolves instructor-mode redirect URLs from course setup state and per-user tutorial progress.
  */
 
-import type { activeCourse } from '../types/shared';
+import type { activeCourse, GlobalUser, InstructorOnboardingProgress } from '../types/shared';
 import { isCourseFeatureEnabled } from '../dashboard-setting/course-features';
 
 /**
@@ -38,72 +38,77 @@ export const FEATURE_ONBOARDING_STAGES: ReadonlyArray<{
 ];
 
 /**
- * A tutorial is owed unless explicitly completed.
- *
- * Missing progress is incomplete, which routes courses created before
- * `featureOnboarding` existed through the new stages.
- */
-function isFeatureTutorialComplete(courseData: activeCourse, feature: OnboardingFeatureKey): boolean {
-    return courseData.featureOnboarding?.[feature] === true;
-}
-
-/**
  * resolveNextOnboardingStage - first onboarding stage this staff member still owes.
  *
  * Sequence: Course, Document, then each enabled-and-incomplete feature tutorial
  * in `FEATURE_ONBOARDING_STAGES` order, then Flag and Monitor.
  *
- * Course Setup is reserved for roster managers. It defines `frameType` and
- * `tilesNumber` — whether the course runs by week or by topic, and how many
- * divisions it has — and its endpoint requires roster-management authority. Every
- * later stage files content under those divisions, so a teaching assistant reaching
- * an unconfigured course is owed nothing here rather than being sent into a stage
- * they cannot complete or a document step with no structure to populate. Course
- * entry routes all staff through this resolver, so without the distinction a TA
- * looped on Course Setup forever.
+ * `courseSetup` is read from the course because it writes real configuration —
+ * frame type, tile count, content structure — that a second instructor must not
+ * be able to override. Every tutorial stage is read from the viewer's own record,
+ * so an instructor new to EngE-AI is taught even on a course a colleague set up,
+ * and an instructor who has been taught is never taught again on a new course.
+ * A tutorial is owed unless explicitly completed, which routes users who predate
+ * the field through the stages.
  *
- * @param courseData - course whose onboarding flags drive the sequence
+ * The three feature tutorials are additionally gated on their course capability:
+ * a course that never enabled Writing Feedback owes nobody that tutorial.
+ *
+ * Course Setup is reserved for roster managers. Its endpoint requires
+ * roster-management authority, and every later stage files content under the
+ * divisions it defines, so a teaching assistant reaching an unconfigured course
+ * is owed nothing here rather than being sent into a stage they cannot complete.
+ * Course entry routes all staff through this resolver, so without the distinction
+ * a TA looped on Course Setup forever.
+ *
+ * @param courseData - course supplying `courseSetup` and the capability map
+ * @param progress - viewer's own tutorial progress; missing is treated as none
  * @param canManageRoster - true for faculty instructors and platform admins
  * @returns the stage slug to render, or null when nothing is owed
  */
 export function resolveNextOnboardingStage(
     courseData: activeCourse,
+    progress: InstructorOnboardingProgress | null | undefined,
     canManageRoster = true
 ): InstructorOnboardingStage | null {
     if (!courseData.courseSetup) {
         return canManageRoster ? 'course-setup' : null;
     }
-    if (!courseData.contentSetup) {
+    if (!progress?.contentSetup) {
         return 'document-setup';
     }
 
     for (const { stage, feature } of FEATURE_ONBOARDING_STAGES) {
-        if (isCourseFeatureEnabled(courseData, feature) && !isFeatureTutorialComplete(courseData, feature)) {
+        if (isCourseFeatureEnabled(courseData, feature) && progress[feature] !== true) {
             return stage;
         }
     }
 
-    if (!courseData.flagSetup) {
+    if (!progress.flagSetup) {
         return 'flag-setup';
     }
-    if (!courseData.monitorSetup) {
+    if (!progress.monitorSetup) {
         return 'monitor-setup';
     }
     return null;
 }
 
 /**
- * Instructor-mode redirect based on course onboarding flags and feature tutorial progress.
+ * Instructor-mode redirect, mixing course state with the viewer's own tutorial progress.
  *
+ * @param courseId - Course being entered
+ * @param courseData - Course document, for `courseSetup` and the capability map
+ * @param globalUser - Viewer's global record; a missing record is treated as no progress
  * @param canManageRoster - true for faculty instructors and platform admins; teaching
  * assistants pass false so Course Setup is never selected for them
  */
 export function resolveInstructorModeRedirect(
     courseId: string,
     courseData: activeCourse,
+    globalUser: Pick<GlobalUser, 'instructorOnboarding'> | null | undefined,
     canManageRoster = true
 ): { redirect: string; requiresOnboarding: boolean } {
-    const stage = resolveNextOnboardingStage(courseData, canManageRoster);
+    const stage = resolveNextOnboardingStage(courseData, globalUser?.instructorOnboarding, canManageRoster);
     if (stage === null) {
         return { redirect: `/course/${courseId}/instructor/dashboard`, requiresOnboarding: false };
     }

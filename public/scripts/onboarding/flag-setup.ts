@@ -27,6 +27,7 @@ import { loadComponentHTML } from "../api/api.js";
 import { activeCourse } from "../types.js";
 import { showErrorModal, showHelpModal } from "../ui/modal-overlay.js";
 import { updateStaffOnboardingProgress } from "./staff-onboarding-ui.js";
+import { completeInstructorOnboardingStage } from './onboarding-progress.js';
 
 // ===========================================
 // TYPE DEFINITIONS
@@ -648,33 +649,11 @@ async function handleFinalCompletion(state: FlagSetupState, instructorCourse: ac
             throw new Error("Course ID is missing. Cannot update database.");
         }
         
-        // Mark flag setup as complete locally
-        instructorCourse.flagSetup = true;
+        // Record the tutorial against the instructor, not the course, so a colleague who
+        // is new to EngE-AI still gets taught on this same course.
+        await completeInstructorOnboardingStage('flagSetup');
         
-        // Persist to database
-        // console.log(`📡 Updating database: setting flagSetup=true for course ${instructorCourse.id}`); // 🟡 HIGH: Course ID exposure
-        const response = await fetch(`/api/courses/${instructorCourse.id}`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            credentials: 'same-origin',
-            body: JSON.stringify({
-                flagSetup: true
-            })
-        });
-        
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ error: 'Failed to update course in database' }));
-            throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-        }
-        
-        const result = await response.json();
-        if (!result.success) {
-            throw new Error(result.error || 'Failed to update course in database');
-        }
-        
-        // console.log("✅ Flag setup status persisted to database successfully!"); // 🟢 MEDIUM: Database success
+        // console.log("✅ Flag setup progress persisted to database successfully!"); // 🟢 MEDIUM: Database success
         
         // DO NOT remove onboarding-active class - let instructor-mode.ts handle the flow
         // DO NOT show instructor sidebar - we need to proceed to monitor setup
@@ -686,8 +665,6 @@ async function handleFinalCompletion(state: FlagSetupState, instructorCourse: ac
         
     } catch (error) {
         console.error("❌ Error during final completion:", error);
-        // Revert local change on error
-        instructorCourse.flagSetup = false;
         await showErrorModal("Completion Error", `Failed to complete flag setup: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`);
     }
 }

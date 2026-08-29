@@ -14,7 +14,13 @@
 import type { LLMOptions } from 'ubc-genai-toolkit-llm';
 
 /** Template identifier stored with new assignments and feedback runs for traceability. */
-export const DEFAULT_WRITING_PROFILE_VERSION = 'writing-feedback-v1';
+export const DEFAULT_WRITING_PROFILE_VERSION = 'writing-feedback-v2';
+
+/** Structured linguistic-feedback result schema introduced by the SFL-founded pipeline. */
+export const WRITING_FEEDBACK_SCHEMA_V2 = 'writing-feedback-v2';
+
+/** Version label for the curated, paraphrased SFL analyzer foundation used at runtime. */
+export const SFL_FOUNDATION_VERSION = 'lled200-sfl-analyzer-foundation@1.0.0';
 
 /** Lifecycle states used by the staff queue and guarded generation/release transitions. */
 export type WritingSubmissionStatus =
@@ -29,6 +35,9 @@ export type WritingSubmissionStatus =
 /** Supported intake provenance; scan sources require explicit staff verification. */
 export type WritingSourceType = 'manual' | 'canvas_text' | 'digital_file' | 'paper_scan';
 
+/** Which feedback lens a rubric, prompt, or generated run belongs to. */
+export type WritingFeedbackLens = 'linguistic' | 'technical';
+
 /** Instructor-authored criterion slug, frozen after its first approval. */
 export type WritingCriterionId = string;
 
@@ -38,6 +47,62 @@ export type WritingLevelId = string;
 /** Academic Writing Matrix axis shared by rubric criteria and anchored comments. */
 export type WritingFunctionTag = 'content' | 'interpersonal' | 'organizational';
 
+/** Language scale used by the Academic Writing Matrix and the SFL analyzer. */
+export type WritingLanguageLevel = 'text' | 'section' | 'clause_word';
+
+/** Known Ferreira genre profile ids; custom staff profiles are represented as free text. */
+export type WritingFoundedGenreId = 'descriptive_report' | 'data_commentary' | 'problem_solution';
+
+/** Explicit state of the staff-reviewed genre/register profile used by V2 analysis. */
+export type WritingGenreProfileState = 'declared' | 'staff_confirmed' | 'custom' | 'composite' | 'needs_staff_input';
+
+/** One staff-approved stage or embedded move in a genre/register profile. */
+export interface WritingSflStage {
+    id: string; // stable staff-authored stage key used only inside this rubric version
+    label: string; // staff-visible stage name
+    purpose: string; // communicative work this stage is expected to perform
+    required?: boolean; // whether absence can be treated as an assignment issue
+    order?: number; // optional expected order, allowing composite/repeated stages
+}
+
+/**
+ * Staff-approved assignment profile for SFL-founded linguistic feedback.
+ *
+ * This is versioned with the linguistic rubric. It gives the analyzer enough
+ * genre/register context to interpret language choices without inventing hidden
+ * assignment requirements.
+ */
+export interface WritingSflContextProfile {
+    genreId?: WritingFoundedGenreId | string; // known profile id or staff-authored custom/composite label
+    genreLabel: string; // plain-language genre or document type shown to staff
+    genreState: WritingGenreProfileState; // whether the profile is confirmed enough for evaluation
+    task: string; // what students were asked to produce
+    purpose: string; // communicative work expected of the submission
+    audience: string; // intended reader named by the assignment
+    field: string; // disciplinary subject matter and technical activity
+    tenor: string; // writer-reader relationship and expected stance
+    mode: string; // channel/format, preparation, length, and interaction conditions
+    actualEvaluator: string; // who will actually mark/review the submission
+    productionConditions: string; // exam/homework/collaborative/resource constraints
+    stages: WritingSflStage[]; // staff-confirmed stages or moves; may be custom/composite
+    embeddedGenres: string[]; // nested genres, e.g. data commentary inside a lab report
+    taskRequirements: string[]; // explicit task objects such as title, citations, figures, APA
+    learningOutcomes: string[]; // outcomes the analyzer may connect to
+    approvedGlossaryTerms?: string[]; // optional course glossary terms relevant to this assignment
+}
+
+/**
+ * One cell of the rubric grid: the points a criterion earns at one level, and the
+ * descriptor that justifies it. A range rather than a single value, because staff
+ * award within a band. `min` and `max` may be equal where a small weight leaves no
+ * room to spread.
+ */
+export interface WritingRubricCell {
+    min: number; // lowest points awardable in this band, inclusive
+    max: number; // highest points awardable in this band, inclusive
+    descriptor?: string; // criterion-specific meaning of this level
+}
+
 /** One instructor-authored criterion in a versioned Writing Feedback rubric. */
 export interface WritingRubricCriterion {
     id: WritingCriterionId; // stable instructor-authored slug shared across model output and staff UI
@@ -45,6 +110,14 @@ export interface WritingRubricCriterion {
     description: string; // instructor-authored assessment meaning
     functionTag?: WritingFunctionTag; // optional SFL metafunction used by staff filters
     sflDimension?: string; // optional instructor-editable linguistic lens supplied to generation
+    /** Maximum points this criterion contributes. Absent means the rubric is ordinal only. */
+    points?: number;
+    /**
+     * Per-level band and descriptor. Sparse on purpose: a level with no entry renders
+     * as an empty cell, which is how a criterion carrying fewer ratings than the rubric
+     * has columns is represented.
+     */
+    cells?: Record<WritingLevelId, WritingRubricCell>;
 }
 
 /** One allowed ordinal level, optionally carrying an instructor-approved numeric value. */
@@ -74,6 +147,10 @@ export interface WritingRubricDefinition {
     updatedBy: string; // internal actor responsible for the latest edit
     approvedAt?: Date; // present only after explicit rubric approval
     approvedBy?: string; // internal approving instructor/admin actor
+    /** Instructor-approved lab handout context: indications, steps, and expected observations. */
+    labContext?: string;
+    /** Staff-approved genre/register profile required by the V2 linguistic pipeline. */
+    sflContext?: WritingSflContextProfile;
 }
 
 /** Course-scoped assignment whose current approved rubric governs all downstream artifacts. */
@@ -93,7 +170,17 @@ export interface WritingAssignment {
     rubricDraft?: WritingRubricDefinition;
     /** Immutable, previously approved versions retained for audit and calibration. */
     rubricHistory?: WritingRubricDefinition[];
+    /** True when this assignment is a lab report and also receives technical feedback. */
+    isLabReport?: boolean;
+    /** Approved technical rubric governing the technical lens. Absent until first approval. */
+    technicalRubric?: WritingRubricDefinition;
+    /** Editable staff draft of the technical rubric; saving never changes the approved one. */
+    technicalRubricDraft?: WritingRubricDefinition;
+    /** Immutable previously approved technical rubrics retained for audit. */
+    technicalRubricHistory?: WritingRubricDefinition[];
     canvasAssignmentId?: string; // optional source reference for approved integration work
+    /** Assignment description and metadata imported from Canvas; reference material only. */
+    canvasDetails?: CanvasAssignmentDetails;
     /** Submission deadline shown to staff; sourced from Canvas or manual entry. */
     dueAt?: Date;
     createdAt: Date; // assignment audit creation timestamp
@@ -110,6 +197,25 @@ export interface WritingSubmission {
     /** Staff-visible label; never returned to students. */
     studentLabel?: string;
     attempt: number; // distinguishes repeat attempts by the same student for idempotent import/release
+    /**
+     * Provider-scoped Canvas user id, present only on submissions pulled from a live Canvas
+     * course. It exists because {@link WritingSubmission.studentId} is a one-way hash and
+     * Canvas addresses a submission by user id on write-back, so release could not otherwise
+     * find its target without re-deriving it from a fresh fetch.
+     *
+     * This is a Canvas-internal integer, the same class of identifier as
+     * `activeCourse.lmsLink.courseId`. It is deliberately **not** an institutional identifier:
+     * `integration_id` (PUID), `sis_user_id` (student number), and `login_id` (CWL) are never
+     * read, never stored, and never logged.
+     *
+     * It travels in staff-facing responses, which is not a leak: Writing Feedback is a
+     * staff-only surface, and those same payloads already carry the student's real name in
+     * {@link WritingSubmission.studentLabel}, which identifies a person far more directly than
+     * a provider-scoped integer does. What must hold is that it never reaches a student and is
+     * never logged. The Canvas import preview strips it anyway, because that response also
+     * carries attachment download URLs that must not leave the server.
+     */
+    canvasUserId?: string;
     sourceType: WritingSourceType; // controls intake and verification expectations
     originalText: string; // extracted/source transcript retained for staff comparison
     verifiedText?: string; // sole text permitted to enter feedback generation
@@ -126,10 +232,91 @@ export interface WritingSubmission {
     approvedByName?: string;
 }
 
+/**
+ * One rating (column) on an imported Canvas rubric row.
+ *
+ * Canvas defines ratings **per criterion**, so two rows of the same rubric may carry different
+ * numbers of ratings. That raggedness is preserved rather than normalized: padding rows to a
+ * rectangle would invent rating cells the instructor never wrote.
+ */
+export interface CanvasRubricRating {
+    /** Canvas's own rating id. Transport only — never persisted locally. */
+    canvasRatingId: string;
+    label: string; // Canvas `description`; the short rating name, e.g. "Full Marks"
+    description: string; // Canvas `long_description`; the performance descriptor
+    /** Points Canvas assigns this rating. Displayed only — never used to compute a grade today. */
+    points?: number;
+}
+
+/**
+ * One criterion (row) of a Canvas rubric, exactly as Canvas returned it.
+ *
+ * A transport shape, not a stored one: `canvas-rubric-mapping.ts` turns these rows into the
+ * criteria and levels that seed an assignment's first rubric draft, and nothing persists this
+ * shape. An assignment therefore only ever carries one rubric.
+ */
+export interface CanvasRubricRow {
+    /** Canvas's own criterion id. Transport only — never persisted locally. */
+    canvasCriterionId: string;
+    label: string; // Canvas `description`; the row name, e.g. "Thesis"
+    description: string; // Canvas `long_description`; the row's fuller explanation
+    /**
+     * Canvas's per-criterion point value — a weight, carried onto the seeded criterion's
+     * `points`. It arrives inside an *unapproved* draft, so a Canvas weight only reaches
+     * grading after an instructor has reviewed and approved it: nothing is inferred.
+     */
+    points?: number;
+    ratings: CanvasRubricRating[]; // this row's own ratings, in Canvas order
+}
+
+/**
+ * A rubric authored in Canvas, as read from Canvas.
+ *
+ * This is what crosses the wire, not what is stored. The rubric grid model now carries a
+ * variable criterion count, per-criterion cells, and row weights, so a Canvas rubric maps onto
+ * {@link WritingRubricDefinition} directly — `canvas-rubric-mapping.ts` does that mapping and
+ * `seedRubricForLens` makes the result an assignment's starting draft. There is no second
+ * stored rubric to keep in step, and no editor for one.
+ */
+export interface CanvasImportedRubric {
+    /** Canvas rubric id when `rubric_settings` reports one. */
+    canvasRubricId?: string;
+    title: string; // Canvas rubric title, or the assignment title when unnamed
+    /** Total points Canvas reports for the rubric. Display only. */
+    pointsPossible?: number;
+    rows: CanvasRubricRow[]; // criteria in Canvas order
+    importedAt: Date; // when this rubric was pulled from Canvas
+}
+
+/**
+ * Assignment context imported from Canvas alongside the rubric.
+ *
+ * Held as raw source text. A future agent derives the rubric's `task`, `purpose`, `audience`,
+ * and `constraints` from it; until that exists this is reference material for staff, and
+ * nothing reads it automatically.
+ */
+export interface CanvasAssignmentDetails {
+    /** Canvas `description` — rich-editor HTML, stored as delivered. */
+    descriptionHtml?: string;
+    /** Plain-text rendering of the description, for display and future extraction. */
+    descriptionText?: string;
+    pointsPossible?: number; // Canvas assignment points, distinct from the rubric total
+    dueAt?: Date; // Canvas due date at import time
+    importedAt: Date; // when these details were pulled
+}
+
 /** Exact verified-text excerpt and rationale supporting one rubric judgment. */
 export interface RubricEvidence {
     quote: string; // exact substring, capped to 280 characters at model validation
     rationale: string; // explains how the excerpt supports the criterion judgment
+    /** V2 SFL finding ids this evidence item came from, if generated by the analyzer pipeline. */
+    sflFindingIds?: string[];
+    /** Student-visible course-material label selected from server-validated retrieved sources. */
+    courseMaterialMention?: CourseMaterialMention;
+    /** Optional glossary entry id reused by staff/model; definitions are resolved server-side. */
+    glossaryEntryId?: string;
+    /** Definition snapshot retained so old annotations/PDFs do not change after glossary edits. */
+    glossarySnapshot?: WritingGlossarySnapshot;
 }
 
 /** Internal model draft for one rubric criterion; staff reviews it before release. */
@@ -150,10 +337,96 @@ export interface RevisionGoal {
 
 /** Structured model result before staff revision, approval, and release. */
 export interface WritingFeedbackResult {
+    /** Absent on legacy V1 results; `writing-feedback-v2` for the SFL-founded linguistic pipeline. */
+    schemaVersion?: string;
     criteria: CriterionFeedback[]; // exactly one result for each supported criterion
     strengths: string[]; // concise formative positives safe for staff review
     revisionGoals: RevisionGoal[]; // at most three prioritized next steps
     internalFlags: string[]; // staff-only uncertainty/constraint signals
+    /** Deduplicated student-visible course-material labels selected from validated retrieval. */
+    courseMaterialMentions?: CourseMaterialMention[];
+}
+
+/** One exact evidence span used by the SFL analyzer before rubric evaluation. */
+export interface SflEvidenceSpan {
+    quote: string; // exact substring from verified submission text
+    startOffset?: number; // optional UTF-16 offset into the verified text
+    endOffset?: number; // optional UTF-16 exclusive offset into the verified text
+}
+
+/** Structured analyzer finding, intentionally separate from feedback prose and rubric levels. */
+export interface SflFinding {
+    id: string; // stable id within one run, referenced by later feedback evidence
+    evidence: SflEvidenceSpan[]; // exact observed language support
+    observation: string; // verifiable language pattern only
+    functionalInterpretation: string; // what the pattern may be doing in this assignment context
+    primaryFunction: WritingFunctionTag; // Content, Interpersonal, or Organizational owner
+    crossFunctions: WritingFunctionTag[]; // additional metafunction links retained for dedupe
+    languageLevel: WritingLanguageLevel; // text, section, or clause/word scale
+    ruleIds: string[]; // curated SFL/Ferreira rule ids, staff-only
+    sourceIds: string[]; // curated source ids/locators, staff-only
+    confidence: number; // analyzer confidence, never student-facing
+    alternatives: string[]; // acceptable alternatives or non-deficit interpretations
+    abstentionReason?: string; // why this finding should not become feedback
+    stageId?: string; // staff-profile stage/move this finding applies to
+}
+
+/** Validated analyzer output consumed by the separate feedback writer call. */
+export interface SflAnalysis {
+    schemaVersion: string; // analyzer schema version
+    foundationVersion: string; // curated resource version used for this analysis
+    profileGenreState: WritingGenreProfileState; // copied from the approved profile
+    findings: SflFinding[]; // validated observations/interpretable findings
+    abstentions: string[]; // non-blocking gaps such as inaccessible figures or unsupported genres
+    internalFlags: string[]; // staff-only validation and context warnings
+}
+
+/** Server-resolved course material label safe for student-facing feedback. */
+export interface CourseMaterialMention {
+    id: string; // deterministic mention identity within a run
+    label: string; // e.g. "Week 4 · Lecture 2 · Information flow"
+    courseId?: string; // stable course id when metadata supports it
+    topicOrWeekId?: string; // stable topic/week id when metadata supports it
+    topicOrWeekTitle?: string; // legacy title fallback for display
+    itemId?: string; // stable item id when metadata supports it
+    itemTitle?: string; // legacy item title fallback for display
+    materialId?: string; // uploaded material id from RAG metadata
+    materialName?: string; // uploaded material title/name
+    version?: string; // material/source version when metadata supplies one
+}
+
+/** Versioned course glossary entry staff can reuse in annotations. */
+export interface WritingGlossaryEntry {
+    id: string; // internal glossary id
+    courseId: string; // course scope and authorization boundary
+    term: string; // staff-facing term
+    normalizedTerm: string; // case/space-folded uniqueness key
+    definition: string; // student-safe plain-language definition
+    version: number; // increments on explicit staff update
+    createdAt: Date; // audit timestamp
+    createdBy: string; // internal staff actor
+    updatedAt: Date; // latest update timestamp
+    updatedBy: string; // internal staff actor
+}
+
+/** Definition snapshot copied into generated evidence or staff annotations. */
+export interface WritingGlossarySnapshot {
+    id: string; // glossary entry id
+    term: string; // term as staff saw it at selection time
+    definition: string; // definition as staff saw it at selection time
+    version: number; // glossary version retained historically
+}
+
+/** Staff-only V2 provenance produced by the linguistic engine and stored on the run. */
+export interface WritingFeedbackRunTrace {
+    schemaVersion: string; // result schema version
+    foundationVersion?: string; // curated SFL foundation version
+    analyzerPromptVersion?: string; // analyzer prompt contract version
+    writerPromptVersion?: string; // writer prompt contract version
+    sflAnalysis?: SflAnalysis; // validated analyzer trace, staff-only
+    courseMaterialMentions?: CourseMaterialMention[]; // allowlisted retrieved sources used by writer
+    courseSourceVersion?: string; // retrieval/metadata resolver contract version
+    glossaryEntryVersions?: WritingGlossarySnapshot[]; // glossary definitions referenced by the draft
 }
 
 /** Immutable generation record retaining rubric/profile provenance without prompt bodies. */
@@ -165,16 +438,31 @@ export interface WritingFeedbackRun {
     profileVersion: string; // immutable course-profile provenance
     /** Approved rubric version used to produce this immutable model result. */
     rubricVersion: number;
+    /** Lens that produced this run. Absent means 'linguistic' for records written before two-lens generation. */
+    lens?: WritingFeedbackLens;
     result: WritingFeedbackResult; // validated model draft, never mutated by staff edits
     createdAt: Date; // generation timestamp
     /** Model metadata excludes prompt bodies and student text. */
     modelMetadata: { engine: string; promptVersion: string };
+    /** V2 run-level provenance; absent on legacy V1 records. */
+    schemaVersion?: string;
+    foundationVersion?: string;
+    analyzerPromptVersion?: string;
+    writerPromptVersion?: string;
+    sflAnalysis?: SflAnalysis;
+    courseMaterialMentions?: CourseMaterialMention[];
+    courseSourceVersion?: string;
+    glossaryEntryVersions?: WritingGlossarySnapshot[];
 }
 
 /** Staff/model comment anchored to an exact UTF-16 span of verified submission text. */
 export interface AnchoredComment {
     id: string; // stable client/revision identity
-    criterion?: WritingCriterionId; // optional rubric association for filtering
+    // Optional rubric association for filtering. Carries no lens marker today —
+    // only linguistic comments and model seeds exist, and the Technical tab is
+    // read-only. Technical annotations will need an explicit lens field before
+    // anchored comments can distinguish linguistic vs. technical criteria.
+    criterion?: WritingCriterionId;
     /** Exact substring of the verified text; validation checksum for the offsets. */
     quote: string;
     /** UTF-16 code-unit offsets into the verified text. Offsets are the anchor source of truth. */
@@ -183,7 +471,11 @@ export interface AnchoredComment {
     comment: string; // primary student-safe popup feedback
     howToImprove?: string; // optional formative action appended to the popup
     courseMaterialLink?: string; // optional http(s) learning resource
+    /** Server-resolved course-material label. Preferred over arbitrary links for V2 feedback. */
+    courseMaterialMention?: CourseMaterialMention;
     glossaryDefinition?: { term: string; definition: string }; // optional term support
+    glossaryEntryId?: string; // selected course glossary entry, if any
+    glossarySnapshot?: WritingGlossarySnapshot; // historical definition retained for PDFs
     /** Seeded from immutable model evidence or authored by staff. */
     origin: 'model_seed' | 'staff';
     /**
@@ -258,6 +550,8 @@ export interface WritingReleasePayload {
     rubricVersion?: number; // approved rubric backing the judgments
     grade?: number; // instructor-mapped numeric result, when one exists
     studentFeedback?: string; // staff-approved narrative a re-approval can change
+    /** Technical model draft provenance for a lab report; absent for single-lens releases. */
+    technicalFeedbackRunId?: string;
 }
 
 /** Canvas release adapter boundary invoked only after release policy checks succeed. */
@@ -304,6 +598,10 @@ export interface WritingFeedbackPdfService {
         include?: FeedbackPdfInclude;
         /** Shown as the highlight-popup author (`/T`); defaults to "Teaching Team". */
         annotationAuthor?: string;
+        /** Technical lens draft rendered as its own section for a lab report. */
+        technicalFeedback?: WritingFeedbackResult;
+        /** Approved technical rubric supplying criterion labels for that section. */
+        technicalRubric?: WritingRubricDefinition;
     }): Promise<Buffer>;
 }
 
@@ -322,6 +620,8 @@ export interface CanvasReleaseInput {
     pdf: Buffer;
     /** Latest staff-approved narrative, so an edited re-approval releases as new content. */
     studentFeedback?: string;
+    /** Technical model draft released alongside the linguistic one, when the assignment has one. */
+    technicalFeedbackRun?: WritingFeedbackRun;
 }
 
 /** Release coordinator boundary separating preview persistence from external mutation. */

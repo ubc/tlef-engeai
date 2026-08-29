@@ -188,48 +188,124 @@ The student mode uses a consistent mobile header pattern across welcome screen, 
 
 ---
 
+## Instructor Flag Management
+
+**Flag Management** (`flag-instructor.html`, `flag-instructor.css`) uses the shared **page shell** (`.page-frame` > `.page-shell` > `.page-header`). Workflow nav tiles sit in the page header (outline/green, filled when active). At **768px**, tiles wrap under the title with 44px touch targets.
+
+**Filters** sit in page content, first below the header (not in the header, not a modal). Source, category, and period controls apply with Clear/Apply. Custom date fields stack to one column at ≤768px.
+
+---
+
 ## Instructor Dashboard
 
-The instructor dashboard (`dashboard-instructor.html`, `dashboard.css`) uses a two-column topbar on desktop and stacks on mobile. `.dashboard-page-header` is `position: sticky` inside `.dashboard-grid-view` (the scrollport), with opaque `var(--chat-bg)` chrome and negative margins matching grid padding so cards cannot peek beside it.
+The instructor dashboard (`dashboard-instructor.html`, `dashboard.css`) uses the shared **page shell**. The topbar is `.page-header` plus `.dashboard-topbar` (title + course-code flip). Welcome/date live in the scroll body under the header.
 
 ### Desktop (≥768px)
 
-- **Topbar**: sticky flex row — left column (title, welcome, date) + right column (course-code flip widget, 200px).
+- **Topbar**: sticky flex row — left column (title) + right column (course-code flip widget, 200px).
 - **Advanced Settings**: static section title + divider; three inline accordion cards (Model Settings, Advanced Features, Course Information).
-- **Enter animation**: topbar first, greeting/date at 0.08s, card grid at 0.18s, Advanced Settings section at 0.28s. Topbar keyframes end at `transform: none` so sticky keeps working after the enter anim.
+- **Enter animation**: header via `.page-header`; greeting/date at 0.08s, card grid at 0.18s, Advanced Settings section at 0.28s.
 
 ### Mobile (≤768px)
 
-- **Topbar**: sticky; `flex-direction: column`; course-code flip `align-self: flex-start` (left-aligned under greeting block). Sticky bleed margins match the tighter grid padding (`1.25rem` / `1rem`).
+- **Topbar**: sticky; `flex-direction: column`; course-code flip `align-self: flex-start` (left-aligned under the title).
 - **Advanced Settings**: three inline accordions (Model Settings, Advanced Features, Course Information) expand inside each card with a smooth height transition; `prefers-reduced-motion` collapses instantly.
 - **Feature rows**: Model pickers and Advanced Feature toggles share a wrapping flex layout at every width. Controls stay beside their title where space permits, wrap internally when possible, then move to a right-aligned line below the title.
-- **Hamburger**: shown in title row via `.dashboard-mobile-menu-btn`.
+- **Hamburger**: shown in the title row via `.instructor-mobile-hamburger-btn`.
 - **Accordions**: full-width; toggle min-height 44px for touch.
 
 Course Information was removed from the instructor sidebar footer; course code lives in the dashboard topbar and metadata in the Course Information accordion.
 
 ---
 
+## Admin course selection (`admin-course-selection.html`)
+
+Styles: [`public/styles/course-selection.css`](public/styles/course-selection.css) (split layout) and [`public/styles/admin-guided-pathway-flags.css`](public/styles/admin-guided-pathway-flags.css) (escalations queue).
+
+### Desktop
+
+- **Bell**: toggles a **1:1 flex split** of `.admin-course-selection-wrapper` — courses on the left, escalations panel on the right (`flex: 1 1 0` each). Active bell uses palette light brown (`#ECE5DD` / `--background-2`).
+- **Independent scroll**: the page does not scroll as a whole; the course column and the escalations list each scroll in their own overflow region.
+- **Panel**: 1rem gap from the course column; 10px radius; **green header** on a **white** body. Header is a single row — title, All courses pill, compact Refresh / Hide. Bell, **Hide**, or **Escape** closes; focus returns to the bell. Closed panel uses `hidden` + `inert`.
+- **Splitter**: a drag handle between the columns resizes them. Both columns have **min-width 40%**. Arrow keys on the handle nudge by 2%. Hidden on ≤768px.
+- **Period cards**: when split, course containers use **100% of the left column** (not the default 80% page width).
+
+### Mobile (≤768px)
+
+- Escalations open as a **ModalOverlay** (same 768px cutoff as the View Diagram artefact modal). Course list stays full width; no stacked split and no splitter.
+- Overlay X, backdrop click, Escape, or the bell closes it. Nested identity-reveal confirms still stack on top.
+- `prefers-reduced-motion`: desktop split transitions remain disabled.
+
 ---
 
-## Marketing homepage (`/` and `/team`)
+## Page shell (reusable layout)
+
+Generic scrollport + sticky header module: [`public/styles/page-shell.css`](public/styles/page-shell.css). Loaded from `instructor-mode.html` for instructor features today; student/admin can link the same file later without renaming classes.
+
+### Structure
+
+```text
+.page-frame          optional full-height outer wrapper
+  .page-shell        scrollport (1200px cap, 3rem / 1rem gutters)
+    .page-header     optional sticky title row + bleed
+    (feature content)
+```
+
+Modifiers: `.page-shell--wide` (1680px, Writing Feedback), `.page-shell--column` + `.page-shell-body` (System Prompts editor column).
+
+### Tokens (on `.page-shell`, overridable per instance)
+
+| Token | Desktop | Mobile |
+|-------|---------|--------|
+| `--page-shell-max-width` | `1200px` | — |
+| `--page-shell-pad-x` | `3rem` | `1rem` |
+| `--page-shell-pad-bottom` | `20px` | shell uses `2rem` bottom pad |
+| `--page-header-pad-top` | `1.5rem` | `1.25rem` |
+| `--page-header-pad-bottom` | `1rem` | `0.75rem` |
+| `--page-header-margin-bottom` | `3rem` | — |
+| `--page-header-title-size` | `2rem` | — |
+| `--page-header-title-weight` | `700` | — |
+
+### Sticky header (`.page-header`)
+
+- Bleed: `margin` / `padding` use `--page-shell-pad-x` so the title aligns with body content.
+- `background: var(--chat-bg)` so scrolled content does not peek beside the sticky title.
+- Enter animation: `page-header-in` (`0.45s ease-out`, ends at `transform: none` for sticky).
+
+Instructor hamburger styling stays in [`instructor-mode.css`](public/styles/instructor-mode.css) (`#main-content-area .page-header.mobile-header-bar`).
+
+### Adopting on a new page
+
+1. Link `/styles/page-shell.css`.
+2. Wrap content: `page-frame` > `page-shell` > `page-header` + body.
+3. Override tokens on `.page-shell` if needed (e.g. `--page-shell-max-width: none`).
+
+### `prefers-reduced-motion`
+
+- Header enter animation collapses to `0.01ms` in `page-shell.css`.
+
+---
+
+## Marketing homepage (`/`, `/team`, `/docs`, `/pages/ai-disclaimer.html`)
 
 Public marketing shell (not the course app). Styles live in `public/styles/home.css`.
 
 | Concern | Behavior |
 |---------|----------|
-| Breakpoints | Mobile-first; **centered** GitHub-style hero (copy above video) at all widths. Supporting extras (`#supporting`) use a **3-col hairline bento** at **768px** (stacks with horizontal dividers on small screens). Testimonials multi-column at **768px**. Team roster: multi-member grids go 2-col at **480px**; solo sections (PI / Co-I) stay single-column via `.team-grid--solo`. |
+| Breakpoints | Mobile-first; **centered** GitHub-style hero (copy above video) at all widths. Supporting extras (`#supporting`) use a **3-col hairline bento** at **768px** (stacks with horizontal dividers on small screens). Team roster: multi-member grids go 2-col at **480px**; solo sections (PI / Co-I) stay single-column via `.team-grid--solo`. |
 | Theme | Dark by default (`data-home-theme`); topbar sun/moon toggle persists in `localStorage` (`engeai-home-theme`). Light tokens reuse the prior green wash palette. |
 | Topbar | Sticky; brand (CHBE green `--home-chbe-accent`) + theme toggle + Login always visible. **Team** link appears after Learn more (or when session already revealed). Glassy background/border after scroll. |
 | Hero video | Centered full-width (max ~880px); 16:9 frame; green/blue ambient glow. Hero scrolls with the page (no sticky pin). Non-sticky scroll zoom ramps `1.06` → `1.22` and then holds max size while scrolling continues; disabled under `prefers-reduced-motion`. |
 | Features scrub | Sticky scroll-storytelling for three main features (`#features`) at **768px+**. UI stays **pinned** under the topbar while scroll advances steps 1→3 (then the page continues). Desktop: left nav (`~0.75fr`) + right visual (`~1.6fr`); each step’s image lives **inside** its `li` and is positioned absolute into the right column; full-height rail + moving active indicator; inactive titles muted, active title bold with body copy; panels **opacity crossfade** on step change only (no scroll-linked zoom/fade). Feature titles are `<h3 class="home-features-step-title">` (clickable on desktop to jump scrub offset). Feature images share the same frame as supporting extras: **16:9** (`object-fit: cover`, `object-position: left center`) with a **3px** glass border and a green/blue ambient glow biased **upper-right** (same tokens as the hero video, not wraparound). Track height = `sticky-h + N × scroll-per-step + top spacing` (`--home-features-sticky-h` + `3 × 100vh` + `5rem`); JS pin range excludes `padding-top` and maps scroll to step index. `#home-more` reveal animation is **opacity-only** (no `transform` — that would break sticky). Marketing pages use `overflow-x: clip` on `html`/`body` (not `hidden`) and `overflow: visible` on `main` / `#home-more` so sticky is not broken. Below **768px** and under `prefers-reduced-motion`: **three stacked feature cards**, each **title → description → image** (no sticky pin, no rail, no crossfade); titles are plain non-interactive headings. |
-| Supporting extras | `#supporting` + `#funding` use `--home-promo-band-*`: **light** — CHBE green band (`--home-green`) with off-white type and white bento hairlines; **dark** — muted wash (`--home-surface-muted`, same as testimonials) with CHBE green hairlines (`--home-chbe-accent-line`). Feature images use a **16:9** frame with a **3px** glass border (`--home-support-graphic-border` / `--home-support-graphic-glass`). Shared accents: `--home-chbe-accent` / `--home-chbe-accent-line` also color topbar brand, testimonial card borders, and student status lines. |
-| Home page assets | Under `public/assets/home/`: hero → `EngE-AI-front-page.mov` (poster `main-image.png`); features scrub → `feature-pathway.png`, `feature-scenario.png`, `feature-writing-feedback.png`; supporting extras → `feature-tone.png`, `feature-diagram.png`, `feature-multiple-modes.png`. Testimonials use `avatar-placeholder.svg` until real headshots exist. |
+| Supporting extras | `#supporting` + `#funding` use `--home-promo-band-*`: **light** — CHBE green band (`--home-green`) with off-white type and white bento hairlines; **dark** — muted wash (`--home-surface-muted`) with CHBE green hairlines (`--home-chbe-accent-line`). Feature images use a **16:9** frame with a **3px** glass border (`--home-support-graphic-border` / `--home-support-graphic-glass`). Shared accents: `--home-chbe-accent` / `--home-chbe-accent-line` also color topbar brand and related CHBE accents. |
+| Home page assets | Under `public/assets/home/`: hero → `EngE-AI-front-page.mov` (poster `main-image.png`); features scrub → `feature-pathway.png`, `feature-scenario.png`, `feature-writing-feedback.png`; supporting extras → `feature-tone.png`, `feature-diagram.png`, `feature-multiple-modes.png`; investigators → `alireza-bagherzadeh.jpg`, `amir-dehkhoda.png`. |
 | Security | `#security` — decorative database SVG (dark blue `--home-navy`, transparent bg) on the **left** of the copy at **768px+**; icon gently floats via `homeSecurityFloat` (disabled under `prefers-reduced-motion`). Stacks centered on small screens. |
-| Investigators | `#investigators` — mirrored pair: Alireza (text right-aligned, photo toward center) + Amir (photo toward center, text left-aligned). Circular portraits, no borders; hover zoom on photo (`prefers-reduced-motion` off). Mock `avatar-placeholder.svg` until real headshots (`investigator-alireza.jpg` / `investigator-amir.jpg`). Stacks on small screens. |
-| Grant selector | `#funding` — Year 1 · Year 2 · Total as underline tabs; a single ink bar **slides** under the active option. |
-| Team page (`/team`) | Roster only (no funding acknowledgement — that lives on `/#funding` + footer). Hairline member rows; section labels are uppercase CHBE-green. Link hover is **color only** (no lift). Shared topbar/footer/theme with `/`. |
-| Touch targets | Login / Learn more / Play / theme toggle / grant options use ≥ ~44px targets. Feature step titles are clickable scrub jumps at **768px+** only (plain `<h3>` on phone / reduced-motion). |
+| Investigators | `#investigators` — mirrored pair: Alireza (text right-aligned, photo toward center) + Amir (photo toward center, text left-aligned). Circular portraits (`alireza-bagherzadeh.jpg` / `amir-dehkhoda.png`), no borders; hover zoom on photo (`prefers-reduced-motion` off). Stacks on small screens. |
+| Funding | `#funding` — TLEF title + external proposal link only; empty `.home-grant-stat` spacer keeps the prior amount/year-selector stack height. No dollar amount or Year 1 / Year 2 / Total controls. |
+| Team page (`/team`) | Roster only (no funding acknowledgement — that lives on `/#funding` + footer). Hairline member rows; section labels are uppercase CHBE-green. Link hover is **color only** (no lift). Shared topbar/footer/theme with `/`. Footer links include Documentation (`/docs`), Disclaimer (`/pages/ai-disclaimer.html`), and UBC LTIC (`https://ltic.ubc.ca/`). |
+| Disclaimer page (`/pages/ai-disclaimer.html`) | Counsel terms + FIPPA notice as a **borderless Medium-like article** (`max-width: ~42rem`, ~1.25rem / 1.8 line-height). Shared topbar (`is-scrolled`), footer, and theme with `/` and `/team`. No card, shadow, or header underline. Linked from the marketing footer and the chat footer; there is no in-app disclaimer modal. |
+| Docs page (`/docs`) | Three-pane markdown viewer: left nav (link labels from `nav.json`), article, right “On this page”. **Phone:** hamburger **Menu** at the **top-left of the article**; left nav is a full-height overlay (`z-index` above the topbar) with backdrop covering the topbar; EngE-AI brand shows at the top of the drawer only. **768px+:** sticky left nav (no sidebar brand) + article. **1024px+:** sticky right TOC. Article callouts: collapsible **Developer note** (code icon) and **Agent note** (robot icon, purple); **Prerequisites** and **Relevant readings** stack vertically with bulleted green underlined links (external readings open in a new tab). `` ```mermaid `` fences render as diagrams via Mermaid v10 (CDN). Shared topbar (EngE-AI + Documentation) / footer (logo + EngE-AI + Documentation) / theme with `/`. |
+| Touch targets | Login / Learn more / Play / theme toggle / docs Menu use ≥ ~44px targets. Feature step titles are clickable scrub jumps at **768px+** only (plain `<h3>` on phone / reduced-motion). |
 
 ### Testing additions
 
@@ -239,10 +315,14 @@ Public marketing shell (not the course app). Styles live in `public/styles/home.
 - [ ] 1280px: centered hero scrolls normally; theme toggle flips dark/light
 - [ ] 1280px: features scrub — sticky pin holds under topbar; scroll through steps 1→2→3; click step title jumps; panels opacity-crossfade on step change
 - [ ] 1280px: supporting extras — 3 equal cells, shared hairlines, 16:9 images with 3px glass border
-- [ ] Grant selector: underline tabs Year 1 → Year 2 → Total; dark + light readable
+- [ ] Funding band: TLEF title + link only; spacer keeps prior section height (no dollar amount / year tabs)
 - [ ] Features: `prefers-reduced-motion` and phone widths show title→desc→image cards (no sticky scrub)
 - [ ] `/team` readable at phone and desktop; solo sections stay 1-col; multi-member grids 2-col at 480px+; theme preference shared with `/`
-- [ ] Footer APSC link hover: UBC red color only (no lift)
+- [ ] `/pages/ai-disclaimer.html` readable at phone and desktop; homepage topbar/theme/footer; no card around the article; theme preference shared with `/`
+- [ ] `/docs` at 375px: Menu at top-left of the article opens full-height overlay (covers topbar); EngE-AI brand in drawer; article readable; TOC hidden
+- [ ] `/docs` at 768px: sticky left nav + article
+- [ ] `/docs` at 1024px+: three panes including On this page
+- [ ] Footer APSC link hover: UBC red color only (no lift); Documentation opens `/docs`; Disclaimer opens `/pages/ai-disclaimer.html`; LTIC link opens `https://ltic.ubc.ca/`
 
 ---
 

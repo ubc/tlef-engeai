@@ -11,6 +11,7 @@
 
     <link rel="stylesheet" href="/styles/style.css">
     <link rel="stylesheet" href="/styles/instructor-mode.css">
+    <link rel="stylesheet" href="/styles/page-shell.css">
     <link rel="stylesheet" href="/styles/chat-components/welcome-screen.css">
     <link rel="stylesheet" href="/styles/chat-components/artefact.css">
     <link rel="stylesheet" href="/styles/chat-components/unstruggle.css">
@@ -21,7 +22,6 @@
     <link rel="stylesheet" href="/styles/chat-components/latex-rendering.css">
     <link rel="stylesheet" href="/styles/chat-components/chat-feature.css">
     <link rel="stylesheet" href="/styles/chat-components/response-render.css">
-    <link rel="stylesheet" href="/styles/chat-components/disclaimer.css">
     <link rel="stylesheet" href="/styles/about.css">
     <link rel="stylesheet" href="/styles/toast-notification.css">
     <link rel="stylesheet" href="/styles/instructor-components/scenario-questions-instructor.css">
@@ -34,7 +34,7 @@
     <!-- KaTeX CSS -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
     
-    <script src="https://unpkg.com/feather-icons"></script>
+    <script src="/vendor/feather/feather.min.js"></script>
 </head>
 <body>
     <!-- @rdschrs: Added accessible, capability-gated Writing Feedback navigation to this shell. -->
@@ -80,19 +80,27 @@
                                 </button></li>
                                 <li><button id="documents-state" class="menu-list-item" type="button">
                                     <i data-feather="file-text" aria-hidden="true"></i>
-                                    <p>Document</p>
-                                </button></li>
-                                <li><button id="writing-feedback-state" class="menu-list-item" type="button" hidden>
-                                    <i data-feather="edit-3" aria-hidden="true"></i>
-                                    <p>Writing Feedback</p>
+                                    <p>Documents</p>
                                 </button></li>
                                 <li><button id="chat-state" class="menu-list-item" type="button">
                                     <i data-feather="message-circle" aria-hidden="true"></i>
                                     <p>Chat with EngE-AI</p>
                                 </button></li>
+                                <li><button id="scenario-questions-state" class="menu-list-item" type="button" hidden>
+                                    <i data-feather="clipboard" aria-hidden="true"></i>
+                                    <p>Scenario Questions</p>
+                                </button></li>
+                                <li><button id="writing-feedback-state" class="menu-list-item" type="button" hidden>
+                                    <i data-feather="edit-3" aria-hidden="true"></i>
+                                    <p>Writing Feedback</p>
+                                </button></li>
+                                <li><button id="pathway-library-state" class="menu-list-item" type="button" hidden>
+                                    <i data-feather="git-branch" aria-hidden="true"></i>
+                                    <p>Pathway Library</p>
+                                </button></li>
                                 <li><button id="flag-state" class="menu-list-item" type="button">
                                     <i data-feather="alert-triangle" aria-hidden="true"></i>
-                                    <p>Flags</p>
+                                    <p>Flag Management</p>
                                 </button></li>
                                 <li><button id="monitor-state" class="menu-list-item" type="button">
                                     <i data-feather="monitor" aria-hidden="true"></i>
@@ -100,19 +108,11 @@
                                 </button></li>
                                 <li><button id="assistant-prompts-state" class="menu-list-item" type="button">
                                     <i data-feather="sun" aria-hidden="true"></i>
-                                    <p>Initial Assistant Prompt</p>
+                                    <p>Initial Assistant Prompts</p>
                                 </button></li>
                                 <li><button id="system-prompts-state" class="menu-list-item" type="button">
                                     <i data-feather="sliders" aria-hidden="true"></i>
-                                    <p>System Prompt</p>
-                                </button></li>
-                                <li><button id="scenario-questions-state" class="menu-list-item" type="button" hidden>
-                                    <i data-feather="clipboard" aria-hidden="true"></i>
-                                    <p>Scenario Questions</p>
-                                </button></li>
-                                <li><button id="pathway-library-state" class="menu-list-item" type="button" hidden>
-                                    <i data-feather="git-branch" aria-hidden="true"></i>
-                                    <p>Pathway Library</p>
+                                    <p>System Prompts</p>
                                 </button></li>
                             </ul>
                         </div>

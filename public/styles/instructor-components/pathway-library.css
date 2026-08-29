@@ -2,35 +2,25 @@
 
 .pathway-library {
     width: 100%;
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 20px;
     box-sizing: border-box;
     color: var(--text-primary, #1a1a1a);
 }
 
 .pathway-library__header {
-    margin-bottom: 1.25rem;
+    margin-bottom: 0;
 }
 
-.pathway-library__header-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    margin-bottom: 0.5rem;
+.pathway-library__header-bar .pathway-library__title {
+    flex: 1;
+    min-width: 0;
 }
 
-.pathway-library__title {
-    margin: 0;
-    font-size: 2rem;
-    font-weight: 700;
-    color: var(--color-chbe-green, #4d7a2f);
-    line-height: 1.2;
+.pathway-library__header-bar .pathway-library__header-actions {
+    flex-shrink: 0;
 }
 
 .pathway-library__subtitle {
-    margin: 0;
+    margin: 0.75rem 0 0;
     color: var(--text-secondary, #555);
     line-height: 1.45;
     max-width: 42rem;
@@ -63,6 +53,94 @@
     color: var(--text-secondary, #555);
     border: 1px dashed var(--border-color, #ddd);
     border-radius: 8px;
+}
+
+.pathway-library__divider {
+    border: 0;
+    border-top: 1px solid var(--border-color, #ddd);
+    margin: 1.75rem 0 1.25rem;
+}
+
+.pathway-library__eval-prompt {
+    border: 1px solid var(--border-color, #ddd);
+    border-radius: 8px;
+    background: #fff;
+    overflow: hidden;
+}
+
+.pathway-library__eval-prompt-toggle {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.85rem 1rem;
+    border: 0;
+    background: #fafafa;
+    color: var(--text-primary, #1a1a1a);
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: left;
+}
+
+.pathway-library__eval-prompt-toggle:hover {
+    background: var(--hover-bg, #f5f5f5);
+}
+
+.pathway-library__eval-prompt.is-expanded .pathway-library__eval-prompt-toggle i,
+.pathway-library__eval-prompt-toggle.is-expanded i {
+    transform: rotate(180deg);
+}
+
+.pathway-library__eval-prompt-toggle i {
+    width: 1.1rem;
+    height: 1.1rem;
+    flex-shrink: 0;
+    transition: transform 0.15s ease;
+}
+
+.pathway-library__eval-prompt-collapse {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.28s ease;
+}
+
+.pathway-library__eval-prompt.is-expanded .pathway-library__eval-prompt-collapse {
+    grid-template-rows: 1fr;
+}
+
+.pathway-library__eval-prompt-body {
+    overflow: hidden;
+    min-height: 0;
+    padding: 0 1rem;
+    border-top: 1px solid transparent;
+}
+
+.pathway-library__eval-prompt.is-expanded .pathway-library__eval-prompt-body {
+    padding: 0.85rem 1rem 1rem;
+    border-top-color: var(--border-color, #eee);
+}
+
+.pathway-library__eval-prompt-textarea {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid var(--border-color, #c8c8c8);
+    border-radius: 6px;
+    padding: 0.65rem 0.75rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    resize: vertical;
+    min-height: 12rem;
+    margin-bottom: 0.75rem;
+}
+
+.pathway-library__eval-prompt-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.5rem;
 }
 
 .pathway-library__btn {
@@ -790,7 +868,9 @@
     .pathway-block__title-edit,
     .pathway-block__toggle-enabled,
     .pathway-block__toggle-notification,
-    .pathway-block__remove.icon-btn {
+    .pathway-block__remove.icon-btn,
+    .pathway-library__eval-prompt-collapse,
+    .pathway-library__eval-prompt-toggle i {
         transition: none;
     }
 
@@ -801,13 +881,19 @@
     }
 }
 
-@media (max-width: 720px) {
-    .pathway-library__header-row {
-        flex-direction: column;
-        align-items: stretch;
+@media (max-width: 768px) {
+    .pathway-library__header-bar {
+        flex-wrap: wrap;
     }
 
-    .pathway-library__header-actions {
+    .pathway-library__header-bar .pathway-library__header-actions {
+        width: 100%;
+        justify-content: flex-end;
+    }
+}
+
+@media (max-width: 720px) {
+    .pathway-library__header-bar .pathway-library__header-actions {
         justify-content: flex-end;
     }
 

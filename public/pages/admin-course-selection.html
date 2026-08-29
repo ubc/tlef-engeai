@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="/styles/style.css">
     <link rel="stylesheet" href="/styles/course-selection.css">
     <link rel="stylesheet" href="/styles/modal-overlay.css">
+    <script src="/vendor/feather/feather.min.js"></script>
     <link rel="stylesheet" href="/styles/admin-guided-pathway-flags.css">
     <script src="https://unpkg.com/feather-icons"></script>
 </head>
@@ -23,10 +24,10 @@
                     type="button"
                     class="admin-notification-btn"
                     id="admin-notification-btn"
-                    aria-label="Open Guided Pathway notifications, 0 awaiting review"
-                    aria-haspopup="dialog"
+                    aria-label="Open escalations, 0 awaiting review"
                     aria-expanded="false"
-                    title="Guided Pathway notifications"
+                    aria-controls="admin-escalations-panel"
+                    title="Escalations"
                 >
                     <i data-feather="bell"></i>
                     <span id="admin-notification-count" class="admin-notification-count" aria-live="polite">0</span>
@@ -40,26 +41,52 @@
     </div>
 
     <div class="course-selection-wrapper admin-course-selection-wrapper">
-        <div class="admin-page-toolbar">
-            <button type="button" id="create-academic-period-btn" class="create-academic-period-btn">
-                <i data-feather="calendar"></i>
-                <span class="btn-text">Create Academic Period</span>
-            </button>
+        <div class="admin-course-selection-main">
+            <div class="admin-page-toolbar">
+                <button type="button" id="create-academic-period-btn" class="create-academic-period-btn">
+                    <i data-feather="calendar"></i>
+                    <span class="btn-text">Create Academic Period</span>
+                </button>
+            </div>
+
+            <section id="admin-courses-panel" aria-label="Courses by academic period">
+                <div id="period-sections" class="period-sections" aria-live="polite"></div>
+            </section>
+
+            <div class="loading-message" id="loading-message">
+                <div class="spinner"></div>
+                <p>Loading academic periods and courses…</p>
+            </div>
+
+            <div class="error-message" id="error-message" style="display: none;">
+                <p>Unable to load admin course selection. Please try again.</p>
+                <button id="retry-btn" class="retry-btn">Retry</button>
+            </div>
         </div>
 
-        <section id="admin-courses-panel" aria-label="Courses by academic period">
-            <div id="period-sections" class="period-sections" aria-live="polite"></div>
-        </section>
+        <div
+            id="admin-split-handle"
+            class="admin-split-handle"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize course and escalations columns"
+            aria-valuemin="40"
+            aria-valuemax="60"
+            aria-valuenow="50"
+            tabindex="0"
+            hidden
+            inert
+        ></div>
 
-        <div class="loading-message" id="loading-message">
-            <div class="spinner"></div>
-            <p>Loading academic periods and courses…</p>
-        </div>
-
-        <div class="error-message" id="error-message" style="display: none;">
-            <p>Unable to load admin course selection. Please try again.</p>
-            <button id="retry-btn" class="retry-btn">Retry</button>
-        </div>
+        <aside
+            id="admin-escalations-panel"
+            class="admin-escalations-panel"
+            aria-label="Escalations"
+            hidden
+            inert
+        >
+            <div id="admin-escalations-panel-root" class="admin-escalations-panel__root"></div>
+        </aside>
     </div>
 
     <script>

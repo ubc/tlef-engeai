@@ -11,14 +11,17 @@
  */
 
 import { buildDefaultWritingRubric } from '../default-rubric-profile';
+import { buildLabReportRubric } from '../lab-report-profile';
 import {
     approveRubricDraft,
-    assertApprovedRubricIdsStable,
+    assertRetiredIdsNotReused,
     buildRubricDraft,
     gradeMappingFromApprovedRubric,
+    requireCompleteRubricCells,
     writingRubricDraftInputSchema
 } from '../rubric-schema';
 import type { WritingRubricDraftInput } from '../rubric-schema';
+import type { WritingRubricDefinition } from '../contracts';
 
 function inputFromDefault(): WritingRubricDraftInput {
     const rubric = buildDefaultWritingRubric('system', new Date('2026-01-01T00:00:00.000Z'));
@@ -173,7 +176,7 @@ describe('Writing rubric draft validation', () => {
     });
 });
 
-describe('approved rubric identifier stability', () => {
+describe('retired rubric identifier reuse protection', () => {
     function approvedDefault() {
         return approveRubricDraft(
             buildRubricDraft(inputFromDefault(), 1, 'instructor-1'),
@@ -181,17 +184,31 @@ describe('approved rubric identifier stability', () => {
         );
     }
 
-    it('rejects criterion and level id changes after approval', () => {
+    it('allows renaming a criterion by retiring the old id and introducing a new one', () => {
         const approved = approvedDefault();
         const renamedCriterion = inputFromDefault();
         renamedCriterion.criteria[0] = { ...renamedCriterion.criteria[0], id: 'structure' };
-        expect(() => assertApprovedRubricIdsStable(approved, renamedCriterion))
-            .toThrow('criterion ids');
+        expect(() => assertRetiredIdsNotReused([approved], renamedCriterion)).not.toThrow();
+    });
 
+    it('allows removing a performance level', () => {
+        const approved = approvedDefault();
         const removedLevel = inputFromDefault();
         removedLevel.levels = removedLevel.levels.slice(0, -1);
-        expect(() => assertApprovedRubricIdsStable(approved, removedLevel))
-            .toThrow('performance-level ids');
+        expect(() => assertRetiredIdsNotReused([approved], removedLevel)).not.toThrow();
+    });
+
+    it('rejects reintroducing a criterion id retired by an earlier approved version', () => {
+        const approved = approvedDefault();
+        const retiredId = approved.criteria[0].id;
+        const renamed = inputFromDefault();
+        renamed.criteria[0] = { ...renamed.criteria[0], id: 'structure' };
+        const approvedV2 = approveRubricDraft(buildRubricDraft(renamed, 2, 'instructor-1'), 'instructor-1');
+
+        const reintroduced = inputFromDefault();
+        reintroduced.criteria[0] = { ...reintroduced.criteria[0], id: retiredId };
+        expect(() => assertRetiredIdsNotReused([approvedV2, approved], reintroduced))
+            .toThrow(/previously used/i);
     });
 
     it('allows labels, descriptions, points, and ordering to change without changing ids', () => {
@@ -202,13 +219,231 @@ describe('approved rubric identifier stability', () => {
             .map((level) => ({ ...level, description: `${level.description} Revised.`, points: level.rank }))
             .reverse();
 
-        expect(() => assertApprovedRubricIdsStable(approved, edited)).not.toThrow();
+        expect(() => assertRetiredIdsNotReused([approved], edited)).not.toThrow();
     });
 
     it('allows the initial unapproved rubric to choose a different id set', () => {
         const initialDraft = buildRubricDraft(inputFromDefault(), 1, 'instructor-1');
         const reshaped = inputWithSixCriteria();
 
-        expect(() => assertApprovedRubricIdsStable(initialDraft, reshaped)).not.toThrow();
+        expect(() => assertRetiredIdsNotReused([initialDraft], reshaped)).not.toThrow();
+    });
+});
+
+describe('lab context', () => {
+    const validInput = () => {
+        const rubric = buildLabReportRubric();
+        return {
+            title: rubric.title,
+            task: rubric.task,
+            audience: rubric.audience,
+            purpose: rubric.purpose,
+            constraints: rubric.constraints,
+            learningOutcomes: rubric.learningOutcomes,
+            gradingIntent: rubric.gradingIntent,
+            criteria: rubric.criteria,
+            levels: rubric.levels
+        };
+    };
+
+    it('accepts an absent lab context', () => {
+        expect(writingRubricDraftInputSchema.safeParse(validInput()).success).toBe(true);
+    });
+
+    it('accepts a lab context and trims it', () => {
+        const parsed = writingRubricDraftInputSchema.safeParse({
+            ...validInput(),
+            labContext: '  Heat the rod with steam and record elongation.  '
+        });
+        expect(parsed.success).toBe(true);
+        expect(parsed.success && parsed.data.labContext).toBe('Heat the rod with steam and record elongation.');
+    });
+
+    it('rejects a lab context over twelve thousand characters', () => {
+        const parsed = writingRubricDraftInputSchema.safeParse({
+            ...validInput(),
+            labContext: 'x'.repeat(12001)
+        });
+        expect(parsed.success).toBe(false);
+    });
+
+    it('carries the lab context into a built draft', () => {
+        const parsed = writingRubricDraftInputSchema.parse({ ...validInput(), labContext: 'Steps 1 to 4.' });
+        const draft = buildRubricDraft(parsed, 2, 'user-1', new Date('2026-08-20T00:00:00.000Z'));
+        expect(draft.labContext).toBe('Steps 1 to 4.');
+    });
+
+    it('leaves the lab context unset when it was not supplied', () => {
+        const parsed = writingRubricDraftInputSchema.parse(validInput());
+        const draft = buildRubricDraft(parsed, 2, 'user-1', new Date('2026-08-20T00:00:00.000Z'));
+        expect(draft.labContext).toBeUndefined();
+    });
+});
+
+describe('criterion weight and cells', () => {
+    const base = {
+        title: 'T', task: 'task text', audience: 'aud', purpose: 'pur',
+        constraints: ['c'], learningOutcomes: ['o'], gradingIntent: 'gi',
+        levels: [
+            { id: 'weak', label: 'Weak', description: 'd', rank: 1 },
+            { id: 'strong', label: 'Strong', description: 'd', rank: 2 }
+        ]
+    };
+
+    it('accepts a criterion with a weight and bands', () => {
+        const parsed = writingRubricDraftInputSchema.safeParse({
+            ...base,
+            criteria: [{
+                id: 'organization', label: 'Organization', description: 'd',
+                points: 30,
+                cells: {
+                    weak: { min: 0, max: 9, descriptor: 'Sections do not follow a usable order.' },
+                    strong: { min: 10, max: 30, descriptor: 'Structure carries the argument.' }
+                }
+            }]
+        });
+        expect(parsed.success).toBe(true);
+    });
+
+    it('accepts a criterion with neither weight nor cells', () => {
+        const parsed = writingRubricDraftInputSchema.safeParse({
+            ...base,
+            criteria: [{ id: 'organization', label: 'Organization', description: 'd' }]
+        });
+        expect(parsed.success).toBe(true);
+    });
+
+    it('accepts a sparse cells map so a criterion may have fewer bands than columns', () => {
+        const parsed = writingRubricDraftInputSchema.safeParse({
+            ...base,
+            criteria: [{
+                id: 'organization', label: 'Organization', description: 'd', points: 5,
+                cells: { strong: { min: 0, max: 5 } }
+            }]
+        });
+        expect(parsed.success).toBe(true);
+    });
+
+    it('rejects a band whose min exceeds its max', () => {
+        const parsed = writingRubricDraftInputSchema.safeParse({
+            ...base,
+            criteria: [{
+                id: 'organization', label: 'Organization', description: 'd', points: 30,
+                cells: { weak: { min: 12, max: 4 } }
+            }]
+        });
+        expect(parsed.success).toBe(false);
+        expect(parsed.error?.issues[0]?.message).toContain('cannot start above');
+    });
+
+    it('rejects a cell keyed to a level the rubric does not have', () => {
+        const parsed = writingRubricDraftInputSchema.safeParse({
+            ...base,
+            criteria: [{
+                id: 'organization', label: 'Organization', description: 'd', points: 30,
+                cells: { nonexistent: { min: 0, max: 4 } }
+            }]
+        });
+        expect(parsed.success).toBe(false);
+        expect(parsed.error?.issues[0]?.message).toContain('unknown performance level');
+    });
+});
+
+describe('assertRetiredIdsNotReused', () => {
+    const approved = {
+        version: 1, status: 'approved' as const, title: 'T', task: 't', audience: 'a',
+        purpose: 'p', constraints: ['c'], learningOutcomes: ['o'], gradingIntent: 'g',
+        criteria: [
+            { id: 'organization', label: 'Organization', description: 'd' },
+            { id: 'content', label: 'Content', description: 'd' }
+        ],
+        levels: [
+            { id: 'weak', label: 'Weak', description: 'd', rank: 1 },
+            { id: 'strong', label: 'Strong', description: 'd', rank: 2 }
+        ],
+        updatedAt: new Date(), updatedBy: 'u'
+    };
+
+    const input = (criteriaIds: string[]) => ({
+        title: 'T', task: 't', audience: 'a', purpose: 'p',
+        constraints: ['c'], learningOutcomes: ['o'], gradingIntent: 'g',
+        criteria: criteriaIds.map((id) => ({ id, label: id, description: 'd' })),
+        levels: approved.levels
+    });
+
+    it('allows removing a criterion from an approved rubric', () => {
+        expect(() => assertRetiredIdsNotReused([approved], input(['organization']))).not.toThrow();
+    });
+
+    it('allows adding a criterion to an approved rubric', () => {
+        expect(() => assertRetiredIdsNotReused([approved], input(['organization', 'content', 'method'])))
+            .not.toThrow();
+    });
+
+    it('allows a still-present id to stay', () => {
+        expect(() => assertRetiredIdsNotReused([approved], input(['organization', 'content'])))
+            .not.toThrow();
+    });
+
+    it('rejects reusing an id that a previous version retired', () => {
+        const v2 = { ...approved, version: 2, criteria: [approved.criteria[0]] };
+        // 'content' was retired in v2. Bringing it back would re-tag old anchored comments.
+        expect(() => assertRetiredIdsNotReused([v2, approved], input(['organization', 'content'])))
+            .toThrow(/previously used/i);
+    });
+
+    it('ignores unapproved versions entirely', () => {
+        const draft = { ...approved, status: 'draft' as const };
+        expect(() => assertRetiredIdsNotReused([draft], input(['anything']))).not.toThrow();
+    });
+});
+
+describe('requireCompleteRubricCells', () => {
+    const baseLevels = [
+        { id: 'weak', label: 'Weak', description: 'd', rank: 1 },
+        { id: 'strong', label: 'Strong', description: 'd', rank: 2 }
+    ];
+
+    function draftWith(cells: Record<string, { min: number; max: number; descriptor?: string }> | undefined): WritingRubricDefinition {
+        return {
+            version: 1,
+            status: 'draft',
+            title: 't',
+            task: 't',
+            audience: 't',
+            purpose: 't',
+            constraints: ['c'],
+            learningOutcomes: ['o'],
+            gradingIntent: 'g',
+            criteria: [{ id: 'crit', label: 'Criterion', description: 'd', points: 10, cells }],
+            levels: baseLevels,
+            updatedAt: new Date(),
+            updatedBy: 'u'
+        };
+    }
+
+    it('rejects a weighted criterion missing a band at some level', () => {
+        expect(() => requireCompleteRubricCells(draftWith({ weak: { min: 0, max: 5, descriptor: 'd' } })))
+            .toThrow(/points range or a description/);
+    });
+
+    it('rejects a weighted criterion with a band but no descriptor', () => {
+        expect(() => requireCompleteRubricCells(draftWith({
+            weak: { min: 0, max: 5, descriptor: 'd' },
+            strong: { min: 6, max: 10 }
+        }))).toThrow(/points range or a description/);
+    });
+
+    it('accepts a fully described weighted criterion', () => {
+        expect(() => requireCompleteRubricCells(draftWith({
+            weak: { min: 0, max: 5, descriptor: 'd1' },
+            strong: { min: 6, max: 10, descriptor: 'd2' }
+        }))).not.toThrow();
+    });
+
+    it('ignores a criterion with no weight', () => {
+        const draft = draftWith(undefined);
+        draft.criteria[0]!.points = undefined;
+        expect(() => requireCompleteRubricCells(draft)).not.toThrow();
     });
 });

@@ -46,7 +46,6 @@ let tutorialUiAbort: AbortController | null = null;
 const definition: FeatureTutorialDefinition = {
     component: 'scenario-generation-setup',
     feature: 'scenarioGeneration',
-    completionSlug: 'scenario-generation',
     completionEvent: 'scenarioGenerationSetupComplete',
     totalSteps: 4,
     stepTitles: {

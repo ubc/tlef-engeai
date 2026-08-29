@@ -10,7 +10,7 @@
  */
 
 import { DocumentUploadModule } from './document-upload-module.js';
-import type { AdditionalMaterial, UploadResult } from '../types.js';
+import type { AdditionalMaterialUpload, UploadResult } from '../types.js';
 
 /**
  * Uploads content to the RAG system using the DocumentUploadModule
@@ -18,7 +18,7 @@ import type { AdditionalMaterial, UploadResult } from '../types.js';
  * @param content - The content to upload
  * @returns Promise with the upload result
  */
-export async function uploadRAGContent(content: AdditionalMaterial): Promise<UploadResult> {
+export async function uploadRAGContent(content: AdditionalMaterialUpload): Promise<UploadResult> {
     // console.log('DEBUG #23 : Uploading content to RAG system'); // 🟢 MEDIUM: Upload operation logging
 
     try {

@@ -23,10 +23,11 @@
  */
 
 import { loadComponentHTML } from "../api/api.js";
-import { activeCourse, LearningObjective, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem } from "../types.js";
-import { showErrorModal, showHelpModal, showConfirmModal, openUploadModal, showSimpleErrorModal } from "../ui/modal-overlay.js";
+import { activeCourse, TopicOrWeekInstance, TopicOrWeekItem } from "../types.js";
+import { showErrorModal, showHelpModal, showConfirmModal, openContentInputModal, showSimpleErrorModal } from "../ui/modal-overlay.js";
+import type { ContentInputPayload, ContentInputSubmitResult } from "../ui/modal-overlay.js";
 import { DocumentUploadModule } from '../services/document-upload-module.js';
-import type { UploadResult } from '../types.js';
+import { completeInstructorOnboardingStage } from './onboarding-progress.js';
 import { updateStaffOnboardingProgress } from './staff-onboarding-ui.js';
 
 // ===========================================
@@ -130,6 +131,11 @@ async function initializeDocumentSetup(state: DocumentSetupState, instructorCour
 
     // Set the current course for demo operations
     currentCourse = instructorCourse;
+
+    // Practice state is in-memory only, so reset it: a second instructor working through
+    // this tutorial must start clean rather than inherit a previous run's list.
+    demoFiles = [];
+    demoObjectives = [];
 
     // Initialize data structures if needed
     initializeCourseData(instructorCourse);
@@ -432,38 +438,12 @@ async function handleFinalCompletion(state: DocumentSetupState, instructorCourse
     console.log("🎯 Completing document setup...");
     
     try {
-        // Validate courseId exists
-        if (!instructorCourse.id) {
-            throw new Error("Course ID is missing. Cannot update database.");
-        }
-        
-        // Mark content setup as complete locally
-        instructorCourse.contentSetup = true;
-        
-        // Persist to database
-        console.log(`📡 Updating database: setting contentSetup=true for course ${instructorCourse.id}`);
-        const response = await fetch(`/api/courses/${instructorCourse.id}`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            credentials: 'same-origin',
-            body: JSON.stringify({
-                contentSetup: true
-            })
-        });
-        
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ error: 'Failed to update course in database' }));
-            throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-        }
-        
-        const result = await response.json();
-        if (!result.success) {
-            throw new Error(result.error || 'Failed to update course in database');
-        }
-        
-        console.log("✅ Content setup status persisted to database successfully!");
+        // Record the tutorial against the instructor, not the course, so a colleague who
+        // is new to EngE-AI still gets taught on this same course.
+        console.log(`📡 Recording contentSetup tutorial for the current instructor`);
+        await completeInstructorOnboardingStage('contentSetup');
+
+        console.log("✅ Content setup progress persisted to database successfully!");
         
         // Keep onboarding-active class - sidebar should remain hidden until ALL onboarding is complete
         // The class will be removed by instructor-mode.ts when all setup steps are done
@@ -475,8 +455,6 @@ async function handleFinalCompletion(state: DocumentSetupState, instructorCourse
         
     } catch (error) {
         console.error("❌ Error during final completion:", error);
-        // Revert local change on error
-        instructorCourse.contentSetup = false;
         await showErrorModal("Completion Error", `Failed to complete document setup: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`);
     }
 }
@@ -608,78 +586,29 @@ function getCurrentCourse(): activeCourse | null {
 }
 
 /**
- * Adds a demo learning objective to the real course data (first division, first item)
+ * Adds a practice learning objective to the tutorial list.
+ *
+ * Tutorial state is deliberately in-memory only: the course belongs to whoever set it up,
+ * and a second instructor working through the tutorial must not write into it.
  */
 async function addDemoObjective(): Promise<void> {
     const objectiveInput = document.getElementById('demoObjectiveTitle') as HTMLInputElement;
-    
+
     if (!objectiveInput) return;
-    
+
     const learningObjective = objectiveInput.value.trim();
-    
+
     if (!learningObjective) {
-        alert('Please fill in the learning objective.');
+        await showSimpleErrorModal('Please fill in the learning objective.', 'Add Learning Objective');
         return;
     }
-    
-    // Get the current course from the global state
-    const currentCourse = getCurrentCourse();
-    if (!currentCourse) {
-        console.error('No current course found');
-        return;
-    }
-    
-    // Get the first topic/week instance and first item
-    const firstInstance = currentCourse.topicOrWeekInstances?.[0];
-    const firstItem = firstInstance?.items?.[0];
-    
-    if (!firstInstance || !firstItem) {
-        console.error('No first topic/week instance or first item found');
-        return;
-    }
-    
-    // Create a real LearningObjective object
-    const newObjective: LearningObjective = {
-        id: `obj-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        LearningObjective: learningObjective,
-        createdAt: new Date(),
-        updatedAt: new Date()
-    };
-    
-    // Add to demo display
-    const demoObjective: DemoObjective = {
-        id: newObjective.id,
-        learningObjective: learningObjective
-    };
-    
-    demoObjectives.push(demoObjective);
+
+    demoObjectives.push({
+        id: `demo-obj-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+        learningObjective
+    });
     updateDemoObjectivesDisplay();
-    
-    // Add to real course data
-    if (!firstItem.learningObjectives) {
-        firstItem.learningObjectives = [];
-    }
-    firstItem.learningObjectives.push(newObjective);
-    
-    // Save to database
-    try {
-        const result = await addLearningObjectiveToBackend(
-            newObjective, 
-            currentCourse.id, 
-            firstInstance.id, 
-            firstItem.id
-        );
-        
-        if (result.success) {
-            console.log('Learning objective added to real course data:', newObjective);
-        } else {
-            await showSimpleErrorModal('Failed to save learning objective to database', 'Save Learning Objective Error');
-        }
-    } catch (error) {
-        console.error('Error saving learning objective:', error);
-        await showSimpleErrorModal('An error occurred while saving the learning objective. Please try again.', 'Save Learning Objective Error');
-    }
-    
+
     // Clear input
     objectiveInput.value = '';
 }
@@ -716,128 +645,77 @@ function updateDemoObjectivesDisplay(): void {
 }
 
 /**
- * Opens the demo upload modal using the openUploadModal function
+ * Opens the practice upload modal.
+ *
+ * Unlike the real Documents page, this writes nothing: no Mongo material record, no Qdrant
+ * vectors, no struggle-topic generation. The tutorial has to be safe to re-run, because a
+ * second instructor joining an already-set-up course now works through it on that same
+ * course — anything persisted here would land in a colleague's material library.
+ *
+ * It also no longer requires the course to have content, which used to dead-end this step
+ * on a freshly created course.
  */
 async function openDemoUploadModal() {
-    // Use real course data for the upload
-    const course = getCurrentCourse();
-    if (!course) {
-        console.error('No current course found');
-        await showSimpleErrorModal('No course available for upload', 'Upload Error');
-        return;
-    }
-
-    // Get the first topic/week instance and first item
-    const firstInstance = course.topicOrWeekInstances?.[0];
-    const firstItem = firstInstance?.items?.[0];
-
-    if (!firstInstance || !firstItem) {
-        console.error('No first topic/week instance or first item found');
-        await showSimpleErrorModal('No content available for upload', 'Upload Error');
-        return;
-    }
-
-    await openUploadModal(firstInstance.id, firstItem.id, handleOnboardingUpload);
+    await openContentInputModal({
+        title: 'Practice Document Upload',
+        initialMethod: 'file',
+        allowEmptyText: false,
+        strings: {
+            nameLabel: 'Content Title',
+            namePlaceholder: 'Enter a name for this practice material...',
+            textLabel: 'Content Text',
+            textPlaceholder: 'Enter or paste your content directly here...',
+            nameRequiredMessage: 'Please enter a material name.',
+            fileRequiredMessage: 'Please select a file to upload.',
+            textRequiredMessage: 'Please enter some text content.'
+        },
+        onSubmit: handleOnboardingUpload,
+        loadingContent: {
+            title: 'Checking Document',
+            line1: 'Checking your document...',
+            line2: 'This is a practice run — nothing is added to your course.'
+        }
+    });
 }
 
 /**
- * Handles actual document upload during onboarding
+ * Validates a practice upload and adds it to the tutorial list.
  *
- * @param material - The material object from the upload modal
- * @returns Promise that resolves when the document is uploaded
+ * Runs the same file-type and size checks as a real upload so the instructor sees realistic
+ * feedback, then stops. Nothing is sent to the server.
+ *
+ * @param payload - Name, source type, and file or text from the modal
+ * @returns Result driving the modal's success panel
  */
-async function handleOnboardingUpload(material: any): Promise<{ success: boolean; chunksGenerated?: number } | void> {
-    console.log('🔍 HANDLE ONBOARDING UPLOAD CALLED - FUNCTION STARTED');
-    console.log('  - material:', material);
-
-    try {
-        // Get the current course
-        const course = getCurrentCourse();
-        if (!course) {
-            console.error('❌ No current course found for upload');
-            await showSimpleErrorModal('No course available for upload', 'Upload Error');
-            return;
+async function handleOnboardingUpload(payload: ContentInputPayload): Promise<ContentInputSubmitResult> {
+    if (payload.sourceType === 'file') {
+        if (!payload.file) {
+            await showSimpleErrorModal('Please select a file to upload.', 'Upload Error');
+            return { success: false };
         }
 
-        // Get the first topic/week instance and first item
-        const firstInstance = course.topicOrWeekInstances?.[0];
-        const firstItem = firstInstance?.items?.[0];
-
-        if (!firstInstance || !firstItem) {
-            console.error('❌ No first topic/week instance or first item found');
-            await showSimpleErrorModal('No content available for upload', 'Upload Error');
-            return;
+        // Same rules the real upload path enforces, so practice matches reality.
+        const validation = new DocumentUploadModule().validateFile(payload.file);
+        if (!validation.isValid) {
+            await showSimpleErrorModal(validation.error || 'Unsupported file.', 'Upload Error');
+            return { success: false };
         }
-
-        // Create the additional material object
-        const additionalMaterial: AdditionalMaterial = {
-            id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            name: material.name,
-            courseName: course.courseName,
-            topicOrWeekTitle: firstInstance.title,
-            itemTitle: firstItem.title,
-            sourceType: material.sourceType,
-            file: material.file,
-            text: material.text,
-            fileName: material.fileName,
-            date: new Date(),
-            courseId: course.id || '',
-            topicOrWeekId: firstInstance.id,
-            itemId: firstItem.id
-        };
-
-        console.log('🔍 CREATING DOCUMENT UPLOAD MODULE FOR ONBOARDING');
-        console.log('  - additionalMaterial:', additionalMaterial);
-
-        // Use DocumentUploadModule for upload
-        const uploadModule = new DocumentUploadModule((progress, stage) => {
-            console.log(`Upload progress: ${progress}% - ${stage}`);
-            // You could update a progress bar here if needed
-        });
-
-        console.log('🔍 CALLING UPLOAD MODULE.uploadDocument');
-        const uploadResult: UploadResult = await uploadModule.uploadDocument(additionalMaterial);
-        console.log('🔍 UPLOAD RESULT:', uploadResult);
-
-        if (!uploadResult.success) {
-            console.error(`Upload failed: ${uploadResult.error}`);
-            await showSimpleErrorModal(`Failed to upload content: ${uploadResult.error}`, 'Upload Error');
-            return;
-        }
-
-        if (!uploadResult.document) {
-            console.error('Upload succeeded but no document returned');
-            await showSimpleErrorModal('Upload succeeded but no document was returned. Please try again.', 'Upload Error');
-            return;
-        }
-
-        // Add the uploaded document to the course data
-        if (!firstItem.additionalMaterials) {
-            firstItem.additionalMaterials = [];
-        }
-        firstItem.additionalMaterials.push(uploadResult.document);
-
-        // Create a demo file object for UI display
-        const uploadedFile: DemoFile = {
-            id: uploadResult.document.id,
-            name: uploadResult.document.name,
-            type: uploadResult.document.sourceType === 'file' ? (uploadResult.document.file ? uploadResult.document.file.type : 'file') : 'text'
-        };
-
-        demoFiles.push(uploadedFile);
-        updateDemoFilesDisplay();
-
-        console.log('Material uploaded successfully during onboarding:', uploadResult.document);
-        console.log(`Generated ${uploadResult.chunksGenerated} chunks in Qdrant`);
-
-        // Return success info for the upload modal handler to show the success modal
-        return { success: true, chunksGenerated: uploadResult.chunksGenerated };
-
-    } catch (error) {
-        console.error('Error in onboarding upload process:', error);
-        await showSimpleErrorModal('An error occurred during upload. Please try again.', 'Upload Error');
-        throw error; // Re-throw so modal handler can catch it
     }
+
+    demoFiles.push({
+        id: `demo-file-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+        name: payload.name,
+        type: payload.sourceType === 'file' && payload.file ? payload.file.type : 'text'
+    });
+    updateDemoFilesDisplay();
+
+    return {
+        success: true,
+        successTitle: 'Practice Upload Complete',
+        successMessage:
+            'That is all there is to it. This was a practice run, so nothing was added to your course — ' +
+            'upload your real course material from the Documents page once setup is finished.'
+    };
 }
 
 /**
@@ -876,44 +754,4 @@ function updateDemoFilesDisplay(): void {
 // BACKEND INTEGRATION
 // ===========================================
 
-/**
- * Add learning objective to backend
- * 
- * @param objective - Learning objective to add
- * @param courseId - Course ID
- * @param topicOrWeekId - Topic/Week Instance ID
- * @param contentId - Content ID
- * @returns Promise with result
- */
-async function addLearningObjectiveToBackend(objective: LearningObjective, courseId: string, topicOrWeekId: string, contentId: string): Promise<{ success: boolean; id?: string }> {
-    try {
-        const response = await fetch(`/api/courses/${courseId}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/objectives`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                learningObjective: objective
-            })
-        });
 
-        const result = await response.json();
-        
-        if (result.success) {
-            return {
-                success: true,
-                id: objective.id
-            };
-        } else {
-            console.error('Failed to add learning objective:', result.error);
-            return {
-                success: false
-            };
-        }
-    } catch (error) {
-        console.error('Error adding learning objective to backend:', error);
-        return {
-            success: false
-        };
-    }
-}

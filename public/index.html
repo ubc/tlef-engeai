@@ -3,7 +3,7 @@
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<title>EngE-AI | We help engineering students to solve problems</title>
+		<title>EngE-AI | We help engineering students develop critical thinking skills</title>
 		<link rel="preconnect" href="https://fonts.googleapis.com" />
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 		<link
@@ -68,7 +68,7 @@
 					<div class="home-hero-copy">
 						<h1 class="home-headline">
 							<span class="home-headline-line">We help engineering students</span>
-							<span class="home-headline-line">solve problems</span>
+							<span class="home-headline-line">develop critical thinking skills</span>
 						</h1>
 						<p class="home-subslogan">
 							Consult and practice with EngE-AI. See how you can improve.
@@ -123,30 +123,12 @@
 							<div class="home-features-nav">
 								<ol class="home-features-steps">
 									<li class="home-features-step is-active" data-step="0" aria-current="step">
-										<h3 class="home-features-step-title">Guided pathway</h3>
-										<p class="home-features-step-body">
-											Every message is screened. If a conversation veers towards crisis, harm, or
-											something outside the course, EngE-AI pauses the lesson and responds with real
-											UBC support resources.
-										</p>
-										<figure class="home-features-panel is-active" data-step="0" aria-hidden="false">
-											<div class="home-features-panel-frame home-features-panel-frame--pathway">
-												<img
-													src="/assets/home/feature-pathway.png"
-													alt="EngE-AI guided pathway with safety screening"
-													width="754"
-													height="403"
-												/>
-											</div>
-										</figure>
-									</li>
-									<li class="home-features-step" data-step="1">
 										<h3 class="home-features-step-title">Scenario generation</h3>
 										<p class="home-features-step-body">
 											EngE-AI helps instructors create multi-part scenario-based, exam-like questions
-											for students to work through. Students get instant feedback on their answers
+											for students to work through. Students get instant feedback on their answers.
 										</p>
-										<figure class="home-features-panel" data-step="1" aria-hidden="true">
+										<figure class="home-features-panel is-active" data-step="0" aria-hidden="false">
 											<div class="home-features-panel-frame home-features-panel-frame--scenario">
 												<img
 													src="/assets/home/feature-scenario.png"
@@ -157,19 +139,37 @@
 											</div>
 										</figure>
 									</li>
-									<li class="home-features-step" data-step="2">
+									<li class="home-features-step" data-step="1">
 										<h3 class="home-features-step-title">Writing feedback for instructors</h3>
 										<p class="home-features-step-body">
 											Instructors use AI to help review and give feedback on student essays and written
 											work.
 										</p>
-										<figure class="home-features-panel" data-step="2" aria-hidden="true">
+										<figure class="home-features-panel" data-step="1" aria-hidden="true">
 											<div class="home-features-panel-frame home-features-panel-frame--writing">
 												<img
 													src="/assets/home/feature-writing-feedback.png"
 													alt="EngE-AI writing feedback for instructors"
 													width="1550"
 													height="822"
+												/>
+											</div>
+										</figure>
+									</li>
+									<li class="home-features-step" data-step="2">
+										<h3 class="home-features-step-title">Guided pathway</h3>
+										<p class="home-features-step-body">
+											Every message is screened. If a conversation veers towards crisis, harm, or
+											something outside the course, EngE-AI pauses the lesson and responds with real
+											UBC support resources.
+										</p>
+										<figure class="home-features-panel" data-step="2" aria-hidden="true">
+											<div class="home-features-panel-frame home-features-panel-frame--pathway">
+												<img
+													src="/assets/home/feature-pathway.png"
+													alt="EngE-AI guided pathway with safety screening"
+													width="754"
+													height="403"
 												/>
 											</div>
 										</figure>
@@ -288,48 +288,6 @@
 								</svg>
 							</a>
 						</h2>
-						<div class="home-grant-stat" id="home-grant-stat">
-							<div class="home-grant-period" id="home-grant-period" aria-hidden="true">
-								Total TLEF funding
-							</div>
-							<div class="home-grant-amount" id="home-grant-amount" aria-live="off">CA$0</div>
-							<div class="home-grant-selector" role="group" aria-label="TLEF funding period">
-								<span class="home-grant-selector-ink" aria-hidden="true"></span>
-								<button
-									type="button"
-									class="home-grant-option"
-									data-grant-key="year1"
-									data-grant-amount="87198"
-									data-grant-label="Year 1 (2025/26)"
-									aria-pressed="false"
-									aria-label="Show Year 1 TLEF funding"
-								>
-									Year 1
-								</button>
-								<button
-									type="button"
-									class="home-grant-option"
-									data-grant-key="year2"
-									data-grant-amount="94122"
-									data-grant-label="Year 2 (2026/27)"
-									aria-pressed="false"
-									aria-label="Show Year 2 TLEF funding"
-								>
-									Year 2
-								</button>
-								<button
-									type="button"
-									class="home-grant-option is-active"
-									data-grant-key="total"
-									data-grant-amount="181320"
-									data-grant-label="Total TLEF funding"
-									aria-pressed="true"
-									aria-label="Show total TLEF funding"
-								>
-									Total
-								</button>
-							</div>
-						</div>
 					</div>
 				</section>
 
@@ -339,17 +297,21 @@
 						<div class="home-investigators">
 							<figure class="home-investigator home-investigator--start">
 								<blockquote class="home-investigator-quote">
+									<p>Reimagining AI for Higher Education.</p>
 									<p>
-										Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor.
+										EngE-AI is a pedagogically grounded, course-customizable Socratic AI platform that
+										transforms generative AI from an answer machine into a catalyst for critical thinking,
+										deeper learning, and authentic problem solving; tailored to the unique learning outcomes
+										of every discipline.
 									</p>
 									<footer>
-										<cite>Alireza Bagherzadeh</cite>
+										<cite>Dr. Alireza Bagherzadeh</cite>
 										<span>Principal Investigator; Associate Professor of Teaching, CHBE</span>
 									</footer>
 								</blockquote>
 								<div class="home-investigator-photo">
 									<img
-										src="/assets/home/avatar-placeholder.svg"
+										src="/assets/home/alireza-bagherzadeh.jpg"
 										alt="Alireza Bagherzadeh"
 										width="160"
 										height="160"
@@ -359,7 +321,7 @@
 							<figure class="home-investigator home-investigator--end">
 								<div class="home-investigator-photo">
 									<img
-										src="/assets/home/avatar-placeholder.svg"
+										src="/assets/home/amir-dehkhoda.png"
 										alt="Amir M. Dehkhoda"
 										width="160"
 										height="160"
@@ -367,136 +329,19 @@
 								</div>
 								<blockquote class="home-investigator-quote">
 									<p>
-										Lorem ipsum dolor sit amet, consectetur adipiscing elit. Ut enim ad minim veniam.
+										As generative AI becomes more widely utilized in education, educators have an unique
+										opportunity to design learning experiences that use it purposefully while strengthening
+										essential skills such as critical thinking. EngE‑AI brings these goals together through a
+										course-grounded RAG system that engages engineering students in guided, discipline-specific
+										learning. EngE AI offers a more intentional educational experience than general-purpose GenAI
+										platforms.
 									</p>
 									<footer>
-										<cite>Amir M. Dehkhoda</cite>
+										<cite>Dr. Amir M. Dehkhoda</cite>
 										<span>Co-Investigator; Assistant Professor of Teaching, Materials Engineering</span>
 									</footer>
 								</blockquote>
 							</figure>
-						</div>
-					</div>
-				</section>
-
-				<section class="home-section home-section--muted" id="feedback" aria-labelledby="feedback-heading">
-					<div class="home-section-inner">
-						<h2 id="feedback-heading">What students are saying</h2>
-					</div>
-					<div class="home-testimonials-marquee" aria-label="Student testimonials">
-						<div class="home-testimonials-track">
-							<ul class="home-testimonials-row">
-								<li class="home-testimonial-card">
-									<blockquote>
-										<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>
-										<footer class="home-testimonial-author">
-											<img
-												class="home-testimonial-avatar"
-												src="/assets/home/avatar-placeholder.svg"
-												alt=""
-												width="48"
-												height="48"
-											/>
-											<div>
-												<cite>Anonymous student</cite>
-												<span>3rd-year, Chemical Engineering</span>
-											</div>
-										</footer>
-									</blockquote>
-								</li>
-								<li class="home-testimonial-card">
-									<blockquote>
-										<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>
-										<footer class="home-testimonial-author">
-											<img
-												class="home-testimonial-avatar"
-												src="/assets/home/avatar-placeholder.svg"
-												alt=""
-												width="48"
-												height="48"
-											/>
-											<div>
-												<cite>Anonymous student</cite>
-												<span>4th-year, Materials Engineering</span>
-											</div>
-										</footer>
-									</blockquote>
-								</li>
-								<li class="home-testimonial-card">
-									<blockquote>
-										<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>
-										<footer class="home-testimonial-author">
-											<img
-												class="home-testimonial-avatar"
-												src="/assets/home/avatar-placeholder.svg"
-												alt=""
-												width="48"
-												height="48"
-											/>
-											<div>
-												<cite>Anonymous student</cite>
-												<span>2nd-year, Engineering</span>
-											</div>
-										</footer>
-									</blockquote>
-								</li>
-							</ul>
-							<ul class="home-testimonials-row" aria-hidden="true">
-								<li class="home-testimonial-card">
-									<blockquote>
-										<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>
-										<footer class="home-testimonial-author">
-											<img
-												class="home-testimonial-avatar"
-												src="/assets/home/avatar-placeholder.svg"
-												alt=""
-												width="48"
-												height="48"
-											/>
-											<div>
-												<cite>Anonymous student</cite>
-												<span>3rd-year, Chemical Engineering</span>
-											</div>
-										</footer>
-									</blockquote>
-								</li>
-								<li class="home-testimonial-card">
-									<blockquote>
-										<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>
-										<footer class="home-testimonial-author">
-											<img
-												class="home-testimonial-avatar"
-												src="/assets/home/avatar-placeholder.svg"
-												alt=""
-												width="48"
-												height="48"
-											/>
-											<div>
-												<cite>Anonymous student</cite>
-												<span>4th-year, Materials Engineering</span>
-											</div>
-										</footer>
-									</blockquote>
-								</li>
-								<li class="home-testimonial-card">
-									<blockquote>
-										<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>
-										<footer class="home-testimonial-author">
-											<img
-												class="home-testimonial-avatar"
-												src="/assets/home/avatar-placeholder.svg"
-												alt=""
-												width="48"
-												height="48"
-											/>
-											<div>
-												<cite>Anonymous student</cite>
-												<span>2nd-year, Engineering</span>
-											</div>
-										</footer>
-									</blockquote>
-								</li>
-							</ul>
 						</div>
 					</div>
 				</section>

@@ -181,7 +181,7 @@ function createGuidedAlertCard(flag: GuidedPathwayFlagView): HTMLElement {
     const messageLabel = document.createElement('h4');
     messageLabel.className = 'guided-pathway-alert-card__message-label';
     messageLabel.textContent = flag.origin === 'instructor-test'
-        ? 'Instructor test message'
+        ? 'Staff test message'
         : 'Student message';
     const message = document.createElement('p');
     message.className = 'guided-pathway-alert-card__message';
@@ -236,7 +236,7 @@ async function submitDecision(
     try {
         await decideGuidedPathwayFlag(activeCourseId, flag.id, decision);
         const successMessage = flag.origin === 'instructor-test'
-            ? 'Instructor test marked complete.'
+            ? 'Staff test marked complete.'
             : decision === 'escalate'
                 ? 'Escalation decision recorded.'
                 : 'Alert dismissed.';

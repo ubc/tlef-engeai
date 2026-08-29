@@ -143,6 +143,7 @@ export class ModelSelectionService {
      * @returns Models with reasoningOptions and the platform defaultSelection
      */
     getDashboardCatalog(): LlmModelCatalogApiResponse {
+        // Every model ships; withheld ones carry `unavailable` so the picker greys them out
         return {
             models: LLM_MODEL_CATALOG.map(toDashboardCatalogEntry),
             defaultSelection: { ...DEFAULT_FEATURE_SELECTION },

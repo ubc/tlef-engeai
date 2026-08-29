@@ -1,8 +1,11 @@
 <!-- public/components/pathways/pathway-library-instructor.html -->
-<section class="pathway-library" aria-labelledby="pathway-library-title">
+<section class="pathway-library page-shell" aria-labelledby="pathway-library-title">
     <header class="pathway-library__header">
-        <div class="pathway-library__header-row">
-            <h1 id="pathway-library-title" class="pathway-library__title">Pathway Library</h1>
+        <div class="pathway-library__header-bar page-header mobile-header-bar">
+            <button id="instructor-hamburger-btn" class="instructor-mobile-hamburger-btn icon-btn" type="button" title="Open menu" aria-label="Open menu">
+                <i data-feather="menu"></i>
+            </button>
+            <h1 id="pathway-library-title" class="pathway-library__title mobile-header-title">Pathway Library</h1>
             <div class="pathway-library__header-actions">
                 <button type="button" id="pathway-library-add-btn" class="pathway-library__btn pathway-library__btn--primary">
                     + Add Pathway
@@ -43,6 +46,52 @@
     <div id="pathway-library-empty" class="pathway-library__empty" hidden>
         <p>No pathways yet. Add one, or reset to restore platform defaults.</p>
     </div>
+
+    <hr class="pathway-library__divider" aria-hidden="true" />
+
+    <section
+        class="pathway-library__eval-prompt"
+        id="pathway-eval-prompt"
+        aria-labelledby="pathway-eval-prompt-title"
+    >
+        <button
+            type="button"
+            class="pathway-library__eval-prompt-toggle"
+            id="pathway-eval-prompt-toggle"
+            aria-expanded="false"
+            aria-controls="pathway-eval-prompt-body"
+        >
+            <span id="pathway-eval-prompt-title">Guided Pathway System prompt</span>
+            <i data-feather="chevron-down" aria-hidden="true"></i>
+        </button>
+        <div
+            id="pathway-eval-prompt-collapse"
+            class="pathway-library__eval-prompt-collapse"
+        >
+            <div
+                id="pathway-eval-prompt-body"
+                class="pathway-library__eval-prompt-body"
+                aria-hidden="true"
+                inert
+            >
+                <textarea
+                    id="pathway-eval-prompt-textarea"
+                    class="pathway-library__eval-prompt-textarea"
+                    rows="14"
+                    spellcheck="false"
+                    aria-label="Guided Pathway System prompt"
+                ></textarea>
+                <div class="pathway-library__eval-prompt-actions">
+                    <button type="button" id="pathway-eval-prompt-reset" class="pathway-library__btn">
+                        Reset to platform
+                    </button>
+                    <button type="button" id="pathway-eval-prompt-save" class="pathway-library__btn pathway-library__btn--primary">
+                        Save
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
 
     <!-- Color defaults reference panel -->
     <aside id="pathway-cta-styles-panel" class="pathway-library__styles-panel" hidden>

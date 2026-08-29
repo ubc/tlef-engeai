@@ -22,7 +22,8 @@
 import { 
     TopicOrWeekInstance, 
     TopicOrWeekItem, 
-    AdditionalMaterial, 
+    AdditionalMaterial,
+    AdditionalMaterialUpload,
     activeCourse
 } from '../types.js';
 import { uploadRAGContent } from '../services/rag-service.js';
@@ -818,12 +819,28 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         await openPublishDraftModal(tw, wrapper);
     }
 
+    function prefersReducedMotion(): boolean {
+        return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    }
+
+    function playListCardAppear(el: HTMLElement): void {
+        el.classList.add('topic-or-week-instance--is-appearing');
+        el.addEventListener(
+            'animationend',
+            (event) => {
+                if (event.target !== el || event.animationName !== 'topic-or-week-appear') return;
+                el.classList.remove('topic-or-week-instance--is-appearing');
+            },
+            { once: true }
+        );
+    }
+
     /**
      * Render the documentPage
      * 
      * @returns null
      */
-    function renderDocumentsPage() {
+    function renderDocumentsPage(animateEnter = false) {
         const container = document.getElementById('documents-container');
         if (!container) return;
 
@@ -833,8 +850,10 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         while (container.firstChild) container.removeChild(container.firstChild);
 
         // Append each topic/week instance element
+        const shouldAnimate = animateEnter && !prefersReducedMotion();
         courseData.forEach((instance_topicOrWeek) => {
             const el = createDivisionElement(instance_topicOrWeek);
+            if (shouldAnimate) playListCardAppear(el);
             container.appendChild(el);
         });
         
@@ -1521,7 +1540,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             const container = document.getElementById('documents-container');
             if (container) {
                 const el = createDivisionElement(createdInstance);
-                el.classList.add('topic-or-week-instance--enter');
+                if (!prefersReducedMotion()) playListCardAppear(el);
                 container.appendChild(el);
                 el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                 renderFeatherIcons();
@@ -1715,7 +1734,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             if (!contentItem.additionalMaterials) contentItem.additionalMaterials = [];
 
             // Create the additional material object
-            const additionalMaterial: AdditionalMaterial = {
+            const additionalMaterial: AdditionalMaterialUpload = {
                 id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                 name: material.name,
                 courseName: currentClass.courseName,
@@ -3226,6 +3245,6 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     }
 
     // Initial render and listeners after all nested helpers exist (Intl formatters, syncTopicOrWeekPublishHeader, etc.)
-    renderDocumentsPage();
+    renderDocumentsPage(true);
     setupEventListeners();
 }

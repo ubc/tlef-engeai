@@ -5,9 +5,12 @@
  * reads Mongo, not this module. Crisis resource numbers verified against UBC crisis support
  * pages (students.ubc.ca/health/crisis-support-services/) as of 2026-07-16.
  *
+ * Off-topic scope is handled by the teaching system prompt (learning objectives), not a
+ * pathway intercept. Legacy `off-topic` docs are removed by GP-001 lazy heal.
+ *
  * @author: EngE-AI Team
  * @date: 2026-07-24
- * @version: 1.0.0
+ * @version: 1.1.0
  * @description: Initial GuidedPathway documents for course provision / lazy ensure.
  */
 
@@ -70,20 +73,6 @@ You don't have to handle this on your own. I'll be here for the course whenever 
             assistantResponse: `I'm not able to respond to that. EngE-AI is here to support your learning in {courseName}, and I need to keep our conversation focused and respectful to do that well.
 
 If there's an actual question about course material, an assignment, or an engineering concept underneath this, I'm glad to help — just rephrase it and send it my way.`,
-            ctas: [],
-            updatedAt: now,
-        },
-        {
-            id: 'off-topic',
-            order: 2,
-            title: 'Off-topic',
-            enabled: true,
-            notifyInstructorOnTrigger: true,
-            triggerDescription:
-                'Detects if the user message is unrelated to the course material. This includes requests for help with a completely different subject, personal questions, or general-purpose queries that have no connection to the course.',
-            assistantResponse: `That's outside what I can help with — I'm scoped specifically to {courseName} Engineering coursework, not general topics.
-
-If there's a way this connects to something in the course (a concept, an assignment, or a problem you're working through), tell me more and I'll help you work through that part.`,
             ctas: [],
             updatedAt: now,
         },

@@ -19,6 +19,8 @@ import type {
     GuidedPathwayFlagReviewState,
     GuidedPathwayFlagStatus,
     GuidedPathwayFlagView,
+    ManualFlagEscalationView,
+    AdminEscalationSource,
 } from '../types.js';
 import {
     listAdminGuidedPathwayFlags,
@@ -26,12 +28,17 @@ import {
     reviewAdminGuidedPathwayFlag,
     type AdminGuidedPathwayFlagFilters,
 } from '../api/guided-pathway-flags-api.js';
+import {
+    listAdminManualFlagEscalations,
+    reviewAdminManualFlag,
+    type AdminManualFlagFilters,
+} from '../api/flag-api.js';
 import { showConfirmModal, showErrorModal } from '../ui/modal-overlay.js';
 
 const PAGE_SIZE = 20;
 const STATUS_LABELS: Record<GuidedPathwayFlagStatus, string> = {
     pending: 'Pending instructor decision',
-    escalated: 'Escalated to LTIC',
+    escalated: 'Escalated',
     dismissed: 'Dismissed',
 };
 
@@ -52,6 +59,8 @@ export interface AdminGuidedPathwayFlagsOptions {
     initialAwaitingReviewCount?: number;
     initialFilters?: Pick<AdminGuidedPathwayFlagFilters, 'status' | 'reviewState'>;
     showMobileMenuButton?: boolean;
+    showCloseButton?: boolean;
+    onClose?: () => void;
     onAwaitingReviewCountChange?: (count: number) => void;
 }
 
@@ -59,10 +68,14 @@ function formatDate(value: string | undefined): string {
     if (!value) return 'Not recorded';
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return 'Not recorded';
-    return new Intl.DateTimeFormat(undefined, {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-    }).format(date);
+    return date.toLocaleString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+    });
 }
 
 function replaceFeatherIcons(): void {
@@ -113,10 +126,17 @@ function replaceSelectOptions(
     if (selected) select.value = selected;
 }
 
-function queueMarkup(showMobileMenuButton: boolean): string {
-    const menuButton = showMobileMenuButton
+function queueMarkup(options: { showMobileMenuButton: boolean; showCloseButton: boolean }): string {
+    const menuButton = options.showMobileMenuButton
         ? `<button class="instructor-mobile-hamburger-btn icon-btn" type="button" title="Open menu" aria-label="Open menu">
                 <i data-feather="menu"></i>
+           </button>`
+        : '';
+
+    const closeButton = options.showCloseButton
+        ? `<button type="button" data-admin-guided-role="close" class="admin-guided-alerts__close" aria-label="Hide escalations panel">
+                <i data-feather="x"></i>
+                Hide
            </button>`
         : '';
 
@@ -125,74 +145,102 @@ function queueMarkup(showMobileMenuButton: boolean): string {
             <div class="admin-guided-alerts__heading-row">
                 ${menuButton}
                 <div class="admin-guided-alerts__title-group">
-                    <h1>Guided Pathway Alerts</h1>
+                    <h1 tabindex="-1">Flag Escalations</h1>
                     <span class="admin-guided-alerts__scope">All courses</span>
                 </div>
             </div>
-            <button type="button" data-admin-guided-role="refresh" class="admin-guided-alerts__refresh">
-                <i data-feather="refresh-cw"></i>
-                Refresh
-            </button>
+            <div class="admin-guided-alerts__header-actions">
+                <button type="button" data-admin-guided-role="refresh" class="admin-guided-alerts__refresh">
+                    <i data-feather="refresh-cw"></i>
+                    Refresh
+                </button>
+                ${closeButton}
+            </div>
         </header>
 
-        <aside class="admin-guided-alerts__notices" aria-label="Important alert information">
-            <p class="admin-guided-alerts__notice">
-                <i data-feather="shield"></i>
-                <span>Messages are anonymous by default. Student-written text may still include identifying details.</span>
-            </p>
-            <p class="admin-guided-alerts__notice">
-                <i data-feather="info"></i>
-                <span>Escalation records a decision only; EngE-AI does not notify LTIC.</span>
-            </p>
-        </aside>
-
-        <form data-admin-guided-role="filters" class="admin-guided-alert-filters">
-            <div class="admin-guided-alert-filters__heading">
+        <section
+            class="admin-guided-filters-panel admin-guided-filters-panel--collapsed"
+            data-admin-guided-role="filters-panel"
+            aria-label="Escalation filters"
+        >
+            <button
+                type="button"
+                data-admin-guided-role="filter-toggle"
+                class="admin-guided-filter-toggle-btn"
+                aria-expanded="false"
+                aria-controls="admin-guided-filters-content"
+                title="Show filters"
+                aria-label="Show filters"
+            >
                 <i data-feather="filter"></i>
-                <h2>Filters</h2>
+                <span data-admin-guided-role="filter-badge" class="admin-guided-filter-badge" hidden>0</span>
+            </button>
+            <div id="admin-guided-filters-content" class="admin-guided-filters-panel__content" aria-hidden="true" inert>
+                <div class="admin-guided-filters-panel__content-inner">
+                    <form data-admin-guided-role="filters" class="admin-guided-filters-panel__body">
+                        <label>Source
+                            <select data-admin-guided-role="source" class="admin-guided-filter-control">
+                                <option value="both">Manual and Guided Pathway</option>
+                                <option value="guided-pathway">Guided Pathway only</option>
+                                <option value="manual">Manual only</option>
+                            </select>
+                        </label>
+                        <label>Academic period
+                            <select data-admin-guided-role="period" class="admin-guided-filter-control"><option value="">All periods</option></select>
+                        </label>
+                        <label>Course
+                            <select data-admin-guided-role="course" class="admin-guided-filter-control"><option value="">All courses</option></select>
+                        </label>
+                        <label>Pathway
+                            <select data-admin-guided-role="pathway" class="admin-guided-filter-control"><option value="">All pathways</option></select>
+                        </label>
+                        <label>Decision
+                            <select data-admin-guided-role="status-filter" class="admin-guided-filter-control">
+                                <option value="">All decisions</option>
+                                <option value="pending">Pending</option>
+                                <option value="escalated">Escalated</option>
+                                <option value="dismissed">Dismissed</option>
+                            </select>
+                        </label>
+                        <label>Admin review
+                            <select data-admin-guided-role="review-state" class="admin-guided-filter-control">
+                                <option value="all">All</option>
+                                <option value="needs-review">Needs review</option>
+                                <option value="reviewed">Reviewed</option>
+                            </select>
+                        </label>
+                        <label>Reviewer
+                            <select data-admin-guided-role="reviewer" class="admin-guided-filter-control"><option value="">All reviewers</option></select>
+                        </label>
+                        <label>From
+                            <input type="date" data-admin-guided-role="date-from" class="admin-guided-filter-control">
+                        </label>
+                        <label>To
+                            <input type="date" data-admin-guided-role="date-to" class="admin-guided-filter-control">
+                        </label>
+                    </form>
+                    <div class="admin-guided-filters-panel__footer">
+                        <button
+                            type="button"
+                            data-admin-guided-role="filter-collapse"
+                            class="admin-guided-filter-collapse-btn"
+                            title="Hide filters"
+                            aria-label="Hide filters"
+                        >
+                            <i data-feather="chevron-up"></i>
+                        </button>
+                        <div class="admin-guided-filters-panel__footer-actions">
+                            <button type="button" data-admin-guided-role="clear" class="admin-guided-filter-clear-btn">Clear</button>
+                            <button type="button" data-admin-guided-role="apply" class="admin-guided-filter-apply-btn">Apply filters</button>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <label>Academic period
-                <select data-admin-guided-role="period"><option value="">All periods</option></select>
-            </label>
-            <label>Course
-                <select data-admin-guided-role="course"><option value="">All courses</option></select>
-            </label>
-            <label>Pathway
-                <select data-admin-guided-role="pathway"><option value="">All pathways</option></select>
-            </label>
-            <label>Decision
-                <select data-admin-guided-role="status-filter">
-                    <option value="">All decisions</option>
-                    <option value="pending">Pending</option>
-                    <option value="escalated">Escalated</option>
-                    <option value="dismissed">Dismissed</option>
-                </select>
-            </label>
-            <label>Admin review
-                <select data-admin-guided-role="review-state">
-                    <option value="all">All</option>
-                    <option value="needs-review">Needs review</option>
-                    <option value="reviewed">Reviewed</option>
-                </select>
-            </label>
-            <label>Reviewer
-                <select data-admin-guided-role="reviewer"><option value="">All reviewers</option></select>
-            </label>
-            <label>From
-                <input type="date" data-admin-guided-role="date-from">
-            </label>
-            <label>To
-                <input type="date" data-admin-guided-role="date-to">
-            </label>
-            <div class="admin-guided-alert-filters__actions">
-                <button type="button" data-admin-guided-role="clear">Clear</button>
-                <button type="submit">Apply filters</button>
-            </div>
-        </form>
+        </section>
 
         <p data-admin-guided-role="status" class="admin-guided-alerts__status" role="status" aria-live="polite"></p>
         <div data-admin-guided-role="list" class="admin-guided-alerts__list" aria-live="polite"></div>
-        <nav class="admin-guided-alerts__pagination" aria-label="Admin Guided Pathway alert pages">
+        <nav class="admin-guided-alerts__pagination" aria-label="Admin escalation pages">
             <button type="button" data-admin-guided-role="previous">Previous</button>
             <span data-admin-guided-role="page-summary">Page 1 of 1</span>
             <button type="button" data-admin-guided-role="next">Next</button>
@@ -200,11 +248,17 @@ function queueMarkup(showMobileMenuButton: boolean): string {
     `;
 }
 
-/** Owns one root-scoped administrator Guided Pathway queue instance. */
+/** Owns one root-scoped administrator escalation queue instance. */
 export class AdminGuidedPathwayFlagsController {
     private periods: AdminGuidedPathwayPeriodOption[] = [];
     private currentPage = 1;
     private pageData: GuidedPathwayFlagListPage | null = null;
+    private manualItems: ManualFlagEscalationView[] = [];
+    private combinedTotal = 0;
+    private queueEntries: Array<
+        | { type: 'guided'; flag: GuidedPathwayFlagView }
+        | { type: 'manual'; flag: ManualFlagEscalationView }
+    > = [];
     private queueLoaded = false;
     private loadGeneration = 0;
     private readonly listeners = new AbortController();
@@ -227,7 +281,10 @@ export class AdminGuidedPathwayFlagsController {
      */
     public async initialize(): Promise<void> {
         this.root.classList.add('admin-guided-alerts');
-        this.root.innerHTML = queueMarkup(this.options.showMobileMenuButton === true);
+        this.root.innerHTML = queueMarkup({
+            showMobileMenuButton: this.options.showMobileMenuButton === true,
+            showCloseButton: this.options.showCloseButton === true,
+        });
         this.bindControls();
 
         let context: AdminGuidedPathwayContextPayload | undefined;
@@ -313,14 +370,19 @@ export class AdminGuidedPathwayFlagsController {
         const visiblePeriods = periodId
             ? this.periods.filter((period) => period.id === periodId)
             : this.periods;
-        const courses = visiblePeriods
-            .flatMap((period) => period.courses)
+        const courses: Array<{ id: string; courseName: string }> = [];
+        for (const period of visiblePeriods) {
+            for (const course of period.courses) {
+                courses.push(course);
+            }
+        }
+        const uniqueCourses = courses
             .filter((course, index, all) => all.findIndex((candidate) => candidate.id === course.id) === index)
             .sort((a, b) => a.courseName.localeCompare(b.courseName));
         replaceSelectOptions(
             this.element<HTMLSelectElement>('course'),
             'All courses',
-            courses.map((course) => ({ value: course.id, label: course.courseName }))
+            uniqueCourses.map((course) => ({ value: course.id, label: course.courseName }))
         );
     }
 
@@ -340,6 +402,25 @@ export class AdminGuidedPathwayFlagsController {
         );
     }
 
+    private currentSource(): AdminEscalationSource {
+        const value = this.element<HTMLSelectElement>('source').value;
+        if (value === 'manual' || value === 'guided-pathway') return value;
+        return 'both';
+    }
+
+    private sharedDateFilters(): Pick<AdminManualFlagFilters, 'academicPeriodId' | 'courseId' | 'dateFrom' | 'dateTo' | 'reviewState'> {
+        const status = this.element<HTMLSelectElement>('status-filter').value;
+        const reviewState = this.element<HTMLSelectElement>('review-state').value;
+        return {
+            reviewState: (reviewState || 'all') as GuidedPathwayFlagReviewState,
+            academicPeriodId: this.element<HTMLSelectElement>('period').value || undefined,
+            courseId: this.element<HTMLSelectElement>('course').value || undefined,
+            dateFrom: this.element<HTMLInputElement>('date-from').value || undefined,
+            dateTo: this.element<HTMLInputElement>('date-to').value || undefined,
+            ...(status ? {} : {}),
+        };
+    }
+
     private currentFilters(): AdminGuidedPathwayFlagFilters {
         const status = this.element<HTMLSelectElement>('status-filter').value;
         const reviewState = this.element<HTMLSelectElement>('review-state').value;
@@ -357,22 +438,91 @@ export class AdminGuidedPathwayFlagsController {
         };
     }
 
+    private currentManualFilters(): AdminManualFlagFilters {
+        const shared = this.sharedDateFilters();
+        return {
+            page: this.currentPage,
+            pageSize: PAGE_SIZE,
+            reviewState: shared.reviewState,
+            academicPeriodId: shared.academicPeriodId,
+            courseId: shared.courseId,
+            dateFrom: shared.dateFrom,
+            dateTo: shared.dateTo,
+        };
+    }
+
     private async loadQueue(): Promise<void> {
         const generation = ++this.loadGeneration;
         this.setQueueBusy(true);
-        this.setQueueStatus('Loading Guided Pathway alerts...');
+        this.setQueueStatus('Loading escalations...');
+        const source = this.currentSource();
         try {
-            const page = await listAdminGuidedPathwayFlags(this.currentFilters());
+            const guidedPromise =
+                source === 'manual'
+                    ? Promise.resolve({ items: [], page: 1, pageSize: PAGE_SIZE, total: 0 } as GuidedPathwayFlagListPage)
+                    : listAdminGuidedPathwayFlags({
+                          ...this.currentFilters(),
+                          page: source === 'both' ? 1 : this.currentPage,
+                          pageSize: source === 'both' ? 200 : PAGE_SIZE,
+                      });
+            const manualPromise =
+                source === 'guided-pathway'
+                    ? Promise.resolve({ items: [], page: 1, pageSize: PAGE_SIZE, total: 0 })
+                    : listAdminManualFlagEscalations({
+                          ...this.currentManualFilters(),
+                          page: source === 'both' ? 1 : this.currentPage,
+                          pageSize: source === 'both' ? 200 : PAGE_SIZE,
+                      });
+
+            const [guidedPage, manualPage] = await Promise.all([guidedPromise, manualPromise]);
             if (generation !== this.loadGeneration) return;
-            this.pageData = page;
-            this.refreshFacetOptions(page.facets);
+
+            if (source === 'both') {
+                const merged = [
+                    ...guidedPage.items.map((flag) => ({
+                        type: 'guided' as const,
+                        sortAt: new Date(flag.triggeredAt).getTime(),
+                        flag,
+                    })),
+                    ...manualPage.items.map((flag) => ({
+                        type: 'manual' as const,
+                        sortAt: new Date(flag.escalatedAt).getTime(),
+                        flag,
+                    })),
+                ].sort((a, b) => b.sortAt - a.sortAt);
+                this.combinedTotal = merged.length;
+                const start = (this.currentPage - 1) * PAGE_SIZE;
+                this.queueEntries = merged.slice(start, start + PAGE_SIZE).map((row) =>
+                    row.type === 'guided'
+                        ? { type: 'guided' as const, flag: row.flag }
+                        : { type: 'manual' as const, flag: row.flag }
+                );
+                this.pageData = guidedPage;
+                this.manualItems = [];
+                this.refreshFacetOptions(guidedPage.facets);
+            } else if (source === 'manual') {
+                this.pageData = null;
+                this.manualItems = manualPage.items;
+                this.queueEntries = manualPage.items.map((flag) => ({ type: 'manual', flag }));
+                this.combinedTotal = manualPage.total;
+            } else {
+                this.pageData = guidedPage;
+                this.manualItems = [];
+                this.queueEntries = guidedPage.items.map((flag) => ({ type: 'guided', flag }));
+                this.combinedTotal = guidedPage.total;
+                this.refreshFacetOptions(guidedPage.facets);
+            }
+
             this.renderQueue();
-            this.setQueueStatus(`${page.total} ${page.total === 1 ? 'alert' : 'alerts'}`);
+            this.setQueueStatus(`${this.combinedTotal} ${this.combinedTotal === 1 ? 'escalation' : 'escalations'}`);
         } catch (error) {
             if (generation !== this.loadGeneration) return;
             this.pageData = null;
-            this.renderQueue('Alerts could not be loaded. Use Refresh to try again.');
-            this.setQueueStatus(error instanceof Error ? error.message : 'Unable to load Guided Pathway alerts.');
+            this.manualItems = [];
+            this.queueEntries = [];
+            this.combinedTotal = 0;
+            this.renderQueue('Escalations could not be loaded. Use Refresh to try again.');
+            this.setQueueStatus(error instanceof Error ? error.message : 'Unable to load escalations.');
         } finally {
             if (generation === this.loadGeneration) this.setQueueBusy(false);
         }
@@ -380,16 +530,27 @@ export class AdminGuidedPathwayFlagsController {
 
     private async refreshAwaitingReviewCount(): Promise<void> {
         try {
-            const page = await listAdminGuidedPathwayFlags({
-                page: 1,
-                pageSize: 1,
-                status: 'escalated',
-                reviewState: 'needs-review',
-            });
-            this.publishAwaitingReviewCount(page.total);
+            const context = await loadAdminQueueContext();
+            this.publishAwaitingReviewCount(context.guidedPathwayEscalationsAwaitingReview);
         } catch {
             // Keep the last known badge value; the queue reports actionable request failures.
         }
+    }
+
+    private setFilterPanelExpanded(expanded: boolean): void {
+        const panel = this.element<HTMLElement>('filters-panel');
+        const content = document.getElementById('admin-guided-filters-content');
+        const toggle = this.element<HTMLButtonElement>('filter-toggle');
+        if (!content) return;
+
+        panel.classList.toggle('admin-guided-filters-panel--collapsed', !expanded);
+        panel.classList.toggle('admin-guided-filters-panel--expanded', expanded);
+        content.setAttribute('aria-hidden', String(!expanded));
+        content.inert = !expanded;
+        toggle.setAttribute('aria-expanded', String(expanded));
+        const label = expanded ? 'Hide filters' : 'Show filters';
+        toggle.title = label;
+        toggle.setAttribute('aria-label', label);
     }
 
     private metadataItem(label: string, value: string): HTMLElement {
@@ -469,6 +630,71 @@ export class AdminGuidedPathwayFlagsController {
         }
     }
 
+    private async markManualReviewed(flag: ManualFlagEscalationView, button: HTMLButtonElement): Promise<void> {
+        button.disabled = true;
+        button.setAttribute('aria-busy', 'true');
+        try {
+            await reviewAdminManualFlag(flag.courseId, flag.id);
+            await Promise.all([this.loadQueue(), this.refreshAwaitingReviewCount()]);
+        } catch (error) {
+            if (button.isConnected) button.disabled = false;
+            await showErrorModal(
+                'Unable to mark escalation reviewed',
+                error instanceof Error ? error.message : 'The review could not be saved.'
+            );
+        } finally {
+            button.removeAttribute('aria-busy');
+        }
+    }
+
+    private createManualEscalationCard(flag: ManualFlagEscalationView): HTMLElement {
+        const card = document.createElement('article');
+        card.className = 'admin-guided-alert-card admin-guided-alert-card--manual admin-guided-alert-card--escalated';
+
+        const header = document.createElement('div');
+        header.className = 'admin-guided-alert-card__header';
+        const title = document.createElement('h2');
+        title.textContent = `USER's FLAG: ${flag.reportType}`;
+        const sourceBadge = document.createElement('span');
+        sourceBadge.className = 'admin-guided-alert-card__source-badge admin-guided-alert-card__source-badge--manual';
+        sourceBadge.textContent = 'Manual';
+        const status = document.createElement('span');
+        status.className = 'admin-guided-alert-card__status admin-guided-alert-card__status--escalated';
+        status.textContent = 'Escalated';
+        header.append(title, sourceBadge, status);
+
+        const metadata = document.createElement('div');
+        metadata.className = 'admin-guided-alert-card__metadata';
+        metadata.append(
+            this.metadataItem('Course', flag.courseName),
+            this.metadataItem('Escalated', formatDate(flag.escalatedAt))
+        );
+        if (flag.escalatedByName) metadata.append(this.metadataItem('Escalated by', flag.escalatedByName));
+        if (flag.adminReviewedAt) metadata.append(this.metadataItem('Admin review', formatDate(flag.adminReviewedAt)));
+        if (flag.adminReviewedByName) metadata.append(this.metadataItem('Reviewed by', flag.adminReviewedByName));
+
+        const messageLabel = document.createElement('h3');
+        messageLabel.textContent = 'Flagged chat content';
+        const message = document.createElement('p');
+        message.className = 'admin-guided-alert-card__message';
+        message.textContent = flag.chatContent;
+        card.append(header, metadata, messageLabel, message);
+
+        if (!flag.adminReviewedAt) {
+            const actions = document.createElement('div');
+            actions.className = 'admin-guided-alert-card__actions';
+            const review = document.createElement('button');
+            review.type = 'button';
+            review.textContent = 'Mark reviewed';
+            review.addEventListener('click', () => void this.markManualReviewed(flag, review), {
+                signal: this.listeners.signal,
+            });
+            actions.appendChild(review);
+            card.appendChild(actions);
+        }
+        return card;
+    }
+
     private createAlertCard(flag: GuidedPathwayFlagView): HTMLElement {
         const card = document.createElement('article');
         card.className = `admin-guided-alert-card admin-guided-alert-card--${flag.status}`;
@@ -477,10 +703,13 @@ export class AdminGuidedPathwayFlagsController {
         header.className = 'admin-guided-alert-card__header';
         const title = document.createElement('h2');
         title.textContent = flag.pathwayTitle;
+        const sourceBadge = document.createElement('span');
+        sourceBadge.className = 'admin-guided-alert-card__source-badge admin-guided-alert-card__source-badge--guided';
+        sourceBadge.textContent = 'Guided Pathway';
         const status = document.createElement('span');
         status.className = `admin-guided-alert-card__status admin-guided-alert-card__status--${flag.status}`;
         status.textContent = STATUS_LABELS[flag.status];
-        header.append(title, status);
+        header.append(title, sourceBadge, status);
 
         const metadata = document.createElement('div');
         metadata.className = 'admin-guided-alert-card__metadata';
@@ -522,28 +751,33 @@ export class AdminGuidedPathwayFlagsController {
     private renderQueue(errorMessage?: string): void {
         const list = this.element('list');
         list.replaceChildren();
-        const items = this.pageData?.items ?? [];
         if (errorMessage) {
             const error = document.createElement('p');
             error.className = 'admin-guided-alerts__empty admin-guided-alerts__empty--error';
             error.textContent = errorMessage;
             list.appendChild(error);
-        } else if (items.length === 0) {
+        } else if (this.queueEntries.length === 0) {
             const empty = document.createElement('p');
             empty.className = 'admin-guided-alerts__empty';
-            empty.textContent = 'No Guided Pathway alerts match these filters.';
+            empty.textContent = 'No escalations match these filters.';
             list.appendChild(empty);
         } else {
-            for (const item of items) list.appendChild(this.createAlertCard(item));
+            for (const entry of this.queueEntries) {
+                list.appendChild(
+                    entry.type === 'guided'
+                        ? this.createAlertCard(entry.flag)
+                        : this.createManualEscalationCard(entry.flag)
+                );
+            }
         }
         this.renderPagination();
         replaceFeatherIcons();
     }
 
     private renderPagination(): void {
-        const page = this.pageData?.page ?? this.currentPage;
-        const total = this.pageData?.total ?? 0;
-        const pageSize = this.pageData?.pageSize ?? PAGE_SIZE;
+        const page = this.currentPage;
+        const total = this.combinedTotal;
+        const pageSize = PAGE_SIZE;
         const totalPages = Math.max(1, Math.ceil(total / pageSize));
         this.element('page-summary').textContent = `Page ${page} of ${totalPages}`;
         this.element<HTMLButtonElement>('previous').disabled = page <= 1;
@@ -560,6 +794,15 @@ export class AdminGuidedPathwayFlagsController {
     private bindControls(): void {
         const signal = this.listeners.signal;
         this.element('refresh').addEventListener('click', () => void this.refresh(), { signal });
+        const closeButton = this.root.querySelector<HTMLButtonElement>('[data-admin-guided-role="close"]');
+        closeButton?.addEventListener('click', () => this.options.onClose?.(), { signal });
+        this.element<HTMLButtonElement>('filter-toggle').addEventListener('click', () => {
+            const expanded = this.element<HTMLElement>('filters-panel').classList.contains('admin-guided-filters-panel--expanded');
+            this.setFilterPanelExpanded(!expanded);
+        }, { signal });
+        this.element<HTMLButtonElement>('filter-collapse').addEventListener('click', () => {
+            this.setFilterPanelExpanded(false);
+        }, { signal });
         this.element<HTMLSelectElement>('period').addEventListener('change', () => {
             this.element<HTMLSelectElement>('course').value = '';
             this.populateCourseOptions();
@@ -574,6 +817,10 @@ export class AdminGuidedPathwayFlagsController {
         }, { signal });
         this.element<HTMLFormElement>('filters').addEventListener('submit', (event) => {
             event.preventDefault();
+            this.currentPage = 1;
+            void this.loadQueue();
+        }, { signal });
+        this.element<HTMLButtonElement>('apply').addEventListener('click', () => {
             this.currentPage = 1;
             void this.loadQueue();
         }, { signal });

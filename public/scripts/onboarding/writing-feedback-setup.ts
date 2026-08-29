@@ -24,7 +24,6 @@ import {
 const definition: FeatureTutorialDefinition = {
     component: 'writing-feedback-setup',
     feature: 'writingFeedback',
-    completionSlug: 'writing-feedback',
     completionEvent: 'writingFeedbackSetupComplete',
     totalSteps: 6,
     stepTitles: {
