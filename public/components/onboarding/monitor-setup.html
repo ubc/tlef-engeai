@@ -1,4 +1,4 @@
-<div class="onboarding monitor-setup">
+<div class="onboarding staff-onboarding monitor-setup">
     <link rel="stylesheet" href="/styles/instructor-components/onboarding.css">
     <link rel="stylesheet" href="/styles/modal-overlay.css">
     
@@ -11,7 +11,7 @@
                 <i data-feather="monitor"></i>
                 <div class="logo-text">
                     <span>EngE-AI</span>
-                    <p>Instructor Mode: Monitor Dashboard</p>
+                    <p>Course Staff: Monitor Dashboard</p>
                 </div>
             </div>
         </div>
@@ -86,33 +86,33 @@
             </button>
         </div>
 
+        <div class="onboarding-content-steps">
+
         <!-- Step 1: Welcome -->
         <div class="content-step active" id="content-step-1">
             <div class="content-step-inner">
                 <div class="step-header">
                     <h1>Welcome to Monitor Dashboard</h1>
-                    <p>Learn how to effectively monitor and track student activity</p>
+                    <p>Review course activity without treating it as a learning score</p>
                 </div>
                 
                 <div class="welcome-content">
                     <div class="welcome-message">
-                        <h3>Welcome, Professor! Let's explore your monitoring toolkit</h3>
-                        <p>As an instructor, you have powerful tools to monitor student engagement and track their learning progress. This tutorial will help you master the monitor dashboard, enabling you to gain valuable insights into how your students are using the AI tutor.</p>
+                        <h3>See how students are using EngE-AI</h3>
+                        <p>The Monitor Dashboard gives course staff a view of tutor activity over time, with access to individual chat sessions when closer review is appropriate.</p>
                         
                         <div class="demo-explanation">
-                            <h4>Your monitoring capabilities:</h4>
+                            <h4>Course staff can:</h4>
                             <ul class="feature-list">
-                                <li>Monitor individual student activity and engagement</li>
-                                <li>Filter data by date ranges for detailed analysis</li>
-                                <li>Access complete chat histories for each student</li>
-                                <li>Download student interactions for record-keeping</li>
-                                <li>Identify patterns in student learning behavior</li>
+                                <li>Sort the roster by name or token usage</li>
+                                <li>Filter activity to a date range</li>
+                                <li>Open available student chat sessions</li>
+                                <li>Download a session when there is a course-support need</li>
                             </ul>
                         </div>
                         
-                        <div class="demo-explanation" style="margin-top: 2rem; background: rgba(92, 138, 58, 0.05); border-left: 4px solid var(--color-chbe-green);">
-                            <h4>💡 Pro Tip:</h4>
-                            <p>Regular monitoring helps you identify students who might need additional support and understand which topics are generating the most questions and engagement.</p>
+                        <div class="completion-note">
+                            <p><strong>Use activity as context, not a conclusion.</strong> Token usage shows system activity. It does not prove engagement, understanding, effort, or learning.</p>
                         </div>
                     </div>
                 </div>
@@ -130,7 +130,7 @@
                 <div class="demo-section">
                     <div class="demo-explanation">
                         <h3>Student List Management</h3>
-                        <p>The student list shows all enrolled students with their current token usage. You can sort this list to identify students who are most or least active with the AI tutor.</p>
+                        <p>The list shows enrolled students and the amount of text processed in their tutor sessions. Sorting can help course staff decide where to look next, but the number is not a learning score.</p>
                     </div>
                     
                     <div class="demo-interactive">
@@ -158,7 +158,7 @@
                         <div class="demo-explanation" style="margin-top: 2rem;">
                             <h4>Sorting Options:</h4>
                             <ul class="feature-list">
-                                <li><strong>Token Usage:</strong> Sort by highest to lowest token consumption (default)</li>
+                                <li><strong>Token Usage:</strong> Sort by highest to lowest system activity (default)</li>
                                 <li><strong>Alphabetical:</strong> Sort by student name alphabetically</li>
                                 <li><strong>Active Indicator:</strong> The blue button shows which sort is currently active</li>
                             </ul>
@@ -173,13 +173,13 @@
             <div class="content-step-inner">
                 <div class="step-header">
                     <h1>Accessing Student Details</h1>
-                    <p>Learn how to expand student cards and access chat history</p>
+                    <p>Open available sessions and use them with care</p>
                 </div>
                 
                 <div class="demo-section">
                     <div class="demo-explanation">
                         <h3>Student Detail View</h3>
-                        <p>Click on any student to expand their card and view their complete chat history. This allows you to see exactly what topics they've been discussing with the AI tutor.</p>
+                        <p>Select a student to expand their card and view available chat sessions. Use this access only for legitimate course support and follow your institution's privacy practices.</p>
                     </div>
                     
                     <div class="demo-interactive">
@@ -196,9 +196,9 @@
                             <h4>Student Detail Features:</h4>
                             <ul class="feature-list">
                                 <li><strong>Expandable Cards:</strong> Click any student name to expand their details</li>
-                                <li><strong>Chat History:</strong> View all chat sessions with titles and dates</li>
-                                <li><strong>Download Function:</strong> Download individual chat sessions for record-keeping</li>
-                                <li><strong>Token Tracking:</strong> See total tokens used by each student</li>
+                                <li><strong>Chat sessions:</strong> Open sessions by title and date</li>
+                                <li><strong>Download:</strong> Export one session when needed for authorized course work</li>
+                                <li><strong>Token usage:</strong> See an activity signal for the selected date range</li>
                             </ul>
                         </div>
                     </div>
@@ -210,41 +210,38 @@
         <div class="content-step" id="content-step-4" data-requires-completion="3">
             <div class="content-step-inner">
                 <div class="step-header">
-                    <h1>Monitor Dashboard Complete!</h1>
-                    <p>You're now ready to effectively monitor student activity</p>
+                    <h1>Monitor Dashboard complete</h1>
+                    <p>You can navigate activity data and student sessions</p>
                 </div>
-                
+
                 <div class="completion-content">
                     <div class="completion-message">
-                        <div class="success-icon">🎉</div>
-                        <h3>Monitor Dashboard Tutorial Complete!</h3>
-                        <p>Congratulations! You have successfully completed the monitor dashboard onboarding session. You now have all the knowledge needed to effectively track and monitor student activity in EngE-AI!</p>
+                        <div class="success-icon"><i data-feather="award" aria-hidden="true"></i></div>
+                        <h3>Monitor Dashboard tutorial complete</h3>
+                        <p>You now know what the dashboard shows and what its activity numbers cannot tell you.</p>
                         <ul class="completion-list">
-                            <li>✅ Discovered how to sort and navigate student lists</li>
-                            <li>✅ Mastered accessing individual student chat histories</li>
-                            <li>✅ Gained insight into monitoring best practices</li>
+                            <li>Sorted the student list</li>
+                            <li>Opened available student sessions</li>
+                            <li>Interpreted token usage as an activity signal</li>
                         </ul>
                         <div class="completion-note">
-                            <p><strong>You're all set!</strong> You can now confidently use the monitor dashboard to track student engagement and identify those who might need additional support.</p>
+                            <p>Combine dashboard activity with other course evidence before deciding whether follow-up is needed.</p>
                         </div>
                     </div>
-                    
+
                     <div class="next-steps">
-                        <h4>Ready to Monitor!</h4>
-                        <p>Your monitor dashboard is now active and ready to use:</p>
+                        <h4>What you can do next</h4>
                         <ul>
-                            <li>👥 Sort students by activity to identify engagement patterns</li>
-                            <li>📋 Access individual chat histories to understand student needs</li>
-                            <li>💾 Download chat sessions for record-keeping and analysis</li>
-                            <li>🎯 Use insights to improve your teaching and student support</li>
+                            <li><i data-feather="users" aria-hidden="true"></i> Filter and sort activity for a useful date range</li>
+                            <li><i data-feather="file-text" aria-hidden="true"></i> Review a session when course support requires it</li>
+                            <li><i data-feather="save" aria-hidden="true"></i> Download only when authorized and necessary</li>
                         </ul>
-                        <div class="completion-cta">
-                            <p><strong>Happy monitoring! 📈</strong></p>
-                        </div>
                     </div>
                 </div>
             </div>
         </div>
+
+        </div><!-- /.onboarding-content-steps -->
 
         <!-- Navigation -->
         <div class="onboarding-navigation">
@@ -293,12 +290,12 @@
         <!-- Step 1 Help -->
         <div id="help-step-1">
             <p><strong>Welcome to Monitor Dashboard!</strong></p>
-            <p>This tutorial will teach you how to effectively monitor student activity in EngE-AI. The monitor dashboard helps you track engagement and identify students who might need additional support.</p>
+            <p>The Monitor Dashboard shows tutor activity over time and provides course staff access to available student sessions.</p>
             <p><strong>What you'll learn:</strong></p>
             <ul>
                 <li>Sorting and navigating student lists</li>
-                <li>Accessing individual student chat histories</li>
-                <li>Best practices for monitoring student activity</li>
+                <li>Opening student chat sessions</li>
+                <li>Interpreting activity without treating it as a learning measure</li>
             </ul>
         </div>
 
@@ -307,10 +304,10 @@
             <p><strong>Student Activity Overview</strong></p>
             <p>The student list shows all enrolled students with their token usage. You can sort by:</p>
             <ul>
-                <li><strong>Token Usage:</strong> Highest to lowest consumption (default)</li>
+                <li><strong>Token Usage:</strong> Highest to lowest system activity (default)</li>
                 <li><strong>Alphabetical:</strong> By student name</li>
             </ul>
-            <p>The active sort option is highlighted in blue. This helps you quickly identify the most and least active students.</p>
+            <p>Token usage is an activity signal only. It does not establish engagement, effort, understanding, or learning.</p>
         </div>
 
         <!-- Step 3 Help -->
@@ -319,24 +316,24 @@
             <p>To view detailed student information:</p>
             <ul>
                 <li>Click on any student name to expand their card</li>
-                <li>View their complete chat history with session titles</li>
-                <li>Download individual chat sessions for record-keeping</li>
-                <li>See total tokens used by each student</li>
+                <li>Open available sessions by title and date</li>
+                <li>Download an individual session only when authorized and necessary</li>
+                <li>See token usage for the selected date range</li>
             </ul>
-            <p>This detailed view helps you understand what topics students are struggling with and how they're using the AI tutor.</p>
+            <p>Student chats are sensitive course records. Use them for legitimate course support and follow institutional privacy practices.</p>
         </div>
 
         <!-- Step 4 Help -->
         <div id="help-step-4">
-            <p><strong>Monitor Dashboard Complete!</strong></p>
-            <p>Congratulations! You now have all the knowledge needed to effectively monitor student activity.</p>
+            <p><strong>Monitor Dashboard complete</strong></p>
+            <p>You can now navigate activity data and available student sessions.</p>
             <p><strong>Remember:</strong></p>
             <ul>
-                <li>Sort students by activity to identify engagement patterns</li>
-                <li>Access individual chat histories to understand student needs</li>
-                <li>Download chat sessions for record-keeping and analysis</li>
+                <li>Treat token usage as activity, not proof of learning</li>
+                <li>Use chat access only for legitimate course support</li>
+                <li>Download only when authorized and necessary</li>
             </ul>
-            <p>Regular monitoring helps you provide better support to your students and improve the learning experience.</p>
+            <p>Use other course evidence before deciding whether a student needs follow-up.</p>
         </div>
     </div>
 </div>

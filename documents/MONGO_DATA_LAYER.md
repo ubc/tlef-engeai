@@ -259,9 +259,15 @@ Instructor onboarding is split across two documents, deliberately.
   `features` — so a second instructor must not be able to run it again and override the
   first one's choices.
 - **`GlobalUser.instructorOnboarding`** (`active-users`) holds `{ contentSetup, flagSetup,
-  monitorSetup }`. These three stages are pure tutorials that write nothing to the course,
-  so progress belongs to the person. An instructor new to EngE-AI is taught even when a
-  colleague already set the course up, and a returning instructor is never taught twice.
+  monitorSetup, scenarioGeneration, writingFeedback, guidedPathway }`. Every one is a pure
+  tutorial that writes nothing to the course, so progress belongs to the person. An
+  instructor new to EngE-AI is taught even when a colleague already set the course up, and a
+  returning instructor is never taught twice.
+- The last three are the **feature tutorials**. Whether one is owed also depends on the
+  course: `resolveNextOnboardingStage` gates each on `activeCourse.features.<key>.enabled`,
+  so a course that never enabled Writing Feedback owes nobody that tutorial. Completion is
+  sticky across a feature being disabled and re-enabled, and a feature never previously
+  completed triggers its tutorial the first time any course enables it.
 
 `activeCourse.contentSetup` / `flagSetup` / `monitorSetup` are **deprecated** and no longer
 read or written. They are left on existing documents (not `$unset`) so the change reverts
@@ -276,8 +282,10 @@ resurrect them.
 - `sanitizeGlobalUserForFrontend` (`src/utils/user-utils.ts`) whitelists fields, so the
   object is coerced there explicitly — a field omitted from that function never reaches the
   browser.
-- Backfilled by **OB-002** from the coarser `instructorOnboardingCompleted` flag. See
-  [DATA_MIGRATIONS.md](DATA_MIGRATIONS.md).
+- Backfilled by **OB-002** from the coarser `instructorOnboardingCompleted` flag, which seeds
+  the three inherited stages only. The feature tutorials are deliberately left unseeded: they
+  are new, so nobody has been taught them and everybody is owed them once their course
+  enables the capability. See [DATA_MIGRATIONS.md](DATA_MIGRATIONS.md).
 
 - **TBD**: One-way deps (example: flags + user enrichment).
 

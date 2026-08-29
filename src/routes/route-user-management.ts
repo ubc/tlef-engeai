@@ -175,10 +175,14 @@ router.patch('/onboarding/instructor-completed', asyncHandlerWithAuth(async (req
  * an already-set-up course is still taught. `courseSetup` is deliberately not accepted here:
  * it writes real course configuration and stays on the course document.
  *
+ * The three feature tutorials are recorded here too. Whether one is owed is decided by
+ * `resolveNextOnboardingStage`, which gates each on its course capability; this endpoint
+ * only records that the caller has been taught it, so no course id is needed.
+ *
  * Writes only the caller's own record, so no course-scoped RBAC applies.
  *
  * @route PATCH /api/user/onboarding/instructor-stage
- * @param {('contentSetup'|'flagSetup'|'monitorSetup')} stage - Completed tutorial stage (body)
+ * @param {('contentSetup'|'flagSetup'|'monitorSetup'|'scenarioGeneration'|'writingFeedback'|'guidedPathway')} stage - Completed tutorial stage (body)
  * @returns {object} { success: boolean, error?: string }
  * @response 200 - Success
  * @response 400 - Invalid or missing stage
@@ -186,7 +190,14 @@ router.patch('/onboarding/instructor-completed', asyncHandlerWithAuth(async (req
  * @response 404 - GlobalUser not found
  * @response 500 - Failed to update
  */
-const INSTRUCTOR_ONBOARDING_STAGES = ['contentSetup', 'flagSetup', 'monitorSetup'] as const;
+const INSTRUCTOR_ONBOARDING_STAGES = [
+    'contentSetup',
+    'flagSetup',
+    'monitorSetup',
+    'scenarioGeneration',
+    'writingFeedback',
+    'guidedPathway'
+] as const;
 type InstructorOnboardingStage = (typeof INSTRUCTOR_ONBOARDING_STAGES)[number];
 
 router.patch('/onboarding/instructor-stage', asyncHandlerWithAuth(async (req: Request, res: Response) => {

@@ -20,6 +20,8 @@
 import { loadComponentHTML } from "../api/api.js";
 import { activeCourse, InstructorOnboardingProgress } from "../types.js";
 import { showErrorModal, showHelpModal } from "../ui/modal-overlay.js";
+import { buildOnboardingStagePath, resolveNextOnboardingStage } from "../utils/onboarding-stage-order.js";
+import { updateStaffOnboardingProgress } from "./staff-onboarding-ui.js";
 
 type SetupMode = 'create' | 'resume';
 
@@ -33,7 +35,7 @@ interface OnboardingState {
 /**
  * Mirrors backend resolveInstructorModeRedirect for client-side forward redirects.
  *
- * `courseSetup` comes from the course; the three tutorials come from the viewer's own
+ * `courseSetup` comes from the course; every tutorial comes from the viewer's own
  * record, so an instructor new to EngE-AI is taught even on a course a colleague set up.
  */
 function getInstructorForwardRedirect(
@@ -41,19 +43,10 @@ function getInstructorForwardRedirect(
     course: activeCourse,
     progress: InstructorOnboardingProgress
 ): string {
-    if (!course.courseSetup) {
-        return `/course/${courseId}/instructor/onboarding/course-setup`;
-    }
-    if (!progress.contentSetup) {
-        return `/course/${courseId}/instructor/onboarding/document-setup`;
-    }
-    if (!progress.flagSetup) {
-        return `/course/${courseId}/instructor/onboarding/flag-setup`;
-    }
-    if (!progress.monitorSetup) {
-        return `/course/${courseId}/instructor/onboarding/monitor-setup`;
-    }
-    return `/course/${courseId}/instructor/documents`;
+    const nextStage = resolveNextOnboardingStage(course, progress);
+    return nextStage
+        ? buildOnboardingStagePath(courseId, nextStage)
+        : `/course/${courseId}/instructor/documents`;
 }
 
 /**
@@ -72,14 +65,24 @@ async function fetchInstructorOnboardingProgress(): Promise<InstructorOnboarding
                 return {
                     contentSetup: progress.contentSetup === true,
                     flagSetup: progress.flagSetup === true,
-                    monitorSetup: progress.monitorSetup === true
+                    monitorSetup: progress.monitorSetup === true,
+                    scenarioGeneration: progress.scenarioGeneration === true,
+                    writingFeedback: progress.writingFeedback === true,
+                    guidedPathway: progress.guidedPathway === true
                 };
             }
         }
     } catch (error) {
         console.error('[COURSE-SETUP] Error loading instructor onboarding progress:', error);
     }
-    return { contentSetup: true, flagSetup: true, monitorSetup: true };
+    return {
+        contentSetup: true,
+        flagSetup: true,
+        monitorSetup: true,
+        scenarioGeneration: true,
+        writingFeedback: true,
+        guidedPathway: true
+    };
 }
 
 function applyCourseFields(target: activeCourse, source: activeCourse): void {
@@ -361,6 +364,14 @@ function setupReviewFormListeners(state: OnboardingState, onBoardingCourse: acti
             guidedPathway: { enabled: guidedPathwayInput.checked }
         };
     });
+
+    const scenarioGenerationInput = document.getElementById('reviewScenarioGenerationEnabled') as HTMLInputElement;
+    scenarioGenerationInput?.addEventListener('change', () => {
+        onBoardingCourse.features = {
+            ...onBoardingCourse.features,
+            scenarioGeneration: { enabled: scenarioGenerationInput.checked }
+        };
+    });
 }
 
 function setupHelpListener(state: OnboardingState): void {
@@ -491,6 +502,8 @@ function updateStepDisplay(state: OnboardingState, onBoardingCourse: activeCours
         setTimeout(() => adjustContentJustification(currentStepElement), 10);
     }
 
+    updateStaffOnboardingProgress(state.currentStep, state.totalSteps);
+
     synchronizeFormValues(state, onBoardingCourse);
 }
 
@@ -616,6 +629,11 @@ function updateReviewContent(onBoardingCourse: activeCourse): void {
     const guidedPathwayInput = document.getElementById('reviewGuidedPathwayEnabled') as HTMLInputElement;
     if (guidedPathwayInput) {
         guidedPathwayInput.checked = onBoardingCourse.features?.guidedPathway?.enabled === true;
+    }
+
+    const scenarioGenerationInput = document.getElementById('reviewScenarioGenerationEnabled') as HTMLInputElement;
+    if (scenarioGenerationInput) {
+        scenarioGenerationInput.checked = onBoardingCourse.features?.scenarioGeneration?.enabled === true;
     }
 
     updateReviewContentCountDescription(onBoardingCourse);

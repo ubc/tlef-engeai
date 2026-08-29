@@ -26,6 +26,7 @@
 import { loadComponentHTML } from "../api/api.js";
 import { activeCourse } from "../types.js";
 import { showErrorModal, showHelpModal } from "../ui/modal-overlay.js";
+import { updateStaffOnboardingProgress } from "./staff-onboarding-ui.js";
 import { completeInstructorOnboardingStage } from './onboarding-progress.js';
 
 // ===========================================
@@ -695,6 +696,8 @@ function updateStepDisplay(state: FlagSetupState): void {
         // Check if content overflows and adjust justify-content accordingly
         setTimeout(() => adjustContentJustification(currentStepElement), 10);
     }
+
+    updateStaffOnboardingProgress(state.currentStep, state.totalSteps);
 }
 
 /**
@@ -787,6 +790,7 @@ function updateNavigationButtons(state: FlagSetupState): void {
             setNextButtonText(nextBtn, 'Complete Setup');
             // Ensure button is enabled on final step
             nextBtn.disabled = false;
+            nextBtn.removeAttribute('aria-label');
         } else {
             setNextButtonText(nextBtn, 'Next');
             
@@ -798,12 +802,15 @@ function updateNavigationButtons(state: FlagSetupState): void {
                     const requiredStep = parseInt(requiresCompletion);
                     if (!state.completedSteps.has(requiredStep)) {
                         nextBtn.disabled = true;
-                        setNextButtonText(nextBtn, 'Complete Previous Step First');
+                        nextBtn.setAttribute('aria-label', 'Next, complete this step first');
+                        setNextButtonText(nextBtn, 'Next');
                     } else {
                         nextBtn.disabled = false;
+                        nextBtn.removeAttribute('aria-label');
                     }
                 } else {
                     nextBtn.disabled = false;
+                    nextBtn.removeAttribute('aria-label');
                 }
             } else {
                 nextBtn.disabled = false;

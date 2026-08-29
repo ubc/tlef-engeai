@@ -819,6 +819,15 @@ export interface InstructorOnboardingProgress {
     contentSetup?: boolean;
     flagSetup?: boolean;
     monitorSetup?: boolean;
+    /**
+     * The three feature tutorials, owed only while their course capability is enabled.
+     *
+     * Completion survives disabling and re-enabling a capability, and follows the
+     * person across courses, so an instructor is never taught the same tutorial twice.
+     */
+    scenarioGeneration?: boolean;
+    writingFeedback?: boolean;
+    guidedPathway?: boolean;
 }
 
 /**

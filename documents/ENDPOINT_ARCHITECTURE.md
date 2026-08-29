@@ -73,6 +73,9 @@ All course-scoped pages use the same HTML shell; the frontend parses the URL to 
 | `GET /course/:courseId/instructor/about` | About page |
 | `GET /course/:courseId/instructor/onboarding/course-setup` | Onboarding |
 | `GET /course/:courseId/instructor/onboarding/document-setup` | Onboarding |
+| `GET /course/:courseId/instructor/onboarding/scenario-generation-setup` | Onboarding — rendered only when `scenarioGeneration` is enabled and its tutorial incomplete |
+| `GET /course/:courseId/instructor/onboarding/writing-feedback-setup` | Onboarding — rendered only when `writingFeedback` is enabled and its tutorial incomplete |
+| `GET /course/:courseId/instructor/onboarding/guided-pathway-setup` | Onboarding — rendered only when `guidedPathway` is enabled and its tutorial incomplete |
 | `GET /course/:courseId/instructor/onboarding/flag-setup` | Onboarding |
 | `GET /course/:courseId/instructor/onboarding/monitor-setup` | Onboarding |
 | `GET /instructor/onboarding/new-course` | New course creation (no courseId) |
@@ -107,6 +110,14 @@ Optional course capabilities live on `activeCourse.features`. Missing entries ar
 
 **Success (200):** `{ success: true, data: activeCourse, message }`  
 **Errors:** `400` invalid body, `403` non–roster-manager, `404` course missing
+
+#### Instructor Onboarding Stage Order
+
+Tutorial progress lives on the user (`GlobalUser.instructorOnboarding`, OB-002), including the three feature tutorials; only `courseSetup` is read from the course. Recorded through `PATCH /api/user/onboarding/instructor-stage`. A missing or `false` entry means the tutorial is still owed whenever its feature is enabled, which routes users who predate a stage through it. Completion survives disabling and re-enabling a feature, and follows the person across courses.
+
+Stage ordering is resolved by `resolveNextOnboardingStage` in `src/helpers/instructor-onboarding-redirect.ts`, mirrored for the browser in `public/scripts/utils/onboarding-stage-order.ts`. Sequence: Course, Document, then each enabled-and-incomplete feature tutorial in Scenario Generation, Writing Feedback, Guided Pathway order, then Flag and Monitor.
+
+Both resolvers take a `canManageRoster` flag, defaulting to `true`. Course Setup is offered only to roster managers, because `POST /:id/complete-course-setup` requires roster-management authority and the stage defines `frameType` and `tilesNumber` — the divisions every later stage files content under. A teaching assistant reaching a course whose `courseSetup` is still `false` is therefore owed no stage at all and goes to the Dashboard, rather than being sent into a stage they cannot finish or a document step with no structure to populate. Course entry passes the flag from `canManageCourseRoster`. Every stage after Course Setup resolves identically for both authorities, and the parity test in `src/helpers/__tests__/instructor-onboarding-redirect.test.ts` pins that.
 
 Struggle-topic document APIs require `requireCourseFeatureAPI('memoryAgent')`. Pathway Library APIs require `requireCourseFeatureAPI('guidedPathway')`.
 
@@ -628,7 +639,7 @@ Chat metadata is ordered by most recent activity and contains no conversation-le
 | GET | `/api/user/current` | Yes | Any | Current user info |
 | POST | `/api/user/update-onboarding` | Yes | Any | Update onboarding state |
 | PATCH | `/api/user/onboarding/instructor-completed` | Yes | Any | Set `instructorOnboardingCompleted` on the caller's `GlobalUser` |
-| PATCH | `/api/user/onboarding/instructor-stage` | Yes | Any | Mark one instructor tutorial stage complete on the caller's `GlobalUser`. Body `{ stage: 'contentSetup' \| 'flagSetup' \| 'monitorSetup' }`. Writes only the caller's own record, so no course-scoped RBAC applies |
+| PATCH | `/api/user/onboarding/instructor-stage` | Yes | Any | Mark one instructor tutorial stage complete on the caller's `GlobalUser`. Body `{ stage: 'contentSetup' \| 'flagSetup' \| 'monitorSetup' \| 'scenarioGeneration' \| 'writingFeedback' \| 'guidedPathway' }`. The last three are the feature tutorials; whether one is owed is decided by `resolveNextOnboardingStage`, which gates each on its course capability, so no course id is needed here. Writes only the caller's own record, so no course-scoped RBAC applies |
 | GET | `/api/user/activity` | Yes | Any | Idle poll (read-only; does not bump `lastActivityAt`) |
 | POST | `/api/user/activity` | Yes | Any | Bump activity when `{ userActivity: true }`; same response shape as GET |
 

@@ -49,7 +49,12 @@ export function sanitizeGlobalUserForFrontend(globalUser: GlobalUser): Omit<Glob
         instructorOnboarding: {
             contentSetup: globalUser.instructorOnboarding?.contentSetup === true,
             flagSetup: globalUser.instructorOnboarding?.flagSetup === true,
-            monitorSetup: globalUser.instructorOnboarding?.monitorSetup === true
+            monitorSetup: globalUser.instructorOnboarding?.monitorSetup === true,
+            // Feature tutorials are recorded here too, so the browser resolver can
+            // decide which of them the viewer still owes.
+            scenarioGeneration: globalUser.instructorOnboarding?.scenarioGeneration === true,
+            writingFeedback: globalUser.instructorOnboarding?.writingFeedback === true,
+            guidedPathway: globalUser.instructorOnboarding?.guidedPathway === true
         }
     };
 }

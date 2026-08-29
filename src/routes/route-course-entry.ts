@@ -10,7 +10,7 @@ import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { GlobalUser, CourseUser, User, activeCourse } from '../types/shared';
 import { appLogger } from '../utils/logger';
 import { refreshSessionGlobalUser } from '../helpers/session-global-user';
-import { isCourseStaff, isInCourseTAs } from '../utils/course-staff';
+import { canManageCourseRoster, isCourseStaff, isInCourseTAs } from '../utils/course-staff';
 import { isCourseAccessible } from '../helpers/course-access';
 import { courseScopedAffiliation, joinsCourseAsStudent } from '../utils/affiliation';
 import { resolveInstructorModeRedirect } from '../helpers/instructor-onboarding-redirect';
@@ -162,7 +162,12 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
             requiresOnboarding = true;
             appLogger.log(`[COURSE-ENTRY] Redirecting student to onboarding`);
         } else if (isStaff) {
-            const instructorRedirect = resolveInstructorModeRedirect(courseId, courseData, freshGlobalUser ?? globalUser);
+            const instructorRedirect = resolveInstructorModeRedirect(
+                courseId,
+                courseData,
+                freshGlobalUser ?? globalUser,
+                canManageCourseRoster(courseData, globalUser)
+            );
             redirect = instructorRedirect.redirect;
             requiresOnboarding = instructorRedirect.requiresOnboarding;
             appLogger.log(`[COURSE-ENTRY] Redirecting course staff to instructor mode`);
@@ -358,7 +363,12 @@ router.post('/enter-by-code', asyncHandlerWithAuth(async (req: Request, res: Res
             requiresOnboarding = true;
             appLogger.log(`[COURSE-ENTRY] Redirecting student to onboarding`);
         } else if (isStaff) {
-            const instructorRedirect = resolveInstructorModeRedirect(courseId, courseData, freshGlobalUser ?? globalUser);
+            const instructorRedirect = resolveInstructorModeRedirect(
+                courseId,
+                courseData,
+                freshGlobalUser ?? globalUser,
+                canManageCourseRoster(courseData, globalUser)
+            );
             redirect = instructorRedirect.redirect;
             requiresOnboarding = instructorRedirect.requiresOnboarding;
             appLogger.log(`[COURSE-ENTRY] Redirecting course staff to instructor mode`);

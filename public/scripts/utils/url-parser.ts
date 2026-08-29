@@ -1,8 +1,23 @@
 /**
  * URL Parser Utilities
- * 
+ *
  * Provides functions to parse and construct course-related URLs
  */
+
+import {
+    buildOnboardingStagePath,
+    FEATURE_ONBOARDING_STAGES,
+    type InstructorOnboardingStage
+} from './onboarding-stage-order.js';
+
+/** Every stage slug the instructor onboarding router accepts. */
+const VALID_INSTRUCTOR_ONBOARDING_STAGES: ReadonlyArray<InstructorOnboardingStage> = [
+    'course-setup',
+    'document-setup',
+    ...FEATURE_ONBOARDING_STAGES.map((entry) => entry.stage),
+    'flag-setup',
+    'monitor-setup'
+];
 
 /**
  * Extract courseId from current URL
@@ -316,14 +331,12 @@ export function navigateToStudentChat(courseId: string, chatId: string): void {
  * Example: /course/abc123/instructor/onboarding/course-setup -> 'course-setup'
  * Returns null if not on an onboarding URL
  */
-export function getInstructorOnboardingStageFromURL(): 'course-setup' | 'document-setup' | 'flag-setup' | 'monitor-setup' | null {
+export function getInstructorOnboardingStageFromURL(): InstructorOnboardingStage | null {
     const pathMatch = window.location.pathname.match(/^\/course\/[a-f0-9]{12}\/instructor\/onboarding\/([^\/]+)/);
     if (!pathMatch) return null;
-    
-    const stage = pathMatch[1];
-    const validStages: Array<'course-setup' | 'document-setup' | 'flag-setup' | 'monitor-setup'> = 
-        ['course-setup', 'document-setup', 'flag-setup', 'monitor-setup'];
-    return validStages.includes(stage as any) ? stage as any : null;
+
+    const stage = pathMatch[1] as InstructorOnboardingStage;
+    return VALID_INSTRUCTOR_ONBOARDING_STAGES.includes(stage) ? stage : null;
 }
 
 /**
@@ -337,8 +350,8 @@ export function isStudentOnboardingURL(): boolean {
 /**
  * Build instructor onboarding URL
  */
-export function buildInstructorOnboardingURL(courseId: string, stage: 'course-setup' | 'document-setup' | 'flag-setup' | 'monitor-setup'): string {
-    return `/course/${courseId}/instructor/onboarding/${stage}`;
+export function buildInstructorOnboardingURL(courseId: string, stage: InstructorOnboardingStage): string {
+    return buildOnboardingStagePath(courseId, stage);
 }
 
 /**
@@ -351,7 +364,7 @@ export function buildStudentOnboardingURL(courseId: string): string {
 /**
  * Navigate to instructor onboarding stage using history.pushState (no page reload)
  */
-export function navigateToInstructorOnboarding(stage: 'course-setup' | 'document-setup' | 'flag-setup' | 'monitor-setup'): void {
+export function navigateToInstructorOnboarding(stage: InstructorOnboardingStage): void {
     const courseId = getCourseIdFromURL();
     if (!courseId) {
         console.error('[URL-PARSER] Cannot navigate: courseId not found in URL');

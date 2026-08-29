@@ -656,8 +656,13 @@ function createDocToolbar(pane: HTMLElement): HTMLElement {
  * Single reading pane: verification editor while staff confirmation is
  * pending; otherwise the annotated (or plain) document, with the original
  * extraction available behind a collapsible only when it differs.
+ *
+ * Exported so the onboarding tutorial can render the production interface from
+ * canned data. The handlers attached here still perform real mutations, so any
+ * caller outside the real workspace must arm demo mode first — see
+ * `writing-feedback-demo-mode.ts`.
  */
-function renderDocPane(submission: Submission, annotate: boolean): HTMLElement {
+export function renderDocPane(submission: Submission, annotate: boolean): HTMLElement {
     const pane = document.createElement('div');
     pane.className = 'wf-doc-pane';
     pane.append(createDocToolbar(pane));
@@ -709,7 +714,13 @@ function renderDocPane(submission: Submission, annotate: boolean): HTMLElement {
     return pane;
 }
 
-function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assignment | null, staleRubric: boolean): HTMLElement {
+/**
+ * Exported so the onboarding tutorial can render the production interface from
+ * canned data. The handlers attached here still perform real mutations, so any
+ * caller outside the real workspace must arm demo mode first — see
+ * `writing-feedback-demo-mode.ts`.
+ */
+export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assignment | null, staleRubric: boolean): HTMLElement {
     const { submission, feedbackRun } = detail;
     const panel = document.createElement('aside');
     panel.className = 'wf-feedback-panel';

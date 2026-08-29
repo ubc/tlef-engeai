@@ -15,6 +15,7 @@
 
 import type { activeCourse } from '../types.js';
 import { showConfirmModal, showErrorModal } from '../ui/modal-overlay.js';
+import { isWritingFeedbackDemoMode, WritingFeedbackDemoModeError } from './writing-feedback-demo-mode.js';
 
 /** Lifecycle state displayed in staff queues and enforced by server transitions. */
 export type SubmissionStatus = 'imported' | 'verification_needed' | 'generating' | 'draft_ready' | 'approved' | 'released' | 'failed';
@@ -591,6 +592,16 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
  * @returns Typed API response data
  */
 export function jsonRequest<T>(path: string, method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', body?: unknown): Promise<T> {
+    // Step 1: refuse every mutation while a tutorial is on screen. This covers
+    // all mutations that use the JSON envelope; the multipart upload in
+    // writing-feedback.ts guards itself with assertNotWritingFeedbackDemoMode
+    // for the same reason (it cannot route through jsonRequest, since it sends
+    // FormData rather than JSON).
+    if (isWritingFeedbackDemoMode()) {
+        return Promise.reject(new WritingFeedbackDemoModeError());
+    }
+
+    // Step 2: normal same-origin mutation through the shared envelope.
     return request<T>(path, {
         method,
         headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },

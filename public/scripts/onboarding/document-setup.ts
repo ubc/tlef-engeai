@@ -1,20 +1,20 @@
 /**
  * DOCUMENT SETUP MODULE - ONBOARDING VERSION
  * 
- * This module handles the document setup onboarding flow for instructors.
- * It provides a step-by-step tutorial on how to add learning objectives and upload documents.
+ * This module handles the document setup onboarding flow for course staff.
+ * It provides a step-by-step tutorial for saving learning objectives and course materials.
  * 
  * FEATURES:
  * - 4-step onboarding process with navigation
- * - Learning objectives demo with add/delete functionality
- * - Document upload demo with file handling
- * - Backend integration placeholders (unimplemented)
+ * - Learning objectives saved to the selected course area
+ * - Document uploads processed and saved through the production upload service
+ * - No tutorial deletion controls for actions that are not represented faithfully
  * - Data structure initialization and validation
  * 
  * ONBOARDING STEPS:
  * 1. Welcome - Overview of document setup process
- * 2. Learning Objectives - Demo how to add learning objectives
- * 3. Document Upload - Demo how to upload course materials
+ * 2. Learning Objectives - Add a learning objective to the course
+ * 3. Document Upload - Upload course materials
  * 4. Completion - Summary and next steps
  * 
  * @author: gatahcha (revised)
@@ -24,10 +24,11 @@
 
 import { loadComponentHTML } from "../api/api.js";
 import { activeCourse, TopicOrWeekInstance, TopicOrWeekItem } from "../types.js";
-import { showErrorModal, showHelpModal, showConfirmModal, openContentInputModal, showSimpleErrorModal, showDeleteConfirmationModal } from "../ui/modal-overlay.js";
+import { showErrorModal, showHelpModal, showConfirmModal, openContentInputModal, showSimpleErrorModal } from "../ui/modal-overlay.js";
 import type { ContentInputPayload, ContentInputSubmitResult } from "../ui/modal-overlay.js";
 import { DocumentUploadModule } from '../services/document-upload-module.js';
 import { completeInstructorOnboardingStage } from './onboarding-progress.js';
+import { updateStaffOnboardingProgress } from './staff-onboarding-ui.js';
 
 // ===========================================
 // TYPE DEFINITIONS
@@ -73,7 +74,7 @@ interface DemoFile {
  * 4. Manages step navigation and validation
  * 5. Handles demo functionality for learning objectives and file uploads
  * 
- * @param instructorCourse - The instructor's course object to be populated
+ * @param instructorCourse - The course object to be populated
  * @returns Promise<void>
  */
 export const renderDocumentSetup = async (instructorCourse: activeCourse): Promise<void> => {
@@ -236,20 +237,13 @@ function setupNavigationListeners(state: DocumentSetupState, instructorCourse: a
 function setupDemoListeners(state: DocumentSetupState): void {
     // Learning objectives demo
     const addDemoObjectiveBtn = document.getElementById('addDemoObjective') as HTMLButtonElement;
-    const clearDemoBtn = document.getElementById('clearDemo') as HTMLButtonElement;
     
     if (addDemoObjectiveBtn) {
         addDemoObjectiveBtn.addEventListener('click', async () => await addDemoObjective());
     }
     
-    if (clearDemoBtn) {
-        clearDemoBtn.addEventListener('click', async () => await clearDemoObjectives());
-    }
-
     // File upload demo
     const demoUploadBtn = document.getElementById('demoUploadBtn') as HTMLButtonElement;
-    const processDemoFilesBtn = document.getElementById('processDemoFiles') as HTMLButtonElement;
-    const clearDemoFilesBtn = document.getElementById('clearDemoFiles') as HTMLButtonElement;
     
     if (demoUploadBtn) {
         console.log('DEBUG #15: Setting up demoUploadBtn event listener');
@@ -263,13 +257,6 @@ function setupDemoListeners(state: DocumentSetupState): void {
         console.error('DEBUG #16: demoUploadBtn not found!');
     }
     
-    if (processDemoFilesBtn) {
-        processDemoFilesBtn.addEventListener('click', () => processDemoFiles());
-    }
-    
-    if (clearDemoFilesBtn) {
-        clearDemoFilesBtn.addEventListener('click', () => clearDemoFiles());
-    }
 }
 
 /**
@@ -494,6 +481,8 @@ function updateStepDisplay(state: DocumentSetupState): void {
         // Check if content overflows and adjust justify-content accordingly
         setTimeout(() => adjustContentJustification(currentStepElement), 10);
     }
+
+    updateStaffOnboardingProgress(state.currentStep, state.totalSteps);
 }
 
 /**
@@ -625,59 +614,6 @@ async function addDemoObjective(): Promise<void> {
 }
 
 /**
- * Removes a practice learning objective from the tutorial list
- * 
- * @param index - The index of the objective to remove
- */
-async function removeDemoObjective(index: number): Promise<void> {
-    if (index < 0 || index >= demoObjectives.length) {
-        await showSimpleErrorModal('Invalid objective index', 'Remove Learning Objective Error');
-        return;
-    }
-    
-    const objectiveToRemove = demoObjectives[index];
-    if (!objectiveToRemove) {
-        await showSimpleErrorModal('Objective not found', 'Remove Learning Objective Error');
-        return;
-    }
-    
-    // Show confirmation modal
-    const result = await showDeleteConfirmationModal(
-        'Learning Objective',
-        objectiveToRemove.learningObjective
-    );
-    
-    if (result.action !== 'delete') {
-        return; // User cancelled
-    }
-    
-    // Remove from the tutorial list. Nothing was ever written to the course.
-    demoObjectives.splice(index, 1);
-    updateDemoObjectivesDisplay();
-}
-
-/**
- * Clears all practice learning objectives from the tutorial list
- */
-async function clearDemoObjectives(): Promise<void> {
-    // Show confirmation modal
-    const result = await showDeleteConfirmationModal('All Learning Objectives');
-    
-    if (result.action !== 'delete') {
-        return; // User cancelled
-    }
-    
-    // Clear demo display
-    demoObjectives = [];
-    updateDemoObjectivesDisplay();
-    
-    // Clear input
-    const objectiveInput = document.getElementById('demoObjectiveTitle') as HTMLInputElement;
-    
-    if (objectiveInput) objectiveInput.value = '';
-}
-
-/**
  * Updates the demo objectives display
  */
 function updateDemoObjectivesDisplay(): void {
@@ -694,23 +630,15 @@ function updateDemoObjectivesDisplay(): void {
         return;
     }
     
-    demoObjectives.forEach((objective, index) => {
+    demoObjectives.forEach(objective => {
         const objectiveElement = document.createElement('div');
         objectiveElement.className = 'demo-objective-item';
-        objectiveElement.innerHTML = `
-            <div class="objective-header">
-                <h5>${objective.learningObjective}</h5>
-                <button class="delete-demo-btn" data-index="${index}">×</button>
-            </div>
-        `;
-        
-        // Add delete functionality
-        const deleteBtn = objectiveElement.querySelector('.delete-demo-btn') as HTMLButtonElement;
-        if (deleteBtn) {
-            deleteBtn.addEventListener('click', async () => {
-                await removeDemoObjective(index);
-            });
-        }
+        const header = document.createElement('div');
+        header.className = 'objective-header';
+        const title = document.createElement('h5');
+        title.textContent = objective.learningObjective;
+        header.append(title);
+        objectiveElement.append(header);
         
         container.appendChild(objectiveElement);
     });
@@ -791,39 +719,6 @@ async function handleOnboardingUpload(payload: ContentInputPayload): Promise<Con
 }
 
 /**
- * Removes a practice file from the tutorial list
- *
- * @param index - The index of the file to remove
- */
-async function removeDemoFile(index: number): Promise<void> {
-    if (index < 0 || index >= demoFiles.length) {
-        await showSimpleErrorModal('Invalid file index', 'Remove File Error');
-        return;
-    }
-
-    const fileToRemove = demoFiles[index];
-    if (!fileToRemove) {
-        await showSimpleErrorModal('File not found', 'Remove File Error');
-        return;
-    }
-
-    // Show confirmation modal
-    const result = await showDeleteConfirmationModal(
-        'Uploaded File',
-        fileToRemove.name
-    );
-
-    if (result.action !== 'delete') {
-        return; // User cancelled
-    }
-
-    // Remove from the tutorial list. Nothing was ever written to the course or Qdrant,
-    // so there is no material record or vector to clean up.
-    demoFiles.splice(index, 1);
-    updateDemoFilesDisplay();
-}
-
-/**
  * Updates the demo files display
  */
 function updateDemoFilesDisplay(): void {
@@ -840,58 +735,20 @@ function updateDemoFilesDisplay(): void {
         return;
     }
     
-    demoFiles.forEach((file, index) => {
+    demoFiles.forEach(file => {
         const fileElement = document.createElement('div');
         fileElement.className = 'demo-file-item';
-        fileElement.innerHTML = `
-            <div class="file-info">
-                <span class="file-name">${file.name}</span>
-            </div>
-            <button class="delete-file-btn" data-index="${index}">×</button>
-        `;
-        
-        // Add delete functionality
-        const deleteBtn = fileElement.querySelector('.delete-file-btn') as HTMLButtonElement;
-        if (deleteBtn) {
-            deleteBtn.addEventListener('click', async () => {
-                await removeDemoFile(index);
-            });
-        }
+        const info = document.createElement('div');
+        info.className = 'file-info';
+        const name = document.createElement('span');
+        name.className = 'file-name';
+        name.textContent = file.name;
+        info.append(name);
+        fileElement.append(info);
         
         container.appendChild(fileElement);
     });
 }
-
-/**
- * Shows information about uploaded files during onboarding
- */
-async function processDemoFiles(): Promise<void> {
-    if (demoFiles.length === 0) {
-        await showSimpleErrorModal('No files added yet. Please add a practice file first.', 'Nothing to Review');
-        return;
-    }
-
-    await showConfirmModal(
-        'Practice Complete',
-        `You added ${demoFiles.length} practice ${demoFiles.length === 1 ? 'file' : 'files'}. ` +
-        'Nothing was added to your course — upload your real course material from the Documents page once setup is finished.'
-    );
-}
-
-/**
- * Clears all demo files
- */
-function clearDemoFiles(): void {
-    demoFiles = [];
-    updateDemoFilesDisplay();
-    
-    // Clear file input
-    const fileInput = document.getElementById('demoFileInput') as HTMLInputElement;
-    if (fileInput) fileInput.value = '';
-    
-    console.log('Cleared demo files');
-}
-
 
 // ===========================================
 // BACKEND INTEGRATION
