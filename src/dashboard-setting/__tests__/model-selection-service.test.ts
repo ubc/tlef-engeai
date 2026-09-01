@@ -198,8 +198,25 @@ describe('ModelSelectionService', () => {
                 const normalized = service.normalizeStoredSettings(
                     fiveFeatureSettings({ chat: { modelId: withheld, reasoningLevel: 'none' } })
                 );
-                expect(normalized.chat).toEqual(DEFAULT_COURSE_LLM_SETTINGS.chat);
+                // Only the withheld model is coerced. An explicitly stored, valid reasoningLevel
+                // is the instructor's choice and survives, even when it differs from the default.
+                expect(normalized.chat.modelId).toBe(DEFAULT_COURSE_LLM_SETTINGS.chat.modelId);
+                expect(normalized.chat.reasoningLevel).toBe('none');
             }
+        });
+
+        it('applies the per-feature default when a stored row omits that feature', () => {
+            const normalized = service.normalizeStoredSettings({
+                chat: { modelId: 'gpt-5.6-luna', reasoningLevel: 'high' },
+            });
+            // Explicit row wins.
+            expect(normalized.chat.reasoningLevel).toBe('high');
+            // Absent features fall back per feature, not to the generic default.
+            expect(normalized.memoryAgent).toEqual(DEFAULT_COURSE_LLM_SETTINGS.memoryAgent);
+            expect(normalized.memoryAgent.reasoningLevel).toBe('low');
+            expect(normalized.writingFeedback.reasoningLevel).toBe('none');
+            expect(normalized.guidedPathway.reasoningLevel).toBe('none');
+            expect(normalized.scenarioGeneration.reasoningLevel).toBe('none');
         });
 
         it('rejects unknown model, unknown reasoning, and malformed types', () => {

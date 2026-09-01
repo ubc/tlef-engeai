@@ -49,11 +49,16 @@ export const LLM_FEATURE_KEYS: readonly LlmFeatureKey[] = [
 
 /** Platform default when Mongo has no usable settings — one copy of DEFAULT_FEATURE_SELECTION per feature. */
 export const DEFAULT_COURSE_LLM_SETTINGS: CourseLlmSettings = {
-    chat: { ...DEFAULT_FEATURE_SELECTION },
+    // `chat` and `memoryAgent` default to `low`: both drive the Socratic stack, which requires a
+    // routing decision (struggle-list skill test, support-ladder rung) before the first visible
+    // token. At `none` the model commits to a reply before that decision happens and hands over
+    // full solutions. The other features are currently untested at `low` and stay on the platform
+    // default (`none`); raise them individually once each is tested.
+    chat: { ...DEFAULT_FEATURE_SELECTION, reasoningLevel: 'low' },
     scenarioGeneration: { ...DEFAULT_FEATURE_SELECTION },
     writingFeedback: { ...DEFAULT_FEATURE_SELECTION },
     guidedPathway: { ...DEFAULT_FEATURE_SELECTION },
-    memoryAgent: { ...DEFAULT_FEATURE_SELECTION },
+    memoryAgent: { ...DEFAULT_FEATURE_SELECTION, reasoningLevel: 'low' },
 };
 
 export {
@@ -318,11 +323,23 @@ export class ModelSelectionService {
         }
 
         return {
-            chat: sanitizeFeatureSelection(record.chat),
-            scenarioGeneration: sanitizeFeatureSelection(record.scenarioGeneration),
-            writingFeedback: sanitizeFeatureSelection(record.writingFeedback),
-            guidedPathway: sanitizeFeatureSelection(record.guidedPathway),
-            memoryAgent: sanitizeFeatureSelection(record.memoryAgent),
+            chat: sanitizeFeatureSelection(record.chat, DEFAULT_COURSE_LLM_SETTINGS.chat),
+            scenarioGeneration: sanitizeFeatureSelection(
+                record.scenarioGeneration,
+                DEFAULT_COURSE_LLM_SETTINGS.scenarioGeneration
+            ),
+            writingFeedback: sanitizeFeatureSelection(
+                record.writingFeedback,
+                DEFAULT_COURSE_LLM_SETTINGS.writingFeedback
+            ),
+            guidedPathway: sanitizeFeatureSelection(
+                record.guidedPathway,
+                DEFAULT_COURSE_LLM_SETTINGS.guidedPathway
+            ),
+            memoryAgent: sanitizeFeatureSelection(
+                record.memoryAgent,
+                DEFAULT_COURSE_LLM_SETTINGS.memoryAgent
+            ),
             updatedAt: record.updatedAt instanceof Date ? record.updatedAt : undefined,
             updatedBy: typeof record.updatedBy === 'string' ? record.updatedBy : undefined,
         };
@@ -548,31 +565,39 @@ function appAllowedReasoningLevels(entry: LlmModelCatalogEntry): AppReasoningLev
 /**
  * sanitizeFeatureSelection - clamps one feature selection to a valid catalog pair (lenient).
  *
+ * `fallback` is the per-feature platform default, so a course row that omits one feature gets
+ * that feature's default rather than the generic one. Without it, a partial row (e.g. `chat`
+ * saved but `memoryAgent` absent) would silently drop to the generic `none`.
+ *
  * @param value - Unknown feature row from Mongo or legacy seed
+ * @param fallback - Platform default for this feature
  * @returns Always a valid FeatureLlmSelection (never throws)
  */
-function sanitizeFeatureSelection(value: unknown): FeatureLlmSelection {
+function sanitizeFeatureSelection(
+    value: unknown,
+    fallback: FeatureLlmSelection = DEFAULT_FEATURE_SELECTION
+): FeatureLlmSelection {
     if (!value || typeof value !== 'object') {
-        return { ...DEFAULT_FEATURE_SELECTION };
+        return { ...fallback };
     }
 
     const record = value as Record<string, unknown>;
 
     const modelId = isCourseLlmModelIdValue(record.modelId)
         ? record.modelId
-        : DEFAULT_FEATURE_SELECTION.modelId;
+        : fallback.modelId;
 
     let reasoningLevel = isAppReasoningLevelValue(record.reasoningLevel)
         ? record.reasoningLevel
-        : DEFAULT_FEATURE_SELECTION.reasoningLevel;
+        : fallback.reasoningLevel;
 
     const entry = LLM_MODEL_CATALOG.find((e) => e.id === modelId);
     if (entry && entry.supportedReasoningLevels.length > 0) {
         const allowed = appAllowedReasoningLevels(entry);
         if (!allowed.includes(reasoningLevel)) {
-            reasoningLevel = allowed.includes(DEFAULT_FEATURE_SELECTION.reasoningLevel)
-                ? DEFAULT_FEATURE_SELECTION.reasoningLevel
-                : allowed[0] ?? DEFAULT_FEATURE_SELECTION.reasoningLevel;
+            reasoningLevel = allowed.includes(fallback.reasoningLevel)
+                ? fallback.reasoningLevel
+                : allowed[0] ?? fallback.reasoningLevel;
         }
     }
 
