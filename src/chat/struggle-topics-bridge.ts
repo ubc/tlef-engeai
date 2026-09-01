@@ -41,9 +41,9 @@ export function formatStruggleTopicsUserBridge(topics: string[]): string {
         return (
             `Private routing context for this turn only: <struggle_topics>${topics.join(', ')}</struggle_topics>\n` +
             'Use this list only to choose socratic vs interpretive conversation and whether to append ' +
-            '<questionUnstruggle Topic="…"> per the system prompt. Unless the question is an exact or strong ' +
-            'match to a label above, begin with a focused scaffold for that skill; otherwise use ' +
-            'socratic conversation. ' +
+            '<questionUnstruggle Topic="…"> per the system prompt. When the question is an exact or strong ' +
+            'match to a label above, begin a focused scaffold for that matched skill; when it is adjacent, ' +
+            'off-list, or unclear, use socratic conversation. ' +
             SOCRATIC_ADAPTIVE_GUIDANCE +
             ' Never name list labels, say the question is/is not on the list, or narrate relevance to the student.'
         );
