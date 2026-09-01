@@ -12,6 +12,12 @@
 
 import { buildNewCourseFeatures } from '../dashboard-setting/course-features';
 import { DEFAULT_COURSE_LLM_SETTINGS } from '../dashboard-setting/model-selection-service';
+import {
+    DEFAULT_FEATURE_SELECTION,
+    VALID_MODEL_IDS,
+    VALID_REASONING_LEVELS,
+} from '../dashboard-setting/model-selection-list';
+import type { FeatureLlmSelection } from '../types/shared';
 import type { FieldSpec } from './schema-walker';
 import { hoistMaterialFile } from './schema-walker';
 
@@ -21,9 +27,14 @@ const capabilityFields: FieldSpec[] = [
     { key: 'enabledBy', optional: true },
 ];
 
-const llmSelectionFields: FieldSpec[] = [
-    { key: 'modelId', enum: ['gpt-5.6-luna', 'gpt-5.4-mini', 'gpt-4o-mini'], default: 'gpt-5.6-luna' },
-    { key: 'reasoningLevel', enum: ['none', 'low', 'medium', 'high'], default: 'none' },
+/*
+ * This is a function, not a shared constant, because the two defaults differ per feature:
+ * `chat` and `memoryAgent` default to `low`, the other three to `none`. Pass the feature's
+ * own entry from DEFAULT_COURSE_LLM_SETTINGS as `fallback`.
+ */
+const llmSelectionFields = (fallback: FeatureLlmSelection): FieldSpec[] => [
+    { key: 'modelId', enum: VALID_MODEL_IDS, default: fallback.modelId },
+    { key: 'reasoningLevel', enum: VALID_REASONING_LEVELS, default: fallback.reasoningLevel },
 ];
 
 const promptModuleFields: FieldSpec[] = [
@@ -192,11 +203,36 @@ export const activeCourseSchema: FieldSpec[] = [
         kind: 'object',
         default: DEFAULT_COURSE_LLM_SETTINGS,
         fields: [
-            { key: 'chat', kind: 'object', optional: true, fields: llmSelectionFields },
-            { key: 'scenarioGeneration', kind: 'object', optional: true, fields: llmSelectionFields },
-            { key: 'writingFeedback', kind: 'object', optional: true, fields: llmSelectionFields },
-            { key: 'guidedPathway', kind: 'object', optional: true, fields: llmSelectionFields },
-            { key: 'memoryAgent', kind: 'object', optional: true, fields: llmSelectionFields },
+            {
+                key: 'chat',
+                kind: 'object',
+                optional: true,
+                fields: llmSelectionFields(DEFAULT_COURSE_LLM_SETTINGS.chat),
+            },
+            {
+                key: 'scenarioGeneration',
+                kind: 'object',
+                optional: true,
+                fields: llmSelectionFields(DEFAULT_COURSE_LLM_SETTINGS.scenarioGeneration),
+            },
+            {
+                key: 'writingFeedback',
+                kind: 'object',
+                optional: true,
+                fields: llmSelectionFields(DEFAULT_COURSE_LLM_SETTINGS.writingFeedback),
+            },
+            {
+                key: 'guidedPathway',
+                kind: 'object',
+                optional: true,
+                fields: llmSelectionFields(DEFAULT_COURSE_LLM_SETTINGS.guidedPathway),
+            },
+            {
+                key: 'memoryAgent',
+                kind: 'object',
+                optional: true,
+                fields: llmSelectionFields(DEFAULT_COURSE_LLM_SETTINGS.memoryAgent),
+            },
             { key: 'updatedAt', optional: true },
             { key: 'updatedBy', optional: true },
         ],

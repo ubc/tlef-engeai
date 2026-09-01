@@ -145,13 +145,24 @@ export class ModelSelectionService {
     /**
      * getDashboardCatalog - slim catalog payload for the Model Settings dashboard.
      *
-     * @returns Models with reasoningOptions and the platform defaultSelection
+     * `defaultSettings` carries the per-feature defaults the server actually applies. The UI must
+     * seed unset features from it, not from `defaultSelection` — `chat` and `memoryAgent` differ,
+     * so the generic value would show `none` for courses the runtime resolves to `low`.
+     *
+     * @returns Models with reasoningOptions, the generic defaultSelection, and per-feature defaults
      */
     getDashboardCatalog(): LlmModelCatalogApiResponse {
         // Every model ships; withheld ones carry `unavailable` so the picker greys them out
         return {
             models: LLM_MODEL_CATALOG.map(toDashboardCatalogEntry),
             defaultSelection: { ...DEFAULT_FEATURE_SELECTION },
+            defaultSettings: {
+                chat: { ...DEFAULT_COURSE_LLM_SETTINGS.chat },
+                scenarioGeneration: { ...DEFAULT_COURSE_LLM_SETTINGS.scenarioGeneration },
+                writingFeedback: { ...DEFAULT_COURSE_LLM_SETTINGS.writingFeedback },
+                guidedPathway: { ...DEFAULT_COURSE_LLM_SETTINGS.guidedPathway },
+                memoryAgent: { ...DEFAULT_COURSE_LLM_SETTINGS.memoryAgent },
+            },
         };
     }
 

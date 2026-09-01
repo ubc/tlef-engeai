@@ -20,6 +20,7 @@ import {
     CourseLlmModelId,
     CourseLlmSettings,
     FeatureLlmSelection,
+    FeatureLlmSettingsMap,
     LlmFeatureKey,
     LlmModelCatalogApiResponse,
     LlmModelDashboardCatalogEntry,
@@ -30,7 +31,7 @@ import { showErrorToast, showSuccessToast } from '../ui/toast-notification.js';
 
 type PickerKind = 'reasoning' | 'model';
 
-type FeatureLlmSettingsMap = Record<LlmFeatureKey, FeatureLlmSelection>;
+// FeatureLlmSettingsMap now comes from types.ts so the API contract has one definition.
 
 /** Course Extra Feature keys that gate Model Settings row interactivity. */
 type GatedCapabilityKey = 'writingFeedback' | 'guidedPathway' | 'memoryAgent' | 'scenarioGeneration';
@@ -86,6 +87,12 @@ let defaultSelection: FeatureLlmSelection = {
     modelId: 'gpt-5.6-luna',
     reasoningLevel: 'none',
 };
+/**
+ * Per-feature platform defaults from the catalog GET. Unset features must seed from here, not
+ * from `defaultSelection` — chat and memoryAgent default to `low`, and seeding from the generic
+ * value would show `none` for a course the server will actually run at `low`.
+ */
+let defaultSettings: FeatureLlmSettingsMap | null = null;
 
 let featureSettings: FeatureLlmSettingsMap | null = null;
 let persistedSnapshot: FeatureLlmSettingsMap | null = null;
@@ -130,6 +137,7 @@ export async function initializeModelSettings(currentClass: activeCourse, canMan
         const data = result.data as LlmModelCatalogApiResponse;
         modelCatalog = data.models ?? [];
         defaultSelection = data.defaultSelection ?? defaultSelection;
+        defaultSettings = data.defaultSettings ?? defaultSettings;
     } catch (error) {
         if (container) container.innerHTML = '';
         await showErrorModal(
@@ -272,17 +280,22 @@ function hydrateFeatureSettings(stored: CourseLlmSettings | undefined): FeatureL
         modelId?: CourseLlmModelId;
         reasoningLevel?: AppReasoningLevel;
     } | undefined;
-    const seed =
+    const legacySeed =
         legacy?.modelId && legacy?.reasoningLevel
             ? sanitizeSelection({ modelId: legacy.modelId, reasoningLevel: legacy.reasoningLevel })
-            : { ...defaultSelection };
+            : null;
+
+    const featureDefault = (feature: LlmFeatureKey): FeatureLlmSelection =>
+        legacySeed
+            ? { ...legacySeed }
+            : sanitizeSelection(defaultSettings?.[feature] ?? defaultSelection);
 
     return {
-        chat: { ...seed },
-        scenarioGeneration: { ...seed },
-        writingFeedback: { ...seed },
-        guidedPathway: { ...seed },
-        memoryAgent: { ...seed },
+        chat: featureDefault('chat'),
+        scenarioGeneration: featureDefault('scenarioGeneration'),
+        writingFeedback: featureDefault('writingFeedback'),
+        guidedPathway: featureDefault('guidedPathway'),
+        memoryAgent: featureDefault('memoryAgent'),
     };
 }
 

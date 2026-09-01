@@ -153,6 +153,24 @@ describe('ModelSelectionService', () => {
             expect(luna?.unavailable).toBeUndefined();
         });
 
+        it('exposes per-feature defaults so the dashboard matches what the runtime applies', () => {
+            const catalog = service.getDashboardCatalog();
+
+            // The generic value stays `none`; seeding the UI from it alone would misreport chat.
+            expect(catalog.defaultSelection.reasoningLevel).toBe('none');
+
+            expect(catalog.defaultSettings).toEqual({
+                chat: DEFAULT_COURSE_LLM_SETTINGS.chat,
+                scenarioGeneration: DEFAULT_COURSE_LLM_SETTINGS.scenarioGeneration,
+                writingFeedback: DEFAULT_COURSE_LLM_SETTINGS.writingFeedback,
+                guidedPathway: DEFAULT_COURSE_LLM_SETTINGS.guidedPathway,
+                memoryAgent: DEFAULT_COURSE_LLM_SETTINGS.memoryAgent,
+            });
+            expect(catalog.defaultSettings.chat.reasoningLevel).toBe('low');
+            expect(catalog.defaultSettings.memoryAgent.reasoningLevel).toBe('low');
+            expect(catalog.defaultSettings.writingFeedback.reasoningLevel).toBe('none');
+        });
+
         it('lists withheld models flagged unavailable rather than dropping them', () => {
             const models = service.getDashboardCatalog().models;
 

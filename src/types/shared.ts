@@ -313,10 +313,20 @@ export interface LlmModelDashboardCatalogEntry {
     unavailable?: boolean;
 }
 
+/** Per-feature LLM selection map, keyed by consuming feature. */
+export type FeatureLlmSettingsMap = Record<LlmFeatureKey, FeatureLlmSelection>;
+
 /** GET `/api/courses/:courseId/llm-model-catalog` response body. */
 export interface LlmModelCatalogApiResponse {
     models: LlmModelDashboardCatalogEntry[];
+    /** Generic platform default. Kept for compatibility; prefer {@link defaultSettings}. */
     defaultSelection: FeatureLlmSelection;
+    /**
+     * Per-feature platform defaults — what the server actually applies when a course has no
+     * stored row for that feature. `chat` and `memoryAgent` differ from `defaultSelection`,
+     * so seeding the UI from `defaultSelection` alone misreports what the course will use.
+     */
+    defaultSettings: FeatureLlmSettingsMap;
 }
 
 /** PATCH `/api/courses/:courseId/llm-settings` request body. */
