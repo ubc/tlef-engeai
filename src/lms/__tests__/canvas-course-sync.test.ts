@@ -102,6 +102,7 @@ function mongoStub(overrides: Partial<Record<string, jest.Mock>> = {}) {
         enrollUserInCourse: jest.fn(async () => undefined),
         updateActiveCourse: jest.fn(async () => null),
         getDefaultAcademicPeriodId: jest.fn(async () => 'period-default'),
+        getAcademicPeriodById: jest.fn(async (id: string) => ({ id, title: 'Winter 2026' })),
         ...overrides,
     } as unknown as EngEAI_MongoDB;
 }
@@ -482,6 +483,18 @@ describe('connectCanvasCourse — instructor', () => {
             /already has a course named/
         );
         expect(provisionCourseMock).not.toHaveBeenCalled();
+    });
+
+    it('falls back to the default academic period when the chosen term no longer exists', async () => {
+        provisionCourseMock.mockResolvedValue({ id: 'new-course', courseName: 'APSC 183' });
+        const mongoDB = mongoStub({ getAcademicPeriodById: jest.fn(async () => null) });
+
+        await connectCanvasCourse(api, mongoDB, instructor, '742', 'period-deleted');
+
+        expect(provisionCourseMock).toHaveBeenCalledWith(
+            mongoDB,
+            expect.objectContaining({ academicPeriodId: 'period-default' })
+        );
     });
 
     it('falls back to the default academic period when the picker names none', async () => {

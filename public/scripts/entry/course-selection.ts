@@ -19,7 +19,7 @@ import { showConfirmModal,
 } from '../ui/modal-overlay.js';
 import { startInactivityTracking } from '../services/inactivity-tracker.js';
 import { authService } from '../services/auth-service.js';
-import { initCanvasConnect, isCanvasEnabled, openCanvasConnectModal } from './canvas-connect.js';
+import { initCanvasConnect, openCanvasConnectModal } from './canvas-connect.js';
 
 // Store current user's affiliation to check if they're an instructor
 let currentUserAffiliation: 'student' | 'faculty' | null = null;
@@ -89,14 +89,19 @@ async function initializeCourseSelection(): Promise<void> {
         }
 
 
-        // Setup period action buttons (delegated) and seed fixture
-        setupPeriodActionDelegation();
+        // Course entry is page-level: joining by code identifies the course by its code, and the
+        // course already carries its own academic period, so neither action needs a period header.
+        setupJoinByCodeButton();
         configureSeedReportFixtureButton();
 
-        // Resolve Canvas availability before the first render, so the Connect to Canvas
+        // Resolve Canvas availability before the first render, so the Add Course from Canvas
         // button is either present from the start or never appears. Deployments without
         // Canvas configured must not advertise it.
-        await initCanvasConnect(loadCourses);
+        // Canvas import is one page-level action rather than one per period: the term an
+        // imported course belongs to is chosen inside the flow, not by which header was clicked.
+        if (await initCanvasConnect(loadCourses)) {
+            showCanvasConnectButton();
+        }
 
         // Fetch course data
         await loadCourses();
@@ -157,24 +162,6 @@ function renderPeriodSection(period: CourseSelectionPeriodSection, defaultPeriod
     const isDefault = period.id === defaultPeriodId;
     const collapsed = !isDefault;
     const courseRows = period.courses.map((course) => createCourseCard(course)).join('');
-    const isFaculty = currentUserAffiliation === 'faculty';
-    const createCourseBtn = isFaculty
-        ? `
-                    <button type="button" class="create-new-course-btn period-create-course-btn" data-period-id="${period.id}">
-                        <i data-feather="file-plus"></i>
-                        <span class="btn-text">Create New Course</span>
-                    </button>`
-        : '';
-    // Both roles get this button; the flow behind it branches on Canvas enrollment, not on
-    // EngE-AI affiliation. Omitted entirely when the deployment has no Canvas credentials.
-    const canvasBtn = isCanvasEnabled()
-        ? `
-                    <button type="button" class="add-new-course-btn period-canvas-connect-btn" data-period-id="${period.id}" aria-label="Connect to Canvas" title="Connect to Canvas">
-                        <i data-feather="link"></i>
-                        <span class="btn-text">Connect to Canvas</span>
-                    </button>`
-        : '';
-
     return `
         <section class="course-selection-container period-section" data-period-id="${period.id}">
             <header class="course-selection-header period-section-header">
@@ -184,14 +171,6 @@ function renderPeriodSection(period: CourseSelectionPeriodSection, defaultPeriod
                     </button>
                     <h2 class="course-selection-title period-title">${escapeHtml(period.title)}</h2>
                     <span class="period-count-pill">${period.courseCount} course${period.courseCount !== 1 ? 's' : ''}</span>
-                </div>
-                <div class="period-header-actions">
-                    <button type="button" class="add-new-course-btn period-join-course-btn" data-period-id="${period.id}" aria-label="Add New Course" title="Add New Course">
-                        <i data-feather="plus"></i>
-                        <span class="btn-text">Add New Course</span>
-                    </button>
-                    ${canvasBtn}
-                    ${createCourseBtn}
                 </div>
             </header>
             <div class="period-course-list-wrap${collapsed ? ' is-collapsed' : ''}" data-period-id="${period.id}">
@@ -205,37 +184,24 @@ function renderPeriodSection(period: CourseSelectionPeriodSection, defaultPeriod
     `;
 }
 
-let periodActionsBound = false;
-
-/** Delegated click handlers for per-period Add New Course / Create New Course buttons. */
-function setupPeriodActionDelegation(): void {
-    if (periodActionsBound) {
-        return;
-    }
-    const container = document.getElementById('period-sections');
-    if (!container) {
-        return;
-    }
-    periodActionsBound = true;
-
-    container.addEventListener('click', (e) => {
-        const target = e.target as HTMLElement;
-        if (target.closest('.period-join-course-btn')) {
-            void (currentUserAffiliation === 'faculty'
-                ? showInstructorEnrollmentModal()
-                : showEnrollmentModal());
-            return;
-        }
-        if (target.closest('.period-create-course-btn')) {
-            void showFacultyCreateCourseModal();
-            return;
-        }
-        const canvasBtn = target.closest('.period-canvas-connect-btn');
-        if (canvasBtn) {
-            // An imported course lands in the period whose header launched the flow.
-            void openCanvasConnectModal(canvasBtn.getAttribute('data-period-id') ?? undefined);
-        }
+/** Wires the page-level Join with Course Code button. Shown to students and faculty alike. */
+function setupJoinByCodeButton(): void {
+    const button = document.getElementById('join-by-code-btn');
+    button?.addEventListener('click', () => {
+        void (currentUserAffiliation === 'faculty'
+            ? showInstructorEnrollmentModal()
+            : showEnrollmentModal());
     });
+}
+
+/** Reveals the page-level Canvas button and wires it. Called only when Canvas is configured. */
+function showCanvasConnectButton(): void {
+    const button = document.getElementById('canvas-connect-btn');
+    if (!button) {
+        return;
+    }
+    button.hidden = false;
+    button.addEventListener('click', () => void openCanvasConnectModal());
 }
 
 function attachPeriodListeners(): void {
@@ -599,172 +565,6 @@ function setupRetryButton(): void {
             initializeCourseSelection();
         });
     }
-}
-
-/**
- * showFacultyCreateCourseModal
- *
- * Lists admin-assigned course names for the current academic period; redirects to onboarding on pick.
- */
-async function showFacultyCreateCourseModal(): Promise<void> {
-    try {
-        const response = await fetch('/api/courses/allowed-for-instructor', {
-            credentials: 'same-origin'
-        });
-        const data = await response.json();
-        if (!response.ok || !data.success) {
-            throw new Error(data.error ?? 'Failed to load allowed courses');
-        }
-
-        const allowedCourses: string[] = data.allowedCourses ?? [];
-        if (allowedCourses.length === 0) {
-            await showErrorModal(
-                'No courses available',
-                'No courses have been assigned to you for this academic period. Contact a platform admin.'
-            );
-            return;
-        }
-
-        const modal = new ModalOverlay();
-        const content = document.createElement('div');
-        content.className = 'faculty-create-course-modal';
-
-        const instructions = document.createElement('p');
-        instructions.textContent = 'Select a course you are permitted to create for this academic period:';
-        instructions.style.marginBottom = '1rem';
-
-        const select = document.createElement('select');
-        select.className = 'admin-modal-input';
-        select.style.width = '100%';
-        const placeholder = document.createElement('option');
-        placeholder.value = '';
-        placeholder.textContent = 'Choose a course…';
-        select.appendChild(placeholder);
-        for (const name of allowedCourses) {
-            const opt = document.createElement('option');
-            opt.value = name;
-            opt.textContent = name;
-            select.appendChild(opt);
-        }
-
-        const actions = document.createElement('div');
-        actions.className = 'admin-modal-actions';
-        actions.style.marginTop = '1.25rem';
-
-        const continueBtn = document.createElement('button');
-        continueBtn.type = 'button';
-        continueBtn.className = 'create-new-course-btn';
-        continueBtn.textContent = 'Continue';
-        continueBtn.disabled = true;
-
-        const cancelBtn = document.createElement('button');
-        cancelBtn.type = 'button';
-        cancelBtn.className = 'retry-btn';
-        cancelBtn.textContent = 'Cancel';
-
-        select.addEventListener('change', () => {
-            continueBtn.disabled = !select.value;
-        });
-
-        cancelBtn.addEventListener('click', () => modal.close('cancel'));
-        continueBtn.addEventListener('click', async () => {
-            const courseName = select.value;
-            if (!courseName) {
-                return;
-            }
-            modal.close('success');
-            await redirectToInstructorOnboarding(courseName);
-        });
-
-        actions.append(cancelBtn, continueBtn);
-        content.append(instructions, select, actions);
-
-        await modal.show({
-            type: 'custom',
-            title: 'Create New Course',
-            content,
-            showCloseButton: true,
-            closeOnOverlayClick: true,
-            maxWidth: '480px'
-        });
-    } catch (error) {
-        await showErrorModal(
-            'Error',
-            error instanceof Error ? error.message : 'Failed to open create course modal.'
-        );
-    }
-}
-
-async function redirectToInstructorOnboarding(courseName: string): Promise<void> {
-    const trimmedName = courseName.trim();
-    if (!trimmedName) {
-        throw new Error('Course name is required');
-    }
-
-    try {
-        const courseRes = await fetch(`/api/courses?name=${encodeURIComponent(trimmedName)}`, {
-            method: 'GET',
-            credentials: 'same-origin'
-        });
-
-        if (courseRes.ok) {
-            const courseJson = await courseRes.json();
-            const existing = courseJson?.success ? courseJson.data : null;
-            if (existing?.id) {
-                const enterRes = await fetch('/api/course/enter', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'same-origin',
-                    body: JSON.stringify({ courseId: existing.id })
-                });
-                const enterData = await enterRes.json();
-                if (enterData.error) {
-                    throw new Error(enterData.error);
-                }
-                window.location.href = enterData.redirect ||
-                    `/course/${existing.id}/instructor/onboarding/course-setup`;
-                return;
-            }
-        }
-    } catch (error) {
-        await showErrorModal(
-            'Error',
-            error instanceof Error ? error.message : 'Failed to enter course.'
-        );
-        return;
-    }
-
-    const userResponse = await fetch('/auth/current-user');
-    if (!userResponse.ok) {
-        throw new Error('Failed to fetch user data');
-    }
-    const authData = await userResponse.json();
-    if (!authData.authenticated || !authData.globalUser) {
-        throw new Error('User not authenticated');
-    }
-    const currentUser = authData.globalUser;
-    const tempCourse: any = {
-        id: '',
-        date: new Date().toISOString(),
-        courseSetup: false,
-        courseName: trimmedName,
-        instructors: [{ userId: currentUser.userId, name: currentUser.name }],
-        teachingAssistants: [],
-        frameType: 'byWeek',
-        tilesNumber: 12,
-        topicOrWeekInstances: []
-    };
-    sessionStorage.setItem('debugCourse', JSON.stringify(tempCourse));
-    window.location.href = '/instructor/onboarding/new-course';
-}
-
-/**
- * createNewCourseForInstructor
- *
- * @deprecated Use showFacultyCreateCourseModal — kept for reference; redirects via allowed-course picker.
- */
-async function createNewCourseForInstructor(): Promise<void> {
-    await showFacultyCreateCourseModal();
 }
 
 /**

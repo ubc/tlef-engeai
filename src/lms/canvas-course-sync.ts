@@ -347,9 +347,7 @@ async function connectInstructor(
         frameType: IMPORT_DEFAULT_FRAME_TYPE,
         tilesNumber: IMPORT_DEFAULT_TILES,
         creator: globalUser,
-        // Falls back to the catalog default when the picker did not name a period, matching how
-        // an unassigned course is grouped on the selection page.
-        academicPeriodId: academicPeriodId ?? (await mongoDB.getDefaultAcademicPeriodId()),
+        academicPeriodId: await resolveAcademicPeriodId(mongoDB, academicPeriodId),
         // Canvas supplies no course structure, so setup is still owed. This is what routes the
         // instructor into EngE-AI's setup flow when they first open the course.
         courseSetup: false,
@@ -364,6 +362,32 @@ async function connectInstructor(
         courseName: created.courseName,
         message: `${created.courseName} has been added to EngE-AI. Finish setting it up to open it to students.`,
     };
+}
+
+/**
+ * Resolves the academic period an imported course lands in.
+ *
+ * The id arrives from the browser, so it is checked against the catalog before it is written: a
+ * stale picker — a term deleted between the page load and the import — would otherwise file the
+ * course under a period nothing displays, hiding it from the course list entirely. Falling back
+ * to the catalog default keeps the import working and matches how an unassigned course is
+ * grouped on the selection page; refusing would strand an instructor mid-flow over a term they
+ * can change later.
+ */
+async function resolveAcademicPeriodId(
+    mongoDB: EngEAI_MongoDB,
+    requested?: string
+): Promise<string> {
+    if (requested) {
+        const period = await mongoDB.getAcademicPeriodById(requested);
+        if (period) {
+            return period.id;
+        }
+        appLogger.warn(
+            `[canvas-sync] Unknown academic period on Canvas import; using the default instead`
+        );
+    }
+    return mongoDB.getDefaultAcademicPeriodId();
 }
 
 /**
