@@ -128,6 +128,41 @@
 - **`writing-feedback-runs.lens`** (optional `WritingFeedbackLens`) records which lens produced a run. Absent means `'linguistic'` — `getLatestWritingFeedbackRun` treats `{ lens: 'linguistic' }` and `{ lens: { $exists: false } }` as the same query for the linguistic lens, so pre-existing runs written before the technical lens shipped keep surfacing as the latest linguistic run with no migration required.
 - **New delegates:** `setWritingAssignmentLabReport(ctx, courseId, assignmentId, isLabReport)` performs the scoped `isLabReport` write only; seeding a technical draft on marking and refusing to unmark an approved/run-backed technical rubric are service/route-level decisions, not this delegate's. `countWritingFeedbackRunsByLens(ctx, courseId, assignmentId, lens)` counts stored runs across every submission under an assignment for one lens — an assignment-scoped answer `getLatestWritingFeedbackRun` (per-submission) cannot give — and backs the unmark-refusal check.
 
+### LMS roster snapshots (`course-lms-rosters`)
+
+`course-lms-roster-mongo.ts` owns one document per EngE-AI course, holding the roster its
+linked LMS course reported. Distinct from `course-roster-mongo.ts`, which mutates EngE-AI's
+own course roles (student ↔ TA) on the catalog document and is unrelated.
+
+- **No PUID at rest.** Each entry is `{ puidHash, lmsUserId }` — a keyed HMAC-SHA256 digest
+  of the roster row's `integration_id` plus the LMS's own user id. No names, no
+  `integration_id`, no `sis_user_id`, no `login_id`. `active-users` remains the only
+  collection holding an institutional identifier in the clear. See `src/utils/roster-identity.ts`.
+- **`ROSTER_HASH_SALT` is load-bearing state, not a tunable.** Every stored digest is only
+  comparable to hashes made under the same key. Rotating or losing it does not degrade
+  matching, it ends it: no student is recognized until every course is re-synced. Treat it
+  like `SESSION_SECRET` — set once per deployment, backed up, stable across every process.
+  Unset, roster sync refuses and the login-time check is a no-op.
+- **A snapshot describes one moment.** `saveCourseLmsRosterSnapshot` replaces the whole
+  document rather than merging entries, so the stored roster always means "what the LMS said
+  at `syncedAt`". A merge would make a dropped student indistinguishable from one the last
+  fetch happened to miss. Replacing never un-enrolls anyone — enrollment accrues, and only
+  `enrollUserInCourse` grants it.
+- **A failed sync must not destroy a good roster.** `recordLmsRosterSyncOutcome` writes
+  status fields only and leaves `entries` untouched, so a revoked token or a withheld SIS
+  identifier keeps the last working roster in service while staff sort out the cause.
+- Two indexes, both created best-effort at startup: `courseId` unique (a course has exactly
+  one current roster), and multikey `entries.puidHash` for the login-time lookup, which runs
+  on every sign-in and would otherwise scan every stored roster.
+- `findCoursesByRosterIdentity` projects with `$elemMatch`, not positional `entries.$`. These
+  arrays hold a whole class, and a projection returning "some element" would bind the wrong
+  student's `lmsUserId`.
+- Rows whose Canvas account carried no `integration_id` are dropped rather than stored
+  address-only: nothing consumes them, because Canvas write-back addresses a student through
+  the `canvasUserId` stamped on their imported *submission*, which exists whether or not they
+  have ever signed in to EngE-AI. Counts (`rosterSize` vs `identifiedCount`) are retained as
+  the coverage guard's evidence.
+
 ### LMS integration token collections
 
 `canvas_tokens` and `moodle_tokens` hold per-user LMS credentials. They are owned by

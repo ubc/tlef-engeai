@@ -17,6 +17,8 @@ import {
     ChatMessage,
     PersistedConversationModeId,
     CourseLmsLink,
+    CourseRosterSnapshot,
+    RosterSyncStatus,
     CourseUser,
     FlagReport,
     FlagReportActor,
@@ -62,6 +64,7 @@ import * as AcademicPeriodMongo from './mongo/academic-period-mongo';
 import * as CourseEnrollmentMongo from './mongo/course-enrollment-mongo';
 import * as CourseLmsLinkMongo from './mongo/course-lms-link-mongo';
 import * as CourseRosterMongo from './mongo/course-roster-mongo';
+import * as CourseLmsRosterMongo from './mongo/course-lms-roster-mongo';
 import * as InstructorPeriodAllowanceMongo from './mongo/instructor-period-allowance-mongo';
 // @rdschrs: Implemented the Writing Feedback persistence façade and delegate boundary.
 import * as WritingFeedbackMongo from './mongo/writing-feedback-mongo';
@@ -1369,6 +1372,32 @@ export class EngEAI_MongoDB {
 
     public createCourseLmsLinkIndex = async () =>
         CourseLmsLinkMongo.createCourseLmsLinkIndex(this.ctx());
+
+    /**
+     * LMS roster snapshots — course-roster-mongo.ts
+     *
+     * `entries` carry keyed digests rather than PUIDs; see `src/utils/roster-identity.ts`.
+     */
+    public saveCourseLmsRosterSnapshot = async (snapshot: CourseRosterSnapshot) =>
+        CourseLmsRosterMongo.saveCourseLmsRosterSnapshot(this.ctx(), snapshot);
+
+    public recordLmsRosterSyncOutcome = async (
+        courseId: string,
+        status: Exclude<RosterSyncStatus, 'ok'>,
+        lastError?: string
+    ) => CourseLmsRosterMongo.recordLmsRosterSyncOutcome(this.ctx(), courseId, status, lastError);
+
+    public getCourseLmsRosterSnapshot = async (courseId: string) =>
+        CourseLmsRosterMongo.getCourseLmsRosterSnapshot(this.ctx(), courseId);
+
+    public findCoursesByRosterIdentity = async (puidHash: string) =>
+        CourseLmsRosterMongo.findCoursesByRosterIdentity(this.ctx(), puidHash);
+
+    public deleteCourseLmsRosterSnapshot = async (courseId: string) =>
+        CourseLmsRosterMongo.deleteCourseLmsRosterSnapshot(this.ctx(), courseId);
+
+    public createCourseLmsRosterIndexes = async () =>
+        CourseLmsRosterMongo.createCourseLmsRosterIndexes(this.ctx());
 
     /**
      * Instructor period allowances — instructor-period-allowance-mongo.ts

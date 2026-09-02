@@ -47,12 +47,14 @@ import {
     resolveUserKey,
 } from '../lms/canvas-config';
 import { requireAuthAPI } from '../middleware/require-auth';
-import { requireInstructorGlobal } from '../middleware/require-course-role';
+import { asRouteParam } from '../helpers/route-params';
+import { requireInstructorGlobal, requireRosterManageAPI } from '../middleware/require-course-role';
 import {
     CanvasIdentityError,
     connectCanvasCourse,
     listCanvasCourseOptions,
 } from '../lms/canvas-course-sync';
+import { RosterSyncUnavailableError, syncCanvasCourseRoster } from '../lms/canvas-roster-sync';
 import type { GlobalUser } from '../types/shared';
 import { appLogger } from '../utils/logger';
 
@@ -289,6 +291,61 @@ if (canvasConfig) {
                     return res.status(409).json({ error: message });
                 }
                 res.status(502).json({ error: 'Could not connect that Canvas course' });
+            }
+        }
+    );
+
+    /**
+     * @route POST /api/lms/canvas/courses/:courseId/sync-roster
+     * @description Re-reads the linked Canvas course's student roster and stores it as matchable
+     * identities, so enrolled students see the course when they next sign in to EngE-AI.
+     * @access Course instructors and platform admins (`requireRosterManageAPI`) — TAs excluded,
+     * matching the existing rule that TAs are course staff but cannot change roster membership.
+     * @param {string} courseId - EngE-AI course id (path)
+     *
+     * The caller's own Canvas token is deliberately *not* used. The read runs under the
+     * credential of the instructor who imported the course (`lmsLink.linkedBy`), because an
+     * EngE-AI admin holds no Canvas enrollment and could never read a roster with their own
+     * authorization. Authorization to trigger the sync and the credential it runs under are
+     * separate questions; only the first is decided here.
+     *
+     * Returns 200 with a `CourseRosterSyncSummary` even when the sync produced nothing usable —
+     * a revoked credential or a withheld SIS identifier is a real, reportable outcome that the
+     * instructor needs to see and act on, not a transport error. Only a course that cannot be
+     * synced in principle is refused: 409 when it has no Canvas link (an admin must not be able
+     * to sync an unlinked course, which is the first step toward connecting Canvas on an
+     * instructor's behalf), and 503 when the deployment has no roster hashing salt configured.
+     */
+    router.post(
+        '/canvas/courses/:courseId/sync-roster',
+        requireAuthAPI,
+        requireRosterManageAPI(['params']),
+        async (req: Request, res: Response) => {
+            const globalUser = (req.session as any).globalUser as GlobalUser | undefined;
+            if (!globalUser) {
+                return res.status(401).json({ error: 'Authentication required' });
+            }
+
+            try {
+                const mongoDB = await EngEAI_MongoDB.getInstance();
+                // The middleware proved the course exists and the caller may manage its roster;
+                // it does not hand the document over, so it is re-read here.
+                const course = await mongoDB.getActiveCourse(asRouteParam(req.params.courseId));
+                if (!course) {
+                    return res.status(404).json({ error: 'Course not found' });
+                }
+
+                const summary = await syncCanvasCourseRoster(mongoDB, course, globalUser.userId);
+                res.json({ success: true, summary });
+            } catch (error) {
+                if (error instanceof RosterSyncUnavailableError) {
+                    return res
+                        .status(error.reason === 'not_linked' ? 409 : 503)
+                        .json({ error: error.message, reason: error.reason });
+                }
+
+                appLogger.error('[LMS] Canvas roster sync failed:', error);
+                res.status(502).json({ error: 'Could not sync the roster for that course' });
             }
         }
     );

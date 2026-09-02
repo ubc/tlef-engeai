@@ -606,12 +606,31 @@
     background: transparent;
 }
 
-#settingsFeatureStatus {
+#settingsFeatureStatus,
+#rosterSyncStatus {
     min-height: 1.25rem;
     color: var(--text-secondary, #6c757d);
     font-size: 0.9rem;
     margin: 0;
     text-align: left;
+}
+
+/*
+ * Roster sync outcomes are not pass/fail. A withheld SIS identifier or a dead Canvas
+ * connection arrives as a successful response carrying a status the instructor must act on,
+ * so the error colour tracks `data-state` from the summary rather than the HTTP result.
+ * Colour is not the only signal — the message itself always says what happened.
+ */
+#rosterSyncStatus[data-state='error'] {
+    color: var(--color-error, #b3261e);
+}
+
+#rosterSyncStatus[data-state='ok'] {
+    color: var(--color-chbe-green, #4a6f2e);
+}
+
+#rosterSyncLastRun:empty {
+    display: none;
 }
 
 .dashboard-save-features-btn {
