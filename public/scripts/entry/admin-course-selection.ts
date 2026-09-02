@@ -145,7 +145,7 @@ async function initializeAdminCourseSelection(): Promise<void> {
         setupLogoutButton();
         setupCreatePeriodButton();
 
-        // Resolve Canvas availability before the first render, so the Connect to Canvas button is
+        // Resolve Canvas availability before the first render, so the Add Course from Canvas button is
         // either present from the start or never appears. A deployment without Canvas credentials
         // must not advertise a connection it cannot make.
         // One page-level button rather than one per period: the term an imported course belongs

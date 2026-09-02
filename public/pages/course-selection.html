@@ -27,10 +27,20 @@
     </div>
 
     <div class="course-selection-wrapper">
+        <!--
+            Page-level course entry. Neither action belongs to a single term: a course code
+            identifies a course that already has one, and a Canvas import picks its term inside
+            the flow. The Canvas button stays hidden until the server confirms Canvas is
+            configured, so a button that cannot work is never shown.
+        -->
         <div class="course-selection-toolbar">
-            <button type="button" id="canvas-connect-btn" class="create-academic-period-btn canvas-connect-btn" aria-label="Connect to Canvas" title="Connect to Canvas" hidden>
+            <button type="button" id="join-by-code-btn" class="create-academic-period-btn" aria-label="Join with Course Code" title="Join with Course Code">
+                <i data-feather="log-in"></i>
+                <span class="btn-text">Join with Course Code</span>
+            </button>
+            <button type="button" id="canvas-connect-btn" class="create-academic-period-btn canvas-connect-btn" aria-label="Add Course from Canvas" title="Add Course from Canvas" hidden>
                 <i data-feather="link"></i>
-                <span class="btn-text">Connect to Canvas</span>
+                <span class="btn-text">Add Course from Canvas</span>
             </button>
         </div>
 

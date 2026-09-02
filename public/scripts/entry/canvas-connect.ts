@@ -3,7 +3,7 @@
 /**
  * canvas-connect.ts
  *
- * "Connect to Canvas" flow on the course selection page.
+ * "Add Course from Canvas" flow on the course selection page.
  *
  * Answers two questions in sequence — are you connected, and which course — and skips the first
  * whenever the answer is already yes. An instructor who connected last week should open this on
@@ -133,7 +133,7 @@ function returnedFromCanvasOAuth(): boolean {
 }
 
 /**
- * openCanvasConnectModal — the entry point behind the "Connect to Canvas" button.
+ * openCanvasConnectModal — the entry point behind the "Add Course from Canvas" button.
  *
  * Fetches the user's Canvas courses first, because that request doubles as the connection check:
  * the LMS package answers `401` with a `connectUrl` when no usable credential is stored, which is
@@ -226,7 +226,7 @@ async function showConnectAccountStep(connectUrl: unknown): Promise<void> {
 
     await modal.show({
         type: 'custom',
-        title: 'Connect to Canvas',
+        title: 'Add Course from Canvas',
         content,
         showCloseButton: true,
         closeOnOverlayClick: true,
@@ -253,7 +253,7 @@ async function showCoursePickerStep(
 
     if (courses.length === 0) {
         await showErrorModal(
-            'Connect to Canvas',
+            'Add Course from Canvas',
             isTeacher
                 ? 'Canvas does not list you as an instructor for any courses.'
                 : 'Canvas does not list you as enrolled in any courses.'
@@ -386,7 +386,7 @@ async function showCoursePickerStep(
 
     await modal.show({
         type: 'custom',
-        title: 'Connect to Canvas',
+        title: 'Add Course from Canvas',
         content,
         showCloseButton: true,
         closeOnOverlayClick: true,
@@ -513,7 +513,7 @@ async function showTermPickerStep(
 
     await modal.show({
         type: 'custom',
-        title: 'Connect to Canvas',
+        title: 'Add Course from Canvas',
         content,
         showCloseButton: true,
         closeOnOverlayClick: true,
@@ -553,7 +553,7 @@ async function submitConnect(canvasCourseId: string): Promise<void> {
         await announceResult(await connectCourse(canvasCourseId));
     } catch (error) {
         await showErrorModal(
-            'Connect to Canvas',
+            'Add Course from Canvas',
             error instanceof Error ? error.message : 'Could not connect that course.'
         );
     }
