@@ -19,7 +19,7 @@ import { showConfirmModal,
 } from '../ui/modal-overlay.js';
 import { startInactivityTracking } from '../services/inactivity-tracker.js';
 import { authService } from '../services/auth-service.js';
-import { initCanvasConnect, isCanvasEnabled, openCanvasConnectModal } from './canvas-connect.js';
+import { initCanvasConnect, openCanvasConnectModal } from './canvas-connect.js';
 
 // Store current user's affiliation to check if they're an instructor
 let currentUserAffiliation: 'student' | 'faculty' | null = null;
@@ -96,7 +96,11 @@ async function initializeCourseSelection(): Promise<void> {
         // Resolve Canvas availability before the first render, so the Connect to Canvas
         // button is either present from the start or never appears. Deployments without
         // Canvas configured must not advertise it.
-        await initCanvasConnect(loadCourses);
+        // Canvas import is one page-level action rather than one per period: the term an
+        // imported course belongs to is chosen inside the flow, not by which header was clicked.
+        if (await initCanvasConnect(loadCourses)) {
+            showCanvasConnectButton();
+        }
 
         // Fetch course data
         await loadCourses();
@@ -165,16 +169,6 @@ function renderPeriodSection(period: CourseSelectionPeriodSection, defaultPeriod
                         <span class="btn-text">Create New Course</span>
                     </button>`
         : '';
-    // Both roles get this button; the flow behind it branches on Canvas enrollment, not on
-    // EngE-AI affiliation. Omitted entirely when the deployment has no Canvas credentials.
-    const canvasBtn = isCanvasEnabled()
-        ? `
-                    <button type="button" class="add-new-course-btn period-canvas-connect-btn" data-period-id="${period.id}" aria-label="Connect to Canvas" title="Connect to Canvas">
-                        <i data-feather="link"></i>
-                        <span class="btn-text">Connect to Canvas</span>
-                    </button>`
-        : '';
-
     return `
         <section class="course-selection-container period-section" data-period-id="${period.id}">
             <header class="course-selection-header period-section-header">
@@ -190,7 +184,6 @@ function renderPeriodSection(period: CourseSelectionPeriodSection, defaultPeriod
                         <i data-feather="plus"></i>
                         <span class="btn-text">Add New Course</span>
                     </button>
-                    ${canvasBtn}
                     ${createCourseBtn}
                 </div>
             </header>
@@ -203,6 +196,16 @@ function renderPeriodSection(period: CourseSelectionPeriodSection, defaultPeriod
             </div>
         </section>
     `;
+}
+
+/** Reveals the page-level Canvas button and wires it. Called only when Canvas is configured. */
+function showCanvasConnectButton(): void {
+    const button = document.getElementById('canvas-connect-btn');
+    if (!button) {
+        return;
+    }
+    button.hidden = false;
+    button.addEventListener('click', () => void openCanvasConnectModal());
 }
 
 let periodActionsBound = false;
@@ -229,11 +232,6 @@ function setupPeriodActionDelegation(): void {
         if (target.closest('.period-create-course-btn')) {
             void showFacultyCreateCourseModal();
             return;
-        }
-        const canvasBtn = target.closest('.period-canvas-connect-btn');
-        if (canvasBtn) {
-            // An imported course lands in the period whose header launched the flow.
-            void openCanvasConnectModal(canvasBtn.getAttribute('data-period-id') ?? undefined);
         }
     });
 }

@@ -154,9 +154,11 @@ Per-feature model and reasoning for Chat, Writing Feedback, Scenario Generation,
 | GET | `/api/courses/:courseId/llm-model-catalog` | Course staff — dashboard catalog (`costTier` + `reasoningOptions` id/label; brain icons are client-side) |
 | PATCH | `/api/courses/:courseId/llm-settings` | Roster managers — body: full per-feature map (see below) |
 
-**GET catalog success (200):** `{ success: true, data: { models, defaultSelection } }`
+**GET catalog success (200):** `{ success: true, data: { models, defaultSelection, defaultSettings } }`
 
-Platform `defaultSelection` (and per-feature fallback when Mongo has no usable row): `{ "modelId": "gpt-5.6-luna", "reasoningLevel": "none" }`.
+Platform `defaultSelection`: `{ "modelId": "gpt-5.6-luna", "reasoningLevel": "none" }`.
+
+Per-feature fallback when Mongo has no usable row for that feature: `chat` and `memoryAgent` default to `reasoningLevel: "low"` (both drive the Socratic stack, which needs a routing decision before the first token); `scenarioGeneration`, `writingFeedback`, and `guidedPathway` default to `"none"`. A course row that omits one feature gets that feature's default, not the generic one. `defaultSettings` on the GET carries this per-feature map; the dashboard seeds unset features from it. Seeding from `defaultSelection` alone would display `none` for a course the runtime resolves to `low`.
 
 Each `models[]` entry: `{ id, label, costTier, reasoningOptions: [{ id, label }] }`. No `costLabel`, no `brainCount`.
 
@@ -340,6 +342,7 @@ Live Canvas OAuth routes are intentionally absent from this table until the priv
 | PUT | `/api/admin/instructor-allowances` | Yes | Admin | Set allowed course names per puid + period |
 | GET | `/api/academic-periods` | Yes | Admin | List periods |
 | POST | `/api/academic-periods` | Yes | Admin | Create period |
+| GET | `/api/academic-periods/selectable` | Yes | Any | Term picker list — `{ id, title, startDate, endDate }` per period, newest first; omits `courseIds` so period membership stays admin-only. Used by the Canvas import term step |
 | GET | `/api/academic-periods/:id` | Yes | Admin | Get period |
 | PUT | `/api/academic-periods/:id` | Yes | Admin | Update period title/dates |
 
@@ -716,7 +719,7 @@ provided by `@ubc/ubc-genai-toolkit-lms-integration`. Implemented in
 | GET | `/api/lms/canvas/auth/callback` | Authenticated | Exchange the OAuth code and store tokens |
 | POST | `/api/lms/canvas/auth/logout` | Authenticated | Revoke and clear stored Canvas tokens |
 | GET | `/api/lms/canvas/available-courses` | Authenticated + Canvas connection | The user's Canvas courses, annotated with whether EngE-AI already has each one |
-| POST | `/api/lms/canvas/connect-course` | Authenticated + Canvas connection | Import (instructor) or join (student) one Canvas course; body `{ canvasCourseId, academicPeriodId? }` |
+| POST | `/api/lms/canvas/connect-course` | Authenticated + Canvas connection | Import (instructor) or join (student) one Canvas course; body `{ canvasCourseId, academicPeriodId? }`. On import the term comes from step 3 of the connect flow; an unknown or absent id falls back to the default period |
 | GET | `/api/lms/canvas/courses` | Instructor + Canvas connection | Raw Canvas course list including provider `raw`; diagnostics only |
 | POST | `/api/lms/moodle/auth/connect` | Instructor | Validate and store a pasted `wstoken` (body `{ token }`) |
 | POST | `/api/lms/moodle/auth/disconnect` | Instructor | Delete the stored Moodle token (does not revoke it in Moodle) |

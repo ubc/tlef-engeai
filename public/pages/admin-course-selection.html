@@ -43,6 +43,11 @@
     <div class="course-selection-wrapper admin-course-selection-wrapper">
         <div class="admin-course-selection-main">
             <div class="admin-page-toolbar">
+                <!-- Page-level, not per-period: the term is chosen inside the import flow. -->
+                <button type="button" id="canvas-connect-btn" class="create-academic-period-btn canvas-connect-btn" aria-label="Connect to Canvas" title="Connect to Canvas" hidden>
+                    <i data-feather="link"></i>
+                    <span class="btn-text">Connect to Canvas</span>
+                </button>
                 <button type="button" id="create-academic-period-btn" class="create-academic-period-btn">
                     <i data-feather="calendar"></i>
                     <span class="btn-text">Create Academic Period</span>

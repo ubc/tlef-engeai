@@ -12,11 +12,7 @@
 
 import { buildNewCourseFeatures } from '../dashboard-setting/course-features';
 import { DEFAULT_COURSE_LLM_SETTINGS } from '../dashboard-setting/model-selection-service';
-import {
-    DEFAULT_FEATURE_SELECTION,
-    VALID_MODEL_IDS,
-    VALID_REASONING_LEVELS,
-} from '../dashboard-setting/model-selection-list';
+import { VALID_MODEL_IDS, VALID_REASONING_LEVELS } from '../dashboard-setting/model-selection-list';
 import type { FeatureLlmSelection } from '../types/shared';
 import type { FieldSpec } from './schema-walker';
 import { hoistMaterialFile } from './schema-walker';
