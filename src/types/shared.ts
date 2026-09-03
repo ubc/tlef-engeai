@@ -399,7 +399,14 @@ export type RosterSyncStatus =
     /** No usable LMS credential is on file for this course, so no fetch was attempted. */
     | 'no_credential'
     /** The LMS call failed. The previous snapshot is kept. */
-    | 'failed';
+    | 'failed'
+    /**
+     * The LMS course is not published, so it reports no students regardless of who is enrolled.
+     * Distinguished from a genuinely empty roster because only this one has an obvious fix, and
+     * because it is the state an instructor is most likely to sync from — a course is usually
+     * wired up to its tools before it is opened to students.
+     */
+    | 'unpublished';
 
 /**
  * A course's stored LMS roster, one document per EngE-AI course.

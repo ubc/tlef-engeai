@@ -39,6 +39,16 @@
  * snapshot with nothing and silently strand a class. {@link syncCanvasCourseRoster} checks
  * coverage before writing and reports `identifiers_withheld`, keeping the previous snapshot.
  *
+ * ## The empty roster that is not empty
+ *
+ * An **unpublished** Canvas course reports no students at all, whoever is enrolled: Canvas holds
+ * their enrollments in `creation_pending` until the course is published, and the roster read asks
+ * for `active` and `invited` only. Publishing flips them to `invited` and they appear at once.
+ * This is worth knowing because it is invisible from EngE-AI — the sync succeeds, the count is
+ * zero, and nothing looks wrong — and because instructors reliably hit it: a course gets wired up
+ * to its tools before it is opened to students. An empty roster therefore triggers a publish-state
+ * check so the instructor is told to publish rather than left guessing.
+ *
  * @author: EngE-AI Team
  * @version: 1.0.0
  * @description: Reads a linked Canvas course's student roster into matchable stored identities.
@@ -85,6 +95,33 @@ export interface RosterSyncDeps {
     resolveApi?: (userKey: string) => Promise<CanvasApiClient | null>;
     /** Reads one course's roster. Defaults to the package's paginated `getCourseUsers`. */
     fetchRoster?: (api: CanvasApiClient, lmsCourseId: string) => Promise<LmsRosterUser[]>;
+    /** Reads one course's publish state. Defaults to a direct `/courses/:id` read. */
+    fetchWorkflowState?: (api: CanvasApiClient, lmsCourseId: string) => Promise<string | null>;
+}
+
+/**
+ * fetchCourseWorkflowState — Canvas's publish state for one course.
+ *
+ * Called only when a roster comes back empty, so the common path pays nothing for it. The
+ * package exposes no per-course getter, and its `getCourses` normalizes away everything except
+ * `raw` — so this reads the endpoint directly, which the LMS guide names as the sanctioned
+ * reason to use the raw client.
+ *
+ * Returns `null` rather than throwing: this call exists to *explain* an empty roster, and
+ * failing to explain it must not turn a successful sync into a failed one.
+ */
+async function fetchCourseWorkflowState(
+    api: CanvasApiClient,
+    lmsCourseId: string
+): Promise<string | null> {
+    try {
+        const course = await api.get<{ workflow_state?: string }>(
+            `/courses/${encodeURIComponent(lmsCourseId)}`
+        );
+        return course?.workflow_state ?? null;
+    } catch {
+        return null;
+    }
 }
 
 /**
@@ -164,7 +201,32 @@ export async function syncCanvasCourseRoster(
             'Canvas could not be reached for this course. The previous roster is still in use.');
     }
 
-    // 4. The coverage guard. A roster with rows but no identifiers is a Canvas permission gap, and
+    // 4. An empty roster is ambiguous, and the likeliest cause has a one-line fix: an unpublished
+    //    Canvas course reports no students no matter who is enrolled in it, because Canvas holds
+    //    their enrollments in `creation_pending` until the course is published. Instructors hit
+    //    this constantly — a course is wired up to its tools before it is opened to students —
+    //    and "Synced 0 students" gives them nothing to act on.
+    if (roster.length === 0) {
+        const workflowState = await (deps.fetchWorkflowState ?? fetchCourseWorkflowState)(
+            api,
+            link.courseId
+        );
+
+        if (workflowState === 'unpublished') {
+            await mongoDB.recordLmsRosterSyncOutcome(course.id, 'unpublished');
+            return summarize(course.id, 'unpublished', 0, 0,
+                'This Canvas course is not published, so Canvas reports no students in it. ' +
+                    'Publish the course in Canvas, then sync again.');
+        }
+
+        // Published and genuinely empty, or the publish state could not be read. Stored as a
+        // real result: a course with no students yet is a legitimate state, not an error.
+        await mongoDB.saveCourseLmsRosterSnapshot(emptySnapshot(course.id, link.courseId, link.linkedBy, triggeredBy));
+        return summarize(course.id, 'ok', 0, 0,
+            'Canvas reports no students enrolled in this course yet.');
+    }
+
+    // 5. The coverage guard. A roster with rows but no identifiers is a Canvas permission gap, and
     //    must not be written as though the class were empty.
     const identified = roster.filter((row) => (row.integrationId ?? '').trim() !== '');
     if (roster.length > 0 && identified.length === 0) {
@@ -180,7 +242,7 @@ export async function syncCanvasCourseRoster(
                 'for instructors. The previous roster is still in use.');
     }
 
-    // 5. Reduce each identified row to what matching needs and nothing else. Rows without an
+    // 6. Reduce each identified row to what matching needs and nothing else. Rows without an
     //    identifier are dropped rather than stored address-only: nothing consumes them, since
     //    writeback addresses a student through their submission's own Canvas user id.
     const entries: CourseRosterEntry[] = identified.map((row) => ({
@@ -228,6 +290,32 @@ function dedupeByHash(entries: CourseRosterEntry[]): CourseRosterEntry[] {
         }
     }
     return [...seen.values()];
+}
+
+/**
+ * emptySnapshot — the stored result for a published course with nobody enrolled.
+ *
+ * Written rather than skipped so `syncedAt` advances: an instructor who syncs an empty course
+ * needs the tooltip to show that the sync ran, not a stale "never synced".
+ */
+function emptySnapshot(
+    courseId: string,
+    lmsCourseId: string,
+    syncCredentialUserId: string,
+    triggeredBy?: string
+): CourseRosterSnapshot {
+    return {
+        courseId,
+        provider: PROVIDER,
+        lmsCourseId,
+        entries: [],
+        syncedAt: new Date(),
+        syncCredentialUserId,
+        ...(triggeredBy ? { triggeredBy } : {}),
+        status: 'ok',
+        rosterSize: 0,
+        identifiedCount: 0,
+    };
 }
 
 /** Builds the staff-facing summary. Counts and a message only — never an entry. */

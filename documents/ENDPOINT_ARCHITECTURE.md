@@ -764,6 +764,13 @@ provided by `@ubc/ubc-genai-toolkit-lms-integration`. Implemented in
 - `assertInstructorIdentity` does not run on this path and cannot: there is no signed-in
   user to compare a PUID against on the scheduled path. Identity was proven once, at
   import, by the instructor who created the link.
+- **An empty roster triggers a publish-state check.** An unpublished Canvas course reports no
+  students whoever is enrolled — Canvas holds their enrollments in `creation_pending` until the
+  course is published, and the roster read asks for `active` and `invited` only. That returns
+  `status: 'unpublished'` naming the fix, and keeps the previous snapshot. A *published* course
+  with nobody in it stores a real empty snapshot as `ok`, so `syncedAt` advances. The extra
+  `/courses/:id` read happens only when the roster is empty, and a failure to read the publish
+  state degrades to the ordinary empty-roster result rather than failing the sync.
 - **A roster with rows but no SIS identifiers is a Canvas permission gap, not an empty
   class.** That case returns `status: 'identifiers_withheld'` and leaves the previous
   snapshot in place. The same holds for `no_credential` (revoked token) and `failed`

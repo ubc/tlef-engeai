@@ -406,7 +406,13 @@ export interface CourseLmsLink {
  * `identifiers_withheld` means Canvas returned roster rows without SIS identifiers — a missing
  * Canvas permission, not an empty class. The UI must not present it as "no students found".
  */
-export type RosterSyncStatus = 'ok' | 'identifiers_withheld' | 'no_credential' | 'failed';
+export type RosterSyncStatus =
+    | 'ok'
+    | 'identifiers_withheld'
+    | 'no_credential'
+    | 'failed'
+    /** LMS course not published, so it reports no students whoever is enrolled. */
+    | 'unpublished';
 
 /**
  * Must match src/types/shared.ts

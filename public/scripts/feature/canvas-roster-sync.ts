@@ -39,6 +39,9 @@ const ACTIONABLE: ReadonlySet<RosterSyncStatus> = new Set<RosterSyncStatus>([
     'identifiers_withheld',
     'no_credential',
     'failed',
+    // An unpublished Canvas course reports no students at all. The sync itself succeeded, but
+    // the instructor has a step left, so this reads as something to fix rather than a result.
+    'unpublished',
 ]);
 
 /**

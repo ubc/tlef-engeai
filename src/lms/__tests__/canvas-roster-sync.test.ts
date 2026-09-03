@@ -180,6 +180,68 @@ describe('syncCanvasCourseRoster', () => {
         expect(summary.rosterSize).toBe(2);
     });
 
+    it('names the unpublished course behind an empty roster, and keeps the old snapshot', async () => {
+        const mongo = makeMongo();
+        const summary = await syncCanvasCourseRoster(mongo, makeCourse(), undefined, {
+            resolveApi: resolveApiOk,
+            fetchRoster: async () => [] as any,
+            fetchWorkflowState: async () => 'unpublished',
+        });
+
+        // Canvas holds enrollments in `creation_pending` until a course is published, so it
+        // reports nobody regardless of who is enrolled. Writing that as a real empty roster
+        // would replace a good snapshot on the strength of a Canvas setup step.
+        expect(summary.status).toBe('unpublished');
+        expect(summary.message).toMatch(/publish/i);
+        expect(mongo.saveCourseLmsRosterSnapshot).not.toHaveBeenCalled();
+        expect(mongo.recordLmsRosterSyncOutcome).toHaveBeenCalledWith('course-1', 'unpublished');
+    });
+
+    it('stores a genuinely empty roster on a published course', async () => {
+        const mongo = makeMongo();
+        const summary = await syncCanvasCourseRoster(mongo, makeCourse(), undefined, {
+            resolveApi: resolveApiOk,
+            fetchRoster: async () => [] as any,
+            fetchWorkflowState: async () => 'available',
+        });
+
+        // A published course with nobody in it is a legitimate state, not an error, and the
+        // snapshot is written so `syncedAt` advances rather than reading as "never synced".
+        expect(summary.status).toBe('ok');
+        expect(summary.message).toMatch(/no students/i);
+        expect(mongo.saveCourseLmsRosterSnapshot).toHaveBeenCalled();
+        expect(mongo.saveCourseLmsRosterSnapshot.mock.calls[0][0].entries).toEqual([]);
+    });
+
+    it('treats an unreadable publish state as an ordinary empty roster', async () => {
+        const mongo = makeMongo();
+        const summary = await syncCanvasCourseRoster(mongo, makeCourse(), undefined, {
+            resolveApi: resolveApiOk,
+            fetchRoster: async () => [] as any,
+            fetchWorkflowState: async () => null,
+        });
+
+        // The publish check exists only to explain an empty result; failing to explain it must
+        // not turn a successful sync into a failed one.
+        expect(summary.status).toBe('ok');
+        expect(mongo.saveCourseLmsRosterSnapshot).toHaveBeenCalled();
+    });
+
+    it('does not check the publish state when the roster is non-empty', async () => {
+        const mongo = makeMongo();
+        const fetchWorkflowState = jest.fn();
+
+        await syncCanvasCourseRoster(mongo, makeCourse(), undefined, {
+            resolveApi: resolveApiOk,
+            fetchRoster: async () =>
+                [{ id: '11', name: 'Student One', integrationId: 'puid-one' }] as any,
+            fetchWorkflowState,
+        });
+
+        // The common path must not pay for the diagnostic.
+        expect(fetchWorkflowState).not.toHaveBeenCalled();
+    });
+
     it('reports no_credential without touching the stored roster', async () => {
         const mongo = makeMongo();
         const summary = await syncCanvasCourseRoster(mongo, makeCourse(), undefined, {
