@@ -534,6 +534,16 @@ export class EngEAI_MongoDB {
         WritingFeedbackMongo.getLatestWritingRelease(this.ctx(), courseId, submissionId);
 
     /**
+     * listWritingReleases — every release attempt for one submission, oldest first.
+     *
+     * @param courseId - Owning course id
+     * @param submissionId - Submission whose release history is wanted
+     * @returns Release attempts in creation order
+     */
+    public listWritingReleases = async (courseId: string, submissionId: string) =>
+        WritingFeedbackMongo.listWritingReleases(this.ctx(), courseId, submissionId);
+
+    /**
      * finalizeWritingRelease — records final provider state for one fingerprint.
      *
      * @param payloadFingerprint - Stable outbound payload hash
@@ -564,6 +574,17 @@ export class EngEAI_MongoDB {
      */
     public findActiveWritingJob = async (courseId: string, submissionId: string, type: WritingJob['type']) =>
         WritingFeedbackMongo.findActiveWritingJob(this.ctx(), courseId, submissionId, type);
+
+    /**
+     * findLatestWritingJob — the newest job of one type for a submission, in any state.
+     *
+     * @param courseId - Owning course id
+     * @param submissionId - Submission pointer stored in the job payload
+     * @param type - Worker handler type
+     * @returns The most recently updated job, or `null` when none exists
+     */
+    public findLatestWritingJob = async (courseId: string, submissionId: string, type: WritingJob['type']) =>
+        WritingFeedbackMongo.findLatestWritingJob(this.ctx(), courseId, submissionId, type);
 
     /**
      * leaseNextWritingJob — atomically claims the oldest runnable job.

@@ -611,6 +611,21 @@ export interface WritingRelease {
     rubricVersion?: number; // approved rubric used for the payload
     /** Whether per-criterion points reached the instructor's Canvas rubric. */
     rubricAssessmentWritten?: boolean;
+    /**
+     * Which release of this submission this record is, 1 to 5.
+     *
+     * Assigned at preview from the count of releases that already reached the student, so the
+     * review page can say a submission has been revised without reading its whole history.
+     */
+    revision?: number;
+    /**
+     * `GlobalUser.userId` of the staff member who queued this release.
+     *
+     * A queued release runs after that person has closed the page, and it writes to Canvas with
+     * their stored OAuth credential — never a shared or service account — so the record names
+     * whose authority the write carried. Never a PUID.
+     */
+    queuedByUserId?: string;
     payloadFingerprint: string; // idempotency key across preview and retry
     status: 'previewed' | 'feedback_attached' | 'grade_queued' | 'released' | 'reconciliation_required' | 'failed' | 'reconciled'; // external-write lifecycle
     grade?: number; // staff-final total sent to Canvas
@@ -746,6 +761,13 @@ export interface CanvasReleaseInput {
     studentFeedback?: string;
     /** Technical model draft released alongside the linguistic one, when the assignment has one. */
     technicalFeedbackRun?: WritingFeedbackRun;
+    /**
+     * Which release of this submission this would be, 1 to `MAX_SUBMISSION_RELEASES`.
+     *
+     * The service counts the submission's release history and applies the cap; the coordinator
+     * only records the number it is given, so neither adapter has to query that history itself.
+     */
+    revision?: number;
 }
 
 /** Release coordinator boundary separating preview persistence from external mutation. */

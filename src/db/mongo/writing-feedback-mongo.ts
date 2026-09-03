@@ -1008,6 +1008,25 @@ export async function findWritingReleaseByFingerprint(ctx: MongoDalContext, payl
     return releases(ctx).findOne({ payloadFingerprint });
 }
 
+/**
+ * listWritingReleases — every release attempt for one submission, oldest first.
+ *
+ * The release cap and the revision number a student sees are both derived from these records
+ * rather than a stored counter, so nothing can fall out of step with what actually happened.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param submissionId - Submission whose release history is wanted
+ * @returns Release attempts in creation order
+ */
+export async function listWritingReleases(
+    ctx: MongoDalContext,
+    courseId: string,
+    submissionId: string
+): Promise<WritingRelease[]> {
+    return releases(ctx).find({ courseId, submissionId }).sort({ createdAt: 1 }).toArray();
+}
+
 /** Latest Canvas release state for one local submission, used to surface reconciliation. */
 export async function getLatestWritingRelease(
     ctx: MongoDalContext,
@@ -1086,6 +1105,31 @@ export async function findActiveWritingJob(
         'payload.submissionId': submissionId,
         state: { $in: ['queued', 'leased'] }
     });
+}
+
+/**
+ * findLatestWritingJob — the newest job of one type for a submission, whatever its state.
+ *
+ * A polling page needs the terminal state as well as the active one: a release job that failed is
+ * no longer active, and its sanitized reason is the only thing that explains why nothing reached
+ * the student. Failure text stored on a job is already content-free by construction.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param submissionId - Submission pointer stored in the job payload
+ * @param type - Worker handler type
+ * @returns The most recently updated job, or `null` when the submission has none
+ */
+export async function findLatestWritingJob(
+    ctx: MongoDalContext,
+    courseId: string,
+    submissionId: string,
+    type: WritingJob['type']
+): Promise<WritingJob | null> {
+    return jobs(ctx).findOne(
+        { courseId, type, 'payload.submissionId': submissionId },
+        { sort: { updatedAt: -1 } }
+    );
 }
 
 /**

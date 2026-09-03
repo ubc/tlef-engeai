@@ -299,7 +299,8 @@ describe('WritingFeedbackService anchored comments', () => {
             getWritingSubmission: jest.fn(async () => sub),
             getWritingAssignment: jest.fn(async () => assignment),
             getLatestWritingFeedbackRun: jest.fn(async () => runFor(sub)),
-            getLatestWritingRelease: jest.fn(async () => null)
+            getLatestWritingRelease: jest.fn(async () => null),
+            listWritingReleases: jest.fn(async () => [])
         } as unknown as EngEAI_MongoDB;
 
         const detail = await new WritingFeedbackService(mongo, engine).detail('course-1', 'submission-1');
@@ -321,7 +322,8 @@ describe('WritingFeedbackService anchored comments', () => {
             getWritingSubmission: jest.fn(async () => ({ ...sub, reviews: [review] })),
             getWritingAssignment: jest.fn(async () => assignment),
             getLatestWritingFeedbackRun: jest.fn(async () => runFor(sub)),
-            getLatestWritingRelease: jest.fn(async () => null)
+            getLatestWritingRelease: jest.fn(async () => null),
+            listWritingReleases: jest.fn(async () => [])
         } as unknown as EngEAI_MongoDB;
 
         const detail = await new WritingFeedbackService(mongo, engine).detail('course-1', 'submission-1');

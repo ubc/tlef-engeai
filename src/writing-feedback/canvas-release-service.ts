@@ -122,7 +122,8 @@ export class SafeCanvasReleaseService implements CanvasReleaseService {
             payloadFingerprint,
             status: 'previewed',
             grade,
-            integration: 'mock_canvas'
+            integration: 'mock_canvas',
+            ...(input.revision !== undefined ? { revision: input.revision } : {})
         });
     }
 

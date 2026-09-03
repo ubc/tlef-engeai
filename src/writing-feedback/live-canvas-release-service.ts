@@ -212,7 +212,8 @@ export class LiveCanvasReleaseService implements CanvasReleaseService {
             status: 'previewed',
             grade: assessment.totalPoints,
             integration: 'canvas',
-            postManually: gradePreflight.postManually
+            postManually: gradePreflight.postManually,
+            ...(input.revision !== undefined ? { revision: input.revision } : {})
         });
     }
 

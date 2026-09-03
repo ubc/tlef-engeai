@@ -368,6 +368,49 @@ async function waitForGeneration(submissionId: string): Promise<SubmissionDetail
     throw new Error('Feedback generation is taking longer than expected. It may still finish — refresh this submission in a moment to check.');
 }
 
+/** What `release-status` reports while a queued release runs. */
+interface ReleaseStatus {
+    release: SubmissionDetail['release'];
+    jobState: 'queued' | 'leased' | 'completed' | 'failed' | null;
+    jobError?: string;
+}
+
+// A live release uploads two PDFs, posts a Canvas comment, and waits on Canvas's own grade job.
+// Five minutes is well past the worst case observed against Canvas and matches the generation
+// ceiling above, including its reasoning about the idle-session window.
+const RELEASE_POLL_TIMEOUT_MS = 300_000;
+
+/**
+ * waitForRelease - polls a queued release until Canvas has been written to, or has refused.
+ *
+ * @param submissionId - Submission whose release job is running
+ * @returns The terminal release state
+ * @throws Error carrying the staff-facing reason the release did not complete
+ */
+async function waitForRelease(submissionId: string): Promise<ReleaseStatus> {
+    const deadline = Date.now() + RELEASE_POLL_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+        const status = await request<ReleaseStatus>(`/submissions/${encodeURIComponent(submissionId)}/release-status`);
+        const releaseStatus = status.release?.status;
+        if (releaseStatus === 'released' || releaseStatus === 'reconciled') return status;
+        if (releaseStatus === 'reconciliation_required') {
+            throw new Error('Canvas returned an uncertain result. Do not retry; reconcile the Canvas submission first.');
+        }
+        // The job is the authority on failure: a release that never reached Canvas at all leaves
+        // the release record untouched and the reason on the job.
+        if (status.jobState === 'failed') {
+            throw new Error(status.jobError || 'Canvas did not confirm the complete release.');
+        }
+        // The handler finished, yet the record is not terminal: the release did not happen and
+        // no retry will be scheduled, so say so instead of polling to the deadline.
+        if (status.jobState === 'completed') {
+            throw new Error('The release finished without confirming Canvas. Check the submission in Canvas before retrying.');
+        }
+        await delay(2000);
+    }
+    throw new Error('The Canvas release is taking longer than expected. It may still finish — reopen this submission in a moment to check.');
+}
+
 function renderReviewView(root: HTMLDivElement, detail: SubmissionDetail): void {
     const { submission, feedbackRun } = detail;
     const assignment = state.currentAssignment;
@@ -1174,7 +1217,10 @@ function renderSummaryTab(
 
     const releaseSection = document.createElement('section');
     releaseSection.className = 'wf-feedback-section';
-    releaseSection.append(renderReleaseCard(submission, assignment, detail.release));
+    releaseSection.append(renderReleaseCard(submission, assignment, detail.release, {
+        released: detail.releaseCount ?? 0,
+        max: detail.maxReleases ?? 0
+    }));
     children.push(releaseSection);
 
     return {
@@ -1185,10 +1231,32 @@ function renderSummaryTab(
     };
 }
 
+/**
+ * releaseHistoryLine - what staff are told about a submission's earlier releases.
+ *
+ * Silent on the first release, because a submission that has never been released has no history
+ * to report. After that the count is stated with the cap, since each further release adds a new
+ * Canvas comment and notifies the student again — staff decide whether a correction is worth it.
+ *
+ * @param counts - Completed releases and the per-submission limit
+ * @returns The sentence to show, or an empty string when there is nothing to say
+ */
+function releaseHistoryLine(counts: { released: number; max: number }): string {
+    if (counts.released < 1) return '';
+    const remaining = Math.max(counts.max - counts.released, 0);
+    const times = counts.released === 1 ? 'once' : `${counts.released} times`;
+    if (remaining < 1) {
+        return `This attempt’s feedback has been released ${times}, which is the limit for one attempt.`;
+    }
+    return `This attempt’s feedback has been released ${times}. A submission may be released at most`
+        + ` ${counts.max} times, and each release adds another comment to the student’s Canvas submission.`;
+}
+
 function renderReleaseCard(
     submission: Submission,
     assignment: Assignment | null,
-    priorRelease: SubmissionDetail['release']
+    priorRelease: SubmissionDetail['release'],
+    counts: { released: number; max: number }
 ): HTMLElement {
     const card = document.createElement('section');
     card.className = 'wf-release-card';
@@ -1197,9 +1265,14 @@ function renderReleaseCard(
     const isDemo = workspace.canvas.mode === 'demo';
     const finalAssessment = latestReview(submission)?.finalAssessment;
     const hasFinalAssessment = Boolean(finalAssessment);
+    // A completed release is not the end of the story: staff may correct feedback and release a
+    // revision, up to the cap, so this card offers that path instead of closing the submission.
+    const capReached = counts.max > 0 && counts.released >= counts.max;
     if (priorRelease?.status === 'released' || priorRelease?.status === 'reconciled' || submission.status === 'released') {
         card.append(
-            createText('h3', 'Released to Canvas'),
+            createText('h3', priorRelease?.revision && priorRelease.revision > 1
+                ? `Released to Canvas · revision ${priorRelease.revision}`
+                : 'Released to Canvas'),
             createText(
                 'p',
                 priorRelease?.postManually
@@ -1207,6 +1280,15 @@ function renderReleaseCard(
                     : 'The feedback files and grade were confirmed in Canvas.'
             )
         );
+        const history = releaseHistoryLine(counts);
+        if (history) card.append(createText('p', history));
+        // Released feedback cannot be edited — the service refuses a review revision on a
+        // released submission — so a correction is a new attempt, not a second pass over this
+        // one. Say that, rather than offering a control the server would refuse.
+        card.append(createText(
+            'p',
+            'Released feedback cannot be edited. To send a correction, add or import a new attempt for this student and review it.'
+        ));
         return card;
     }
     if (priorRelease?.status === 'reconciliation_required') {
@@ -1221,7 +1303,7 @@ function renderReleaseCard(
     }
     // Release remains unavailable until human approval, a complete numeric
     // mapping, and a usable Canvas adapter are all simultaneously present.
-    const releaseReady = submission.status === 'approved' && hasFinalAssessment && workspace.canvas.canImport;
+    const releaseReady = submission.status === 'approved' && hasFinalAssessment && workspace.canvas.canImport && !capReached;
     card.append(
         createText('h3', isDemo ? 'Canvas release simulation' : 'Release to Canvas'),
         createText(
@@ -1235,7 +1317,8 @@ function renderReleaseCard(
     releaseState.className = 'wf-release-state';
     releaseState.setAttribute('role', 'status');
     releaseState.setAttribute('aria-live', 'polite');
-    if (!hasFinalAssessment) releaseState.textContent = 'Release is blocked until a complete staff-final rubric grade is saved.';
+    if (capReached) releaseState.textContent = releaseHistoryLine(counts);
+    else if (!hasFinalAssessment) releaseState.textContent = 'Release is blocked until a complete staff-final rubric grade is saved.';
     else if (!workspace.canvas.canImport) releaseState.textContent = workspace.canvas.message;
     else if (submission.status !== 'approved') releaseState.textContent = 'Approve the staff-reviewed feedback before release.';
     else if (priorRelease?.status === 'failed') releaseState.textContent = priorRelease.sanitizedError || 'The prior Canvas release failed safely and may be retried.';
@@ -1259,7 +1342,7 @@ function renderReleaseCard(
                     ? 'Canvas will keep the result hidden until the assignment is posted.'
                     : 'Canvas will show the result to the student immediately after release.'}`;
             showSuccessToast('Release preview created. Nothing was sent to Canvas.');
-        }, !workspace.canvas.canImport),
+        }, !workspace.canvas.canImport || capReached),
         createButton(isDemo ? 'Simulate release' : 'Release to Canvas', 'primary', async () => {
             // External delivery (or its visibly synthetic demo equivalent) always
             // requires a second, submission-specific confirmation.
@@ -1271,24 +1354,28 @@ function renderReleaseCard(
             );
             const expectedAction = isDemo ? 'simulate-release' : 'release-to-canvas';
             if (confirmation.action !== expectedAction) return;
-            const released = await jsonRequest<{
-                status: string;
-                postManually?: boolean;
-                sanitizedError?: string;
-            }>(
+            // The server queues the release and returns immediately; the write itself happens in
+            // the worker, so this waits on the record rather than on one long request.
+            await jsonRequest<{ status: string; jobId: string }>(
                 `/submissions/${encodeURIComponent(submission.id)}/release`,
                 'POST'
             );
-            if (released.status !== 'released' && released.status !== 'reconciled') {
-                releaseState.textContent = released.status === 'reconciliation_required'
-                    ? 'Canvas returned an uncertain result. Do not retry; reconcile the Canvas submission first.'
-                    : released.sanitizedError || 'Canvas did not confirm the complete release.';
+            releaseState.textContent = isDemo
+                ? 'Simulating the release…'
+                : 'Sending the feedback files and grade to Canvas…';
+            let released: ReleaseStatus;
+            try {
+                released = await waitForRelease(submission.id);
+            } catch (error) {
+                releaseState.textContent = error instanceof Error
+                    ? error.message
+                    : 'Canvas did not confirm the complete release.';
                 showErrorToast(releaseState.textContent);
                 return;
             }
             showSuccessToast(isDemo
                 ? 'Demo release completed without contacting Canvas.'
-                : released.postManually
+                : released.release?.postManually
                     ? 'Feedback and grade reached Canvas and remain hidden until the assignment is posted.'
                     : 'Feedback and grade were released to the student in Canvas.');
             await refreshReview(submission.id);

@@ -358,6 +358,10 @@ export interface SubmissionDetail {
     comments: AnchoredComment[]; // newest saved staff comment snapshot
     seedComments: AnchoredComment[]; // model-derived fallback used before the first save
     release?: WritingReleaseSummary | null; // latest Canvas release/reconciliation state
+    /** How many times this submission's feedback has reached the student in Canvas. */
+    releaseCount?: number;
+    /** The cap, so the page names the limit rather than hard-coding it. */
+    maxReleases?: number;
 }
 
 /** Staff-visible release state returned with submission detail. */
@@ -367,6 +371,8 @@ export interface WritingReleaseSummary {
     postManually?: boolean;
     failureStage?: 'preflight' | 'feedback' | 'grade' | 'progress';
     sanitizedError?: string;
+    /** Which release of this submission the record is, so staff can see a re-release as one. */
+    revision?: number;
     updatedAt: string;
 }
 

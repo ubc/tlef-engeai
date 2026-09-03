@@ -17,6 +17,20 @@ import type { WritingFeedbackJobRunner, WritingJob } from './contracts';
 type JobHandler = (job: WritingJob) => Promise<void>;
 
 /**
+ * A failure whose message a handler has already vetted as content-free.
+ *
+ * Every other error is replaced with a generic sentence, because a provider or validation error
+ * may quote submission text. A handler that wants staff to read something specific — "reconnect
+ * Canvas", say — states it through this class, which is the explicit act of sanitizing it.
+ */
+export class SanitizedJobError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'SanitizedJobError';
+    }
+}
+
+/**
  * Leases one job at a time. Handlers are deliberately injected so extraction,
  * generation, PDF, and Canvas tasks share a retry mechanism without hiding
  * their domain-specific authorization/release rules.
@@ -50,9 +64,13 @@ export class MongoWritingFeedbackJobRunner implements WritingFeedbackJobRunner {
             await handler(job);
             // Mark completion only after the injected domain operation resolves.
             await this.mongo.completeWritingJob(job.id);
-        } catch {
+        } catch (error) {
             // Persist only a generic failure; provider errors may contain submission content.
-            await this.mongo.failWritingJob(job, 'Writing feedback job failed');
+            // A handler that has vetted its own wording says so with SanitizedJobError.
+            await this.mongo.failWritingJob(
+                job,
+                error instanceof SanitizedJobError ? error.message : 'Writing feedback job failed'
+            );
         }
         return true;
     }

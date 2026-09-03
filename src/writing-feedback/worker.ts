@@ -34,6 +34,11 @@ export function startWritingFeedbackWorker(mongo: EngEAI_MongoDB): () => void {
     const runner = new MongoWritingFeedbackJobRunner(mongo, {
         generate: async (job) => {
             await service.generate(job.courseId, job.payload.submissionId);
+        },
+        release: async (job) => {
+            // The job carries only a submission id. Whose Canvas credential the write acts with
+            // is reloaded from the release record inside the Writing Feedback boundary.
+            await service.runQueuedRelease(job.courseId, job.payload.submissionId);
         }
     });
     const intervalMs = Number(process.env.WRITING_FEEDBACK_WORKER_INTERVAL_MS ?? 5000);

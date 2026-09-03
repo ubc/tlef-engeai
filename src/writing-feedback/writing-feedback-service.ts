@@ -38,6 +38,14 @@ import { lensesForAssignment, selectRubric } from './rubric-lens';
 import { ModelSelectionService } from '../dashboard-setting/model-selection-service';
 import { StudentWritingFeedbackPdfService } from '../report-generation/writing-feedback-report';
 import { buildStaffFinalAssessment, gradedLensFor, type StaffFinalAssessmentInput } from './staff-final-assessment';
+import {
+    MAX_SUBMISSION_RELEASES,
+    countCompletedReleases,
+    nextReleaseRevision,
+    releaseCapMessage
+} from './release-cap';
+import { SanitizedJobError } from './job-runner';
+import { resolveQueuedReleaseService } from './queued-release-service';
 import { requireCompleteSflProfile } from './sfl-analysis';
 import { appLogger } from '../utils/logger';
 
@@ -118,6 +126,10 @@ export interface SubmissionDetail {
     seedComments: AnchoredComment[];
     /** Latest persisted Canvas release state, including any reconciliation requirement. */
     release: WritingRelease | null;
+    /** How many times this submission's feedback has reached the student in Canvas. */
+    releaseCount: number;
+    /** The cap, sent so the page names the limit rather than hard-coding it. */
+    maxReleases: number;
 }
 
 /**
@@ -145,7 +157,14 @@ export class WritingFeedbackService {
         private readonly mongo: EngEAI_MongoDB,
         private readonly engine: WritingFeedbackEngine = new RubricWritingFeedbackEngine(),
         private readonly pdfService = new StudentWritingFeedbackPdfService(),
-        private readonly technicalEngine?: WritingFeedbackEngine
+        private readonly technicalEngine?: WritingFeedbackEngine,
+        /**
+         * How a queued release rebuilds its Canvas coordinator without a request.
+         *
+         * Injected so the queued path can be tested without Canvas configuration, tokens, or a
+         * course link; production always passes through {@link resolveQueuedReleaseService}.
+         */
+        private readonly resolveQueuedRelease = resolveQueuedReleaseService
     ) {}
 
     /**
@@ -337,7 +356,19 @@ export class WritingFeedbackService {
         const seedComments = !latestWithComments && feedbackRun && verifiedText
             ? seedCommentsFromRun(feedbackRun, verifiedText, runRubric)
             : [];
-        return { submission, feedbackRun, technicalFeedbackRun, comments, seedComments, release };
+        // Release counts travel with the detail so the review page can say a submission has
+        // been revised without fetching and counting its release history itself.
+        const priorReleases = await this.mongo.listWritingReleases(courseId, submissionId);
+        return {
+            submission,
+            feedbackRun,
+            technicalFeedbackRun,
+            comments,
+            seedComments,
+            release,
+            releaseCount: countCompletedReleases(priorReleases),
+            maxReleases: MAX_SUBMISSION_RELEASES
+        };
     }
 
     /**
@@ -481,6 +512,7 @@ export class WritingFeedbackService {
     async previewRelease(courseId: string, submissionId: string, releaseService: CanvasReleaseService) {
         const submission = await this.requireSubmission(courseId, submissionId);
         const assignment = await this.requireAssignment(courseId, submission.assignmentId);
+        const revision = await this.requireReleasableSubmission(courseId, submission);
         const feedbackRun = await this.mongo.getLatestWritingFeedbackRun(submissionId);
         if (!feedbackRun) throw new Error('Generate feedback before a release preview');
         this.assertCurrentRubric(feedbackRun.rubricVersion, assignment);
@@ -516,10 +548,114 @@ export class WritingFeedbackService {
             feedbackRun,
             artifacts,
             gradedRubric,
+            revision,
             finalAssessment: latestReview?.finalAssessment,
             studentFeedback: latestReview?.studentFeedback,
             ...(technicalRun ? { technicalFeedbackRun: technicalRun } : {})
         });
+    }
+
+    /**
+     * Queues a Canvas release, checking now everything that can be checked before the worker runs.
+     *
+     * A live release uploads two PDFs, posts a comment, and starts a Canvas grade job; doing that
+     * inside the HTTP request meant staff watched a spinner for as long as Canvas took, and a
+     * dropped connection left the outcome unknown. The queue owns the wait instead. Everything
+     * that can fail cheaply — the cap, the Canvas identity, approval, an existing preview — is
+     * refused here, where staff are still looking at the page and can act on the reason.
+     *
+     * The job carries only the submission id. Whose Canvas credential the write acts with is
+     * recorded on the release record, because that is the durable thing the worker reloads.
+     *
+     * @param courseId - Course authorization/persistence boundary
+     * @param submissionId - Approved submission whose previewed release is being sent
+     * @param queuedByUserId - `GlobalUser.userId` of the staff member queuing it
+     * @returns The active or newly queued release job
+     * @throws Error when the release cannot be attempted at all, with the staff-facing reason
+     */
+    async enqueueRelease(courseId: string, submissionId: string, queuedByUserId: string): Promise<WritingJob> {
+        const submission = await this.requireSubmission(courseId, submissionId);
+        await this.requireReleasableSubmission(courseId, submission);
+        if (submission.status !== 'approved') throw new Error('Staff approval is required before Canvas release');
+        // One queued release per submission: a second click must join the first attempt rather
+        // than schedule another Canvas comment.
+        const existing = await this.mongo.findActiveWritingJob(courseId, submissionId, 'release');
+        if (existing) return existing;
+
+        const release = await this.mongo.getLatestWritingRelease(courseId, submissionId);
+        if (!release) throw new Error('Preview this release before sending it to Canvas');
+        if (release.status === 'reconciliation_required') {
+            throw new Error('Canvas returned an uncertain result for this submission. Reconcile it in Canvas before releasing again.');
+        }
+        await this.mongo.finalizeWritingRelease(release.payloadFingerprint, { queuedByUserId });
+        return this.mongo.enqueueWritingJob({
+            courseId,
+            type: 'release',
+            state: 'queued',
+            // One attempt. The queue's generic retry is right for a model call and wrong for an
+            // external write: a failure whose outcome is unknown must be looked at, not repeated.
+            maxAttempts: 1,
+            payload: { submissionId }
+        });
+    }
+
+    /**
+     * Runs one queued release as the staff member who queued it.
+     *
+     * Reloads everything from durable state rather than trusting the job payload, which carries
+     * only an id. Two outcomes are deliberately not failures: a release that already landed, and
+     * one parked for reconciliation. Both mean the queue has nothing left to do, and failing the
+     * job would invite a retry that could duplicate a student's feedback.
+     *
+     * @param courseId - Course authorization/persistence boundary
+     * @param submissionId - Submission whose queued release is running
+     * @throws SanitizedJobError when the release cannot proceed, with a staff-readable reason
+     */
+    async runQueuedRelease(courseId: string, submissionId: string): Promise<void> {
+        const release = await this.mongo.getLatestWritingRelease(courseId, submissionId);
+        if (!release) throw new SanitizedJobError('The release record for this submission is missing; preview the release again.');
+        if (release.status === 'released' || release.status === 'reconciled') return;
+        // Reconciliation is a human decision about a Canvas write nobody can confirm. The queue
+        // must leave it alone rather than retry it.
+        if (release.status === 'reconciliation_required') return;
+        if (!release.queuedByUserId) {
+            throw new SanitizedJobError('This release was queued without a staff Canvas account; release it again from the review page.');
+        }
+
+        const resolved = await this.resolveQueuedRelease(this.mongo, courseId, release.queuedByUserId);
+        if (!resolved.service) throw new SanitizedJobError(resolved.reason);
+        await this.release(courseId, submissionId, resolved.service);
+    }
+
+    /**
+     * Checks that this submission may be released again, and says which release it would be.
+     *
+     * One rule, submission-scoped and separate from the payload fingerprint that deduplicates a
+     * single attempt: a submission whose feedback has already reached the student
+     * {@link MAX_SUBMISSION_RELEASES} times may not add another Canvas comment. Attempts that
+     * never landed — previews, failures, anything awaiting reconciliation — cost nothing and are
+     * not counted, so a part-way failure stays resumable by any staff member.
+     *
+     * Whether the submission has a Canvas identity is deliberately **not** checked here. It is a
+     * live-Canvas requirement, enforced by `LiveCanvasReleaseService`, and checking it at this
+     * level broke the local demo workflow: a manually created submission has no `canvasUserId`
+     * and the mock gateway never needed one.
+     *
+     * @param courseId - Course authorization/persistence boundary
+     * @param submission - Submission being previewed or released
+     * @returns The revision number this release would carry, from 1
+     * @throws Error when the submission has spent every revision
+     */
+    private async requireReleasableSubmission(
+        courseId: string,
+        submission: ReviewableSubmission
+    ): Promise<number> {
+        // Revising feedback is allowed; doing it without limit is not, because each release adds
+        // another Canvas comment and another notification for the student.
+        const priorReleases = await this.mongo.listWritingReleases(courseId, submission.id);
+        const revision = nextReleaseRevision(priorReleases);
+        if (revision === null) throw new Error(releaseCapMessage());
+        return revision;
     }
 
     /**
@@ -533,6 +669,9 @@ export class WritingFeedbackService {
     async release(courseId: string, submissionId: string, releaseService: CanvasReleaseService) {
         const submission = await this.requireSubmission(courseId, submissionId);
         const assignment = await this.requireAssignment(courseId, submission.assignmentId);
+        // Release is reachable without a preview, so the cap is enforced here too rather than
+        // only on the path that usually precedes it.
+        const revision = await this.requireReleasableSubmission(courseId, submission);
         const feedbackRun = await this.mongo.getLatestWritingFeedbackRun(submissionId);
         if (!feedbackRun) throw new Error('Generate feedback before release');
         this.assertCurrentRubric(feedbackRun.rubricVersion, assignment);
@@ -567,6 +706,7 @@ export class WritingFeedbackService {
             feedbackRun,
             artifacts,
             gradedRubric,
+            revision,
             finalAssessment: latestReview?.finalAssessment,
             studentFeedback: latestReview?.studentFeedback,
             ...(technicalRun ? { technicalFeedbackRun: technicalRun } : {})

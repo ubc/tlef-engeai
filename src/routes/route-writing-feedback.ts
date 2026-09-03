@@ -29,7 +29,7 @@ import {
 } from '../writing-feedback/canvas-import-resolver';
 import { LiveCanvasReleaseService } from '../writing-feedback/live-canvas-release-service';
 import type { CanvasReleaseService } from '../writing-feedback/contracts';
-import { canvasConfig } from '../lms/canvas-config';
+import { canvasConfig, resolveUserKey } from '../lms/canvas-config';
 import { canvas as canvasProvider } from '@ubc/ubc-genai-toolkit-lms-integration';
 import { anchoredCommentsInputSchema } from '../writing-feedback/anchored-comments';
 import { staffFinalAssessmentInputSchema } from '../writing-feedback/staff-final-assessment';
@@ -108,6 +108,8 @@ function safeError(error: unknown): string {
         'Canvas returned inconsistent posting policy', 'Preview this exact Canvas release',
         'Preview the release again', 'Canvas release preview expired',
         'Canvas release requires reconciliation', 'Canvas feedback attachment failed',
+        'This submission was not imported from Canvas', 'This submission\'s feedback has already been released',
+        'Preview this release before sending it to Canvas', 'Canvas returned an uncertain result',
         'Canvas has a newer submission attempt',
         'Canvas returned a different submission', 'Final grading',
         'An approved rubric is required', 'Rubric changed after feedback generation',
@@ -985,17 +987,48 @@ router.post('/:courseId/writing-feedback/submissions/:submissionId/release-previ
     }
 }));
 
-router.post('/:courseId/writing-feedback/submissions/:submissionId/release', withCanvasClientWhenLinked, asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.post('/:courseId/writing-feedback/submissions/:submissionId/release', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const mongo = await EngEAI_MongoDB.getInstance();
-
-        const resolved = await resolveReleaseService(req, mongo);
-        const release = await new WritingFeedbackService(mongo).release(
+        // Queued rather than performed here: a live release uploads two PDFs, posts a comment,
+        // and starts a Canvas grade job, and a request that outlives its connection leaves staff
+        // unable to tell whether the student received anything.
+        const job = await new WritingFeedbackService(mongo).enqueueRelease(
             courseId(req),
             String(req.params.submissionId),
-            resolved.service
+            await resolveUserKey(req)
         );
-        res.json({ success: true, data: release, integration: resolved.integration });
+        res.status(202).json({
+            success: true,
+            data: {
+                status: 'queued',
+                jobId: job.id,
+                submissionId: String(req.params.submissionId)
+            }
+        });
+    } catch (error) {
+        res.status(400).json({ success: false, error: safeError(error) });
+    }
+}));
+
+router.get('/:courseId/writing-feedback/submissions/:submissionId/release-status', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const mongo = await EngEAI_MongoDB.getInstance();
+        const submissionId = String(req.params.submissionId);
+        const release = await mongo.getLatestWritingRelease(courseId(req), submissionId);
+        // The job state is what distinguishes "waiting for a worker" from "the preview is sitting
+        // there and nobody has asked for a release", and a failed job carries the only
+        // explanation of why nothing reached the student. Its error text is sanitized at the
+        // point it is stored, so no student content can travel with it.
+        const job = await mongo.findLatestWritingJob(courseId(req), submissionId, 'release');
+        res.json({
+            success: true,
+            data: {
+                release,
+                jobState: job?.state ?? null,
+                jobError: job?.state === 'failed' ? job.sanitizedError : undefined
+            }
+        });
     } catch (error) {
         res.status(400).json({ success: false, error: safeError(error) });
     }

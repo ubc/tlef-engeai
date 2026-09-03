@@ -131,6 +131,18 @@ describe('LiveCanvasReleaseService', () => {
         expect(canvas.postGrades).not.toHaveBeenCalled();
     });
 
+    // The Canvas identity requirement lives here, not in the service: a demo course releases
+    // manually created submissions through the mock gateway, which never had a Canvas user.
+    it('refuses a submission that never came from canvas', async () => {
+        const { service, client } = harness();
+        const withoutCanvasUser = input('submission-manual');
+        delete (withoutCanvasUser.submission as { canvasUserId?: string }).canvasUserId;
+
+        await expect(service.preview(withoutCanvasUser))
+            .rejects.toThrow('Canvas release requires a submission imported from Canvas');
+        expect(client.uploadFile).not.toHaveBeenCalled();
+    });
+
     it('attaches both PDFs in one exact-attempt comment before posting the staff-final grade', async () => {
         const { service, client } = harness();
         const releaseInput = input('submission-release');
