@@ -367,6 +367,8 @@ export interface SubmissionDetail {
 /** Staff-visible release state returned with submission detail. */
 export interface WritingReleaseSummary {
     status: 'previewed' | 'feedback_attached' | 'grade_queued' | 'released' | 'reconciliation_required' | 'failed' | 'reconciled';
+    /** Set while a queued job is carrying this release to Canvas. */
+    releaseLockedAt?: string;
     grade?: number;
     postManually?: boolean;
     failureStage?: 'preflight' | 'feedback' | 'grade' | 'progress';

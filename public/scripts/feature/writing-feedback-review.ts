@@ -1321,6 +1321,7 @@ function renderReleaseCard(
     else if (!hasFinalAssessment) releaseState.textContent = 'Release is blocked until a complete staff-final rubric grade is saved.';
     else if (!workspace.canvas.canImport) releaseState.textContent = workspace.canvas.message;
     else if (submission.status !== 'approved') releaseState.textContent = 'Approve the staff-reviewed feedback before release.';
+    else if (priorRelease?.releaseLockedAt) releaseState.textContent = 'A release is already on its way to Canvas for this submission.';
     else if (priorRelease?.status === 'failed') releaseState.textContent = priorRelease.sanitizedError || 'The prior Canvas release failed safely and may be retried.';
     else if (priorRelease?.status === 'feedback_attached') releaseState.textContent = 'Feedback is attached; the Canvas grade still needs confirmation.';
     else if (priorRelease?.status === 'grade_queued') releaseState.textContent = 'Canvas accepted the grade job; check its completion before retrying.';

@@ -31,6 +31,8 @@ import type {
     WritingRelease,
     WritingSubmission
 } from './contracts';
+import { RELEASE_LOCK_TTL_MS } from './contracts';
+import { computeReleaseFingerprint } from './canvas-release-service';
 import { seedCommentsFromRun, stampCommentAuthors, validateAnchoredComments, withStaleFlags, type AnchoredCommentWithState } from './anchored-comments';
 import { RubricWritingFeedbackEngine } from './feedback-engine';
 import { TECHNICAL_PROMPT_VERSION, TechnicalWritingFeedbackEngine } from './technical-feedback-engine';
@@ -54,6 +56,17 @@ import { appLogger } from '../utils/logger';
  * failures (never model- or student-derived text) — safe to log verbatim. Anything
  * outside this set (SDK errors, zod issues, etc.) must log only its error type.
  */
+/**
+ * isDuplicateKeyError - whether Mongo refused a write because a unique index already held it.
+ *
+ * @param error - Whatever the insert threw
+ * @returns True for a duplicate-key violation, which a race is allowed to treat as success
+ */
+function isDuplicateKeyError(error: unknown): boolean {
+    return typeof error === 'object' && error !== null && 'code' in error
+        && (error as { code?: unknown }).code === 11000;
+}
+
 const SAFE_TO_LOG_MESSAGES = new Set([
     'An approved rubric requires performance levels',
     'Feedback referenced an unknown SFL finding',
@@ -393,6 +406,7 @@ export class WritingFeedbackService {
         if (submission.status === 'released') {
             throw new Error('Released feedback cannot be edited; create a new attempt for a revised release');
         }
+        await this.assertNoReleaseInFlight(courseId, submissionId);
         let comments = revision.comments;
         if (comments?.length) {
             // Attribution is server-derived: carried from the prior snapshot or stamped
@@ -587,16 +601,54 @@ export class WritingFeedbackService {
         if (release.status === 'reconciliation_required') {
             throw new Error('Canvas returned an uncertain result for this submission. Reconcile it in Canvas before releasing again.');
         }
-        await this.mongo.finalizeWritingRelease(release.payloadFingerprint, { queuedByUserId });
-        return this.mongo.enqueueWritingJob({
-            courseId,
-            type: 'release',
-            state: 'queued',
-            // One attempt. The queue's generic retry is right for a model call and wrong for an
-            // external write: a failure whose outcome is unknown must be looked at, not repeated.
-            maxAttempts: 1,
-            payload: { submissionId }
-        });
+        if (release.status === 'released' || release.status === 'reconciled') {
+            throw new Error('This feedback has already been released to Canvas.');
+        }
+
+        // What staff are looking at must be what the worker sends. A payload edited after the
+        // preview hashes differently, and queueing it anyway only moves the refusal into a
+        // background job nobody is watching.
+        const current = await this.currentReleaseFingerprint(submission);
+        if (current && current !== release.payloadFingerprint) {
+            throw new Error('This feedback changed after it was previewed; preview the release again before sending it.');
+        }
+
+        // The claim is the lock. Two staff members pressing Release at the same moment both
+        // reach here; the atomic claim lets exactly one through, and the loser is told a
+        // release is already under way rather than queueing a second Canvas comment.
+        const claimed = await this.mongo.claimWritingReleaseForQueue(release.payloadFingerprint, { queuedByUserId });
+        if (!claimed) {
+            const concurrent = await this.mongo.findActiveWritingJob(courseId, submissionId, 'release');
+            if (concurrent) return concurrent;
+            throw new Error('A release for this submission is already in progress.');
+        }
+
+        let job: WritingJob;
+        try {
+            job = await this.mongo.enqueueWritingJob({
+                courseId,
+                type: 'release',
+                state: 'queued',
+                // One attempt. The queue's generic retry is right for a model call and wrong
+                // for an external write: a failure whose outcome is unknown must be looked at,
+                // not repeated.
+                maxAttempts: 1,
+                payload: { submissionId }
+            });
+        } catch (error) {
+            // Nothing is going to run, so the lock must not outlive the attempt.
+            await this.mongo.releaseWritingReleaseLock(release.payloadFingerprint);
+            // The unique partial index refused a second queued release for this submission.
+            // The job that beat this one is the answer the caller wanted, not an error.
+            if (!isDuplicateKeyError(error)) throw error;
+            const concurrent = await this.mongo.findActiveWritingJob(courseId, submissionId, 'release');
+            if (concurrent) return concurrent;
+            throw new Error('A release for this submission is already in progress.');
+        }
+        // Recorded after the fact: the claim is what prevents a second release, and the job id
+        // is the audit trail that says which run carried this one out.
+        await this.mongo.finalizeWritingRelease(release.payloadFingerprint, { releaseJobId: job.id });
+        return job;
     }
 
     /**
@@ -624,7 +676,87 @@ export class WritingFeedbackService {
 
         const resolved = await this.resolveQueuedRelease(this.mongo, courseId, release.queuedByUserId);
         if (!resolved.service) throw new SanitizedJobError(resolved.reason);
-        await this.release(courseId, submissionId, resolved.service);
+        // The adapter that runs must be the one the preview was made against. A course whose
+        // Canvas link or configuration has gone missing since the preview resolves to the mock,
+        // which would mark this release complete locally without writing anything to Canvas —
+        // the student would be told nothing and staff would see "Released to Canvas".
+        if (release.integration && resolved.integration !== release.integration) {
+            throw new SanitizedJobError(
+                'This release was prepared for Canvas, but the course is no longer connected to Canvas. '
+                + 'Reconnect the course and release it again.'
+            );
+        }
+        // Preview again before releasing. The prepared PDFs and preflight objects a preview
+        // leaves behind are process-local, so a worker in another process — or the same one
+        // after a restart — would otherwise find nothing and fail with "preview expired". The
+        // coordinator keys everything on the payload fingerprint, so re-previewing the same
+        // payload rebuilds those objects and returns the existing record untouched; a payload
+        // that changed since staff queued it produces a different fingerprint, and the release
+        // below refuses rather than sending something nobody previewed.
+        try {
+            await this.previewRelease(courseId, submissionId, resolved.service);
+            await this.release(courseId, submissionId, resolved.service);
+        } finally {
+            // However this ended, the next attempt reads how far it got from the release
+            // status; holding the lock past the run would only make staff wait out the
+            // abandonment window before they could retry.
+            await this.mongo.releaseWritingReleaseLock(release.payloadFingerprint);
+        }
+    }
+
+    /**
+     * currentReleaseFingerprint - the fingerprint the payload staff are looking at would produce.
+     *
+     * Built from the same fields the adapters hash, so a preview that no longer matches the
+     * stored feedback, grade, or staff narrative can be refused where staff can see it rather
+     * than inside a worker minutes later.
+     *
+     * @param submission - Submission whose latest review and runs form the payload
+     * @returns The fingerprint, or `null` when no feedback run exists to release yet
+     */
+    private async currentReleaseFingerprint(submission: ReviewableSubmission): Promise<string | null> {
+        const feedbackRun = await this.mongo.getLatestWritingFeedbackRun(submission.id);
+        if (!feedbackRun) return null;
+        const assignment = await this.requireAssignment(submission.courseId, submission.assignmentId);
+        const { technicalRun } = await this.loadTechnicalLens(submission.id, assignment);
+        const latestReview = submission.reviews?.[submission.reviews.length - 1];
+        return computeReleaseFingerprint({
+            submissionId: submission.id,
+            feedbackRunId: feedbackRun.id,
+            rubricVersion: feedbackRun.rubricVersion,
+            grade: latestReview?.finalAssessment?.totalPoints,
+            studentFeedback: latestReview?.studentFeedback,
+            technicalFeedbackRunId: technicalRun?.id,
+            finalAssessment: latestReview?.finalAssessment
+        });
+    }
+
+    /**
+     * Refuses an edit while a release is on its way to Canvas.
+     *
+     * The release payload is rendered by the worker from what is stored, minutes after staff
+     * pressed Release: a review revision saved in that window would send a student a PDF nobody
+     * approved, or a grade that no longer matches the one previewed. `released` is already
+     * refused by the caller; this covers the states between queueing and Canvas confirming, and
+     * `reconciliation_required`, where nobody yet knows what the student received.
+     *
+     * @param courseId - Course authorization/persistence boundary
+     * @param submissionId - Submission being edited
+     * @throws Error naming the release state that blocks the edit
+     */
+    private async assertNoReleaseInFlight(courseId: string, submissionId: string): Promise<void> {
+        const release = await this.mongo.getLatestWritingRelease(courseId, submissionId);
+        if (!release) return;
+        const lockedAt = release.releaseLockedAt ? new Date(release.releaseLockedAt).getTime() : 0;
+        if (lockedAt && Date.now() - lockedAt < RELEASE_LOCK_TTL_MS) {
+            throw new Error('A release is in progress for this submission; wait for it to finish before editing.');
+        }
+        if (release.status === 'feedback_attached' || release.status === 'grade_queued') {
+            throw new Error('A release is in progress for this submission; finish or reconcile it before editing.');
+        }
+        if (release.status === 'reconciliation_required') {
+            throw new Error('Canvas returned an uncertain result for this submission. Reconcile it in Canvas before editing.');
+        }
     }
 
     /**
@@ -713,7 +845,13 @@ export class WritingFeedbackService {
         });
         // Mark local completion only after both the Canvas comment and async grade job are confirmed.
         if (release.status === 'released' || release.status === 'reconciled') {
-            await this.mongo.setWritingSubmissionStatus(courseId, submissionId, 'released');
+            // Compare-and-set on `approved`: a submission staff have moved on from since this
+            // release started must not be relabelled as released, because what reached the
+            // student is no longer what the record would then claim.
+            const marked = await this.mongo.setWritingSubmissionStatus(courseId, submissionId, 'released', ['approved']);
+            if (!marked) {
+                appLogger.log('[writing-feedback] release landed but the submission had moved on:', 'release_status_conflict');
+            }
         }
         return release;
     }

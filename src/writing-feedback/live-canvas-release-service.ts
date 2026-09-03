@@ -46,6 +46,36 @@ interface PreparedRelease {
 /** Server-local reviewed operations. A restart deliberately requires a fresh preview. */
 const preparedReleases = new Map<string, PreparedRelease>();
 
+/**
+ * isDefiniteRejection - whether Canvas refused a write, as opposed to leaving it unknown.
+ *
+ * Only a 4xx says the request was rejected and nothing changed on Canvas's side. A 5xx, a
+ * timeout, a socket error, or anything that is not a Canvas API error at all leaves the outcome
+ * genuinely unknown: Canvas may have created the comment, stored the rubric assessment, or
+ * queued the grade before the response was lost. Calling those "failed" invites a retry that
+ * would duplicate a student's feedback, so they belong in reconciliation instead.
+ *
+ * A 429 is deliberately uncertain too: the request may have been rejected outright, but Canvas
+ * also rate-limits mid-flight, and nothing in the response distinguishes the two.
+ *
+ * @param error - Whatever the write threw
+ * @returns True when the write definitely did not happen
+ */
+function isDefiniteRejection(error: unknown): boolean {
+    if (!(error instanceof canvas.CanvasApiError)) return false;
+    const status = error.statusCode;
+    return status >= 400 && status < 500 && status !== 429 && status !== 408;
+}
+
+/**
+ * States a live write may still move a release out of.
+ *
+ * Passed as the precondition on every status transition below, so a slow or duplicated writer
+ * cannot walk a finished release backwards — the update simply does not apply, and the caller
+ * sees `null` rather than silently overwriting what a student already received.
+ */
+const IN_FLIGHT: ReadonlyArray<WritingRelease['status']> = ['previewed', 'feedback_attached', 'grade_queued', 'failed'];
+
 type ReleaseUpdate = Partial<Omit<WritingRelease,
     'id' | 'courseId' | 'submissionId' | 'feedbackRunId' | 'rubricVersion'
     | 'payloadFingerprint' | 'createdAt' | 'updatedAt'>>;
@@ -108,7 +138,11 @@ export class LiveCanvasReleaseService implements CanvasReleaseService {
         private readonly canvasCourseId: string,
         private readonly findByFingerprint: (fingerprint: string) => Promise<WritingRelease | null>,
         private readonly saveRelease: (release: Omit<WritingRelease, 'id' | 'createdAt' | 'updatedAt'>) => Promise<WritingRelease>,
-        private readonly updateRelease: (fingerprint: string, update: ReleaseUpdate) => Promise<WritingRelease | null>
+        private readonly updateRelease: (
+            fingerprint: string,
+            update: ReleaseUpdate,
+            expectedStatuses?: ReadonlyArray<WritingRelease['status']>
+        ) => Promise<WritingRelease | null>
     ) {}
 
     async preview(input: CanvasReleaseInput): Promise<WritingRelease> {
@@ -202,7 +236,12 @@ export class LiveCanvasReleaseService implements CanvasReleaseService {
             useRubricForGrading: liveAssignment.use_rubric_for_grading === true
         });
 
+        // Re-previewing the same payload keeps the record it already has — the fingerprint is
+        // unique, and a queued or part-way release must not be reset to `previewed`. What the
+        // re-preview is for is the prepared bytes and preflight rebuilt just above, which is
+        // how the worker recovers state that a preview left in another process's memory.
         if (existing) return existing;
+
         return this.saveRelease({
             courseId: input.submission.courseId,
             submissionId: input.submission.id,
@@ -280,7 +319,7 @@ export class LiveCanvasReleaseService implements CanvasReleaseService {
                 failureStage: 'feedback',
                 sanitizedError: 'Canvas PDF upload failed',
                 canvasFileIds: fileIds
-            });
+            }, IN_FLIGHT);
             if (!updated) throw new Error('Release reconciliation record was not found');
             return updated;
         }
@@ -294,7 +333,7 @@ export class LiveCanvasReleaseService implements CanvasReleaseService {
                 }
             });
         } catch (error) {
-            const definite = error instanceof canvas.CanvasApiError;
+            const definite = isDefiniteRejection(error);
             const updated = await this.updateRelease(fingerprint, {
                 status: definite ? 'failed' : 'reconciliation_required',
                 failureStage: 'feedback',
@@ -302,7 +341,7 @@ export class LiveCanvasReleaseService implements CanvasReleaseService {
                     ? 'Canvas rejected the feedback comment'
                     : 'Canvas feedback comment outcome is unknown',
                 canvasFileIds: fileIds
-            });
+            }, IN_FLIGHT);
             if (!updated) throw new Error('Release reconciliation record was not found');
             return updated;
         }
@@ -312,7 +351,7 @@ export class LiveCanvasReleaseService implements CanvasReleaseService {
             canvasFileIds: fileIds,
             failureStage: undefined,
             sanitizedError: undefined
-        });
+        }, IN_FLIGHT);
         if (!updated) throw new Error('Release reconciliation record was not found');
         return updated;
     }
@@ -342,14 +381,14 @@ export class LiveCanvasReleaseService implements CanvasReleaseService {
                 { rubric_assessment: payload }
             );
         } catch (error) {
-            const definite = error instanceof canvas.CanvasApiError;
+            const definite = isDefiniteRejection(error);
             const updated = await this.updateRelease(fingerprint, {
                 status: definite ? 'failed' : 'reconciliation_required',
                 failureStage: 'grade',
                 sanitizedError: definite
                     ? 'Canvas rejected the rubric assessment'
                     : 'Canvas rubric assessment outcome is unknown'
-            });
+            }, IN_FLIGHT);
             if (!updated) throw new Error('Release reconciliation record was not found');
             return updated;
         }
@@ -369,7 +408,7 @@ export class LiveCanvasReleaseService implements CanvasReleaseService {
             status: 'released',
             failureStage: undefined,
             sanitizedError: undefined
-        });
+        }, IN_FLIGHT);
         if (!updated) throw new Error('Release reconciliation record was not found');
         preparedReleases.delete(fingerprint);
         return updated;
@@ -385,13 +424,15 @@ export class LiveCanvasReleaseService implements CanvasReleaseService {
                 preflight: prepared.gradePreflight
             });
         } catch (error) {
+            // A grade export refused before anything is sent is definite by construction: the
+            // package stopped it, so Canvas never saw the write.
             const uncertain = !(error instanceof canvas.CanvasGradeExportError)
-                && !(error instanceof canvas.CanvasApiError);
+                && !isDefiniteRejection(error);
             const updated = await this.updateRelease(fingerprint, {
                 status: uncertain ? 'reconciliation_required' : 'failed',
                 failureStage: 'grade',
                 sanitizedError: uncertain ? 'Canvas grade write outcome is unknown' : 'Canvas rejected the grade write'
-            });
+            }, IN_FLIGHT);
             if (!updated) throw new Error('Release reconciliation record was not found');
             return updated;
         }
@@ -402,7 +443,7 @@ export class LiveCanvasReleaseService implements CanvasReleaseService {
             postManually: posted.postManually,
             failureStage: undefined,
             sanitizedError: undefined
-        });
+        }, IN_FLIGHT);
         if (!queued) throw new Error('Release reconciliation record was not found');
         return this.finishProgress(fingerprint, posted.progressId);
     }
@@ -412,7 +453,7 @@ export class LiveCanvasReleaseService implements CanvasReleaseService {
             const progress = await canvas.waitForProgress(this.client, progressId, { timeoutMs: 60_000 });
             const updated = await this.updateRelease(fingerprint, progress.workflowState === 'completed'
                 ? { status: 'released', failureStage: undefined, sanitizedError: undefined }
-                : { status: 'failed', failureStage: 'progress', sanitizedError: 'Canvas grade job failed' });
+                : { status: 'failed', failureStage: 'progress', sanitizedError: 'Canvas grade job failed' }, IN_FLIGHT);
             if (!updated) throw new Error('Release reconciliation record was not found');
             if (updated.status === 'released') preparedReleases.delete(fingerprint);
             return updated;
@@ -421,7 +462,7 @@ export class LiveCanvasReleaseService implements CanvasReleaseService {
                 status: 'reconciliation_required',
                 failureStage: 'progress',
                 sanitizedError: 'Canvas grade job did not reach a confirmed result'
-            });
+            }, IN_FLIGHT);
             if (!updated) throw new Error('Release reconciliation record was not found');
             return updated;
         }

@@ -278,11 +278,10 @@ export class SafeCanvasImportService {
         if (!this.gateway.loadAssignmentContext) return null;
         try {
             return await this.gateway.loadAssignmentContext(canvasAssignmentId);
-        } catch (error) {
-            // Message only — a Canvas payload can carry assignment text.
-            appLogger.error('[WritingFeedback] Canvas rubric/details import failed:', {
-                message: error instanceof Error ? error.message : 'unknown'
-            });
+        } catch {
+            // A fixed code, not the provider message: a Canvas error sometimes quotes the
+            // response body, and an assignment payload carries the brief and rubric text.
+            appLogger.error('[WritingFeedback] canvas_assignment_context_failed');
             return null;
         }
     }
@@ -371,7 +370,7 @@ export class SafeCanvasImportService {
 
             let intake: { text: string; sourceType: 'canvas_text' | 'digital_file' } | null = null;
             try {
-                intake = await this.resolveIntake(source);
+                intake = await this.resolveIntake(source, input.canvasAssignmentId);
             } catch {
                 // The reason is deliberately not surfaced or logged: it would carry the
                 // attachment's file name, and in a parser error sometimes its content.
@@ -431,11 +430,13 @@ export class SafeCanvasImportService {
      * previewing, so browsing assignments cannot pull student files across the network.
      *
      * @param source - One preview from the current assignment
+     * @param canvasAssignmentId - The Canvas assignment being imported, named on the download
      * @returns Extracted text and its local source type, or `null` when nothing is importable
      * @throws Error when a download or parse fails, which the caller counts as a failure
      */
     private async resolveIntake(
-        source: CanvasImportSubmissionPreview
+        source: CanvasImportSubmissionPreview,
+        canvasAssignmentId: string
     ): Promise<{ text: string; sourceType: 'canvas_text' | 'digital_file' } | null> {
         if (source.contentKind === 'text_entry') {
             // An adapter whose previews already carry plain text needs no conversion.
@@ -449,7 +450,10 @@ export class SafeCanvasImportService {
             const [attachment] = source.attachments;
             // A gateway that previews uploads without offering extraction cannot honour them.
             if (!attachment || !this.gateway.extractAttachmentText) return null;
-            const text = await this.gateway.extractAttachmentText(attachment);
+            const text = await this.gateway.extractAttachmentText(attachment, {
+                canvasAssignmentId,
+                canvasUserId: source.canvasUserId
+            });
             return { text, sourceType: 'digital_file' };
         }
 

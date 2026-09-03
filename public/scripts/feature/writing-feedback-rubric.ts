@@ -1774,7 +1774,7 @@ function renderAssignmentDetails(
         bindTextControl(labContext, options.canEdit, options.onInput);
 
         const handoutFile = inputControl('', 'file');
-        handoutFile.accept = '.txt,.docx,.pdf,.html,.htm';
+        handoutFile.accept = '.txt,.md,.markdown,.docx,.pdf,.html,.htm';
         handoutFile.setAttribute('aria-label', 'Lab handout file');
         const extractionState = createText('p', '', 'wf-help-text');
         extractionState.setAttribute('role', 'status');

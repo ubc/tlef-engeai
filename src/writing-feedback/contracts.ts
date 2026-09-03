@@ -603,6 +603,9 @@ export interface StaffFinalAssessment {
 }
 
 /** Persisted preview or completed Canvas release keyed by a payload fingerprint. */
+/** How long a release lock is honoured before a worker is assumed to have died. */
+export const RELEASE_LOCK_TTL_MS = 30 * 60 * 1000;
+
 export interface WritingRelease {
     id: string; // internal release identity
     courseId: string; // authorization and audit boundary
@@ -627,7 +630,21 @@ export interface WritingRelease {
      */
     queuedByUserId?: string;
     payloadFingerprint: string; // idempotency key across preview and retry
-    status: 'previewed' | 'feedback_attached' | 'grade_queued' | 'released' | 'reconciliation_required' | 'failed' | 'reconciled'; // external-write lifecycle
+    /** External-write lifecycle. */
+    status: 'previewed' | 'feedback_attached' | 'grade_queued' | 'released' | 'reconciliation_required' | 'failed' | 'reconciled';
+    /**
+     * When a queued job took the in-progress lock on this release.
+     *
+     * The lock is a field rather than a status because the status is what tells a resumed
+     * release how far the last attempt got — a comment already attached must not be attached
+     * again. Taking the lock is a single atomic update, so of two staff members pressing
+     * Release at the same moment exactly one wins. It is cleared when the worker stops, and
+     * a lock older than {@link RELEASE_LOCK_TTL_MS} is treated as abandoned so a worker that
+     * died cannot freeze a submission for good.
+     */
+    releaseLockedAt?: Date;
+    /** The queue job holding the lock; audit trail once the job has stopped. */
+    releaseJobId?: string;
     grade?: number; // staff-final total sent to Canvas
     integration?: 'mock_canvas' | 'canvas';
     postManually?: boolean; // Canvas posting policy observed at preflight

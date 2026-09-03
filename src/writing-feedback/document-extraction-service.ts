@@ -18,7 +18,10 @@ import { randomUUID } from 'crypto';
 import { DocumentParsingModule } from 'ubc-genai-toolkit-document-parsing';
 import type { DocumentExtractionService, OcrProvider } from './contracts';
 
-const DIGITAL_TYPES = new Set(['txt', 'docx', 'pdf', 'html', 'htm']);
+const DIGITAL_TYPES = new Set(['txt', 'md', 'markdown', 'docx', 'pdf', 'html', 'htm']);
+
+/** Types read straight off disk as UTF-8 rather than through the document parser. */
+const PLAIN_TEXT_TYPES = new Set(['txt', 'md', 'markdown']);
 const SCAN_TYPES = new Set(['pdf', 'jpeg', 'jpg', 'png']);
 
 function extensionOf(fileName: string): string {
@@ -45,7 +48,7 @@ export class LocalDocumentExtractionService implements DocumentExtractionService
         // Reject unsupported types before writing any untrusted payload to disk.
         const extension = extensionOf(input.fileName);
         if (!DIGITAL_TYPES.has(extension)) {
-            throw new Error('Unsupported digital file type. Use TXT, DOCX, text-based PDF, or HTML.');
+            throw new Error('Unsupported digital file type. Use TXT, Markdown, DOCX, text-based PDF, or HTML.');
         }
         // Strip paths and unsafe characters before deriving a randomized temporary name.
         const safeName = path.basename(input.fileName).replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -53,7 +56,7 @@ export class LocalDocumentExtractionService implements DocumentExtractionService
         try {
             await fs.promises.writeFile(tempPath, input.buffer);
             // Plain text bypasses the heavier document parser but uses identical cleanup.
-            if (extension === 'txt') {
+            if (PLAIN_TEXT_TYPES.has(extension)) {
                 return { text: await fs.promises.readFile(tempPath, 'utf8'), fileName: safeName };
             }
             const parsed = await this.parser.parse({ filePath: tempPath }, 'text');

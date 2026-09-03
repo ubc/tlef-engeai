@@ -90,7 +90,8 @@ export class SafeCanvasReleaseService implements CanvasReleaseService {
         private readonly saveRelease: (release: Omit<WritingRelease, 'id' | 'createdAt' | 'updatedAt'>) => Promise<WritingRelease>,
         private readonly finalizeRelease: (
             fingerprint: string,
-            update: Partial<Omit<WritingRelease, 'id' | 'courseId' | 'submissionId' | 'feedbackRunId' | 'rubricVersion' | 'payloadFingerprint' | 'createdAt' | 'updatedAt'>>
+            update: Partial<Omit<WritingRelease, 'id' | 'courseId' | 'submissionId' | 'feedbackRunId' | 'rubricVersion' | 'payloadFingerprint' | 'createdAt' | 'updatedAt'>>,
+            expectedStatuses?: ReadonlyArray<WritingRelease['status']>
         ) => Promise<WritingRelease | null>
     ) {}
 
@@ -147,11 +148,13 @@ export class SafeCanvasReleaseService implements CanvasReleaseService {
             grade,
             payloadFingerprint: preview.payloadFingerprint
         });
+        // Compare-and-set, for the same reason the live adapter does it: a second worker or a
+        // late retry must not move a finished release, and `null` says the transition lost.
         const finalized = await this.finalizeRelease(preview.payloadFingerprint, {
             status: 'released',
             canvasCommentId: remote.canvasCommentId,
             canvasSubmissionId: remote.canvasSubmissionId
-        });
+        }, ['previewed', 'feedback_attached', 'grade_queued', 'failed']);
         if (!finalized) throw new Error('Release reconciliation record was not found');
         return finalized;
     }

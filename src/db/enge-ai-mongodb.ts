@@ -419,8 +419,13 @@ export class EngEAI_MongoDB {
      * @param status - Target workflow status
      * @returns Updated submission or `null`
      */
-    public setWritingSubmissionStatus = async (courseId: string, submissionId: string, status: WritingSubmission['status']) =>
-        WritingFeedbackMongo.setWritingSubmissionStatus(this.ctx(), courseId, submissionId, status);
+    public setWritingSubmissionStatus = async (
+        courseId: string,
+        submissionId: string,
+        status: WritingSubmission['status'],
+        expectedStatuses?: ReadonlyArray<WritingSubmission['status']>
+    ) =>
+        WritingFeedbackMongo.setWritingSubmissionStatus(this.ctx(), courseId, submissionId, status, expectedStatuses);
 
     /**
      * createWritingFeedbackRun — appends immutable model-output provenance.
@@ -550,10 +555,32 @@ export class EngEAI_MongoDB {
      * @param update - Final status and returned Canvas identifiers
      * @returns Updated release or `null`
      */
+    /**
+     * claimWritingReleaseForQueue — takes the in-progress lock on one release, atomically.
+     *
+     * @param payloadFingerprint - Stable payload hash identifying the attempt
+     * @param claim - Staff member releasing it, and when the claim is made
+     * @returns The claimed release, or `null` when another caller already holds it
+     */
+    public claimWritingReleaseForQueue = async (
+        payloadFingerprint: string,
+        claim: { queuedByUserId: string; now?: Date }
+    ) => WritingFeedbackMongo.claimWritingReleaseForQueue(this.ctx(), payloadFingerprint, claim);
+
+    /**
+     * releaseWritingReleaseLock — hands the in-progress lock back when the worker stops.
+     *
+     * @param payloadFingerprint - Stable payload hash identifying the attempt
+     * @returns The released record, or `null` when no record carries that fingerprint
+     */
+    public releaseWritingReleaseLock = async (payloadFingerprint: string) =>
+        WritingFeedbackMongo.releaseWritingReleaseLock(this.ctx(), payloadFingerprint);
+
     public finalizeWritingRelease = async (
         payloadFingerprint: string,
-        update: Partial<Omit<WritingRelease, 'id' | 'courseId' | 'submissionId' | 'feedbackRunId' | 'rubricVersion' | 'payloadFingerprint' | 'createdAt' | 'updatedAt'>>
-    ) => WritingFeedbackMongo.finalizeWritingRelease(this.ctx(), payloadFingerprint, update);
+        update: Partial<Omit<WritingRelease, 'id' | 'courseId' | 'submissionId' | 'feedbackRunId' | 'rubricVersion' | 'payloadFingerprint' | 'createdAt' | 'updatedAt'>>,
+        expectedStatuses?: ReadonlyArray<WritingRelease['status']>
+    ) => WritingFeedbackMongo.finalizeWritingRelease(this.ctx(), payloadFingerprint, update, expectedStatuses);
 
     /**
      * enqueueWritingJob — appends retry-bounded background work.

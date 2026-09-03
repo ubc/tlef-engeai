@@ -55,7 +55,7 @@ export async function resolveQueuedReleaseService(
                 new MockCanvasGateway(),
                 (fingerprint) => mongo.findWritingReleaseByFingerprint(fingerprint),
                 (release) => mongo.createWritingRelease(release),
-                (fingerprint, update) => mongo.finalizeWritingRelease(fingerprint, update)
+                (fingerprint, update, expectedStatuses) => mongo.finalizeWritingRelease(fingerprint, update, expectedStatuses)
             )
         };
     }
@@ -77,7 +77,7 @@ export async function resolveQueuedReleaseService(
             canvasCourseId,
             (fingerprint) => mongo.findWritingReleaseByFingerprint(fingerprint),
             (release) => mongo.createWritingRelease(release),
-            (fingerprint, update) => mongo.finalizeWritingRelease(fingerprint, update)
+            (fingerprint, update, expectedStatuses) => mongo.finalizeWritingRelease(fingerprint, update, expectedStatuses)
         )
     };
 }

@@ -15,6 +15,7 @@
 import { buildDefaultWritingAssignment } from '../default-rubric-profile';
 import { approveRubricDraft } from '../rubric-schema';
 import { MAX_SUBMISSION_RELEASES } from '../release-cap';
+import { computeReleaseFingerprint } from '../canvas-release-service';
 import type {
     CanvasReleaseInput,
     WritingAssignment,
@@ -173,6 +174,13 @@ describe('release cap', () => {
         expect(releaseService.release).not.toHaveBeenCalled();
     });
 
+    it('marks the submission released only while it is still the approved one that was sent', async () => {
+        const { service, mongo, releaseService } = buildService([]);
+        await service.release('course-1', 'submission-1', releaseService);
+        expect(mongo.setWritingSubmissionStatus)
+            .toHaveBeenCalledWith('course-1', 'submission-1', 'released', ['approved']);
+    });
+
     it('sends a demo submission with no canvas identity to the coordinator', async () => {
         const { service, releaseService } = buildService([], { canvasUserId: undefined, sourceType: 'manual' });
         await service.release('course-1', 'submission-1', releaseService);
@@ -181,6 +189,14 @@ describe('release cap', () => {
 });
 
 describe('queueing a release', () => {
+    // The fingerprint the stored payload in these fixtures produces. Queueing refuses anything
+    // else, so a fixture that means "this preview is current" has to carry exactly this.
+    const CURRENT_FINGERPRINT = computeReleaseFingerprint({
+        submissionId: 'submission-1',
+        feedbackRunId: 'run-linguistic',
+        rubricVersion: approvedAssignment().rubric.version
+    });
+
     /**
      * buildQueueService - a service whose Mongo doubles cover the enqueue path only.
      *
@@ -191,15 +207,27 @@ describe('queueing a release', () => {
         stored?: WritingRelease | null;
         activeJob?: { id: string } | null;
         submissionOverrides?: Partial<WritingSubmission>;
+        claimed?: boolean; // false plays the caller that lost the atomic claim
+        stale?: boolean; // true leaves the stored preview hashing differently from the payload
     } = {}) {
         const assignment = approvedAssignment();
+        const stored = options.stored && !options.stale
+            ? { ...options.stored, payloadFingerprint: CURRENT_FINGERPRINT }
+            : options.stored ?? null;
         const mongo = {
             getWritingSubmission: jest.fn(async () => submission(options.submissionOverrides ?? {})),
             getWritingAssignment: jest.fn(async () => assignment),
             listWritingReleases: jest.fn(async () => [] as WritingRelease[]),
             findActiveWritingJob: jest.fn(async () => options.activeJob ?? null),
-            getLatestWritingRelease: jest.fn(async () => options.stored ?? null),
-            finalizeWritingRelease: jest.fn(async () => options.stored ?? null),
+            getLatestWritingRelease: jest.fn(async () => stored),
+            claimWritingReleaseForQueue: jest.fn(async () => (
+                options.claimed === false || !stored
+                    ? null
+                    : { ...stored, releaseLockedAt: new Date(), queuedByUserId: 'user-1' }
+            )),
+            releaseWritingReleaseLock: jest.fn(async () => stored),
+            getLatestWritingFeedbackRun: jest.fn(async () => feedbackRun(assignment.rubric.version)),
+            finalizeWritingRelease: jest.fn(async () => stored),
             enqueueWritingJob: jest.fn(async (input) => ({ ...input, id: 'job-1', attempts: 0 }))
         };
         const service = new WritingFeedbackService(mongo as unknown as EngEAI_MongoDB, { generate: jest.fn() });
@@ -209,8 +237,42 @@ describe('queueing a release', () => {
     it('records whose canvas credential the queued write will use', async () => {
         const { service, mongo } = buildQueueService({ stored: release('previewed') });
         const queued = await service.enqueueRelease('course-1', 'submission-1', 'user-1');
-        expect(mongo.finalizeWritingRelease).toHaveBeenCalledWith('fingerprint-release-1', { queuedByUserId: 'user-1' });
+        expect(mongo.claimWritingReleaseForQueue).toHaveBeenCalledWith(CURRENT_FINGERPRINT, { queuedByUserId: 'user-1' });
         expect(queued.id).toBe('job-1');
+    });
+
+    it('stamps the job that owns the release, so the audit trail says which run carried it', async () => {
+        const { service, mongo } = buildQueueService({ stored: release('previewed') });
+        await service.enqueueRelease('course-1', 'submission-1', 'user-1');
+        expect(mongo.finalizeWritingRelease)
+            .toHaveBeenCalledWith(CURRENT_FINGERPRINT, { releaseJobId: 'job-1' });
+    });
+
+    // Two staff members pressing Release in the same second both pass the active-job check,
+    // because neither job exists yet. Only the atomic claim separates them.
+    it('refuses the caller that lost the claim rather than queueing a second canvas comment', async () => {
+        const { service, mongo } = buildQueueService({ stored: release('previewed'), claimed: false });
+        await expect(service.enqueueRelease('course-1', 'submission-1', 'user-2'))
+            .rejects.toThrow('already in progress');
+        expect(mongo.enqueueWritingJob).not.toHaveBeenCalled();
+    });
+
+    it('hands the loser the winner\'s job once that job exists', async () => {
+        const { service, mongo } = buildQueueService({ stored: release('previewed'), claimed: false });
+        // The winner's job appears between this caller's first look and its failed claim.
+        mongo.findActiveWritingJob
+            .mockImplementationOnce(async () => null)
+            .mockImplementationOnce(async () => ({ id: 'job-winner' }));
+        const queued = await service.enqueueRelease('course-1', 'submission-1', 'user-2');
+        expect(queued.id).toBe('job-winner');
+        expect(mongo.enqueueWritingJob).not.toHaveBeenCalled();
+    });
+
+    it('refuses to queue a release that already reached the student', async () => {
+        const { service, mongo } = buildQueueService({ stored: release('released') });
+        await expect(service.enqueueRelease('course-1', 'submission-1', 'user-1'))
+            .rejects.toThrow('already been released');
+        expect(mongo.enqueueWritingJob).not.toHaveBeenCalled();
     });
 
     it('queues one attempt, because an external write must not be retried blindly', async () => {
@@ -223,6 +285,27 @@ describe('queueing a release', () => {
         const { service, mongo } = buildQueueService({ stored: release('previewed'), activeJob: { id: 'job-existing' } });
         const queued = await service.enqueueRelease('course-1', 'submission-1', 'user-1');
         expect(queued.id).toBe('job-existing');
+        expect(mongo.enqueueWritingJob).not.toHaveBeenCalled();
+    });
+
+    it('joins the winning job when the database refuses a duplicate queued release', async () => {
+        const { service, mongo } = buildQueueService({ stored: release('previewed') });
+        // The unique partial index is the last line of defence when two processes insert.
+        mongo.enqueueWritingJob.mockRejectedValueOnce(Object.assign(new Error('E11000 duplicate key'), { code: 11000 }));
+        mongo.findActiveWritingJob
+            .mockImplementationOnce(async () => null)
+            .mockImplementationOnce(async () => ({ id: 'job-winner' }));
+
+        const queued = await service.enqueueRelease('course-1', 'submission-1', 'user-1');
+
+        expect(queued.id).toBe('job-winner');
+    });
+
+    it('refuses to queue a preview the feedback has moved on from', async () => {
+        const { service, mongo } = buildQueueService({ stored: release('previewed'), stale: true });
+        await expect(service.enqueueRelease('course-1', 'submission-1', 'user-1'))
+            .rejects.toThrow('changed after it was previewed');
+        expect(mongo.claimWritingReleaseForQueue).not.toHaveBeenCalled();
         expect(mongo.enqueueWritingJob).not.toHaveBeenCalled();
     });
 
@@ -248,6 +331,119 @@ describe('queueing a release', () => {
         await expect(service.enqueueRelease('course-1', 'submission-1', 'user-1'))
             .rejects.toThrow('Staff approval is required');
         expect(mongo.enqueueWritingJob).not.toHaveBeenCalled();
+    });
+});
+
+describe('running a queued release', () => {
+    /**
+     * buildWorkerService - a service whose queued release resolves to a stated adapter.
+     *
+     * @param options - The stored release record and what the worker's resolver answers with
+     * @returns The service plus the adapter double the assertions read
+     */
+    function buildWorkerService(options: {
+        stored: WritingRelease | null;
+        resolution: { integration: 'canvas' | 'mock_canvas'; service: unknown } | { integration: 'none'; service: null; reason: string };
+    }) {
+        const assignment = approvedAssignment();
+        const releaseService = {
+            preview: jest.fn(async () => release('previewed')),
+            release: jest.fn(async () => release('released'))
+        };
+        const resolution = options.resolution.service === null
+            ? options.resolution
+            : { ...options.resolution, service: releaseService };
+        const mongo = {
+            getWritingSubmission: jest.fn(async () => submission()),
+            getWritingAssignment: jest.fn(async () => assignment),
+            getLatestWritingFeedbackRun: jest.fn(async () => feedbackRun(assignment.rubric.version)),
+            listWritingReleases: jest.fn(async () => [] as WritingRelease[]),
+            getLatestWritingRelease: jest.fn(async () => options.stored),
+            setWritingSubmissionStatus: jest.fn(async () => null),
+            releaseWritingReleaseLock: jest.fn(async () => options.stored)
+        };
+        const resolveQueuedRelease = jest.fn(async () => resolution);
+        const service = new WritingFeedbackService(
+            mongo as unknown as EngEAI_MongoDB,
+            { generate: jest.fn(async () => result) },
+            { render: jest.fn(async () => Buffer.from('pdf')) },
+            undefined,
+            resolveQueuedRelease as never
+        );
+        return { service, releaseService, resolveQueuedRelease };
+    }
+
+    function queuedRelease(overrides: Partial<WritingRelease> = {}): WritingRelease {
+        return {
+            ...release('previewed'),
+            queuedByUserId: 'user-1',
+            integration: 'canvas',
+            releaseLockedAt: new Date(),
+            ...overrides
+        };
+    }
+
+    // The fail-open this guards: a course whose Canvas link disappeared between preview and
+    // worker resolves to the mock, which would finalize the release with synthetic ids while
+    // nothing reached the real course.
+    it('refuses to run a canvas release through the mock adapter', async () => {
+        const { service, releaseService } = buildWorkerService({
+            stored: queuedRelease(),
+            resolution: { integration: 'mock_canvas', service: {} }
+        });
+        await expect(service.runQueuedRelease('course-1', 'submission-1'))
+            .rejects.toThrow('no longer connected to Canvas');
+        expect(releaseService.release).not.toHaveBeenCalled();
+        expect(releaseService.preview).not.toHaveBeenCalled();
+    });
+
+    it('runs a mock release through the mock adapter, because that is what it was previewed as', async () => {
+        const { service, releaseService } = buildWorkerService({
+            stored: queuedRelease({ integration: 'mock_canvas' }),
+            resolution: { integration: 'mock_canvas', service: {} }
+        });
+        await service.runQueuedRelease('course-1', 'submission-1');
+        expect(releaseService.release).toHaveBeenCalled();
+    });
+
+    // The prepared PDFs and preflight a preview leaves behind are process-local, so the worker
+    // rebuilds them from the same payload before releasing.
+    it('rebuilds the preview in the worker before sending it', async () => {
+        const { service, releaseService } = buildWorkerService({
+            stored: queuedRelease(),
+            resolution: { integration: 'canvas', service: {} }
+        });
+        await service.runQueuedRelease('course-1', 'submission-1');
+        expect(releaseService.preview.mock.invocationCallOrder[0])
+            .toBeLessThan(releaseService.release.mock.invocationCallOrder[0]);
+    });
+
+    it('stops with the resolver reason when no adapter can be built at all', async () => {
+        const { service } = buildWorkerService({
+            stored: queuedRelease(),
+            resolution: { integration: 'none', service: null, reason: 'Reconnect your Canvas account' }
+        });
+        await expect(service.runQueuedRelease('course-1', 'submission-1'))
+            .rejects.toThrow('Reconnect your Canvas account');
+    });
+
+    it('does nothing for a release that already landed', async () => {
+        const { service, releaseService, resolveQueuedRelease } = buildWorkerService({
+            stored: queuedRelease({ status: 'released' }),
+            resolution: { integration: 'canvas', service: {} }
+        });
+        await service.runQueuedRelease('course-1', 'submission-1');
+        expect(resolveQueuedRelease).not.toHaveBeenCalled();
+        expect(releaseService.release).not.toHaveBeenCalled();
+    });
+
+    it('leaves a release parked for reconciliation to a human', async () => {
+        const { service, releaseService } = buildWorkerService({
+            stored: queuedRelease({ status: 'reconciliation_required' }),
+            resolution: { integration: 'canvas', service: {} }
+        });
+        await service.runQueuedRelease('course-1', 'submission-1');
+        expect(releaseService.release).not.toHaveBeenCalled();
     });
 });
 

@@ -338,6 +338,7 @@ describe('WritingFeedbackService anchored comments', () => {
         const appendWritingReview = jest.fn();
         const mongo = {
             getWritingSubmission: jest.fn(async () => submission('draft_ready')),
+            getLatestWritingRelease: jest.fn(async () => null),
             appendWritingReview
         } as unknown as EngEAI_MongoDB;
 
@@ -354,6 +355,7 @@ describe('WritingFeedbackService anchored comments', () => {
         const appendWritingReview = jest.fn(async (_courseId, _submissionId, revision) => revision);
         const mongo = {
             getWritingSubmission: jest.fn(async () => submission('draft_ready')),
+            getLatestWritingRelease: jest.fn(async () => null),
             appendWritingReview
         } as unknown as EngEAI_MongoDB;
 
@@ -374,6 +376,7 @@ describe('WritingFeedbackService anchored comments', () => {
         const appendWritingReview = jest.fn(async (_courseId, _submissionId, revision) => revision);
         const mongo = {
             getWritingSubmission: jest.fn(async () => submission('draft_ready')),
+            getLatestWritingRelease: jest.fn(async () => null),
             appendWritingReview
         } as unknown as EngEAI_MongoDB;
 
@@ -403,6 +406,7 @@ describe('WritingFeedbackService anchored comments', () => {
         const appendWritingReview = jest.fn(async (_courseId, _submissionId, revision) => revision);
         const mongo = {
             getWritingSubmission: jest.fn(async () => ({ ...sub, reviews: [priorReview] })),
+            getLatestWritingRelease: jest.fn(async () => null),
             appendWritingReview
         } as unknown as EngEAI_MongoDB;
 
@@ -422,6 +426,30 @@ describe('WritingFeedbackService anchored comments', () => {
         expect(persisted.find((c) => c.id === 'comment-1')?.authorName).toBe('Pat Lee');
         expect(persisted.find((c) => c.id === 'comment-new-staff')?.authorName).toBe('Jamie Rivera');
         expect(persisted.find((c) => c.id === 'comment-new-seed')?.authorName).toBeUndefined();
+    });
+
+    // The worker renders the release payload from stored state minutes after staff pressed
+    // Release, so an edit in that window would send a student a PDF nobody approved.
+    it.each([
+        [{ status: 'previewed', releaseLockedAt: new Date() }, 'wait for it to finish'],
+        [{ status: 'feedback_attached' }, 'finish or reconcile it'],
+        [{ status: 'grade_queued' }, 'finish or reconcile it'],
+        [{ status: 'reconciliation_required' }, 'Reconcile it in Canvas before editing']
+    ] as const)('appendReview refuses an edit while a release is under way (%p)', async (stored, message) => {
+        const appendWritingReview = jest.fn();
+        const mongo = {
+            getWritingSubmission: jest.fn(async () => submission('approved')),
+            getLatestWritingRelease: jest.fn(async () => stored),
+            appendWritingReview
+        } as unknown as EngEAI_MongoDB;
+
+        await expect(new WritingFeedbackService(mongo, engine).appendReview('course-1', 'submission-1', {
+            feedbackRunId: 'run-1',
+            staffUserId: 'instructor-1',
+            studentFeedback: 'Edited while the worker was mid-release.',
+            comments: []
+        })).rejects.toThrow(message);
+        expect(appendWritingReview).not.toHaveBeenCalled();
     });
 
     it('renderPdf uses the newest revision comments after a save-approve-save-approve cycle', async () => {

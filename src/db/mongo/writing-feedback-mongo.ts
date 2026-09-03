@@ -31,6 +31,7 @@ import type {
     WritingSubmission,
     WritingSubmissionStatus
 } from '../../writing-feedback/contracts';
+import { RELEASE_LOCK_TTL_MS } from '../../writing-feedback/contracts';
 import { buildDefaultWritingAssignment } from '../../writing-feedback/default-rubric-profile';
 import { seedRubricForLens, type LabReportRouting } from '../../writing-feedback/rubric-seed';
 import type { ImportedRubricShape } from '../../writing-feedback/rubric-seed';
@@ -58,6 +59,15 @@ function jobs(ctx: MongoDalContext): Collection<WritingJob> { return ctx.db.coll
 function glossary(ctx: MongoDalContext): Collection<WritingGlossaryEntry> { return ctx.db.collection(GLOSSARY); }
 
 let indexesEnsured = false;
+
+/**
+ * Names the partial unique index that keeps one release job per submission queued at a time.
+ *
+ * One queued release per submission, enforced by the database rather than by a read the
+ * caller made a moment earlier. The claim on the release record is the primary lock; this is
+ * what still holds if a second process ever inserts a job without going through it.
+ */
+export const ACTIVE_RELEASE_JOB_INDEX = 'active_release_job';
 
 function isNamespaceMissing(error: unknown): boolean {
     return typeof error === 'object' && error !== null
@@ -164,6 +174,17 @@ export async function ensureWritingFeedbackIndexes(ctx: MongoDalContext): Promis
         releases(ctx).createIndex({ courseId: 1, submissionId: 1, updatedAt: -1 }),
         jobs(ctx).createIndex({ state: 1, leaseUntil: 1, createdAt: 1 }),
         jobs(ctx).createIndex({ courseId: 1, type: 1, 'payload.submissionId': 1, state: 1 }),
+        jobs(ctx).createIndex(
+            { courseId: 1, type: 1, 'payload.submissionId': 1 },
+            {
+                name: ACTIVE_RELEASE_JOB_INDEX,
+                unique: true,
+                // Equality only, so the filter is accepted by every supported server version.
+                // A job is inserted queued; by the time it is leased, the claim on the release
+                // record already refuses a second attempt.
+                partialFilterExpression: { type: 'release', state: 'queued' }
+            }
+        ),
         glossary(ctx).createIndex({ courseId: 1, normalizedTerm: 1 }, { unique: true }),
         ctx.db.collection(CANVAS_CONNECTIONS).createIndex({ courseId: 1 }, { unique: true, sparse: true })
     ]);
@@ -737,16 +758,21 @@ export async function updateVerifiedWritingText(
  * @param courseId - Owning course id
  * @param submissionId - Submission to update
  * @param status - Valid Writing Feedback workflow status
- * @returns Updated submission, or `null` when the scoped record is absent
+ * @param expectedStatuses - Statuses this transition may act on; omitted means any
+ * @returns Updated submission, or `null` when the scoped record is absent or has moved on
  */
 export async function setWritingSubmissionStatus(
     ctx: MongoDalContext,
     courseId: string,
     submissionId: string,
-    status: WritingSubmissionStatus
+    status: WritingSubmissionStatus,
+    expectedStatuses?: ReadonlyArray<WritingSubmissionStatus>
 ) {
+    const filter: Filter<WritingSubmission> = expectedStatuses?.length
+        ? { id: submissionId, courseId, status: { $in: [...expectedStatuses] } }
+        : { id: submissionId, courseId };
     return submissions(ctx).findOneAndUpdate(
-        { id: submissionId, courseId },
+        filter,
         { $set: { status, updatedAt: new Date() } },
         { returnDocument: 'after' }
     );
@@ -1047,7 +1073,17 @@ export async function getLatestWritingRelease(
 export async function finalizeWritingRelease(
     ctx: MongoDalContext,
     payloadFingerprint: string,
-    update: Partial<Omit<WritingRelease, 'id' | 'courseId' | 'submissionId' | 'feedbackRunId' | 'rubricVersion' | 'payloadFingerprint' | 'createdAt' | 'updatedAt'>>
+    update: Partial<Omit<WritingRelease, 'id' | 'courseId' | 'submissionId' | 'feedbackRunId' | 'rubricVersion' | 'payloadFingerprint' | 'createdAt' | 'updatedAt'>>,
+    /**
+     * Statuses this update is allowed to act on.
+     *
+     * A release moves through its lifecycle from more than one place — the request that queues
+     * it, the worker that writes to Canvas, and a later reconciliation — so an unconditional
+     * update lets a slow writer move a finished release backwards, or a second worker overwrite
+     * a terminal state. Passing the statuses the caller believes it is acting on makes each
+     * transition a compare-and-set: the update applies, or it does not, and `null` says so.
+     */
+    expectedStatuses?: ReadonlyArray<WritingRelease['status']>
 ): Promise<WritingRelease | null> {
     const set: Record<string, unknown> = { updatedAt: new Date() };
     const unset: Record<string, ''> = {};
@@ -1060,9 +1096,75 @@ export async function finalizeWritingRelease(
     }
     const updateDocument: UpdateFilter<WritingRelease> = { $set: set as Partial<WritingRelease> };
     if (Object.keys(unset).length) updateDocument.$unset = unset;
+    const filter: Filter<WritingRelease> = expectedStatuses?.length
+        ? { payloadFingerprint, status: { $in: [...expectedStatuses] } }
+        : { payloadFingerprint };
+    return releases(ctx).findOneAndUpdate(
+        filter,
+        updateDocument,
+        { returnDocument: 'after' }
+    );
+}
+
+/** Statuses a release may still be resumed from; the rest are terminal or need a human. */
+const RESUMABLE_RELEASE_STATUSES: ReadonlyArray<WritingRelease['status']> = ['previewed', 'failed', 'feedback_attached', 'grade_queued'];
+
+/**
+ * claimWritingReleaseForQueue — takes the in-progress lock on one release, atomically.
+ *
+ * The claim is the whole point: one `findOneAndUpdate` both checks that the release is free and
+ * marks it taken, so of two staff members pressing Release at the same moment exactly one wins
+ * and the other is told a release is already under way.
+ *
+ * The status is deliberately left alone. It is what a resumed release reads to know how far the
+ * last attempt got, and overwriting it would make a worker re-attach a comment Canvas already
+ * has. A lock older than {@link RELEASE_LOCK_TTL_MS} is treated as abandoned, so a worker that
+ * died mid-release cannot freeze a submission for good.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param payloadFingerprint - Stable payload hash identifying the attempt
+ * @param claim - Who is releasing it, and when the claim is being made
+ * @returns The claimed release, or `null` when another caller already holds it
+ */
+export async function claimWritingReleaseForQueue(
+    ctx: MongoDalContext,
+    payloadFingerprint: string,
+    claim: { queuedByUserId: string; now?: Date }
+): Promise<WritingRelease | null> {
+    const now = claim.now ?? new Date();
+    const abandonedBefore = new Date(now.getTime() - RELEASE_LOCK_TTL_MS);
+    return releases(ctx).findOneAndUpdate(
+        {
+            payloadFingerprint,
+            status: { $in: [...RESUMABLE_RELEASE_STATUSES] },
+            $or: [
+                { releaseLockedAt: { $exists: false } },
+                { releaseLockedAt: { $lt: abandonedBefore } }
+            ]
+        },
+        { $set: { releaseLockedAt: now, queuedByUserId: claim.queuedByUserId, updatedAt: now } },
+        { returnDocument: 'after' }
+    );
+}
+
+/**
+ * releaseWritingReleaseLock — hands the in-progress lock back when the worker stops.
+ *
+ * Called whether the release landed, failed, or threw: what the next attempt needs to know is
+ * carried by the status, and holding the lock past the run would only make staff wait out the
+ * abandonment window before they could try again.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param payloadFingerprint - Stable payload hash identifying the attempt
+ * @returns The released record, or `null` when no record carries that fingerprint
+ */
+export async function releaseWritingReleaseLock(
+    ctx: MongoDalContext,
+    payloadFingerprint: string
+): Promise<WritingRelease | null> {
     return releases(ctx).findOneAndUpdate(
         { payloadFingerprint },
-        updateDocument,
+        { $unset: { releaseLockedAt: '' }, $set: { updatedAt: new Date() } },
         { returnDocument: 'after' }
     );
 }

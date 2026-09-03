@@ -90,9 +90,10 @@ function harness(clientOverrides: Record<string, jest.Mock> = {}) {
             records.set(record.payloadFingerprint, saved);
             return saved;
         },
-        async (fingerprint, update) => {
+        async (fingerprint, update, expectedStatuses) => {
             const current = records.get(fingerprint);
             if (!current) return null;
+            if (expectedStatuses?.length && !expectedStatuses.includes(current.status)) return null;
             const next = { ...current, ...update, updatedAt: new Date() };
             records.set(fingerprint, next);
             return next;
@@ -186,6 +187,64 @@ describe('LiveCanvasReleaseService', () => {
         });
         expect(canvas.postGrades).not.toHaveBeenCalled();
         await expect(service.release(releaseInput)).rejects.toThrow('requires reconciliation');
+    });
+
+    it('treats a canvas 5xx on the comment write as uncertain, not as a definite failure', async () => {
+        const { service } = harness({
+            put: jest.fn(async () => { throw new canvas.CanvasApiError('Canvas is unavailable', 503); })
+        });
+        const releaseInput = input('submission-comment-503');
+        await service.preview(releaseInput);
+        const result = await service.release(releaseInput);
+
+        expect(result).toMatchObject({ status: 'reconciliation_required', failureStage: 'feedback' });
+        expect(result.sanitizedError).toBe('Canvas feedback comment outcome is unknown');
+        expect(canvas.postGrades).not.toHaveBeenCalled();
+    });
+
+    it('treats a canvas 429 on the comment write as uncertain, because rate limiting can land mid-flight', async () => {
+        const { service } = harness({
+            put: jest.fn(async () => { throw new canvas.CanvasApiError('Too many requests', 429); })
+        });
+        const releaseInput = input('submission-comment-429');
+        await service.preview(releaseInput);
+
+        expect(await service.release(releaseInput)).toMatchObject({ status: 'reconciliation_required' });
+    });
+
+    it('still fails definitely when canvas rejects the comment outright', async () => {
+        const { service } = harness({
+            put: jest.fn(async () => { throw new canvas.CanvasApiError('Unprocessable', 422); })
+        });
+        const releaseInput = input('submission-comment-422');
+        await service.preview(releaseInput);
+        const result = await service.release(releaseInput);
+
+        expect(result).toMatchObject({ status: 'failed', failureStage: 'feedback' });
+        expect(result.sanitizedError).toBe('Canvas rejected the feedback comment');
+    });
+
+    it('leaves a released record alone when a duplicate worker runs the same release again', async () => {
+        const { service, client, records } = harness();
+        const releaseInput = input('submission-terminal');
+        await service.preview(releaseInput);
+        await service.release(releaseInput);
+        const fingerprint = fingerprintFor(releaseInput);
+        expect(records.get(fingerprint)!.status).toBe('released');
+
+        const writesBefore = (client.put as jest.Mock).mock.calls.length
+            + (client.uploadFile as jest.Mock).mock.calls.length
+            + (canvas.postGrades as jest.Mock).mock.calls.length;
+
+        // A second worker arriving late must add nothing to the student's submission and must
+        // not walk the release back out of its terminal state.
+        const again = await service.release(releaseInput);
+
+        expect(again.status).toBe('released');
+        expect(records.get(fingerprint)!.status).toBe('released');
+        expect((client.put as jest.Mock).mock.calls.length
+            + (client.uploadFile as jest.Mock).mock.calls.length
+            + (canvas.postGrades as jest.Mock).mock.calls.length).toBe(writesBefore);
     });
 
     it('finishes a queued grade progress check without requiring cached preview PDF bytes', async () => {
@@ -297,6 +356,45 @@ describe('canvas rubric assessment', () => {
         await expect(service.preview(input('submission-stale'))).rejects.toThrow('changed since');
         expect(client.uploadFile).not.toHaveBeenCalled();
         expect(client.put).not.toHaveBeenCalled();
+    });
+
+    it('treats a canvas 5xx on the rubric assessment as uncertain', async () => {
+        const { service } = harness({
+            put: jest.fn(async (_path: string, body: Record<string, unknown>) => {
+                if (body && 'rubric_assessment' in body) throw new canvas.CanvasApiError('Canvas is unavailable', 502);
+                return { id: 900 };
+            })
+        });
+        const releaseInput = input('submission-rubric-502');
+        await service.preview(releaseInput);
+        const result = await service.release(releaseInput);
+
+        expect(result).toMatchObject({ status: 'reconciliation_required', failureStage: 'grade' });
+        expect(result.sanitizedError).toBe('Canvas rubric assessment outcome is unknown');
+        expect(canvas.postGrades).not.toHaveBeenCalled();
+    });
+
+    it('treats a canvas 5xx on the grade write as uncertain', async () => {
+        const { service } = harness();
+        (canvas.postGrades as jest.Mock).mockRejectedValueOnce(new canvas.CanvasApiError('Canvas is unavailable', 500));
+        const releaseInput = input('submission-grade-500');
+        await service.preview(releaseInput);
+        const result = await service.release(releaseInput);
+
+        expect(result).toMatchObject({ status: 'reconciliation_required', failureStage: 'grade' });
+        expect(result.sanitizedError).toBe('Canvas grade write outcome is unknown');
+    });
+
+    it('still fails definitely when the package refuses the grade export before sending it', async () => {
+        const { service } = harness();
+        (canvas.postGrades as jest.Mock)
+            .mockRejectedValueOnce(new canvas.CanvasGradeExportError('Score exceeds the maximum', 'invalid-grade'));
+        const releaseInput = input('submission-grade-refused');
+        await service.preview(releaseInput);
+        const result = await service.release(releaseInput);
+
+        expect(result).toMatchObject({ status: 'failed', failureStage: 'grade' });
+        expect(result.sanitizedError).toBe('Canvas rejected the grade write');
     });
 
     it('preflights every artifact rather than only the first', async () => {

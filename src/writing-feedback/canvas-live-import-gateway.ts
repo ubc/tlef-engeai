@@ -22,7 +22,7 @@
  * @description: Reads real Canvas assignments and submissions for staff-initiated import.
  */
 
-import type { canvas } from '@ubc/ubc-genai-toolkit-lms-integration';
+import { canvas } from '@ubc/ubc-genai-toolkit-lms-integration';
 import type {
     CanvasAssignmentDetails,
     CanvasImportedRubric,
@@ -30,6 +30,7 @@ import type {
     CanvasRubricRow
 } from './contracts';
 import type {
+    CanvasAttachmentContext,
     CanvasImportAssignmentSummary,
     CanvasImportAttachment,
     CanvasImportContentKind,
@@ -62,7 +63,7 @@ const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 const MAX_PAGES = 50;
 
 /** Extensions {@link LocalDocumentExtractionService} can actually parse. */
-const PARSEABLE_EXTENSIONS = new Set(['txt', 'docx', 'pdf', 'html', 'htm']);
+const PARSEABLE_EXTENSIONS = new Set(['txt', 'md', 'markdown', 'docx', 'pdf', 'html', 'htm']);
 
 /** Canvas submission types this gateway can derive a transcript from. */
 const TEXT_ENTRY_TYPE = 'online_text_entry';
@@ -400,16 +401,21 @@ export class LiveCanvasImportGateway implements CanvasImportGateway {
      * preview and the import are separate requests and the parser rejects anything else anyway
      * — failing before the download saves pulling bytes that cannot be used.
      *
-     * The package's `download` is what makes passing a payload-supplied URL safe: it requires
-     * the first hop to match the configured Canvas origin, drops the bearer token permanently
-     * after any off-origin redirect, enforces `maxBytes` against both the declared and the
-     * streamed length, and rejects an HTML response (a Canvas login page in place of a file).
+     * The package's `downloadSubmissionAttachment` names the course, assignment, student, and
+     * attachment, so Canvas resolves the URL itself. On top of that its `download` requires the
+     * first hop to match the configured Canvas origin, drops the bearer token permanently after
+     * any off-origin redirect, enforces `maxBytes` against both the declared and the streamed
+     * length, and rejects an HTML response (a Canvas login page in place of a file).
      *
      * @param attachment - Attachment metadata from a preview in this same course
+     * @param context - The assignment and student whose submission holds the attachment
      * @returns Extracted transcript, which remains unverified until staff confirm it
      * @throws Error when the type is unsupported, or the download or parse fails
      */
-    async extractAttachmentText(attachment: CanvasImportAttachment): Promise<string> {
+    async extractAttachmentText(
+        attachment: CanvasImportAttachment,
+        context: CanvasAttachmentContext
+    ): Promise<string> {
         const extension = extensionOf(attachment.fileName);
         if (!PARSEABLE_EXTENSIONS.has(extension)) {
             throw new Error(`Unsupported Canvas attachment type: .${extension || 'unknown'}`);
@@ -418,7 +424,18 @@ export class LiveCanvasImportGateway implements CanvasImportGateway {
             throw new Error(`Canvas attachment exceeds the ${MAX_ATTACHMENT_BYTES}-byte import limit`);
         }
 
-        const download = await this.client.download(attachment.url, { maxBytes: MAX_ATTACHMENT_BYTES });
+        // Resolved through the course/assignment/student-scoped submission endpoint rather than
+        // by following the preview's URL. `client.download`'s origin rules stop a handed-in URL
+        // being an SSRF primitive or leaking the bearer token off-origin, but they cannot show
+        // that the file belongs to this course, this assignment, and this student. Naming those
+        // four things and letting Canvas produce the URL does.
+        const download = await canvas.downloadSubmissionAttachment(this.client, {
+            courseId: this.canvasCourseId,
+            gradeItemId: context.canvasAssignmentId,
+            userId: context.canvasUserId,
+            attachmentId: attachment.attachmentId,
+            maxBytes: MAX_ATTACHMENT_BYTES
+        });
         const extraction = await this.extractor.extract({
             buffer: Buffer.from(download.data),
             fileName: attachment.fileName

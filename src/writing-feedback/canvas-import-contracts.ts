@@ -87,6 +87,19 @@ export interface CanvasImportAttachment {
     url: string;
 }
 
+/**
+ * Which submission an attachment belongs to.
+ *
+ * Passed alongside the attachment because a download URL proves only that it points at Canvas.
+ * Naming the assignment and the student lets the provider resolve the file through Canvas's own
+ * course- and assignment-scoped submission endpoint, so Canvas — not our payload — decides which
+ * bytes come back.
+ */
+export interface CanvasAttachmentContext {
+    canvasAssignmentId: string;
+    canvasUserId: string;
+}
+
 /** Read-only preview of a submission before staff starts an import. */
 export interface CanvasImportSubmissionPreview {
     sourceRecordKey: string; // ephemeral source identity used to derive a privacy-safe local key
@@ -127,7 +140,10 @@ export interface CanvasImportGateway {
      * Called only during an explicit import, never while previewing: a preview must not pull
      * student file bytes across the network.
      */
-    extractAttachmentText?(attachment: CanvasImportAttachment): Promise<string>;
+    extractAttachmentText?(
+        attachment: CanvasImportAttachment,
+        context: CanvasAttachmentContext
+    ): Promise<string>;
     /**
      * Converts one source text-entry body to a plain-text transcript.
      *
