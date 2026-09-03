@@ -19,7 +19,6 @@ import type {
     WritingRelease,
     WritingReleasePayload
 } from './contracts';
-import { resolveNumericGrade } from './feedback-schema';
 
 /**
  * computeReleaseFingerprint — stable idempotency key for one released payload.
@@ -37,20 +36,32 @@ export function computeReleaseFingerprint(payload: WritingReleasePayload): strin
     const field = (value: string | number | undefined): string =>
         value === undefined ? '\0-' : `\0${String(value).length}:${String(value)}`;
     return createHash('sha256')
-        .update('writing-release-v1')
+        .update('writing-release-v2')
         .update(field(payload.submissionId))
         .update(field(payload.feedbackRunId))
         .update(field(payload.rubricVersion))
         .update(field(payload.grade))
         .update(field(payload.studentFeedback))
         .update(field(payload.technicalFeedbackRunId))
+        .update(field(payload.finalAssessment
+            ? JSON.stringify({
+                ...payload.finalAssessment,
+                criteria: [...payload.finalAssessment.criteria]
+                    .sort((left, right) => left.criterionId.localeCompare(right.criterionId))
+            })
+            : undefined))
         .digest('hex');
 }
 
 /** Local adapter used until a scoped Canvas OAuth connection is approved. */
 export class MockCanvasGateway implements CanvasGateway {
     /** Returns deterministic synthetic Canvas identifiers for local workflow testing. */
-    async release(input: { submissionId: string; pdf: Buffer; grade: number; payloadFingerprint: string }): Promise<{ canvasCommentId: string; canvasSubmissionId: string }> {
+    async release(input: {
+        submissionId: string;
+        artifacts: CanvasReleaseInput['artifacts'];
+        grade: number;
+        payloadFingerprint: string;
+    }): Promise<{ canvasCommentId: string; canvasSubmissionId: string }> {
         return {
             canvasCommentId: `mock-comment-${input.payloadFingerprint.slice(0, 12)}`,
             canvasSubmissionId: `mock-submission-${input.submissionId}`
@@ -79,7 +90,7 @@ export class SafeCanvasReleaseService implements CanvasReleaseService {
         private readonly saveRelease: (release: Omit<WritingRelease, 'id' | 'createdAt' | 'updatedAt'>) => Promise<WritingRelease>,
         private readonly finalizeRelease: (
             fingerprint: string,
-            update: Pick<WritingRelease, 'status' | 'canvasCommentId' | 'canvasSubmissionId'>
+            update: Partial<Omit<WritingRelease, 'id' | 'courseId' | 'submissionId' | 'feedbackRunId' | 'rubricVersion' | 'payloadFingerprint' | 'createdAt' | 'updatedAt'>>
         ) => Promise<WritingRelease | null>
     ) {}
 
@@ -90,14 +101,15 @@ export class SafeCanvasReleaseService implements CanvasReleaseService {
      * @returns Existing or newly persisted preview record
      */
     async preview(input: CanvasReleaseInput): Promise<WritingRelease> {
-        const grade = resolveNumericGrade(input.feedbackRun.result, input.assignment.gradeMapping);
+        const grade = input.finalAssessment?.totalPoints;
         const payloadFingerprint = computeReleaseFingerprint({
             submissionId: input.submission.id,
             feedbackRunId: input.feedbackRun.id,
             rubricVersion: input.feedbackRun.rubricVersion,
             grade,
             studentFeedback: input.studentFeedback,
-            technicalFeedbackRunId: input.technicalFeedbackRun?.id
+            technicalFeedbackRunId: input.technicalFeedbackRun?.id,
+            finalAssessment: input.finalAssessment
         });
         // Fingerprint lookup makes repeated previews and release retries reuse one record.
         const existing = await this.findByFingerprint(payloadFingerprint);
@@ -109,7 +121,8 @@ export class SafeCanvasReleaseService implements CanvasReleaseService {
             rubricVersion: input.feedbackRun.rubricVersion,
             payloadFingerprint,
             status: 'previewed',
-            grade
+            grade,
+            integration: 'mock_canvas'
         });
     }
 
@@ -122,14 +135,14 @@ export class SafeCanvasReleaseService implements CanvasReleaseService {
      */
     async release(input: CanvasReleaseInput): Promise<WritingRelease> {
         if (input.submission.status !== 'approved') throw new Error('Staff approval is required before Canvas release');
-        const grade = resolveNumericGrade(input.feedbackRun.result, input.assignment.gradeMapping);
-        if (grade === undefined) throw new Error('Numeric release is blocked until an instructor-approved grade mapping exists');
+        const grade = input.finalAssessment?.totalPoints;
+        if (grade === undefined) throw new Error('Numeric release is blocked until staff save a complete final rubric assessment');
         const preview = await this.preview(input);
         // A terminal fingerprint is authoritative; never repeat the external write.
         if (preview.status === 'released' || preview.status === 'reconciled') return preview;
         const remote = await this.gateway.release({
             submissionId: input.submission.id,
-            pdf: input.pdf,
+            artifacts: input.artifacts,
             grade,
             payloadFingerprint: preview.payloadFingerprint
         });

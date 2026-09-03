@@ -2310,6 +2310,12 @@ mark.wf-anchor.is-filtered-out,
     font-weight: 700;
 }
 
+.wf-final-grade-input {
+    width: 78px;
+    min-width: 68px;
+    padding: 6px 8px;
+}
+
 .wf-strength-list {
     margin: 8px 0 0;
     padding-left: 20px;
@@ -2468,172 +2474,6 @@ mark.wf-anchor.is-filtered-out,
     color: var(--text-secondary);
     font-size: 13px;
     line-height: 1.5;
-}
-
-/* Academic Writing Matrix — neutral collapsible */
-
-.wf-writing-matrix {
-    container-type: inline-size;
-    margin: 8px 0 12px;
-    background: white;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    overflow: hidden;
-}
-
-.wf-writing-matrix > summary {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 10px 14px;
-    background: var(--background-2);
-    color: var(--text-primary);
-    font-size: 13px;
-    cursor: pointer;
-    list-style: none;
-}
-
-.wf-writing-matrix > summary::-webkit-details-marker {
-    display: none;
-}
-
-.wf-matrix-summary-text {
-    display: grid;
-    gap: 2px;
-    min-width: 0;
-}
-
-.wf-matrix-summary-text strong {
-    font-size: 13px;
-    font-weight: 600;
-}
-
-.wf-matrix-kicker {
-    color: var(--text-secondary);
-    font-size: 11px;
-}
-
-.wf-matrix-badge {
-    padding: 2px 8px;
-    background: white;
-    border: 1px solid var(--border-color);
-    border-radius: 9999px;
-    color: var(--text-secondary);
-    font-size: 11px;
-    font-weight: 600;
-    white-space: nowrap;
-}
-
-.wf-matrix-body {
-    display: grid;
-    gap: 10px;
-    padding: 14px;
-}
-
-.wf-matrix-sequence {
-    margin: 0;
-    color: var(--text-primary);
-    font-size: 12px;
-    font-weight: 600;
-}
-
-.wf-matrix-caution {
-    margin: 0;
-    padding: 8px 12px;
-    background: rgba(230, 126, 34, 0.08);
-    border: 1px solid color-mix(in srgb, var(--color-eng-red) 60%, var(--color-chbe-green));
-    border-radius: 6px;
-    color: color-mix(in srgb, var(--color-eng-red) 65%, var(--text-primary));
-    font-size: 12px;
-    line-height: 1.5;
-}
-
-.wf-matrix-functions {
-    display: grid;
-    gap: 10px;
-}
-
-.wf-matrix-function {
-    padding: 10px 12px;
-    background: var(--chat-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-}
-
-.wf-matrix-function h4 {
-    margin: 0;
-    color: var(--color-chbe-green);
-    font-size: 13px;
-    font-weight: 600;
-}
-
-.wf-matrix-function[data-function='interpersonal'] h4 {
-    color: var(--color-ubc-blue);
-}
-
-.wf-matrix-function[data-function='content'] h4 {
-    color: var(--color-ubc-blue);
-}
-
-.wf-matrix-function-description {
-    margin: 4px 0 0 !important;
-    color: var(--text-secondary) !important;
-    font-size: 12px !important;
-}
-
-.wf-matrix-levels {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 8px;
-    margin-top: 10px;
-}
-
-.wf-matrix-level {
-    min-width: 0;
-    padding: 8px 10px;
-    background: white;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-}
-
-.wf-matrix-level h5 {
-    margin: 0;
-    color: var(--text-primary);
-    font-size: 12px;
-    font-weight: 600;
-}
-
-.wf-matrix-level-scope {
-    margin: 2px 0 0 !important;
-    color: var(--text-secondary) !important;
-    font-size: 11px !important;
-    font-style: italic;
-}
-
-.wf-matrix-prompts {
-    margin: 6px 0 0;
-    padding-left: 16px;
-    color: var(--text-primary);
-    font-size: 11px;
-    line-height: 1.5;
-}
-
-.wf-matrix-prompts li + li {
-    margin-top: 4px;
-}
-
-.wf-matrix-attribution {
-    margin: 0;
-    color: var(--text-secondary);
-    font-size: 10px;
-    line-height: 1.5;
-}
-
-@container (max-width: 36rem) {
-    .wf-matrix-levels {
-        grid-template-columns: 1fr;
-    }
 }
 
 /* Focus visibility */

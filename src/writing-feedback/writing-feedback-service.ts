@@ -15,8 +15,10 @@
 import type { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import type {
     AnchoredComment,
+    CanvasReleaseInput,
     CanvasReleaseService,
     FeedbackPdfInclude,
+    FeedbackPdfLens,
     StaffReviewRevision,
     WritingAssignment,
     WritingFeedbackEngine,
@@ -26,6 +28,7 @@ import type {
     WritingFeedbackRun,
     WritingJob,
     WritingRubricDefinition,
+    WritingRelease,
     WritingSubmission
 } from './contracts';
 import { seedCommentsFromRun, stampCommentAuthors, validateAnchoredComments, withStaleFlags, type AnchoredCommentWithState } from './anchored-comments';
@@ -34,7 +37,7 @@ import { TECHNICAL_PROMPT_VERSION, TechnicalWritingFeedbackEngine } from './tech
 import { lensesForAssignment, selectRubric } from './rubric-lens';
 import { ModelSelectionService } from '../dashboard-setting/model-selection-service';
 import { StudentWritingFeedbackPdfService } from '../report-generation/writing-feedback-report';
-import { resolveNumericGrade } from './feedback-schema';
+import { buildStaffFinalAssessment, type StaffFinalAssessmentInput } from './staff-final-assessment';
 import { requireCompleteSflProfile } from './sfl-analysis';
 import { appLogger } from '../utils/logger';
 
@@ -113,6 +116,8 @@ export interface SubmissionDetail {
     comments: AnchoredCommentWithState[];
     /** Model-derived seeds; present only while no revision has stored comments yet. */
     seedComments: AnchoredComment[];
+    /** Latest persisted Canvas release state, including any reconciliation requirement. */
+    release: WritingRelease | null;
 }
 
 /**
@@ -314,6 +319,7 @@ export class WritingFeedbackService {
         const submission = await this.requireSubmission(courseId, submissionId);
         const feedbackRun = await this.mongo.getLatestWritingFeedbackRun(submissionId);
         const technicalFeedbackRun = await this.mongo.getLatestWritingFeedbackRun(submissionId, 'technical');
+        const release = await this.mongo.getLatestWritingRelease(courseId, submissionId);
         const verifiedText = submission.verifiedText ?? '';
         const assignment = feedbackRun
             ? await this.requireAssignment(courseId, submission.assignmentId)
@@ -331,7 +337,7 @@ export class WritingFeedbackService {
         const seedComments = !latestWithComments && feedbackRun && verifiedText
             ? seedCommentsFromRun(feedbackRun, verifiedText, runRubric)
             : [];
-        return { submission, feedbackRun, technicalFeedbackRun, comments, seedComments };
+        return { submission, feedbackRun, technicalFeedbackRun, comments, seedComments, release };
     }
 
     /**
@@ -347,7 +353,9 @@ export class WritingFeedbackService {
     async appendReview(
         courseId: string,
         submissionId: string,
-        revision: Omit<StaffReviewRevision, 'id' | 'createdAt' | 'submissionId'>,
+        revision: Omit<StaffReviewRevision, 'id' | 'createdAt' | 'submissionId' | 'finalAssessment'> & {
+            finalAssessment?: StaffFinalAssessmentInput;
+        },
         staffName?: string
     ): Promise<StaffReviewRevision> {
         const submission = await this.requireSubmission(courseId, submissionId);
@@ -363,7 +371,17 @@ export class WritingFeedbackService {
             // Validate offsets against the current verified text immediately before persistence.
             validateAnchoredComments(comments, submission.verifiedText ?? '');
         }
-        return this.mongo.appendWritingReview(courseId, submissionId, { ...revision, comments });
+        const { finalAssessment: finalAssessmentInput, ...reviewFields } = revision;
+        let finalAssessment;
+        if (finalAssessmentInput) {
+            const assignment = await this.requireAssignment(courseId, submission.assignmentId);
+            finalAssessment = buildStaffFinalAssessment(finalAssessmentInput, assignment.rubric);
+        }
+        return this.mongo.appendWritingReview(courseId, submissionId, {
+            ...reviewFields,
+            comments,
+            ...(finalAssessment ? { finalAssessment } : {})
+        });
     }
 
     /**
@@ -408,7 +426,12 @@ export class WritingFeedbackService {
      * @returns Complete PDF bytes
      * @throws Error when no run exists or its rubric provenance is stale
      */
-    async renderPdf(courseId: string, submissionId: string, include: FeedbackPdfInclude = 'general'): Promise<Buffer> {
+    async renderPdf(
+        courseId: string,
+        submissionId: string,
+        include: FeedbackPdfInclude = 'general',
+        lens: FeedbackPdfLens = 'writing'
+    ): Promise<Buffer> {
         const submission = await this.requireSubmission(courseId, submissionId);
         const assignment = await this.requireAssignment(courseId, submission.assignmentId);
         const run = await this.mongo.getLatestWritingFeedbackRun(submissionId);
@@ -426,10 +449,12 @@ export class WritingFeedbackService {
             assignment,
             submission,
             feedback: run.result,
-            grade: resolveNumericGrade(run.result, assignment.gradeMapping),
+            grade: latestReview?.finalAssessment?.totalPoints,
             staffFeedback: latestReview?.studentFeedback,
             comments,
             include,
+            lens,
+            finalAssessment: latestReview?.finalAssessment,
             // Approving staff name (user decision 2026-07-22); generic fallback pre-approval.
             annotationAuthor: submission.approvedByName,
             ...(technicalRun && technicalRubric
@@ -454,21 +479,40 @@ export class WritingFeedbackService {
         this.assertCurrentRubric(feedbackRun.rubricVersion, assignment);
         const { technicalRun, technicalRubric } = await this.loadTechnicalLens(submissionId, assignment);
         const latestReview = submission.reviews?.[submission.reviews.length - 1];
-        const pdf = await this.pdfService.render({
+        const writingPdf = await this.pdfService.render({
             assignment,
             submission,
             feedback: feedbackRun.result,
-            grade: resolveNumericGrade(feedbackRun.result, assignment.gradeMapping),
+            grade: latestReview?.finalAssessment?.totalPoints,
             staffFeedback: latestReview?.studentFeedback,
-            ...(technicalRun && technicalRubric
-                ? { technicalFeedback: technicalRun.result, technicalRubric }
-                : {})
+            finalAssessment: latestReview?.finalAssessment,
+            include: 'both',
+            lens: 'writing'
         });
+        const artifacts: CanvasReleaseInput['artifacts'] = [
+            { kind: 'writing', filename: 'writing-feedback.pdf', data: writingPdf }
+        ];
+        if (technicalRun && technicalRubric) {
+            artifacts.push({
+                kind: 'technical',
+                filename: 'technical-feedback.pdf',
+                data: await this.pdfService.render({
+                    assignment,
+                    submission,
+                    feedback: feedbackRun.result,
+                    technicalFeedback: technicalRun.result,
+                    technicalRubric,
+                    include: 'general',
+                    lens: 'technical'
+                })
+            });
+        }
         return releaseService.preview({
             submission,
             assignment,
             feedbackRun,
-            pdf,
+            artifacts,
+            finalAssessment: latestReview?.finalAssessment,
             studentFeedback: latestReview?.studentFeedback,
             ...(technicalRun ? { technicalFeedbackRun: technicalRun } : {})
         });
@@ -490,26 +534,47 @@ export class WritingFeedbackService {
         this.assertCurrentRubric(feedbackRun.rubricVersion, assignment);
         const { technicalRun, technicalRubric } = await this.loadTechnicalLens(submissionId, assignment);
         const latestReview = submission.reviews?.[submission.reviews.length - 1];
-        const pdf = await this.pdfService.render({
+        const writingPdf = await this.pdfService.render({
             assignment,
             submission,
             feedback: feedbackRun.result,
-            grade: resolveNumericGrade(feedbackRun.result, assignment.gradeMapping),
+            grade: latestReview?.finalAssessment?.totalPoints,
             staffFeedback: latestReview?.studentFeedback,
-            ...(technicalRun && technicalRubric
-                ? { technicalFeedback: technicalRun.result, technicalRubric }
-                : {})
+            finalAssessment: latestReview?.finalAssessment,
+            include: 'both',
+            lens: 'writing'
         });
+        const artifacts: CanvasReleaseInput['artifacts'] = [
+            { kind: 'writing', filename: 'writing-feedback.pdf', data: writingPdf }
+        ];
+        if (technicalRun && technicalRubric) {
+            artifacts.push({
+                kind: 'technical',
+                filename: 'technical-feedback.pdf',
+                data: await this.pdfService.render({
+                    assignment,
+                    submission,
+                    feedback: feedbackRun.result,
+                    technicalFeedback: technicalRun.result,
+                    technicalRubric,
+                    include: 'general',
+                    lens: 'technical'
+                })
+            });
+        }
         const release = await releaseService.release({
             submission,
             assignment,
             feedbackRun,
-            pdf,
+            artifacts,
+            finalAssessment: latestReview?.finalAssessment,
             studentFeedback: latestReview?.studentFeedback,
             ...(technicalRun ? { technicalFeedbackRun: technicalRun } : {})
         });
-        // Mark local completion only after the release boundary returns a terminal record.
-        await this.mongo.setWritingSubmissionStatus(courseId, submissionId, 'released');
+        // Mark local completion only after both the Canvas comment and async grade job are confirmed.
+        if (release.status === 'released' || release.status === 'reconciled') {
+            await this.mongo.setWritingSubmissionStatus(courseId, submissionId, 'released');
+        }
         return release;
     }
 

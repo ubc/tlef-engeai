@@ -7,8 +7,8 @@
  *                 `/Highlight` annotations and viewer-controlled comment popups.
  * - `both`      — general pages first, then the annotated text.
  *
- * Student-safe invariants: no confidence values, internal flags, origin, or matrix
- * function/level/priority tags ever reach this document.
+ * Student-safe invariants: no confidence values, internal flags, origin, or
+ * function/level/priority filter tags ever reach this document.
  *
  * Annotation strategy follows a real Canvas SpeedGrader export: the yellow highlight is
  * painted directly into the page content stream, and the `/Highlight` annotation itself
@@ -36,6 +36,8 @@ import type {
     WritingFeedbackResult,
     AnchoredComment,
     FeedbackPdfInclude,
+    FeedbackPdfLens,
+    StaffFinalAssessment,
     WritingAssignment,
     WritingRubricDefinition,
     WritingSubmission
@@ -82,11 +84,17 @@ export class StudentWritingFeedbackPdfService implements WritingFeedbackPdfServi
         staffFeedback?: string;
         comments?: AnchoredComment[];
         include?: FeedbackPdfInclude;
+        lens?: FeedbackPdfLens;
+        finalAssessment?: StaffFinalAssessment;
         annotationAuthor?: string;
         technicalFeedback?: WritingFeedbackResult;
         technicalRubric?: WritingRubricDefinition;
     }): Promise<Buffer> {
         const include = input.include ?? 'general';
+        const lens = input.lens ?? 'writing';
+        if (lens === 'technical' && include !== 'general') {
+            throw new Error('Technical feedback PDF supports the general document only');
+        }
         return new Promise((resolve, reject) => {
             // Buffer pages so annotations and total-page footers can target finalized geometry.
             const doc = new PDFDocument({
@@ -101,17 +109,26 @@ export class StudentWritingFeedbackPdfService implements WritingFeedbackPdfServi
             doc.on('error', reject);
             try {
                 // Compose only the sections explicitly selected by the download request.
-                renderHeader(doc, input.assignment, input.grade);
-                if (include === 'general' || include === 'both') {
-                    renderGeneralSections(doc, input.assignment, input.feedback, input.staffFeedback);
-                    if (input.technicalFeedback && input.technicalRubric) {
-                        doc.addPage();
-                        renderTechnicalSections(doc, input.technicalRubric, input.technicalFeedback);
+                renderHeader(doc, input.assignment, input.grade, lens);
+                if (lens === 'technical') {
+                    if (!input.technicalFeedback || !input.technicalRubric) {
+                        throw new Error('Generate technical feedback before creating a technical PDF');
                     }
-                }
-                if (include === 'annotated' || include === 'both') {
-                    if (include === 'both') doc.addPage();
-                    renderAnnotatedText(doc, input.submission, input.comments ?? [], input.annotationAuthor);
+                    renderTechnicalSections(doc, input.technicalRubric, input.technicalFeedback);
+                } else {
+                    if (include === 'general' || include === 'both') {
+                        renderGeneralSections(
+                            doc,
+                            input.assignment,
+                            input.feedback,
+                            input.staffFeedback,
+                            input.finalAssessment
+                        );
+                    }
+                    if (include === 'annotated' || include === 'both') {
+                        if (include === 'both') doc.addPage();
+                        renderAnnotatedText(doc, input.submission, input.comments ?? [], input.annotationAuthor);
+                    }
                 }
                 // Stamp footers after all optional annotated pages have been created.
                 renderPageFooters(doc);
@@ -124,8 +141,14 @@ export class StudentWritingFeedbackPdfService implements WritingFeedbackPdfServi
 }
 
 /** Title block shared by every mode: document title, assignment, optional approved grade. */
-function renderHeader(doc: PDFKit.PDFDocument, assignment: WritingAssignment, grade?: number): void {
-    doc.fillColor(TEXT_COLOR).font(BOLD_FONT).fontSize(20).text('Writing Feedback');
+function renderHeader(
+    doc: PDFKit.PDFDocument,
+    assignment: WritingAssignment,
+    grade?: number,
+    lens: FeedbackPdfLens = 'writing'
+): void {
+    doc.fillColor(TEXT_COLOR).font(BOLD_FONT).fontSize(20)
+        .text(lens === 'technical' ? 'Technical Feedback' : 'Writing Feedback');
     doc.moveDown(0.2).font(BODY_FONT).fontSize(12).fillColor(MUTED_COLOR).text(assignment.title);
     if (grade !== undefined) {
         doc.moveDown(0.3).font(BOLD_FONT).fontSize(11).fillColor(TEXT_COLOR).text(`Approved grade: ${grade}`);
@@ -160,12 +183,15 @@ function renderGeneralSections(
     doc: PDFKit.PDFDocument,
     assignment: WritingAssignment,
     feedback: WritingFeedbackResult,
-    staffFeedback?: string
+    staffFeedback?: string,
+    finalAssessment?: StaffFinalAssessment
 ): void {
     sectionHeading(doc, 'What you did well');
     feedback.strengths.forEach((strength) => bullet(doc, strength));
 
     renderCriteriaAndGoals(doc, assignment.rubric, feedback);
+
+    if (finalAssessment) renderFinalAssessment(doc, assignment.rubric, finalAssessment);
 
     if (staffFeedback?.trim()) {
         sectionHeading(doc, 'Feedback from your teaching team');
@@ -174,6 +200,25 @@ function renderGeneralSections(
 
     sectionHeading(doc, 'Carry forward');
     body(doc).text('Use these goals when you plan and revise your next writing assignment.', { lineGap: 3 });
+}
+
+/** Staff-final rubric scores. Model suggestions are deliberately absent. */
+function renderFinalAssessment(
+    doc: PDFKit.PDFDocument,
+    rubric: WritingRubricDefinition,
+    assessment: StaffFinalAssessment
+): void {
+    sectionHeading(doc, 'Final rubric assessment');
+    assessment.criteria.forEach((entry) => {
+        const criterion = rubric.criteria.find((candidate) => candidate.id === entry.criterionId);
+        if (!criterion) return;
+        body(doc).text(`${criterion.label}: ${entry.points} / ${criterion.points ?? 0}`, {
+            lineGap: 2,
+            paragraphGap: 3
+        });
+    });
+    doc.moveDown(0.25).font(BOLD_FONT).fontSize(BODY_SIZE).fillColor(TEXT_COLOR)
+        .text(`Total: ${assessment.totalPoints} / ${assessment.maxPoints}`);
 }
 
 /**

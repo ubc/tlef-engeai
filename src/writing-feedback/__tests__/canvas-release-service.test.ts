@@ -34,6 +34,11 @@ const run: WritingFeedbackRun = {
     id: 'run-1', courseId: 'course-1', assignmentId: 'assignment-1', submissionId: 'submission-1', profileVersion: 'v1', rubricVersion: 1, createdAt: new Date(), modelMetadata: { engine: 'test', promptVersion: 'v1' },
     result: { criteria: [], strengths: [], revisionGoals: [], internalFlags: [] }
 };
+const artifacts = (value: string) => [{
+    kind: 'writing' as const,
+    filename: 'writing-feedback.pdf',
+    data: Buffer.from(value)
+}];
 
 describe('Canvas release safeguards', () => {
     it('creates a dry-run preview without calling Canvas release', async () => {
@@ -46,22 +51,22 @@ describe('Canvas release safeguards', () => {
             async (record) => { const saved = { ...record, id: 'release-1', createdAt: new Date(), updatedAt: new Date() }; records.set(record.payloadFingerprint, saved); return saved; },
             async (fingerprint, update) => ({ ...(records.get(fingerprint) as WritingRelease), ...update, updatedAt: new Date() })
         );
-        const preview = await service.preview({ submission, assignment, feedbackRun: run, pdf: Buffer.from('pdf') });
+        const preview = await service.preview({ submission, assignment, feedbackRun: run, artifacts: artifacts('pdf') });
         expect(preview.status).toBe('previewed');
         expect(release).not.toHaveBeenCalled();
     });
 
     it('never releases a submission before explicit staff approval', async () => {
         const service = new SafeCanvasReleaseService(new MockCanvasGateway(), async () => null, async () => { throw new Error('not reached'); }, async () => null);
-        await expect(service.release({ submission, assignment, feedbackRun: run, pdf: Buffer.from('pdf') })).rejects.toThrow('Staff approval is required');
+        await expect(service.release({ submission, assignment, feedbackRun: run, artifacts: artifacts('pdf') })).rejects.toThrow('Staff approval is required');
     });
 
     it('reuses one preview when the same payload re-renders to different PDF bytes', async () => {
         const harness = buildRecordingService();
         // Renderer output varies per call (annotation UUIDs and timestamps), so
         // identical released content must still resolve to one release record.
-        const first = await harness.service.preview({ submission, assignment, feedbackRun: run, pdf: Buffer.from('pdf-render-1'), studentFeedback: 'Approved narrative.' });
-        const second = await harness.service.preview({ submission, assignment, feedbackRun: run, pdf: Buffer.from('pdf-render-2'), studentFeedback: 'Approved narrative.' });
+        const first = await harness.service.preview({ submission, assignment, feedbackRun: run, artifacts: artifacts('pdf-render-1'), studentFeedback: 'Approved narrative.' });
+        const second = await harness.service.preview({ submission, assignment, feedbackRun: run, artifacts: artifacts('pdf-render-2'), studentFeedback: 'Approved narrative.' });
 
         expect(second.payloadFingerprint).toBe(first.payloadFingerprint);
         expect(harness.records.size).toBe(1);
@@ -70,8 +75,8 @@ describe('Canvas release safeguards', () => {
 
     it('creates a distinct release when staff re-approve edited student feedback', async () => {
         const { service, records } = buildRecordingService();
-        const first = await service.preview({ submission, assignment, feedbackRun: run, pdf: Buffer.from('pdf'), studentFeedback: 'First narrative.' });
-        const second = await service.preview({ submission, assignment, feedbackRun: run, pdf: Buffer.from('pdf'), studentFeedback: 'Revised narrative.' });
+        const first = await service.preview({ submission, assignment, feedbackRun: run, artifacts: artifacts('pdf'), studentFeedback: 'First narrative.' });
+        const second = await service.preview({ submission, assignment, feedbackRun: run, artifacts: artifacts('pdf'), studentFeedback: 'Revised narrative.' });
 
         expect(second.payloadFingerprint).not.toBe(first.payloadFingerprint);
         expect(records.size).toBe(2);

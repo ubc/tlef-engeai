@@ -23,12 +23,16 @@ import type { CanvasRubricRow, WritingSourceType } from '../writing-feedback/con
 import { SafeCanvasImportService } from '../writing-feedback/canvas-import-service';
 import {
     isLiveCanvasCourse,
+    resolveCanvasCourseId,
     resolveCanvasImportService,
     resolveCanvasImportStatus
 } from '../writing-feedback/canvas-import-resolver';
+import { LiveCanvasReleaseService } from '../writing-feedback/live-canvas-release-service';
+import type { CanvasReleaseService } from '../writing-feedback/contracts';
 import { canvasConfig } from '../lms/canvas-config';
 import { canvas as canvasProvider } from '@ubc/ubc-genai-toolkit-lms-integration';
 import { anchoredCommentsInputSchema } from '../writing-feedback/anchored-comments';
+import { staffFinalAssessmentInputSchema } from '../writing-feedback/staff-final-assessment';
 import {
     approveRubricDraft,
     assertRetiredIdsNotReused,
@@ -101,6 +105,12 @@ function safeError(error: unknown): string {
         'Canvas import is not configured', 'Canvas release is not configured',
         'Canvas assignment not found', 'Canvas demo assignment not found',
         'Canvas assignment uses anonymous grading', 'Canvas release is not available',
+        'Canvas release requires', 'Canvas assignment points do not match',
+        'Canvas returned inconsistent posting policy', 'Preview this exact Canvas release',
+        'Preview the release again', 'Canvas release preview expired',
+        'Canvas release requires reconciliation', 'Canvas feedback attachment failed',
+        'Canvas has a newer submission attempt',
+        'Canvas returned a different submission', 'Final grading',
         'An approved rubric is required', 'Rubric changed after feedback generation',
         'Generate feedback before staff approval',
         'Feedback comments no longer match', 'Feedback comments failed validation',
@@ -796,6 +806,7 @@ router.post('/:courseId/writing-feedback/submissions/:submissionId/reviews', asy
         const studentFeedback = cleanText(req.body?.studentFeedback);
         const feedbackRunId = cleanId(req.body?.feedbackRunId, 'feedbackRunId');
         let comments;
+        let finalAssessment;
 
         // Validate every optional text anchor before appending the immutable staff revision.
         if (req.body?.comments !== undefined) {
@@ -808,6 +819,16 @@ router.post('/:courseId/writing-feedback/submissions/:submissionId/reviews', asy
             }
             comments = parsedComments.data;
         }
+        if (req.body?.finalAssessment !== undefined) {
+            const parsedAssessment = staffFinalAssessmentInputSchema.safeParse(req.body.finalAssessment);
+            if (!parsedAssessment.success) {
+                return res.status(400).json({
+                    success: false,
+                    error: `Final grading failed validation: ${parsedAssessment.error.issues[0]?.message ?? 'check every criterion score'}`
+                });
+            }
+            finalAssessment = parsedAssessment.data;
+        }
         const globalUser = (req.session as any).globalUser;
         const mongo = await EngEAI_MongoDB.getInstance();
         const revision = await new WritingFeedbackService(mongo).appendReview(courseId(req), String(req.params.submissionId), {
@@ -815,7 +836,8 @@ router.post('/:courseId/writing-feedback/submissions/:submissionId/reviews', asy
             staffUserId: globalUser.userId,
             studentFeedback,
             internalNote: typeof req.body?.internalNote === 'string' ? req.body.internalNote.slice(0, 4000) : undefined,
-            comments
+            comments,
+            finalAssessment
         }, globalUser.name);
         res.status(201).json({ success: true, data: revision });
     } catch (error) {
@@ -846,8 +868,16 @@ router.get('/:courseId/writing-feedback/submissions/:submissionId/feedback.pdf',
         // Legacy `specific` (pre-annotated flat comment list) maps to the annotated document.
         const rawInclude = req.query.include === 'specific' ? 'annotated' : req.query.include;
         const include = rawInclude === 'annotated' || rawInclude === 'both' ? rawInclude : 'general';
-        const pdf = await new WritingFeedbackService(mongo).renderPdf(courseId(req), String(req.params.submissionId), include);
-        const filename = include === 'annotated' ? 'writing-feedback-annotated.pdf'
+        const lens = req.query.lens === 'technical' ? 'technical' : 'writing';
+        const effectiveInclude = lens === 'technical' ? 'general' : include;
+        const pdf = await new WritingFeedbackService(mongo).renderPdf(
+            courseId(req),
+            String(req.params.submissionId),
+            effectiveInclude,
+            lens
+        );
+        const filename = lens === 'technical' ? 'technical-feedback.pdf'
+            : include === 'annotated' ? 'writing-feedback-annotated.pdf'
             : include === 'both' ? 'writing-feedback-complete.pdf'
             : 'writing-feedback.pdf';
         res.setHeader('Content-Type', 'application/pdf');
@@ -859,31 +889,39 @@ router.get('/:courseId/writing-feedback/submissions/:submissionId/feedback.pdf',
 }));
 
 /**
- * assertMockReleaseAvailable — refuses release for anything but the labelled local mock.
+ * resolveReleaseService — binds the correct release adapter for this request.
  *
- * Release write-back to a real Canvas course is not implemented: it would need a comment-file
- * upload, an idempotent grade/comment/rubric submission, and timeout reconciliation, none of
- * which exist yet. Live import must therefore not inherit release from the demo path.
+ * Resolved per request rather than from a default-constructed service, because the
+ * adapter must follow the active Canvas integration and the signed-in staff member's
+ * OAuth client. Live courses use exact-attempt Canvas release; demo courses stay on
+ * the clearly labelled local mock.
  *
- * Resolved per request rather than from a default-constructed service, because the default is
- * the local adapter — asking it would report `mock_canvas` for a live Canvas course and arm the
- * mock release against real imported submissions.
- *
- * @throws Error when the active integration is anything other than the local mock
+ * @throws Error when neither live Canvas nor the synthetic mock is configured
  */
-async function assertMockReleaseAvailable(
+async function resolveReleaseService(
     req: Request,
     mongo: EngEAI_MongoDB
-): Promise<void> {
+): Promise<{ service: CanvasReleaseService; integration: 'mock_canvas' | 'canvas' }> {
     const status = await resolveCanvasImportStatus(req, mongo, courseId(req));
     if (status.integration === 'canvas') {
-        throw new Error(
-            'Canvas release is not available: this course reads submissions from Canvas, and writing feedback back to Canvas is not enabled. Download the feedback PDF to return it.'
-        );
+        const canvasCourseId = await resolveCanvasCourseId(mongo, courseId(req));
+        const client = (req as any).canvasApi;
+        if (!canvasCourseId || !client) throw new Error('Canvas release is not configured');
+        return {
+            integration: 'canvas',
+            service: new LiveCanvasReleaseService(
+                client,
+                canvasCourseId,
+                (fingerprint) => mongo.findWritingReleaseByFingerprint(fingerprint),
+                (release) => mongo.createWritingRelease(release),
+                (fingerprint, update) => mongo.finalizeWritingRelease(fingerprint, update)
+            )
+        };
     }
     if (!status.canImport || status.integration !== 'mock_canvas') {
         throw new Error('Canvas release is not configured');
     }
+    return { integration: 'mock_canvas', service: releaseService(mongo) };
 }
 
 function releaseService(mongo: EngEAI_MongoDB): SafeCanvasReleaseService {
@@ -896,27 +934,33 @@ function releaseService(mongo: EngEAI_MongoDB): SafeCanvasReleaseService {
     );
 }
 
-router.post('/:courseId/writing-feedback/submissions/:submissionId/release-preview', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.post('/:courseId/writing-feedback/submissions/:submissionId/release-preview', withCanvasClientWhenLinked, asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const mongo = await EngEAI_MongoDB.getInstance();
 
-        // Keep demo and live Canvas modes technically distinct before preparing a payload.
-        await assertMockReleaseAvailable(req, mongo);
-        const release = await new WritingFeedbackService(mongo).previewRelease(courseId(req), String(req.params.submissionId), releaseService(mongo));
-        res.json({ success: true, data: release, integration: 'mock_canvas' });
+        const resolved = await resolveReleaseService(req, mongo);
+        const release = await new WritingFeedbackService(mongo).previewRelease(
+            courseId(req),
+            String(req.params.submissionId),
+            resolved.service
+        );
+        res.json({ success: true, data: release, integration: resolved.integration });
     } catch (error) {
         res.status(400).json({ success: false, error: safeError(error) });
     }
 }));
 
-router.post('/:courseId/writing-feedback/submissions/:submissionId/release', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.post('/:courseId/writing-feedback/submissions/:submissionId/release', withCanvasClientWhenLinked, asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const mongo = await EngEAI_MongoDB.getInstance();
 
-        // Refuse external-style release unless the explicitly labelled local mock is active.
-        await assertMockReleaseAvailable(req, mongo);
-        const release = await new WritingFeedbackService(mongo).release(courseId(req), String(req.params.submissionId), releaseService(mongo));
-        res.json({ success: true, data: release, integration: 'mock_canvas' });
+        const resolved = await resolveReleaseService(req, mongo);
+        const release = await new WritingFeedbackService(mongo).release(
+            courseId(req),
+            String(req.params.submissionId),
+            resolved.service
+        );
+        res.json({ success: true, data: release, integration: resolved.integration });
     } catch (error) {
         res.status(400).json({ success: false, error: safeError(error) });
     }

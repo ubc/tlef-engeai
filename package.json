@@ -43,7 +43,7 @@
     "@types/marked": "^5.0.2",
     "@types/multer": "^2.0.0",
     "@types/passport": "^1.0.17",
-    "@ubc/ubc-genai-toolkit-lms-integration": "^1.0.4",
+    "@ubc/ubc-genai-toolkit-lms-integration": "^1.2.0",
     "archiver": "^7.0.1",
     "canvas": "^3.2.3",
     "chart.js": "^4.4.8",

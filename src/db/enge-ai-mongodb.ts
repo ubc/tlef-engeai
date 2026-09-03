@@ -509,6 +509,10 @@ export class EngEAI_MongoDB {
     public findWritingReleaseByFingerprint = async (payloadFingerprint: string) =>
         WritingFeedbackMongo.findWritingReleaseByFingerprint(this.ctx(), payloadFingerprint);
 
+    /** Latest persisted release state for one course-scoped submission. */
+    public getLatestWritingRelease = async (courseId: string, submissionId: string) =>
+        WritingFeedbackMongo.getLatestWritingRelease(this.ctx(), courseId, submissionId);
+
     /**
      * finalizeWritingRelease — records final provider state for one fingerprint.
      *
@@ -518,7 +522,7 @@ export class EngEAI_MongoDB {
      */
     public finalizeWritingRelease = async (
         payloadFingerprint: string,
-        update: Pick<WritingRelease, 'status' | 'canvasCommentId' | 'canvasSubmissionId'>
+        update: Partial<Omit<WritingRelease, 'id' | 'courseId' | 'submissionId' | 'feedbackRunId' | 'rubricVersion' | 'payloadFingerprint' | 'createdAt' | 'updatedAt'>>
     ) => WritingFeedbackMongo.finalizeWritingRelease(this.ctx(), payloadFingerprint, update);
 
     /**

@@ -44,10 +44,10 @@ export type WritingCriterionId = string;
 /** Instructor-authored performance-level slug, frozen after its first approval. */
 export type WritingLevelId = string;
 
-/** Academic Writing Matrix axis shared by rubric criteria and anchored comments. */
+/** SFL communicative function shared by rubric criteria and anchored comments. */
 export type WritingFunctionTag = 'content' | 'interpersonal' | 'organizational';
 
-/** Language scale used by the Academic Writing Matrix and the SFL analyzer. */
+/** Language scale used by the SFL analyzer and staff annotation filters. */
 export type WritingLanguageLevel = 'text' | 'section' | 'clause_word';
 
 /** Known Ferreira genre profile ids; custom staff profiles are represented as free text. */
@@ -126,7 +126,7 @@ export interface WritingRubricLevel {
     label: string; // human-readable level shown in review and PDF output
     description: string; // instructor-authored performance descriptor
     rank: number; // explicit worst-to-best position, contiguous from one
-    /** Optional instructor-authored points. Every level is required for numeric release. */
+    /** Optional instructor-authored points retained for rubric bands/legacy mappings. */
     points?: number;
 }
 
@@ -162,7 +162,7 @@ export interface WritingAssignment {
     rubricSource: 'internal_profile' | 'canvas'; // import provenance, not synchronization state
     /** Raw instructor-approved assignment directions used as rubric-editor context. */
     instructions?: string;
-    /** Complete approved level-to-points mapping. Omit when feedback is ordinal only. */
+    /** Legacy complete level-to-points mapping derived at approval when levels carry points. */
     gradeMapping?: Record<WritingLevelId, number>;
     /** Current rubric. New assignments hold a draft here until their first approval. */
     rubric: WritingRubricDefinition;
@@ -497,8 +497,8 @@ export interface AnchoredComment {
      */
     authorName?: string;
     /**
-     * Staff-facing triage metadata mirroring the Academic Writing Matrix
-     * taxonomy. Never printed in the student PDF.
+     * Staff-facing triage metadata from SFL trace evidence or staff review.
+     * Never printed in the student PDF.
      */
     functionTag?: WritingFunctionTag;
     levelTag?: 'text' | 'section' | 'clause_word';
@@ -515,7 +515,23 @@ export interface StaffReviewRevision {
     internalNote?: string; // staff-only note excluded from student output
     /** Full working set of anchored comments snapshotted with this revision. */
     comments?: AnchoredComment[];
+    /** Human-authored rubric result. Model suggestions remain separate and staff-only. */
+    finalAssessment?: StaffFinalAssessment;
     createdAt: Date; // append-only revision timestamp
+}
+
+/** One criterion score explicitly entered by course staff. */
+export interface StaffCriterionAssessment {
+    criterionId: WritingCriterionId; // joins to the immutable rubric version
+    points: number; // awarded points, bounded by the criterion weight
+}
+
+/** Complete, staff-authored numeric assessment saved with a review revision. */
+export interface StaffFinalAssessment {
+    rubricVersion: number; // rubric version whose criteria and weights were graded
+    criteria: StaffCriterionAssessment[]; // exactly one score per weighted criterion
+    totalPoints: number; // server-computed sum of awarded points
+    maxPoints: number; // server-computed rubric total
 }
 
 /** Persisted preview or completed Canvas release keyed by a payload fingerprint. */
@@ -526,8 +542,14 @@ export interface WritingRelease {
     feedbackRunId: string; // immutable draft provenance
     rubricVersion?: number; // approved rubric used for the payload
     payloadFingerprint: string; // idempotency key across preview and retry
-    status: 'previewed' | 'released' | 'reconciled'; // external-write lifecycle
-    grade?: number; // present only with complete instructor-authored mapping
+    status: 'previewed' | 'feedback_attached' | 'grade_queued' | 'released' | 'reconciliation_required' | 'failed' | 'reconciled'; // external-write lifecycle
+    grade?: number; // staff-final total sent to Canvas
+    integration?: 'mock_canvas' | 'canvas';
+    postManually?: boolean; // Canvas posting policy observed at preflight
+    canvasFileIds?: string[]; // uploaded feedback files retained for reconciliation
+    canvasProgressId?: string; // asynchronous grade-write job id
+    failureStage?: 'preflight' | 'feedback' | 'grade' | 'progress';
+    sanitizedError?: string; // content-free operational result
     canvasCommentId?: string; // remote identifier retained for reconciliation
     canvasSubmissionId?: string; // remote submission identifier retained for reconciliation
     createdAt: Date; // preview creation timestamp
@@ -564,12 +586,18 @@ export interface WritingReleasePayload {
     studentFeedback?: string; // staff-approved narrative a re-approval can change
     /** Technical model draft provenance for a lab report; absent for single-lens releases. */
     technicalFeedbackRunId?: string;
+    finalAssessment?: StaffFinalAssessment;
 }
 
 /** Canvas release adapter boundary invoked only after release policy checks succeed. */
 export interface CanvasGateway {
     /** Performs one idempotency-keyed external release and returns reconciliation identifiers. */
-    release(input: { submissionId: string; pdf: Buffer; grade: number; payloadFingerprint: string }): Promise<{ canvasCommentId: string; canvasSubmissionId: string }>;
+    release(input: {
+        submissionId: string;
+        artifacts: CanvasReleaseInput['artifacts'];
+        grade: number;
+        payloadFingerprint: string;
+    }): Promise<{ canvasCommentId: string; canvasSubmissionId: string }>;
 }
 
 /** Digital-document parser boundary that does not upload submissions to course RAG. */
@@ -597,6 +625,9 @@ export interface WritingFeedbackEngine {
 /** Student PDF section selector used by staff download endpoints. */
 export type FeedbackPdfInclude = 'general' | 'annotated' | 'both';
 
+/** Feedback artifact selected for PDF rendering. Technical output is never mixed into writing output. */
+export type FeedbackPdfLens = 'writing' | 'technical';
+
 /** Student-safe PDF renderer boundary for general and exact-span annotated output. */
 export interface WritingFeedbackPdfService {
     /** Renders the selected PDF sections while excluding internal flags and model metadata. */
@@ -608,6 +639,8 @@ export interface WritingFeedbackPdfService {
         staffFeedback?: string;
         comments?: AnchoredComment[];
         include?: FeedbackPdfInclude;
+        lens?: FeedbackPdfLens;
+        finalAssessment?: StaffFinalAssessment;
         /** Shown as the highlight-popup author (`/T`); defaults to "Teaching Team". */
         annotationAuthor?: string;
         /** Technical lens draft rendered as its own section for a lab report. */
@@ -628,8 +661,10 @@ export interface CanvasReleaseInput {
     submission: WritingSubmission;
     assignment: WritingAssignment;
     feedbackRun: WritingFeedbackRun;
-    /** Student-safe bytes handed to the adapter; never part of the idempotency key. */
-    pdf: Buffer;
+    /** Student-safe, separately named artifacts handed to the adapter. */
+    artifacts: Array<{ kind: 'writing' | 'technical'; filename: string; data: Buffer }>;
+    /** Complete staff-authored grade saved in the latest review revision. */
+    finalAssessment?: StaffFinalAssessment;
     /** Latest staff-approved narrative, so an edited re-approval releases as new content. */
     studentFeedback?: string;
     /** Technical model draft released alongside the linguistic one, when the assignment has one. */

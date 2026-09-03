@@ -90,7 +90,7 @@ describe('anchoredCommentInputSchema', () => {
         expect(anchoredCommentInputSchema.safeParse(withoutOrigin).success).toBe(false);
     });
 
-    it('accepts optional matrix taxonomy tags', () => {
+    it('accepts optional function and language-level tags', () => {
         const parsed = anchoredCommentInputSchema.safeParse({
             ...comment(),
             functionTag: 'organizational',
@@ -146,7 +146,7 @@ describe('seedCommentsFromRun', () => {
         expect(verifiedText.slice(seeds[1].startOffset, seeds[1].endOffset)).toBe('First sample sentence.');
     });
 
-    it('maps an assignment-authored criterion to its matrix function tag; never seeds level or priority', () => {
+    it('maps a legacy assignment-authored criterion to its function tag; never seeds level or priority', () => {
         const assignment = buildDefaultWritingAssignment(
             'course-1',
             'assignment-1',
@@ -170,6 +170,34 @@ describe('seedCommentsFromRun', () => {
         expect(seeds[0].functionTag).toBe('content');
         expect(seeds[0].levelTag).toBeUndefined();
         expect(seeds[0].priority).toBeUndefined();
+    });
+
+    it('uses the linked validated SFL finding for actual function and language-level filters', () => {
+        const traced = run(['Second sample sentence.']);
+        traced.result.criteria[0].evidence[0].sflFindingIds = ['finding-1'];
+        traced.sflAnalysis = {
+            schemaVersion: 'writing-feedback-sfl-analysis-v1',
+            foundationVersion: 'test-foundation',
+            profileGenreState: 'staff_confirmed',
+            findings: [{
+                id: 'finding-1',
+                evidence: [{ quote: 'Second sample sentence.' }],
+                observation: 'The sentence carries a local information-flow pattern.',
+                functionalInterpretation: 'It organizes the section for the reader.',
+                primaryFunction: 'organizational',
+                crossFunctions: ['content'],
+                languageLevel: 'section',
+                ruleIds: ['O06'],
+                sourceIds: ['test-source'],
+                confidence: 0.9,
+                alternatives: []
+            }],
+            abstentions: [],
+            internalFlags: []
+        };
+
+        const seeds = seedCommentsFromRun(traced, verifiedText);
+        expect(seeds[0]).toMatchObject({ functionTag: 'organizational', levelTag: 'section' });
     });
 
     it('skips quotes that are not present in the verified text', () => {

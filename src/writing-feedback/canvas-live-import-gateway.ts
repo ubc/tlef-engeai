@@ -187,7 +187,7 @@ export function liveCanvasStatus(): CanvasImportStatus {
         syntheticDataOnly: false,
         label: 'Connected to Canvas',
         message:
-            'Assignments and submissions are read from this course in Canvas using your own Canvas authorization. Importing copies submission text into EngE-AI; nothing is written back to Canvas.',
+            'Assignments and submissions are read from this Canvas course using your authorization. Importing only copies submission text; approved feedback and staff-final grades are written back only from the separate, confirmed release action.',
         nextStep: 'Choose an assignment to review its submissions before importing.'
     };
 }

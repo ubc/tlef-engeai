@@ -80,13 +80,13 @@ export interface RubricCriterion {
     id: WritingCriterionId; // stable key used to join rubric criteria to model feedback
     label: string; // student-facing criterion name editable by authorized staff
     description: string; // assignment-specific expectations supplied to generation
-    functionTag?: WfFunctionTag; // optional Academic Writing Matrix function
+    functionTag?: WfFunctionTag; // optional SFL communicative-function filter tag
     sflDimension?: string; // optional instructor-authored linguistic lens
     points?: number; // maximum points this criterion contributes
     cells?: Record<string, RubricCell>; // sparse per-level bands, keyed by level id
 }
 
-/** One ordinal performance level, optionally participating in numeric release mapping. */
+/** One ordinal performance level, optionally carrying rubric point metadata. */
 export interface RubricLevel {
     id: WritingLevelId; // stable qualitative value emitted by structured feedback
     label: string; // student-facing name shown in rubric and PDF views
@@ -121,7 +121,7 @@ export interface Assignment {
     canvasRubricRefusal?: CanvasRubricRefusal; // why an imported Canvas rubric could not seed this grid
     rubricSource: 'internal_profile' | 'canvas'; // provenance label; import never implies approval
     instructions?: string; // instructor-approved assignment directions shown beside rubric setup
-    gradeMapping?: Record<WritingLevelId, number>; // numeric release mapping derived from approved levels
+    gradeMapping?: Record<WritingLevelId, number>; // legacy mapping derived from approved level points
     rubric: RubricDefinition; // current rubric; new assignments begin with a draft
     rubricDraft?: RubricDefinition; // inactive staff draft, when one exists
     rubricHistory?: RubricDefinition[]; // immutable prior approved versions used for review labels
@@ -202,7 +202,7 @@ export interface GlossarySnapshot {
     version: number; // selected glossary version
 }
 
-/** Academic Writing Matrix function used to categorize staff annotations. */
+/** SFL communicative function used to categorize staff annotations. */
 export type WfFunctionTag = 'content' | 'interpersonal' | 'organizational';
 
 /** Textual scope used to categorize staff annotations. */
@@ -228,7 +228,7 @@ export interface AnchoredComment {
     origin: 'model_seed' | 'staff'; // provenance label preserved in review history
     /** Server-stamped display name of the staff comment author; unset for model seeds. */
     authorName?: string;
-    /** Staff-facing triage metadata (Academic Writing Matrix taxonomy); excluded from the student PDF. */
+    /** Staff-facing triage metadata from model evidence or staff review; excluded from the student PDF. */
     functionTag?: WfFunctionTag;
     levelTag?: WfLevelTag;
     priority?: WfPriority;
@@ -236,7 +236,7 @@ export interface AnchoredComment {
     stale?: boolean;
 }
 
-/** Human-readable labels for Academic Writing Matrix function filters. */
+/** Human-readable labels for function filters. */
 export const FUNCTION_TAG_LABELS: Record<WfFunctionTag, string> = {
     content: 'Content',
     interpersonal: 'Interpersonal',
@@ -263,7 +263,22 @@ export interface ReviewRevision {
     studentFeedback: string; // summary text eligible for approved student output
     internalNote?: string; // staff-only note explicitly excluded from student output
     comments?: AnchoredComment[]; // complete annotation snapshot at save time
+    finalAssessment?: StaffFinalAssessment; // complete human-authored rubric result
     createdAt: string; // server timestamp used to order immutable revisions
+}
+
+/** One human-authored criterion score eligible for PDF and Canvas release. */
+export interface StaffCriterionAssessment {
+    criterionId: WritingCriterionId;
+    points: number;
+}
+
+/** Complete staff-final grade saved with an append-only review revision. */
+export interface StaffFinalAssessment {
+    rubricVersion: number;
+    criteria: StaffCriterionAssessment[];
+    totalPoints: number;
+    maxPoints: number;
 }
 
 const DIFF_FIELDS: Array<keyof AnchoredComment> = [
@@ -321,6 +336,17 @@ export interface SubmissionDetail {
     technicalFeedbackRun: FeedbackRun | null; // latest immutable technical (lab-report) model result, if generated
     comments: AnchoredComment[]; // newest saved staff comment snapshot
     seedComments: AnchoredComment[]; // model-derived fallback used before the first save
+    release?: WritingReleaseSummary | null; // latest Canvas release/reconciliation state
+}
+
+/** Staff-visible release state returned with submission detail. */
+export interface WritingReleaseSummary {
+    status: 'previewed' | 'feedback_attached' | 'grade_queued' | 'released' | 'reconciliation_required' | 'failed' | 'reconciled';
+    grade?: number;
+    postManually?: boolean;
+    failureStage?: 'preflight' | 'feedback' | 'grade' | 'progress';
+    sanitizedError?: string;
+    updatedAt: string;
 }
 
 /** Canvas integration truth shown before any import or release action is offered. */
@@ -442,7 +468,7 @@ export const STATUS_TONES: Record<SubmissionStatus, WfChipTone> = {
     failed: 'red'
 };
 
-/** Semantic chip tones for Academic Writing Matrix functions. */
+/** Semantic chip tones for function filters. */
 export const FUNCTION_TAG_TONES: Record<WfFunctionTag, WfChipTone> = {
     content: 'blue',
     interpersonal: 'purple',

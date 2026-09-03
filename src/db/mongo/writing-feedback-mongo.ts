@@ -160,6 +160,7 @@ export async function ensureWritingFeedbackIndexes(ctx: MongoDalContext): Promis
         submissions(ctx).createIndex({ retentionAt: 1 }, { expireAfterSeconds: 0, sparse: true }),
         runs(ctx).createIndex({ submissionId: 1, createdAt: -1 }),
         releases(ctx).createIndex({ payloadFingerprint: 1 }, { unique: true }),
+        releases(ctx).createIndex({ courseId: 1, submissionId: 1, updatedAt: -1 }),
         jobs(ctx).createIndex({ state: 1, leaseUntil: 1, createdAt: 1 }),
         jobs(ctx).createIndex({ courseId: 1, type: 1, 'payload.submissionId': 1, state: 1 }),
         glossary(ctx).createIndex({ courseId: 1, normalizedTerm: 1 }, { unique: true }),
@@ -955,6 +956,15 @@ export async function findWritingReleaseByFingerprint(ctx: MongoDalContext, payl
     return releases(ctx).findOne({ payloadFingerprint });
 }
 
+/** Latest Canvas release state for one local submission, used to surface reconciliation. */
+export async function getLatestWritingRelease(
+    ctx: MongoDalContext,
+    courseId: string,
+    submissionId: string
+): Promise<WritingRelease | null> {
+    return releases(ctx).findOne({ courseId, submissionId }, { sort: { updatedAt: -1 } });
+}
+
 /**
  * finalizeWritingRelease — updates provider identifiers for one fingerprinted attempt.
  *
@@ -966,11 +976,22 @@ export async function findWritingReleaseByFingerprint(ctx: MongoDalContext, payl
 export async function finalizeWritingRelease(
     ctx: MongoDalContext,
     payloadFingerprint: string,
-    update: Pick<WritingRelease, 'status' | 'canvasCommentId' | 'canvasSubmissionId'>
+    update: Partial<Omit<WritingRelease, 'id' | 'courseId' | 'submissionId' | 'feedbackRunId' | 'rubricVersion' | 'payloadFingerprint' | 'createdAt' | 'updatedAt'>>
 ): Promise<WritingRelease | null> {
+    const set: Record<string, unknown> = { updatedAt: new Date() };
+    const unset: Record<string, ''> = {};
+    for (const [key, value] of Object.entries(update)) {
+        if (value === undefined) {
+            unset[key] = '';
+        } else {
+            set[key] = value;
+        }
+    }
+    const updateDocument: UpdateFilter<WritingRelease> = { $set: set as Partial<WritingRelease> };
+    if (Object.keys(unset).length) updateDocument.$unset = unset;
     return releases(ctx).findOneAndUpdate(
         { payloadFingerprint },
-        { $set: { ...update, updatedAt: new Date() } },
+        updateDocument,
         { returnDocument: 'after' }
     );
 }

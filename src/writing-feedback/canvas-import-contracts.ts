@@ -22,8 +22,8 @@ import type {
  * Honest capability state returned before staff can browse or import Canvas data.
  *
  * `mode` and `integration` move together and must never be inferred from each other by callers:
- * `live` is the only value that reads a real Canvas course, and it is also the only value for
- * which the release path must refuse, because write-back is not implemented.
+ * `live` is the only value that reads a real Canvas course; any later write-back
+ * still requires the separate release preview and release routes.
  */
 export interface CanvasImportStatus {
     /**

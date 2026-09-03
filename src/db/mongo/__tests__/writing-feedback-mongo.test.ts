@@ -21,7 +21,9 @@ import {
     createManualWritingAssignment,
     discardWritingRubricDraft,
     ensureWritingFeedbackIndexes,
+    finalizeWritingRelease,
     getLatestWritingFeedbackRun,
+    getLatestWritingRelease,
     normalizeWritingAssignment,
     saveWritingRubricDraft,
     setWritingAssignmentLabReport
@@ -485,6 +487,42 @@ describe('completeWritingJob', () => {
                 $set: { state: 'completed', updatedAt: expect.any(Date) },
                 $unset: { leaseUntil: '', sanitizedError: '' }
             }
+        );
+    });
+});
+
+describe('Writing Feedback release persistence', () => {
+    it('sorts latest release state by updatedAt descending for one submission', async () => {
+        const findOne = jest.fn().mockResolvedValue(null);
+        const releaseCollection = { findOne };
+        const ctx = contextWithCollections({ 'writing-releases': releaseCollection });
+
+        await getLatestWritingRelease(ctx, 'course-1', 'submission-1');
+
+        expect(findOne).toHaveBeenCalledWith(
+            { courseId: 'course-1', submissionId: 'submission-1' },
+            { sort: { updatedAt: -1 } }
+        );
+    });
+
+    it('unsets stale failure fields when a retry clears them', async () => {
+        const findOneAndUpdate = jest.fn().mockResolvedValue(null);
+        const releaseCollection = { findOneAndUpdate };
+        const ctx = contextWithCollections({ 'writing-releases': releaseCollection });
+
+        await finalizeWritingRelease(ctx, 'fingerprint-1', {
+            status: 'released',
+            failureStage: undefined,
+            sanitizedError: undefined
+        });
+
+        expect(findOneAndUpdate).toHaveBeenCalledWith(
+            { payloadFingerprint: 'fingerprint-1' },
+            {
+                $set: { status: 'released', updatedAt: expect.any(Date) },
+                $unset: { failureStage: '', sanitizedError: '' }
+            },
+            { returnDocument: 'after' }
         );
     });
 });

@@ -678,8 +678,7 @@ function readCellControls(
  * and this is the only reader of that convention. A name the grid does not render is
  * not an empty value: the stored value is carried through untouched, so a grid that
  * omits a field — the technical rubric omits the linguistic focus line, and neither
- * grid edits the Academic Writing Matrix function or the per-level points that feed
- * the numeric release mapping — can never blank it on save.
+ * grid edits hidden function tags or per-level points — can never blank it on save.
  *
  * Nothing is validated here. Add, remove, and reorder all call it first so an
  * in-progress edit survives the structural change.

@@ -34,7 +34,7 @@ The editor requires task, audience, purpose, constraints, learning outcomes, gra
 
 Authorized staff may add or remove criteria and levels before or after approval. Existing approved versions, runs, releases, and anchored comments are never rewritten: each feedback run records the `rubricVersion` that produced it and resolves its criteria against that saved version through `rubricHistory`, so removing a criterion never breaks existing feedback. Reuse of a retired id is refused because `AnchoredComment.criterion` stores a bare id with no version, and reuse would silently retag old comments.
 
-Point mapping is all-or-nothing. Blank points keep feedback ordinal and block numeric release. Approval is the only `gradeMapping` writer and replaces or unsets the complete record; the model never supplies missing values.
+Rubric point metadata can guide staff calibration, but release grading is not inferred from model levels. The model may display staff-only suggested point bands; the saved staff-final assessment is the only numeric grade source for PDFs and Canvas release.
 
 ## V2 prompt and validation contract
 
@@ -75,13 +75,13 @@ Deliberate staff-selected comment anchors have a separate 4,000-character checks
 
 Rubric-form validation is separate from model-output validation. Invalid drafts remain editable and are never silently approved. Saving does not recalculate feedback, and approving a new version does not rewrite historical runs; staff regenerate explicitly when needed.
 
-## Matrix-guided revision workflow
+## Function and Level Filters
 
-The Academic Writing Matrix is a diagnostic traversal: Content → Interpersonal → Organizational, and within each function whole-text → stage/section/paragraph → clause/word evidence. It helps reviewers connect local wording to communicative work before choosing priorities.
+Specific-feedback comments carry staff-facing function and language-level tags so reviewers can filter the actual anchored evidence. Function is one of Content, Interpersonal, or Organizational. Level is one of Text level, Section level, or Clause & word.
 
-The matrix is not a scoring checklist and does not add hidden criteria. A question applies only after assignment, genre, stage, audience, task-object, source-access, and evidence gates make it relevant. Observation, interpretation, rubric evaluation, and model confidence remain separate. No more than three high-impact revision goals are returned.
+For V2 runs, seed comments resolve those tags from validated SFL findings referenced by the model evidence. Legacy or no-trace runs fall back only to the assignment-authored criterion function when one is available; they do not invent language-level or priority tags. Staff can edit the tags during review, and the tags remain triage metadata: they do not score work and never appear in the student PDF.
 
-The durable crosswalk and source boundaries are recorded in the [SFL diagnostic lenses](../../LLED%20200%20FEATURE/LITERATURE%20AND%20PARAMETERS/markdown/analyzer/sfl-diagnostic-lenses.md#academic-writing-matrix-three-functions-at-three-language-levels).
+The former detailed prompt corpus is not rendered in the review workspace. Reviewers see only the filters and the matching comment content.
 
 ## Course materials, glossary, and feedback
 
@@ -100,4 +100,4 @@ Canvas import is not an assessment decision. Importing an assignment, directions
 
 ## Student-facing output
 
-Student PDFs may contain approved levels/grade, strengths, exact evidence, revision priorities, guided actions, and approved anchored comments. They exclude confidence, internal flags, staff notes, comment origin, prompt/model metadata, and rubric-draft state.
+Student PDFs may contain approved levels, the staff-final rubric assessment, strengths, exact evidence, revision priorities, guided actions, and approved anchored comments. They exclude confidence, internal flags, staff notes, comment origin, prompt/model metadata, model grade suggestions, function/level filter tags, and rubric-draft state.

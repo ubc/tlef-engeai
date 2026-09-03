@@ -16,7 +16,7 @@ import { randomUUID } from 'crypto';
 import { z } from 'zod';
 import type { AnchoredComment, WritingFeedbackRun, WritingRubricDefinition } from './contracts';
 
-/** Rubric criterion → matrix function; task constraints have no matrix function. */
+/** Built-in rubric criterion to SFL function fallback for legacy/no-trace runs. */
 const CRITERION_FUNCTION_TAG: Partial<Record<string, AnchoredComment['functionTag']>> = {
     organization: 'organizational',
     content: 'content',
@@ -113,6 +113,7 @@ export function seedCommentsFromRun(
     const seeds: AnchoredComment[] = [];
     const searchFrom = new Map<string, number>();
     const functionTags = new Map(rubric?.criteria.map((criterion) => [criterion.id, criterion.functionTag]) ?? []);
+    const findingsById = new Map((run.sflAnalysis?.findings ?? []).map((finding) => [finding.id, finding]));
     for (const criterion of run.result.criteria) {
         for (const evidence of criterion.evidence) {
             const from = searchFrom.get(evidence.quote) ?? 0;
@@ -120,7 +121,14 @@ export function seedCommentsFromRun(
             if (start === -1) continue;
             // Advance per quote so repeated evidence maps to successive occurrences.
             searchFrom.set(evidence.quote, start + evidence.quote.length);
-            // Level and priority stay unset: they are staff decisions, never model-asserted.
+            // Function and language level come from the validated analyzer trace linked by
+            // the writer's evidence ids. They are descriptive provenance, not a staff grade.
+            const linkedFinding = (evidence.sflFindingIds ?? [])
+                .map((findingId) => findingsById.get(findingId))
+                .find((finding) => Boolean(finding));
+            const functionTag = linkedFinding?.primaryFunction
+                ?? functionTags.get(criterion.criterion)
+                ?? CRITERION_FUNCTION_TAG[criterion.criterion];
             seeds.push({
                 id: randomUUID(),
                 criterion: criterion.criterion,
@@ -133,9 +141,8 @@ export function seedCommentsFromRun(
                 ...(evidence.courseMaterialMention ? { courseMaterialMention: evidence.courseMaterialMention } : {}),
                 ...(evidence.glossaryEntryId ? { glossaryEntryId: evidence.glossaryEntryId } : {}),
                 ...(evidence.glossarySnapshot ? { glossarySnapshot: evidence.glossarySnapshot } : {}),
-                ...((functionTags.get(criterion.criterion) ?? CRITERION_FUNCTION_TAG[criterion.criterion])
-                    ? { functionTag: functionTags.get(criterion.criterion) ?? CRITERION_FUNCTION_TAG[criterion.criterion] }
-                    : {})
+                ...(functionTag ? { functionTag } : {}),
+                ...(linkedFinding ? { levelTag: linkedFinding.languageLevel } : {})
             });
             if (seeds.length >= 50) return seeds;
         }
