@@ -99,7 +99,10 @@ async function initializeCourseSelection(): Promise<void> {
         // Canvas configured must not advertise it.
         // Canvas import is one page-level action rather than one per period: the term an
         // imported course belongs to is chosen inside the flow, not by which header was clicked.
-        if (await initCanvasConnect(loadCourses)) {
+        // Faculty and admins only. The student Canvas path was removed since Canvas cannot 
+        // confirm a student's token belongs to them. Students reach imported courses through 
+        // their instructor's synced roster, or the course code.
+        if (canUseCanvasImport() && (await initCanvasConnect(loadCourses))) {
             showCanvasConnectButton();
         }
 
@@ -192,6 +195,17 @@ function setupJoinByCodeButton(): void {
             ? showInstructorEnrollmentModal()
             : showEnrollmentModal());
     });
+}
+
+/**
+ * canUseCanvasImport — whether this user may import a course from Canvas.
+ *
+ * Mirrors `canvasRoleFor` on the server, which routes faculty and platform admins down the
+ * instructor path and everyone else down the student path that no longer exists. This is a
+ * display decision only; the route re-checks and refuses regardless.
+ */
+function canUseCanvasImport(): boolean {
+    return currentUserAffiliation === 'faculty' || currentIsAdmin;
 }
 
 /** Reveals the page-level Canvas button and wires it. Called only when Canvas is configured. */

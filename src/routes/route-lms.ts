@@ -55,6 +55,7 @@ import {
 } from '../middleware/require-course-role';
 import {
     CanvasIdentityError,
+    CanvasStudentPathRemovedError,
     connectCanvasCourse,
     listCanvasCourseOptions,
 } from '../lms/canvas-course-sync';
@@ -222,6 +223,9 @@ if (canvasConfig) {
             } catch (error) {
                 // Identity is checked here, not only at import: this response would otherwise
                 // disclose the course names of whoever the stored token actually belongs to.
+                if (error instanceof CanvasStudentPathRemovedError) {
+                    return res.status(403).json({ error: error.message, reason: 'student_path_removed' });
+                }
                 if (await handleCanvasIdentityError(error, req, res)) {
                     return;
                 }
@@ -278,6 +282,9 @@ if (canvasConfig) {
                 );
                 res.json({ success: true, ...result });
             } catch (error) {
+                if (error instanceof CanvasStudentPathRemovedError) {
+                    return res.status(403).json({ error: error.message, reason: 'student_path_removed' });
+                }
                 if (await handleCanvasIdentityError(error, req, res)) {
                     return;
                 }

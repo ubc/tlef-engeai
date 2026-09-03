@@ -47,7 +47,7 @@ interface AcademicTermOption {
 
 /** `POST /api/lms/canvas/connect-course` response body. */
 interface ConnectCanvasCourseResult {
-    status: 'imported' | 'joined' | 'awaiting_instructor';
+    status: 'imported' | 'joined';
     courseId?: string;
     courseName?: string;
     message: string;
@@ -579,17 +579,9 @@ async function connectCourse(
 }
 
 /**
- * Reports the outcome and refreshes the list when something actually changed.
- *
- * `awaiting_instructor` is not an error — the student did everything right and the course simply
- * is not on EngE-AI yet — so it reads as information rather than a failure.
+ * Reports the outcome and refreshes the list.
  */
 async function announceResult(result: ConnectCanvasCourseResult): Promise<void> {
-    if (result.status === 'awaiting_instructor') {
-        await showErrorModal('Not available yet', result.message);
-        return;
-    }
-
     await showSuccessModal('Connected to Canvas', result.message);
     if (reloadCourses) {
         await reloadCourses();

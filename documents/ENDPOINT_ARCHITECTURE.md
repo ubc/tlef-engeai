@@ -718,14 +718,32 @@ provided by `@ubc/ubc-genai-toolkit-lms-integration`. Implemented in
 | GET | `/api/lms/canvas/auth/login` | Authenticated | Redirect to the Canvas authorize screen |
 | GET | `/api/lms/canvas/auth/callback` | Authenticated | Exchange the OAuth code and store tokens |
 | POST | `/api/lms/canvas/auth/logout` | Authenticated | Revoke and clear stored Canvas tokens |
-| GET | `/api/lms/canvas/available-courses` | Authenticated + Canvas connection | The user's Canvas courses, annotated with whether EngE-AI already has each one |
-| POST | `/api/lms/canvas/connect-course` | Authenticated + Canvas connection | Import (instructor) or join (student) one Canvas course; body `{ canvasCourseId, academicPeriodId? }`. On import the term comes from step 3 of the connect flow; an unknown or absent id falls back to the default period |
+| GET | `/api/lms/canvas/available-courses` | Faculty/admin + Canvas connection | The user's Canvas courses, annotated with whether EngE-AI already has each one. `403` + `reason: student_path_removed` for a student |
+| POST | `/api/lms/canvas/connect-course` | Faculty/admin + Canvas connection | Import one Canvas course, or join the EngE-AI course a co-instructor already imported; body `{ canvasCourseId, academicPeriodId? }`. On import the term comes from step 3 of the connect flow; an unknown or absent id falls back to the default period. `403` + `reason: student_path_removed` for a student |
 | GET | `/api/lms/canvas/courses` | Instructor + Canvas connection | Raw Canvas course list including provider `raw`; diagnostics only |
 | GET | `/api/lms/canvas/courses/:courseId/roster-status` | Course staff | When this course's roster last synced and how it went, as a `CourseRosterSyncSummary` with an empty `message`; `summary: null` when it has never synced. Projects counts and status only — roster entries are never returned |
 | POST | `/api/lms/canvas/courses/:courseId/sync-roster` | Roster manage (course instructor or platform admin; TAs excluded) | Re-reads the linked Canvas course's **student** roster into stored matchable identities. Returns `200` with a `CourseRosterSyncSummary` even when the sync produced nothing usable; `409` when the course has no Canvas link, `503` when `ROSTER_HASH_SALT` is unset. Notably does **not** require the caller to have a Canvas connection — see below |
 | POST | `/api/lms/moodle/auth/connect` | Instructor | Validate and store a pasted `wstoken` (body `{ token }`) |
 | POST | `/api/lms/moodle/auth/disconnect` | Instructor | Delete the stored Moodle token (does not revoke it in Moodle) |
 | GET | `/api/lms/moodle/courses` | Instructor + Moodle connection | Moodle courses the user is enrolled in |
+
+**The student Canvas path was removed**
+
+- Students can no longer connect Canvas. Both `available-courses` and `connect-course` refuse a
+  caller whose resolved `canvasRoleFor` is `student`, with `403` and
+  `reason: student_path_removed`. The refusal lives in `canvas-course-sync.ts`, before any Canvas
+  call, so the stored token is never used to enumerate anything — hiding the button would not
+  have removed the capability, since the route stayed reachable by a crafted request.
+- It was removed rather than repaired because it could not be made safe. OAuth proves only that
+  *some* Canvas account authorized EngE-AI, and the check that closes that for instructors —
+  comparing the token account's `integration_id` against the CWL PUID — is impossible for a
+  student, because Canvas grants `read_sis` through a *teacher* enrollment. A browser still
+  signed in to a classmate's Canvas therefore let one student list and join the other's courses.
+- Students now reach Canvas-imported courses through the roster their instructor syncs, where
+  identity comes from the instructor's credential, or through the six-character course code.
+  Students whose Canvas account carries no SIS identifier can only ever use the course code.
+- Enrollment already granted through the old path is untouched; nothing revokes it.
+- The `awaiting_instructor` result is gone with the path that produced it.
 
 **Roster-based enrollment**
 
