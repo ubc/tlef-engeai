@@ -375,7 +375,7 @@ interface ReleaseStatus {
     jobError?: string;
 }
 
-// A live release uploads two PDFs, posts a Canvas comment, and waits on Canvas's own grade job.
+// A live release uploads the feedback PDF, posts a Canvas comment, and waits on Canvas's own grade job.
 // Five minutes is well past the worst case observed against Canvas and matches the generation
 // ceiling above, including its reasoning about the idle-session window.
 const RELEASE_POLL_TIMEOUT_MS = 300_000;
@@ -1310,7 +1310,7 @@ function renderReleaseCard(
             'p',
             isDemo
                 ? 'Local demo mode creates a release record but never contacts Canvas or a real student.'
-                : 'Preview first, then send the approved writing PDF, separate technical PDF when present, and staff-final grade to this exact Canvas attempt.'
+                : 'Preview first, then send the approved feedback PDF and staff-final grade to this exact Canvas attempt.'
         )
     );
     const releaseState = document.createElement('div');

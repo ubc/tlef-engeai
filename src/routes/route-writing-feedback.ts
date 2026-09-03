@@ -990,7 +990,7 @@ router.post('/:courseId/writing-feedback/submissions/:submissionId/release-previ
 router.post('/:courseId/writing-feedback/submissions/:submissionId/release', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const mongo = await EngEAI_MongoDB.getInstance();
-        // Queued rather than performed here: a live release uploads two PDFs, posts a comment,
+        // Queued rather than performed here: a live release uploads the feedback PDF, posts a comment,
         // and starts a Canvas grade job, and a request that outlives its connection leaves staff
         // unable to tell whether the student received anything.
         const job = await new WritingFeedbackService(mongo).enqueueRelease(

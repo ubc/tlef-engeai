@@ -572,7 +572,7 @@ export class WritingFeedbackService {
     /**
      * Queues a Canvas release, checking now everything that can be checked before the worker runs.
      *
-     * A live release uploads two PDFs, posts a comment, and starts a Canvas grade job; doing that
+     * A live release uploads the feedback PDF, posts a comment, and starts a Canvas grade job; doing that
      * inside the HTTP request meant staff watched a spinner for as long as Canvas took, and a
      * dropped connection left the outcome unknown. The queue owns the wait instead. Everything
      * that can fail cheaply — the cap, the Canvas identity, approval, an existing preview — is

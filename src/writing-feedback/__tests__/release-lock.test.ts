@@ -181,6 +181,16 @@ describe('release cap', () => {
             .toHaveBeenCalledWith('course-1', 'submission-1', 'released', ['approved']);
     });
 
+    // D-095: one combined document per submission. A lab report leads with the technical
+    // analysis inside that PDF rather than arriving as a second attachment.
+    it('sends one combined pdf, not one attachment per lens', async () => {
+        const { service, releaseService } = buildService([]);
+        await service.release('course-1', 'submission-1', releaseService);
+        const [sent] = releaseService.release.mock.calls[0] as [{ artifacts: Array<{ kind: string; filename: string }> }];
+        expect(sent.artifacts).toHaveLength(1);
+        expect(sent.artifacts[0]).toMatchObject({ kind: 'writing', filename: 'writing-feedback-complete.pdf' });
+    });
+
     it('sends a demo submission with no canvas identity to the coordinator', async () => {
         const { service, releaseService } = buildService([], { canvasUserId: undefined, sourceType: 'manual' });
         await service.release('course-1', 'submission-1', releaseService);
