@@ -393,9 +393,6 @@ async function wireAdvancedSettings(currentClass: activeCourse, canManage: boole
     bindAccordionToggle('dashboard-model-accordion', 'dashboard-model-toggle', 'dashboard-model-body', true);
     bindAccordionToggle('dashboard-features-accordion', 'dashboard-features-toggle', 'dashboard-features-body', canManage);
     bindAccordionToggle('dashboard-course-info-accordion', 'dashboard-course-info-toggle', 'dashboard-course-info-body', true);
-    // Expandable for all course staff: a TA cannot trigger a sync but can still read when the
-    // roster last ran, which is what they need when a student reports a missing course.
-    bindAccordionToggle('dashboard-roster-accordion', 'dashboard-roster-toggle', 'dashboard-roster-body', true);
 
     if (featuresTaNote) featuresTaNote.hidden = canManage;
 

@@ -208,9 +208,22 @@ export async function findCoursesByRosterIdentity(
 /**
  * deleteCourseLmsRosterSnapshot — removes a course's roster.
  *
- * For course deletion and for an instructor disconnecting the LMS: once the link is gone the
- * roster has no course to describe, and keeping identities EngE-AI can no longer refresh serves
- * nobody. Not an error when there is nothing to delete.
+ * **Currently unused. Nothing in the application calls this.** It is kept because a roster whose
+ * course is gone describes nothing and cannot be refreshed, so the cleanup will be needed the
+ * moment either caller below becomes reachable — but do not read its existence as evidence that
+ * they are:
+ *
+ * - **Course deletion** exists as `DELETE /api/courses/:id` and `DELETE /api/courses/:id/remove`,
+ *   but no frontend calls either, so courses are deleted by hand against Mongo or the API. Wire
+ *   this in when a deletion flow ships; until then a deleted course leaves its roster orphaned.
+ * - **Disconnecting a course from its LMS** does not exist at all. `POST /canvas/auth/logout`
+ *   clears one *user's* stored credential; nothing clears `activeCourse.lmsLink`.
+ *
+ * Orphaned snapshots are stale rather than dangerous — every entry is a keyed digest, useless
+ * without the salt and unreachable once no course points at it — but they are retained data
+ * nobody is tracking, which is worth closing when there is a real caller to close it from.
+ *
+ * Not an error when there is nothing to delete.
  */
 export async function deleteCourseLmsRosterSnapshot(
     ctx: MongoDalContext,

@@ -721,6 +721,7 @@ provided by `@ubc/ubc-genai-toolkit-lms-integration`. Implemented in
 | GET | `/api/lms/canvas/available-courses` | Authenticated + Canvas connection | The user's Canvas courses, annotated with whether EngE-AI already has each one |
 | POST | `/api/lms/canvas/connect-course` | Authenticated + Canvas connection | Import (instructor) or join (student) one Canvas course; body `{ canvasCourseId, academicPeriodId? }`. On import the term comes from step 3 of the connect flow; an unknown or absent id falls back to the default period |
 | GET | `/api/lms/canvas/courses` | Instructor + Canvas connection | Raw Canvas course list including provider `raw`; diagnostics only |
+| GET | `/api/lms/canvas/courses/:courseId/roster-status` | Course staff | When this course's roster last synced and how it went, as a `CourseRosterSyncSummary` with an empty `message`; `summary: null` when it has never synced. Projects counts and status only — roster entries are never returned |
 | POST | `/api/lms/canvas/courses/:courseId/sync-roster` | Roster manage (course instructor or platform admin; TAs excluded) | Re-reads the linked Canvas course's **student** roster into stored matchable identities. Returns `200` with a `CourseRosterSyncSummary` even when the sync produced nothing usable; `409` when the course has no Canvas link, `503` when `ROSTER_HASH_SALT` is unset. Notably does **not** require the caller to have a Canvas connection — see below |
 | POST | `/api/lms/moodle/auth/connect` | Instructor | Validate and store a pasted `wstoken` (body `{ token }`) |
 | POST | `/api/lms/moodle/auth/disconnect` | Instructor | Delete the stored Moodle token (does not revoke it in Moodle) |
@@ -755,6 +756,11 @@ provided by `@ubc/ubc-genai-toolkit-lms-integration`. Implemented in
   courses still in setup (`courseSetup !== true`). There is deliberately no student-facing
   "refresh courses" button: a student holds no credential that could reach Canvas, so it
   could only re-read a snapshot that only staff can refresh.
+- There is deliberately **no scheduled roster job**. It would run under a stored instructor
+  credential unobserved, and its failure mode is silent — a revoked token means the roster
+  quietly stops updating until a student complains. A student who enrolls after the last sync
+  still joins with the six-character course code, so the gap has a working fallback. The sync
+  function takes an optional `triggeredBy` so a job can be added later with no signature change.
 - Roster sync requires `ROSTER_HASH_SALT`. Without it the route returns `503` and the
   login check is a no-op; course-code entry is unaffected.
 

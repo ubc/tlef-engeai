@@ -12,7 +12,8 @@
                     <h1 class="mobile-header-title">Dashboard</h1>
                 </div>
             </div>
-            <div class="dashboard-code-flip" id="dashboard-code-flip">
+            <div class="dashboard-topbar-aside">
+                <div class="dashboard-code-flip" id="dashboard-code-flip">
                 <span class="dashboard-code-title">Course Code</span>
                 <div class="dashboard-code-body-flip">
                     <div class="dashboard-code-body-flip-inner">
@@ -50,6 +51,23 @@
                         </div>
                     </div>
                 </div>
+            </div>
+
+            <!--
+                Canvas roster sync. Hidden unless the course was imported from Canvas — an
+                admin-created course has no roster.
+            -->
+                <button
+                    type="button"
+                    class="dashboard-roster-sync-btn"
+                    id="syncCanvasRoster"
+                    title="Sync roster with Canvas"
+                    aria-label="Sync roster with Canvas"
+                    hidden
+                >
+                    <i data-feather="refresh-cw" aria-hidden="true"></i>
+                    <span>Sync roster with Canvas</span>
+                </button>
             </div>
         </header>
 
@@ -142,45 +160,6 @@
                                         <button class="dashboard-save-features-btn" id="saveCourseFeatures" type="button" disabled>Save</button>
                                     </div>
                                 </fieldset>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!--
-                    Canvas roster. Hidden entirely unless the course was imported from Canvas —
-                    an admin-created course has no roster to sync.
-                -->
-                <div class="dashboard-accordion-item" id="dashboard-roster-accordion" hidden>
-                    <div class="dashboard-accordion-shell">
-                        <button
-                            type="button"
-                            class="dashboard-accordion-toggle"
-                            id="dashboard-roster-toggle"
-                            aria-expanded="false"
-                            aria-controls="dashboard-roster-body"
-                        >
-                            <span>Sync Canvas roster</span>
-                            <i data-feather="chevron-down" class="dashboard-accordion-chevron" aria-hidden="true"></i>
-                        </button>
-                        <div class="dashboard-accordion-body" id="dashboard-roster-body">
-                            <div class="dashboard-accordion-body-inner">
-                                <p id="dashboard-roster-ta-note" class="dashboard-accordion-note" hidden>
-                                    Only an instructor or platform admin can sync the Canvas roster.
-                                </p>
-
-                                <p class="dashboard-accordion-note">
-                                    Reads your Canvas course's student list so enrolled students see this
-                                    course when they next sign in. Students do not need to connect Canvas
-                                    themselves. Run this again after the add/drop deadline.
-                                </p>
-
-                                <div class="dashboard-features-actions">
-                                    <p id="rosterSyncStatus" role="status" aria-live="polite"></p>
-                                    <button class="dashboard-save-features-btn" id="syncCanvasRoster" type="button">Sync roster</button>
-                                </div>
-
-                                <p id="rosterSyncLastRun" class="dashboard-accordion-note"></p>
                             </div>
                         </div>
                     </div>

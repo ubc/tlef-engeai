@@ -48,14 +48,18 @@ import {
 } from '../lms/canvas-config';
 import { requireAuthAPI } from '../middleware/require-auth';
 import { asRouteParam } from '../helpers/route-params';
-import { requireInstructorGlobal, requireRosterManageAPI } from '../middleware/require-course-role';
+import {
+    requireInstructorForCourseAPI,
+    requireInstructorGlobal,
+    requireRosterManageAPI,
+} from '../middleware/require-course-role';
 import {
     CanvasIdentityError,
     connectCanvasCourse,
     listCanvasCourseOptions,
 } from '../lms/canvas-course-sync';
 import { RosterSyncUnavailableError, syncCanvasCourseRoster } from '../lms/canvas-roster-sync';
-import type { GlobalUser } from '../types/shared';
+import type { CourseRosterSyncSummary, GlobalUser } from '../types/shared';
 import { appLogger } from '../utils/logger';
 
 /** Moodle connect/disconnect router mount. */
@@ -291,6 +295,49 @@ if (canvasConfig) {
                     return res.status(409).json({ error: message });
                 }
                 res.status(502).json({ error: 'Could not connect that Canvas course' });
+            }
+        }
+    );
+
+    /**
+     * @route GET /api/lms/canvas/courses/:courseId/roster-status
+     * @description When this course's Canvas roster last synced, and how it went. Drives the
+     * dashboard control's resting state so staff can see the roster's age without running a sync.
+     * @access Course staff (`requireInstructorForCourseAPI`) — read-only, so TAs are included;
+     * a TA fielding "why can't I see this course?" needs the roster's age to answer it.
+     * @param {string} courseId - EngE-AI course id (path)
+     *
+     * Returns `{ success: true, summary: null }` for a Canvas-linked course that has never been
+     * synced. Null is the honest answer there and the client renders its own first-run copy —
+     * inventing a zero-count summary would claim a sync happened and found nobody.
+     *
+     * Projects the stored snapshot to counts and status. `entries` are never returned: they are
+     * roster identities, and no browser has a use for them.
+     */
+    router.get(
+        '/canvas/courses/:courseId/roster-status',
+        requireAuthAPI,
+        requireInstructorForCourseAPI(['params']),
+        async (req: Request, res: Response) => {
+            try {
+                const mongoDB = await EngEAI_MongoDB.getInstance();
+                const snapshot = await mongoDB.getCourseLmsRosterSnapshot(asRouteParam(req.params.courseId));
+                if (!snapshot) {
+                    return res.json({ success: true, summary: null });
+                }
+
+                const summary: CourseRosterSyncSummary = {
+                    courseId: snapshot.courseId,
+                    status: snapshot.status,
+                    syncedAt: snapshot.syncedAt,
+                    rosterSize: snapshot.rosterSize,
+                    identifiedCount: snapshot.identifiedCount,
+                    message: '',
+                };
+                res.json({ success: true, summary });
+            } catch (error) {
+                appLogger.error('[LMS] Canvas roster status read failed:', error);
+                res.status(502).json({ error: 'Could not read the roster status for that course' });
             }
         }
     );

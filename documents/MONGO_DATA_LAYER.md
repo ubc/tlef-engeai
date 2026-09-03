@@ -157,6 +157,18 @@ own course roles (student ↔ TA) on the catalog document and is unrelated.
 - `findCoursesByRosterIdentity` projects with `$elemMatch`, not positional `entries.$`. These
   arrays hold a whole class, and a projection returning "some element" would bind the wrong
   student's `lmsUserId`.
+- **Nothing deletes a snapshot today.** `deleteCourseLmsRosterSnapshot` exists but has no
+  caller: course deletion has routes (`DELETE /api/courses/:id`, `.../:id/remove`) that no UI
+  reaches, and disconnecting a course from its LMS is not a feature at all — `lmsLink` is never
+  cleared. A course removed by hand therefore leaves its roster behind. Stale rather than
+  dangerous, since every entry is a keyed digest that is useless without the salt, but it is
+  untracked retained data; wire the delete in when a real deletion flow ships.
+- **Sync never revokes.** A student who drops in the LMS disappears from the next snapshot but
+  keeps their `coursesEnrolled` entry, their `{courseName}_users` row, and their chat history —
+  and no staff-facing feature removes a student from a course, so that access persists until
+  someone edits Mongo. From EngE-AI's side a genuine drop, a transient LMS error, and a revoked
+  token are indistinguishable, and locking a class out of their own conversations on a bad
+  response is the worse failure.
 - Rows whose Canvas account carried no `integration_id` are dropped rather than stored
   address-only: nothing consumes them, because Canvas write-back addresses a student through
   the `canvasUserId` stamped on their imported *submission*, which exists whether or not they
