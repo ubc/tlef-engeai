@@ -46,6 +46,7 @@ import {
 import {
     Assignment,
     assignmentOriginText,
+    CanvasRubricRefusal,
     RubricCell,
     RubricCriterion,
     RubricDefinition,
@@ -1390,6 +1391,19 @@ function renderRubricPage(
 
     const step2Body = document.createElement('div');
     step2Body.className = 'wf-step-body';
+
+    // An imported assignment whose Canvas rubric was out of contract was seeded from
+    // the built-in profile instead. Staff met that silently until now.
+    if (assignment.canvasRubricRefusal && !linguisticData.approved) {
+        const dropped = document.createElement('div');
+        dropped.className = 'wf-owed';
+        dropped.append(
+            createText('p', "This assignment's Canvas rubric could not be imported", 'wf-owed__title'),
+            createText('p', `${canvasRefusalReason(assignment.canvasRubricRefusal)} The starting grid below is EngE-AI's default — replace it with your own before approving.`)
+        );
+        step2Body.append(dropped);
+    }
+
     step2Body.append(renderRubricSection(pageContext, linguisticData, 'linguistic', {
         heading: isLabReport ? 'How they wrote it' : 'The marking grid',
         subtitle: 'Structure, clarity, and how the writing speaks to its reader',
@@ -1888,6 +1902,26 @@ async function saveAssignmentRubrics(context: RubricPageContext): Promise<void> 
  * `PATCH .../lab-report` route the "Lab report" toggle already calls
  * @returns Detached callout with a re-seed action for staff who can manage the rubric
  */
+/**
+ * canvasRefusalReason - why a Canvas rubric could not become a grid, in staff language
+ *
+ * @param refusal - Reason recorded at import
+ * @returns One sentence naming what put the rubric out of contract
+ */
+function canvasRefusalReason(refusal: CanvasRubricRefusal): string {
+    switch (refusal) {
+        case 'too_few_ratings':
+            return 'Its criteria offer one rating each, and a marking grid needs at least two to compare against.';
+        case 'too_many_criteria':
+            return `It has more than ${MAX_CRITERIA} criteria, which is more than a grid here can hold.`;
+        case 'too_many_levels':
+            return `It has more than ${MAX_LEVELS} ratings on a criterion, which is more levels than a grid here can hold.`;
+        case 'no_rubric':
+        default:
+            return 'The Canvas assignment carried no rubric.';
+    }
+}
+
 function renderMissingTechnicalRubric(assignment: Assignment): HTMLElement {
     const status = document.createElement('div');
     status.className = 'wf-callout wf-callout--warning';

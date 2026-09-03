@@ -17,6 +17,7 @@ import type { MongoDalContext } from './mongo-context';
 import type {
     CanvasAssignmentDetails,
     CanvasImportedRubric,
+    CanvasRubricRefusal,
     CanvasRubricRow,
     StaffReviewRevision,
     WritingAssignment,
@@ -306,6 +307,7 @@ export async function deleteWritingAssignment(
  * @param instructions - Optional source assignment directions
  * @param dueAt - Optional Canvas deadline
  * @param canvasRubric - Canvas rubric grid, when it could be represented as a draft
+ * @param canvasRubricRefusal - Why the Canvas rubric could not be represented, when it could not
  * @returns Newly inserted or concurrently existing assignment
  * @throws Non-duplicate MongoDB errors
  */
@@ -316,7 +318,8 @@ export async function createCanvasWritingAssignment(
     title: string,
     instructions?: string,
     dueAt?: Date,
-    canvasRubric?: ImportedRubricShape
+    canvasRubric?: ImportedRubricShape,
+    canvasRubricRefusal?: CanvasRubricRefusal
 ): Promise<WritingAssignment> {
     await ensureWritingFeedbackIndexes(ctx);
     const now = new Date();
@@ -336,6 +339,9 @@ export async function createCanvasWritingAssignment(
               }
             : {}),
         canvasAssignmentId,
+        // Recorded only where the rubric did not seed: the grid staff are about to see is
+        // the built-in profile, and nothing else on the page would say so.
+        ...(!canvasRubric && canvasRubricRefusal ? { canvasRubricRefusal } : {}),
         ...(dueAt ? { dueAt } : {})
     };
     try {

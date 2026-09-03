@@ -8,6 +8,7 @@
  */
 
 import type { ImportedRubricShape } from '../writing-feedback/rubric-seed';
+import type { CanvasRubricRefusal } from '../writing-feedback/contracts';
 import { MongoClient, Db } from 'mongodb';
 import * as dotenv from 'dotenv';
 import {
@@ -230,6 +231,7 @@ export class EngEAI_MongoDB {
      * @param instructions - Optional imported assignment directions
      * @param dueAt - Optional imported deadline
      * @param canvasRubric - Canvas rubric grid seeding the draft, when one could be mapped
+     * @param canvasRubricRefusal - Why the Canvas rubric could not seed the draft, when it could not
      * @returns Newly created or concurrently existing assignment
      */
     public createCanvasWritingAssignment = async (
@@ -238,7 +240,8 @@ export class EngEAI_MongoDB {
         title: string,
         instructions?: string,
         dueAt?: Date,
-        canvasRubric?: ImportedRubricShape
+        canvasRubric?: ImportedRubricShape,
+        canvasRubricRefusal?: CanvasRubricRefusal
     ) => WritingFeedbackMongo.createCanvasWritingAssignment(
         this.ctx(),
         courseId,
@@ -246,7 +249,8 @@ export class EngEAI_MongoDB {
         title,
         instructions,
         dueAt,
-        canvasRubric
+        canvasRubric,
+        canvasRubricRefusal
     );
 
     /**

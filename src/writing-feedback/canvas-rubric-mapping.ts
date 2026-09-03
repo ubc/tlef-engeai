@@ -24,6 +24,7 @@
 
 import type {
     CanvasImportedRubric,
+    CanvasRubricRefusal,
     CanvasRubricRating,
     CanvasRubricRow,
     WritingRubricCell,
@@ -31,6 +32,8 @@ import type {
     WritingRubricLevel
 } from './contracts';
 import type { ImportedRubricShape } from './rubric-seed';
+
+export type { CanvasRubricRefusal };
 
 /** Grid limits from `writingRubricDraftInputSchema`; a rubric outside them cannot be seeded. */
 const MIN_LEVELS = 2;
@@ -111,21 +114,55 @@ function weakestFirst(ratings: CanvasRubricRating[]): CanvasRubricRating[] {
     return [...ratings].sort((left, right) => (left.points ?? 0) - (right.points ?? 0));
 }
 
+/** A mapped grid, or the reason there is not one. */
+export interface CanvasRubricMapping {
+    shape: ImportedRubricShape | null;
+    refusal?: CanvasRubricRefusal;
+}
+
 /**
- * canvasRubricToSeedShape — the Canvas rubric as a draft grid, or `null` if it cannot be one.
+ * mapCanvasRubric — the Canvas rubric as a draft grid, or the reason it cannot be one.
+ *
+ * The refusal exists because falling back to the built-in profile silently shows an
+ * instructor a rubric that is not theirs, with nothing saying so.
+ *
+ * @param rubric - Rubric read from Canvas, unmodified
+ * @returns The seedable grid, or a refusal naming what put it out of contract
+ */
+export function mapCanvasRubric(rubric: CanvasImportedRubric | null | undefined): CanvasRubricMapping {
+    const rows = (rubric?.rows ?? []).filter((row) => row.ratings.length > 0);
+    if (rows.length === 0) return { shape: null, refusal: 'no_rubric' };
+    if (rows.length > MAX_CRITERIA) return { shape: null, refusal: 'too_many_criteria' };
+
+    // The richest row defines the columns; anything wider than the contract cannot be seeded.
+    const widest = rows.reduce((best, row) => (row.ratings.length > best.ratings.length ? row : best), rows[0]);
+    const columnCount = widest.ratings.length;
+    if (columnCount < MIN_LEVELS) return { shape: null, refusal: 'too_few_ratings' };
+    if (columnCount > MAX_LEVELS) return { shape: null, refusal: 'too_many_levels' };
+
+    return { shape: buildShape(rows, widest) };
+}
+
+/**
+ * canvasRubricToSeedShape — the Canvas rubric as a draft grid, or `null`.
+ *
+ * Kept for callers that only need the grid. {@link mapCanvasRubric} also says why.
  *
  * @param rubric - Rubric read from Canvas, unmodified
  * @returns Criteria and levels ready to seed a draft, or `null` when out of contract
  */
 export function canvasRubricToSeedShape(rubric: CanvasImportedRubric | null | undefined): ImportedRubricShape | null {
-    const rows = (rubric?.rows ?? []).filter((row) => row.ratings.length > 0);
-    if (rows.length === 0 || rows.length > MAX_CRITERIA) return null;
+    return mapCanvasRubric(rubric).shape;
+}
 
-    // The richest row defines the columns; anything wider than the contract cannot be seeded.
-    const widest = rows.reduce((best, row) => (row.ratings.length > best.ratings.length ? row : best), rows[0]);
-    const columnCount = widest.ratings.length;
-    if (columnCount < MIN_LEVELS || columnCount > MAX_LEVELS) return null;
-
+/**
+ * buildShape — the grid a rubric already known to be in contract becomes.
+ *
+ * @param rows - Canvas rows carrying at least one rating each
+ * @param widest - The row whose ratings define the shared columns
+ * @returns Criteria and levels ready to seed a draft
+ */
+function buildShape(rows: CanvasRubricRow[], widest: CanvasRubricRow): ImportedRubricShape {
     const levelIds = new Set<string>();
     const levels: WritingRubricLevel[] = weakestFirst(widest.ratings).map((rating, index) => {
         const label = boundedText(rating.label, MAX_LEVEL_LABEL, `Level ${index + 1}`);

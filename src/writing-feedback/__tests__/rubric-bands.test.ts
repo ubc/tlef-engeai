@@ -1,8 +1,9 @@
 /**
  * @fileoverview Pins band derivation, and pins it identically for both mirrors. A cell
- * awards one value, so each level takes a whole-point share of the criterion's weight and
- * the top level takes all of it. `min` and `max` are always equal; the pair survives only
- * so stored rubrics, the draft schema, and the PDF keep their existing shape.
+ * awards an inclusive range, so each level takes a contiguous slice of the criterion's
+ * weight: the slices leave no gaps, the lowest starts at zero, and the highest ends on
+ * the weight. A weight too small to separate every level makes adjacent levels share a
+ * band rather than producing an invalid one.
  */
 
 import { resolveBand, spaceBandsEvenly, totalRubricPoints } from '../rubric-bands';
@@ -16,34 +17,46 @@ const levels: WritingRubricLevel[] = [
 ];
 
 describe('spaceBandsEvenly', () => {
-    it('gives each level a whole-point share of a 30-point criterion', () => {
+    it('gives each level a contiguous band of a 30-point criterion', () => {
         expect(spaceBandsEvenly(30, levels)).toEqual({
-            weak: { min: 7, max: 7 },
-            developing: { min: 15, max: 15 },
-            proficient: { min: 22, max: 22 },
-            exemplary: { min: 30, max: 30 }
+            weak: { min: 0, max: 7 },
+            developing: { min: 8, max: 15 },
+            proficient: { min: 16, max: 22 },
+            exemplary: { min: 23, max: 30 }
         });
     });
 
-    it('awards the full weight at the highest level', () => {
-        // Rounding is absorbed at the top so a criterion always reaches its own weight.
-        const bands = spaceBandsEvenly(45, levels);
-        expect(bands.exemplary).toEqual({ min: 45, max: 45 });
+    it('starts at zero and tops out at the full weight', () => {
+        const bands = spaceBandsEvenly(30, levels);
+        expect(bands.weak.min).toBe(0);
+        expect(bands.exemplary.max).toBe(30);
     });
 
-    it('always writes an equal pair, never a range', () => {
-        for (const points of [1, 2, 5, 30, 45, 1000]) {
-            for (const cell of Object.values(spaceBandsEvenly(points, levels))) {
-                expect(cell.min).toBe(cell.max);
-            }
+    it('leaves no gap between one band and the next', () => {
+        const bands = spaceBandsEvenly(100, levels);
+        const ordered = [bands.weak, bands.developing, bands.proficient, bands.exemplary];
+        ordered.slice(1).forEach((band, index) => {
+            expect(band.min).toBe(ordered[index].max + 1);
+        });
+    });
+
+    it('never produces a band that starts above where it ends', () => {
+        // The schema rejects min > max outright, so this must hold at every weight.
+        for (let points = 0; points <= 60; points += 1) {
+            Object.values(spaceBandsEvenly(points, levels)).forEach((band) => {
+                expect(band.min).toBeLessThanOrEqual(band.max);
+            });
         }
     });
 
-    it('rises with each level and never falls back', () => {
-        const bands = spaceBandsEvenly(45, levels);
-        const ordered = levels.map((level) => bands[level.id]);
-        ordered.slice(1).forEach((cell, index) => {
-            expect(cell.max).toBeGreaterThanOrEqual(ordered[index].max);
+    it('collapses adjacent bands when the weight cannot separate every level', () => {
+        // D-065: whole points cannot be divided more finely than one apiece. Two
+        // points across four levels must share, and sharing is not an error.
+        expect(spaceBandsEvenly(2, levels)).toEqual({
+            weak: { min: 0, max: 0 },
+            developing: { min: 1, max: 1 },
+            proficient: { min: 1, max: 1 },
+            exemplary: { min: 2, max: 2 }
         });
     });
 
@@ -54,18 +67,6 @@ describe('spaceBandsEvenly', () => {
 
     it('returns an empty map when the criterion has no weight', () => {
         expect(spaceBandsEvenly(0, levels)).toEqual({});
-    });
-
-    it('repeats a value when the weight cannot separate every level', () => {
-        // Awards are whole points, so a weight of 2 cannot give four levels four distinct
-        // values. Repeating is the intended degradation, and the grid warns staff when a
-        // weight cannot separate its levels.
-        expect(spaceBandsEvenly(2, levels)).toEqual({
-            weak: { min: 0, max: 0 },
-            developing: { min: 1, max: 1 },
-            proficient: { min: 1, max: 1 },
-            exemplary: { min: 2, max: 2 }
-        });
     });
 });
 
@@ -81,7 +82,7 @@ describe('resolveBand', () => {
 
     it('derives a band from the weight when none is authored', () => {
         const criterion = { id: 'organization', label: 'Organization', description: 'd', points: 30 };
-        expect(resolveBand(criterion, 'weak', levels)).toEqual({ min: 7, max: 7 });
+        expect(resolveBand(criterion, 'weak', levels)).toEqual({ min: 0, max: 7 });
     });
 
     it('returns undefined when the criterion is ordinal only', () => {

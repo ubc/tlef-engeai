@@ -57,17 +57,17 @@ describe('deriveSuggestedGrading', () => {
         expect(grading.totalMax).toBe(65);
     });
 
-    it('derives the award from the weight when the rubric authored none', () => {
-        // A cell holds one value, so a derived award is a single number and the suggested
-        // total reports as an exact figure rather than a span.
+    it('derives the band from the weight when the rubric authored none', () => {
+        // A cell awards an inclusive range, so a derived band is the level's contiguous
+        // slice of the weight and the suggested total reports as a span, not a figure.
         const ordinal = {
             ...rubric,
             criteria: [{ id: 'organization', label: 'Organization', description: 'd', points: 30 }]
         } as unknown as WritingRubricDefinition;
         const grading = deriveSuggestedGrading(run, ordinal);
-        expect(grading.criteria[0].min).toBe(22);
+        expect(grading.criteria[0].min).toBe(16);
         expect(grading.criteria[0].max).toBe(22);
-        expect(grading.totalMin).toBe(grading.totalMax);
+        expect(grading.totalMin).toBeLessThan(grading.totalMax);
     });
 
     it('omits a criterion the rubric no longer has, without failing', () => {

@@ -32,6 +32,13 @@ export type WritingLevelId = string;
 /** Staff-reviewed genre/register state used by SFL-founded feedback. */
 export type SflGenreProfileState = 'declared' | 'staff_confirmed' | 'custom' | 'composite' | 'needs_staff_input';
 
+/** Mirrors `CanvasRubricRefusal` in src/writing-feedback/contracts.ts. */
+export type CanvasRubricRefusal =
+    | 'no_rubric'
+    | 'too_few_ratings'
+    | 'too_many_criteria'
+    | 'too_many_levels';
+
 /** One staff-approved stage or move in the assignment profile. */
 export interface SflStage {
     id: string; // stable stage key inside the rubric version
@@ -111,6 +118,7 @@ export interface Assignment {
     id: string; // internal assignment key used in course-scoped routes
     title: string; // queue and review heading
     canvasAssignmentId?: string; // external key retained only for Canvas-linked intake/release
+    canvasRubricRefusal?: CanvasRubricRefusal; // why an imported Canvas rubric could not seed this grid
     rubricSource: 'internal_profile' | 'canvas'; // provenance label; import never implies approval
     instructions?: string; // instructor-approved assignment directions shown beside rubric setup
     gradeMapping?: Record<WritingLevelId, number>; // numeric release mapping derived from approved levels

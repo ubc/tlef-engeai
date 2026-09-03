@@ -179,6 +179,11 @@ export interface WritingAssignment {
     /** Immutable previously approved technical rubrics retained for audit. */
     technicalRubricHistory?: WritingRubricDefinition[];
     canvasAssignmentId?: string; // optional source reference for approved integration work
+    /**
+     * Set when this assignment was imported from Canvas but its Canvas rubric could
+     * not be represented as a grid, so the built-in profile seeded the draft instead.
+     */
+    canvasRubricRefusal?: CanvasRubricRefusal;
     /** Assignment description and metadata imported from Canvas; reference material only. */
     canvasDetails?: CanvasAssignmentDetails;
     /** Submission deadline shown to staff; sourced from Canvas or manual entry. */
@@ -278,6 +283,13 @@ export interface CanvasRubricRow {
  * `seedRubricForLens` makes the result an assignment's starting draft. There is no second
  * stored rubric to keep in step, and no editor for one.
  */
+/** Why a Canvas rubric could not become a grid. Staff-facing text lives in the page. */
+export type CanvasRubricRefusal =
+    | 'no_rubric'
+    | 'too_few_ratings'
+    | 'too_many_criteria'
+    | 'too_many_levels';
+
 export interface CanvasImportedRubric {
     /** Canvas rubric id when `rubric_settings` reports one. */
     canvasRubricId?: string;

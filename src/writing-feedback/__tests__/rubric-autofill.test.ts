@@ -84,8 +84,8 @@ describe('mergeAutofill', () => {
         // The proposal's own points (25) are ignored for banding; the row's locked
         // weight (15) is, matching what "Space points evenly" would compute.
         expect(merged.criteria[0].cells).toEqual({
-            weak: { min: 7, max: 7, descriptor: 'W' },
-            strong: { min: 15, max: 15, descriptor: 'S' }
+            weak: { min: 0, max: 7, descriptor: 'W' },
+            strong: { min: 8, max: 15, descriptor: 'S' }
         });
     });
 
@@ -140,8 +140,8 @@ describe('mergeAutofill', () => {
         };
         const merged = mergeAutofill(draft(existing), badProposal, autofillMergeRules('metafunctions_plain'));
         expect(merged.criteria[0].cells).toEqual({
-            weak: { min: 12, max: 12, descriptor: 'W' },
-            strong: { min: 25, max: 25, descriptor: 'S' }
+            weak: { min: 0, max: 12, descriptor: 'W' },
+            strong: { min: 13, max: 25, descriptor: 'S' }
         });
         expect(writingRubricDraftInputSchema.safeParse(merged).success).toBe(true);
     });
@@ -159,8 +159,8 @@ describe('mergeAutofill', () => {
         };
         const merged = mergeAutofill(draft(existing), wrongScaleProposal, autofillMergeRules('metafunctions_plain'));
         expect(merged.criteria[0].cells).toEqual({
-            weak: { min: 15, max: 15 },
-            strong: { min: 30, max: 30 }
+            weak: { min: 0, max: 15 },
+            strong: { min: 16, max: 30 }
         });
     });
 
@@ -176,8 +176,8 @@ describe('mergeAutofill', () => {
         };
         const merged = mergeAutofill(draft(existing), zeroedProposal, autofillMergeRules('metafunctions_lab'));
         expect(merged.criteria[0].cells).toEqual({
-            weak: { min: 15, max: 15 },
-            strong: { min: 30, max: 30 }
+            weak: { min: 0, max: 15 },
+            strong: { min: 16, max: 30 }
         });
     });
 
@@ -188,8 +188,8 @@ describe('mergeAutofill', () => {
         // derived award for 20 points across two levels is 10/20, so the model's
         // own numbers are overridden here too, exactly as for an existing row.
         expect(added?.cells).toEqual({
-            weak: { min: 10, max: 10, descriptor: 'W' },
-            strong: { min: 20, max: 20, descriptor: 'S' }
+            weak: { min: 0, max: 10, descriptor: 'W' },
+            strong: { min: 11, max: 20, descriptor: 'S' }
         });
     });
 });

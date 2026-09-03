@@ -1339,7 +1339,8 @@
 }
 
 .wf-rubric-library-select {
-    min-height: 40px;
+    /* The grid toolbar's one non-button control; 44px so it matches the buttons beside it. */
+    min-height: 44px;
     min-width: min(100%, 16rem);
     padding: 8px 12px;
     background: white;
@@ -1367,6 +1368,12 @@
 }
 
 /* Rubric grid — criteria as rows, performance levels as columns */
+
+.wf-grid-band-hint {
+    margin: 0 0 10px;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
 
 .wf-grid-scroll {
     /* Eight levels will not fit a narrow viewport; the table scrolls, the page does not. */
@@ -1397,14 +1404,16 @@
 
 .wf-grid th,
 .wf-grid td {
-    padding: 10px 12px;
+    padding: 12px 14px;
     text-align: left;
     vertical-align: top;
     border: 1px solid var(--border-color);
 }
 
+/* The band the step headers and the assignment cards use. The old green tint
+   appeared nowhere else on the page. */
 .wf-grid thead th {
-    background: color-mix(in srgb, var(--color-chbe-green) 12%, var(--chat-bg));
+    background: var(--background-2);
 }
 
 .wf-grid-corner,
@@ -1447,28 +1456,52 @@
 .wf-grid-label-input {
     flex: 1 1 auto;
     min-width: 0;
-    padding: 6px 8px;
-    background: white;
+    padding: 4px 6px;
+    background: transparent;
     color: var(--text-primary);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
+    border: 0;
+    border-radius: 4px;
     font: inherit;
     font-size: 14px;
     font-weight: 600;
 }
 
+.wf-grid-label-input:hover:not([readonly]) {
+    background: var(--hover-bg);
+}
+
+.wf-grid-label-input:focus-visible {
+    background: white;
+    outline: 2px solid var(--color-chbe-green);
+    outline-offset: 1px;
+}
+
 .wf-grid-text {
     display: block;
     width: 100%;
-    padding: 6px 8px;
-    background: white;
+    /* Two rows is the floor, not the ceiling: autoGrow sets an explicit height from
+       the content, and overflow must stay hidden or the box scrolls instead of grows. */
+    min-height: 3.4em;
+    padding: 4px 0;
+    background: transparent;
     color: var(--text-primary);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
+    border: 0;
+    border-radius: 4px;
     font: inherit;
     font-size: 13px;
-    line-height: 1.4;
-    resize: vertical;
+    line-height: 1.45;
+    overflow: hidden;
+    resize: none;
+}
+
+.wf-grid-text:hover:not([readonly]) {
+    background: var(--hover-bg);
+}
+
+.wf-grid-text:focus-visible {
+    background: white;
+    outline: 2px solid var(--color-chbe-green);
+    outline-offset: 1px;
 }
 
 .wf-grid-focus {
@@ -1478,17 +1511,31 @@
     font-style: italic;
 }
 
+/* Points read as a band, not as a field: the chip carries the range above the
+   descriptor it belongs to. */
 .wf-grid-band {
     width: 100%;
-    margin-bottom: 6px;
-    padding: 6px 8px;
-    background: white;
-    color: var(--text-primary);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
+    margin-bottom: 8px;
+    padding: 2px 8px;
+    background: var(--gingham-color);
+    color: var(--color-chbe-green);
+    border: 1px solid transparent;
+    border-radius: 4px;
     font: inherit;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.wf-grid-band:hover:not([readonly]),
+.wf-grid-band:focus-visible {
+    border-color: var(--color-chbe-green);
+}
+
+.wf-grid-band:focus-visible {
+    background: white;
+    outline: 2px solid var(--color-chbe-green);
+    outline-offset: 1px;
 }
 
 .wf-grid-cell .wf-grid-band {
@@ -1506,14 +1553,96 @@
 
 .wf-grid-weight-input {
     width: 100%;
-    padding: 6px 8px;
-    background: white;
+    padding: 4px 6px;
+    background: transparent;
     color: var(--text-primary);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
+    border: 0;
+    border-radius: 4px;
     font: inherit;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.wf-grid-weight-input:hover:not([readonly]) {
+    background: var(--hover-bg);
+}
+
+.wf-grid-weight-input:focus-visible {
+    background: white;
+    outline: 2px solid var(--color-chbe-green);
+    outline-offset: 1px;
+}
+
+/* The criterion and its weight stay put while the levels scroll, so the row you are
+   reading and the total it contributes to are never both off-screen. */
+.wf-grid-corner,
+.wf-grid-row-head {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: var(--chat-bg);
+    box-shadow: 1px 0 0 var(--border-color);
+}
+
+.wf-grid-corner {
+    background: var(--background-2);
+}
+
+.wf-grid-points-head,
+.wf-grid-weight {
+    position: sticky;
+    right: 0;
+    z-index: 2;
+    background: var(--chat-bg);
+    box-shadow: -1px 0 0 var(--border-color);
+}
+
+.wf-grid-points-head {
+    background: var(--background-2);
+}
+
+/* A sticky cell paints over its neighbour, so the focus ring inside one has to
+   outrank the cell beside it. */
+.wf-grid-row-head:focus-within,
+.wf-grid-weight:focus-within {
+    z-index: 3;
+}
+
+/* The grid owns its remove controls: quiet until reached for, red only on intent.
+   The danger variant paints its border red as well, so the border is quietened with
+   the colour -- otherwise every row still reads as a delete button at rest. */
+.wf-grid .wf-icon-button {
+    color: var(--text-secondary);
+    border-color: var(--border-color);
+}
+
+.wf-grid .wf-icon-button:hover,
+.wf-grid .wf-icon-button:focus-visible {
+    color: var(--color-eng-red);
+    border-color: var(--color-eng-red);
+}
+
+.wf-grid-tools__add {
+    display: inline-flex;
+}
+
+.wf-grid-tools__add .wf-button {
+    border-radius: 0;
+    margin-left: -1px;
+}
+
+.wf-grid-tools__add .wf-button:first-child {
+    border-radius: 6px 0 0 6px;
+    margin-left: 0;
+}
+
+.wf-grid-tools__add .wf-button:last-child {
+    border-radius: 0 6px 6px 0;
+}
+
+.wf-grid-tools__spacer {
+    flex: 1 1 auto;
 }
 
 .wf-grid-warnings:not(:empty) {
@@ -2579,7 +2708,17 @@ mark.wf-anchor.is-filtered-out,
 
     .wf-grid-corner {
         z-index: 3;
-        background: color-mix(in srgb, var(--color-chbe-green) 12%, var(--chat-bg));
+        background: var(--background-2);
+    }
+
+    /* Both columns cannot stay put on a narrow screen: a 12rem criterion column plus a
+       sticky weight column leaves no channel between them for the levels to scroll
+       through, so the level columns become unreachable. The criterion is the one worth
+       keeping, since it is what every cell in the row is about. */
+    .wf-grid-points-head,
+    .wf-grid-weight {
+        position: static;
+        box-shadow: none;
     }
 
     .wf-doc-paper {

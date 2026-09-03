@@ -43,7 +43,7 @@ import { isCourseStaff } from '../utils/course-staff';
 import { parseLens, selectRubric } from '../writing-feedback/rubric-lens';
 import { buildLabReportRubric } from '../writing-feedback/lab-report-profile';
 import { seedRubricForLens } from '../writing-feedback/rubric-seed';
-import { canvasRubricToSeedShape } from '../writing-feedback/canvas-rubric-mapping';
+import { mapCanvasRubric } from '../writing-feedback/canvas-rubric-mapping';
 import {
     autofillMergeRules,
     gridSourceFor,
@@ -337,7 +337,8 @@ router.post('/:courseId/writing-feedback/canvas/import', withCanvasClientWhenLin
         // first draft rather than sitting beside it. A rubric Canvas cannot express within the
         // grid contract maps to null, and the built-in profile seeds the draft instead.
         const context = await service.loadAssignmentContext(canvasAssignmentId);
-        const seedGrid = canvasRubricToSeedShape(context?.rubric) ?? undefined;
+        const mapping = mapCanvasRubric(context?.rubric);
+        const seedGrid = mapping.shape ?? undefined;
 
         // The assignment brief is what becomes the local assignment instructions, and the
         // two gateways carry it in different places: the demo gateway puts it on the summary,
@@ -357,7 +358,8 @@ router.post('/:courseId/writing-feedback/canvas/import', withCanvasClientWhenLin
             preview.assignment.title,
             importedInstructions,
             preview.assignment.dueAt ? new Date(preview.assignment.dueAt) : undefined,
-            seedGrid
+            seedGrid,
+            mapping.refusal
         );
 
         // The brief is stored whether or not the assignment is new: an instructor who edited it

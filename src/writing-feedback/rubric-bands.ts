@@ -19,17 +19,18 @@ import type {
 } from './contracts';
 
 /**
- * spaceBandsEvenly - divides a criterion's weight into one value per level.
+ * spaceBandsEvenly - divides a criterion's weight into a contiguous band per level.
  *
- * Each level earns its share of the weight rounded to a whole point, with the top level
- * earning the full weight so rounding never loses a point. A weight smaller than the
- * number of levels forces adjacent levels onto the same value — whole points cannot be
- * divided more finely than one apiece — which is not an error, but callers that render
- * these should warn staff when a weight cannot separate its levels.
+ * Each level takes a slice of the weight, the slices touch so every whole point from
+ * zero to the weight falls in exactly one band, and the top level's band ends on the
+ * weight so rounding never loses a point. A weight smaller than the number of levels
+ * cannot give each level its own slice — whole points cannot be divided more finely
+ * than one apiece — so adjacent levels share a band. That is a real state, not an
+ * error, but callers that render these should warn staff it has happened.
  *
  * @param points - Maximum points the criterion contributes
  * @param levels - Levels of the rubric, in any order; rank decides the sequence
- * @returns Points per level id, or an empty map when the criterion carries no weight
+ * @returns Bands per level id, or an empty map when the criterion carries no weight
  */
 export function spaceBandsEvenly(
     points: number,
@@ -39,15 +40,20 @@ export function spaceBandsEvenly(
 
     const ordered = [...levels].sort((left, right) => left.rank - right.rank);
     const bands: Record<WritingLevelId, WritingRubricCell> = {};
+    let previousTop = -1;
 
     ordered.forEach((level, index) => {
-        // Each level earns its share of the weight; the top level earns all of it, so
-        // rounding never loses a point. `min` and `max` are equal because a cell holds a
-        // single award, not a range — the pair is kept only so stored rubrics keep their shape.
-        const award = index === ordered.length - 1
+        // The top level ends on the weight exactly; the rest take their proportional
+        // share rounded down, which is what makes the slices whole points.
+        const top = index === ordered.length - 1
             ? points
             : Math.floor((points * (index + 1)) / ordered.length);
-        bands[level.id] = { min: award, max: award };
+        // Where the weight is too small to advance, the band collapses onto its
+        // neighbour's value rather than starting above where it ends -- which the
+        // draft schema rejects outright.
+        const min = Math.min(previousTop + 1, top);
+        bands[level.id] = { min, max: top };
+        previousTop = top;
     });
 
     return bands;

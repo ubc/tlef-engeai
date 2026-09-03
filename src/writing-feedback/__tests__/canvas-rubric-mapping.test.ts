@@ -11,7 +11,7 @@
  * @description: Regression coverage for Canvas-rubric-to-grid mapping.
  */
 
-import { CANVAS_IMPORT_PLACEHOLDERS, canvasRubricToSeedShape } from '../canvas-rubric-mapping';
+import { CANVAS_IMPORT_PLACEHOLDERS, canvasRubricToSeedShape, mapCanvasRubric } from '../canvas-rubric-mapping';
 import { writingRubricDraftInputSchema } from '../rubric-schema';
 import { buildDefaultWritingRubric } from '../default-rubric-profile';
 import { seedRubricForLens } from '../rubric-seed';
@@ -175,5 +175,49 @@ describe('seeding a draft from a Canvas rubric', () => {
         const seeded = seedRubricForLens({ lens: 'linguistic', actorUserId: 'user-1', canvasRubric: shape });
         expect(seeded.status).toBe('draft');
         expect(seeded.approvedAt).toBeUndefined();
+    });
+});
+
+/** A rubric of the given shape: `rows` criteria, each carrying `cols` ratings. */
+function rubricWith(rows: number, cols: number): CanvasImportedRubric {
+    const ratings: Array<[string, number]> = Array.from(
+        { length: cols },
+        (_, index) => [`Rating ${index + 1}`, index + 1] as [string, number]
+    );
+    return rubric(Array.from({ length: rows }, (_, index) => row(`Criterion ${index + 1}`, ratings, 10)));
+}
+
+describe('mapCanvasRubric reports why it refused', () => {
+    it('names a rubric whose criteria offer only one rating', () => {
+        const result = mapCanvasRubric(rubricWith(2, 1));
+        expect(result.shape).toBeNull();
+        expect(result.refusal).toBe('too_few_ratings');
+    });
+
+    it('names a rubric with more criteria than the grid allows', () => {
+        const result = mapCanvasRubric(rubricWith(11, 4));
+        expect(result.shape).toBeNull();
+        expect(result.refusal).toBe('too_many_criteria');
+    });
+
+    it('names a rubric with more ratings than the grid allows', () => {
+        const result = mapCanvasRubric(rubricWith(2, 9));
+        expect(result.shape).toBeNull();
+        expect(result.refusal).toBe('too_many_levels');
+    });
+
+    it('names an absent rubric', () => {
+        expect(mapCanvasRubric(undefined).refusal).toBe('no_rubric');
+    });
+
+    it('reports no refusal when the rubric maps', () => {
+        const result = mapCanvasRubric(rubricWith(3, 4));
+        expect(result.shape).not.toBeNull();
+        expect(result.refusal).toBeUndefined();
+    });
+
+    it('leaves canvasRubricToSeedShape behaving exactly as before', () => {
+        expect(canvasRubricToSeedShape(rubricWith(2, 1))).toBeNull();
+        expect(canvasRubricToSeedShape(rubricWith(3, 4))).not.toBeNull();
     });
 });

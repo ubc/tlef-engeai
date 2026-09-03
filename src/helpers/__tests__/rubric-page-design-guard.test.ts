@@ -63,6 +63,11 @@ describe('rubric page copy', () => {
         expect(source.match(/createButton\('Save for now'/g) ?? []).toHaveLength(1);
         expect(source.match(/createButton\('Approve rubric'/g) ?? []).toHaveLength(1);
     });
+
+    it('calls a criterion a criterion', () => {
+        expect(read(GRID_TS)).not.toContain('What you mark');
+        expect(read(GRID_TS)).not.toContain('Add a suggested row');
+    });
 });
 
 describe('rubric page styles', () => {
@@ -95,6 +100,16 @@ describe('rubric page styles', () => {
         expect(css).not.toContain('wf-sfl-box');
         expect(css).not.toContain('wf-sfl-group-label');
         expect(css).not.toContain('wf-sfl-hint');
+    });
+
+    it('drops the green header tint the rest of the page never uses', () => {
+        const gridRules = css.slice(css.indexOf('.wf-grid {'), css.indexOf('.wf-grid-warnings'));
+        expect(gridRules).not.toContain('color-mix(in srgb, var(--color-chbe-green) 12%');
+    });
+
+    it('lets a grid descriptor grow instead of clipping', () => {
+        expect(css).not.toMatch(/\.wf-grid-text\s*{[^}]*resize:\s*vertical/);
+        expect(css).toMatch(/\.wf-grid-text\s*{[^}]*overflow:\s*hidden/);
     });
 
     it('introduces no hex literal in the rules it added', () => {
