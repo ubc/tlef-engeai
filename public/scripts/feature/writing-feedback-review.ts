@@ -16,7 +16,7 @@
  * @description: Coordinates transcript verification, review revisions, PDF downloads, approval, and release.
  */
 
-import { showConfirmModal } from '../ui/modal-overlay.js';
+import { showConfirmModal, showErrorModal, showViewerModal } from '../ui/modal-overlay.js';
 import { showErrorToast, showSuccessToast } from '../ui/toast-notification.js';
 import {
     AnchoredComment,
@@ -672,6 +672,7 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
     annotationsBody.className = 'wf-panel-body';
     annotationsBody.id = 'wf-tab-panel-annotations';
     annotationsBody.setAttribute('role', 'tabpanel');
+    annotationsBody.hidden = Boolean(detail.technicalFeedbackRun);
     const summaryBody = document.createElement('div');
     summaryBody.className = 'wf-panel-body';
     summaryBody.id = 'wf-tab-panel-summary';
@@ -681,13 +682,24 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
     technicalBody.className = 'wf-panel-body';
     technicalBody.id = 'wf-tab-panel-technical';
     technicalBody.setAttribute('role', 'tabpanel');
-    technicalBody.hidden = true;
+    // Visibility is set by selectTab against tab order, so neither panel hard-codes it.
+    technicalBody.hidden = Boolean(detail.technicalFeedbackRun) === false;
 
-    const tabs: Array<{ id: string; label: string; panel: HTMLElement }> = [
-        { id: 'annotations', label: 'Annotations', panel: annotationsBody },
-        { id: 'summary', label: 'Summary', panel: summaryBody },
-        // The technical tab only exists for a lab report whose technical lens has run.
-        ...(detail.technicalFeedbackRun ? [{ id: 'technical', label: 'Technical', panel: technicalBody }] : [])
+    // renderAnnotations replaces its list host wholesale, so each annotating tab keeps a
+    // dedicated container: the technical panel's read-only draft sits above its own.
+    const annotationsListHost = document.createElement('div');
+    const technicalListHost = document.createElement('div');
+
+    // The technical tab only exists for a lab report whose technical lens has run, and when it
+    // does it leads: the technical rubric is what a lab report is graded on, so its annotations
+    // are what a reviewer works through first.
+    const technicalTab = detail.technicalFeedbackRun
+        ? [{ id: 'technical', label: 'Technical', panel: technicalBody, lens: 'technical' as const, listHost: technicalListHost }]
+        : [];
+    const tabs: Array<{ id: string; label: string; panel: HTMLElement; lens?: WritingFeedbackLens; listHost?: HTMLElement }> = [
+        ...technicalTab,
+        { id: 'annotations', label: assignment?.isLabReport ? 'Writing' : 'Annotations', panel: annotationsBody, lens: 'linguistic' as const, listHost: annotationsListHost },
+        { id: 'summary', label: 'Summary', panel: summaryBody }
     ];
     const buttons: HTMLButtonElement[] = [];
     const selectTab = (selected: number) => {
@@ -698,6 +710,10 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
             buttons[index].setAttribute('aria-selected', String(index === selected));
             buttons[index].tabIndex = index === selected ? 0 : -1;
         });
+        // Both lenses annotate the same document pane, and rendering one replaces its
+        // children. So the pane follows the visible tab rather than being built once.
+        const { lens, listHost } = tabs[selected];
+        if (lens && listHost) renderLensAnnotations(lens, listHost);
     };
     tabs.forEach((tab, index) => {
         const button = document.createElement('button');
@@ -724,20 +740,24 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
 
     const markDirty = () => { state.reviewDirty = true; };
 
-    // Annotations tab — anchored comments over the document pane.
+    // Anchored comments over the shared document pane, for whichever lens is on screen.
     const docPaper = () => document.getElementById('wf-doc-paper');
-    // Defer annotation setup until the document and feedback hosts share the DOM;
+    const renderLensAnnotations = (lens: WritingFeedbackLens, listHost: HTMLElement) => {
+        const paper = docPaper();
+        if (!paper) return;
+        renderAnnotations({
+            docHost: paper,
+            listHost,
+            verifiedText: submission.verifiedText ?? submission.originalText,
+            lens,
+            markDirty
+        });
+    };
+    // Defer the first render until the document and feedback hosts share the DOM;
     // selection geometry and focus-linked markers depend on both being connected.
     queueMicrotask(() => {
-        const paper = docPaper();
-        if (paper) {
-            renderAnnotations({
-                docHost: paper,
-                listHost: annotationsBody,
-                verifiedText: submission.verifiedText ?? submission.originalText,
-                markDirty
-            });
-        }
+        const first = tabs[0];
+        if (first.lens && first.listHost) renderLensAnnotations(first.lens, first.listHost);
     });
 
     // Summary tab.
@@ -746,12 +766,13 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
     const studentFeedback = summaryContent.studentFeedback;
     const internalNote = summaryContent.internalNote;
 
+    annotationsBody.append(annotationsListHost);
     panel.append(annotationsBody, summaryBody);
 
-    // Technical tab — read-only technical (lab-report) draft. Approval and
-    // release remain whole-submission actions on the Summary tab.
+    // Technical tab — the read-only technical draft, then the technical rubric's own
+    // annotations. Approval and release remain whole-submission actions on the Summary tab.
     if (detail.technicalFeedbackRun) {
-        technicalBody.append(...renderTechnicalTab(detail.technicalFeedbackRun, assignment));
+        technicalBody.append(...renderTechnicalTab(detail.technicalFeedbackRun, assignment), technicalListHost);
         panel.append(technicalBody);
     }
 
@@ -791,34 +812,55 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
     const downloadMenu = document.createElement('div');
     downloadMenu.className = 'wf-download-menu';
     const pdfBase = `${baseUrl()}/submissions/${encodeURIComponent(submission.id)}/feedback.pdf`;
-    const createDownloadLink = (label: string, title: string, href: string): HTMLAnchorElement => {
-        const link = document.createElement('a');
-        link.className = 'wf-button wf-button--quiet';
-        link.textContent = label;
-        link.title = title;
-        link.href = href;
-        return link;
+
+    /**
+     * Opens one PDF mode in a viewer rather than downloading it.
+     *
+     * The route serves `inline`, so the frame renders the document in place. A failed render
+     * returns a JSON error body, which an iframe would show as a blank page or a wall of raw
+     * JSON — so the response is fetched first and its error surfaced as a sentence.
+     */
+    const openPdf = async (label: string, query: string): Promise<void> => {
+        const url = `${pdfBase}${query}`;
+        let objectUrl: string | null = null;
+        try {
+            const response = await fetch(url, { credentials: 'same-origin' });
+            if (!response.ok) {
+                const problem = await response.json().catch(() => null);
+                await showErrorModal('Could not open the PDF',
+                    problem?.error ?? 'The feedback PDF could not be generated.');
+                return;
+            }
+            objectUrl = URL.createObjectURL(await response.blob());
+            const frame = document.createElement('iframe');
+            frame.className = 'wf-pdf-frame';
+            frame.title = `${label} preview`;
+            frame.src = objectUrl;
+            await showViewerModal(label, frame, `${url}${query ? '&' : '?'}download=1`);
+        } finally {
+            // Revoked after the modal closes; the frame has already parsed the document.
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
+        }
     };
+
+    const viewerButton = (label: string, title: string, query: string): HTMLButtonElement => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'wf-button wf-button--quiet';
+        button.textContent = label;
+        button.title = title;
+        button.addEventListener('click', () => { void openPdf(label, query); });
+        return button;
+    };
+
     // The include query is the public PDF mode contract: summary-only is the
     // default, annotated includes hover comments, and both combines the outputs.
     downloadMenu.append(
-        createDownloadLink('PDF', 'Download student PDF (summary feedback)', pdfBase),
-        createDownloadLink(
-            'Annotated PDF',
-            'Download the student text with highlighted comments (hover to read)',
-            `${pdfBase}?include=annotated`
-        ),
-        createDownloadLink(
-            'Complete PDF',
-            'Download summary feedback plus the annotated student text',
-            `${pdfBase}?include=both`
-        ),
+        viewerButton('PDF', 'Open the student PDF (summary feedback)', ''),
+        viewerButton('Annotated PDF', 'Open the student text with highlighted comments', '?include=annotated'),
+        viewerButton('Complete PDF', 'Open summary feedback plus the annotated student text', '?include=both'),
         ...(detail.technicalFeedbackRun
-            ? [createDownloadLink(
-                'Technical PDF',
-                'Download the separate technical lab-report feedback',
-                `${pdfBase}?lens=technical`
-            )]
+            ? [viewerButton('Technical PDF', 'Open the technical lab-report feedback on its own', '?lens=technical')]
             : [])
     );
     footer.append(downloadMenu);
@@ -948,8 +990,14 @@ function renderSummaryTab(
 
     const rubric = rubricForRun(assignment, feedbackRun);
     const revision = latestReview(submission);
-    const gradingEditor = hasSuggestedGrading(rubric)
-        ? renderSuggestedGrading(feedbackRun, rubric, revision?.finalAssessment, markDirty)
+    // A lab report is graded on its technical rubric, so the grade column and the model
+    // suggestions beside it come from the technical run rather than the writing one. The
+    // criterion feedback below still reads the writing rubric, which is what it describes.
+    const gradedLens: WritingFeedbackLens = assignment?.isLabReport ? 'technical' : 'linguistic';
+    const gradedRun = gradedLens === 'technical' ? detail.technicalFeedbackRun : feedbackRun;
+    const gradedRubric = gradedRun ? rubricForRun(assignment, gradedRun, gradedLens) : undefined;
+    const gradingEditor = gradedRun && hasSuggestedGrading(gradedRubric)
+        ? renderSuggestedGrading(gradedRun, gradedRubric, revision?.finalAssessment, markDirty)
         : null;
     if (gradingEditor) children.push(gradingEditor.element);
     const rubricSection = document.createElement('section');

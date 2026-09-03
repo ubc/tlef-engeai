@@ -2745,3 +2745,30 @@ mark.wf-anchor.is-filtered-out,
     }
 
     }
+
+/*
+ * Lens badge on an annotation card. A lab report is annotated against two rubrics over one
+ * document, so a card says which rubric it answers to rather than relying on which tab the
+ * reviewer believes they are in.
+ */
+.wf-annotation-lens {
+    font-size: 0.75rem;
+    padding: 0.125rem 0.5rem;
+    border-radius: 999px;
+    background: var(--background-2);
+    color: var(--text-2);
+}
+
+/*
+ * Feedback PDF preview. The route serves the document inline, so the frame renders it in
+ * place; the height is viewport-relative because a rubric grid on a landscape page is what
+ * a reviewer most needs to see whole.
+ */
+.wf-pdf-frame {
+    display: block;
+    width: 100%;
+    height: min(75vh, 900px);
+    border: 1px solid var(--border-1, #c9d4c9);
+    border-radius: 6px;
+    background: var(--background-2);
+}

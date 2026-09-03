@@ -26,6 +26,7 @@ const verifiedText = 'First sample sentence. Second sample sentence. First sampl
 function comment(overrides: Partial<AnchoredComment> = {}): AnchoredComment {
     return {
         id: 'comment-1',
+        lens: 'linguistic',
         quote: 'First sample sentence.',
         startOffset: 0,
         endOffset: 22,
@@ -244,5 +245,24 @@ describe('withStaleFlags', () => {
         expect(flagged[0].priority).toBe('medium');
         expect(flagged[1].priority).toBe('low');
         expect(flagged[1].stale).toBe(true);
+    });
+});
+
+describe('anchored comment lens', () => {
+    it('reads a stored comment with no lens as linguistic', () => {
+        const { lens, ...withoutLens } = comment();
+        const parsed = anchoredCommentInputSchema.safeParse(withoutLens);
+        expect(parsed.success).toBe(true);
+        expect(parsed.success && parsed.data.lens).toBe('linguistic');
+    });
+
+    it('keeps an explicit technical lens', () => {
+        const parsed = anchoredCommentInputSchema.safeParse({ ...comment(), lens: 'technical' });
+        expect(parsed.success && parsed.data.lens).toBe('technical');
+    });
+
+    it('rejects a lens that is neither', () => {
+        const parsed = anchoredCommentInputSchema.safeParse({ ...comment(), lens: 'rhetorical' });
+        expect(parsed.success).toBe(false);
     });
 });

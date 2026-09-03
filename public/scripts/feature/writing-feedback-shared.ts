@@ -39,6 +39,19 @@ export type CanvasRubricRefusal =
     | 'too_many_criteria'
     | 'too_many_levels';
 
+/**
+ * Mirrors `CanvasRubricIdMap` in src/writing-feedback/canvas-rubric-mapping.ts.
+ *
+ * The browser never builds one — it is written at import and read only by the release path —
+ * but the assignment carries it, so the type has to exist on this side of the mirror.
+ */
+export interface CanvasRubricIdMap {
+    [ourCriterionId: string]: {
+        criterionId: string; // Canvas criterion id, e.g. "_1234"
+        ratingIds: Record<string, string>; // our level id -> Canvas rating id
+    };
+}
+
 /** One staff-approved stage or move in the assignment profile. */
 export interface SflStage {
     id: string; // stable stage key inside the rubric version
@@ -119,7 +132,11 @@ export interface Assignment {
     title: string; // queue and review heading
     canvasAssignmentId?: string; // external key retained only for Canvas-linked intake/release
     canvasRubricRefusal?: CanvasRubricRefusal; // why an imported Canvas rubric could not seed this grid
-    rubricSource: 'internal_profile' | 'canvas'; // provenance label; import never implies approval
+    rubricSource: 'internal_profile' | 'canvas'; // provenance label for the WRITING lens; import never implies approval
+    /** Where the technical grid came from. Split per lens so a Canvas technical rubric does not silence writing auto-fill. */
+    technicalRubricSource?: 'canvas' | 'builtin';
+    /** The Canvas rubric as imported, kept unrouted until the lab-report flag decides which lens owns it. */
+    canvasRubricImport?: { ids: CanvasRubricIdMap; importedAt: string | Date };
     instructions?: string; // instructor-approved assignment directions shown beside rubric setup
     gradeMapping?: Record<WritingLevelId, number>; // legacy mapping derived from approved level points
     rubric: RubricDefinition; // current rubric; new assignments begin with a draft
@@ -214,7 +231,9 @@ export type WfPriority = 'high' | 'medium' | 'low';
 /** Exact verified-text annotation stored in model seeds and staff revision snapshots. */
 export interface AnchoredComment {
     id: string; // stable identity used to diff comments across review revisions
-    criterion?: WritingCriterionId; // optional rubric link retained from a model seed
+    /** Which rubric this comment is about. Server defaults an absent value to 'linguistic'. */
+    lens: WritingFeedbackLens;
+    criterion?: WritingCriterionId; // optional rubric link, resolved against this comment's lens
     quote: string; // exact substring copied from the verified submission text
     startOffset: number; // inclusive UTF-16 offset into the verified text snapshot
     endOffset: number; // exclusive UTF-16 offset paired with the exact quote
@@ -275,6 +294,8 @@ export interface StaffCriterionAssessment {
 
 /** Complete staff-final grade saved with an append-only review revision. */
 export interface StaffFinalAssessment {
+    /** Which rubric the grade was awarded against; a lab report is graded on its technical one. */
+    lens?: WritingFeedbackLens;
     rubricVersion: number;
     criteria: StaffCriterionAssessment[];
     totalPoints: number;

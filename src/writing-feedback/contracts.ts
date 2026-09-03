@@ -184,6 +184,30 @@ export interface WritingAssignment {
      * not be represented as a grid, so the built-in profile seeded the draft instead.
      */
     canvasRubricRefusal?: CanvasRubricRefusal;
+    /**
+     * The Canvas rubric exactly as imported, held independently of which lens uses it.
+     *
+     * Kept whole because lens routing cannot happen at import time: `isLabReport` is set by a
+     * later PATCH, so the import does not yet know whether this rubric belongs to the technical
+     * lens. Written at creation only and never re-stamped — the rule `canvasRubricRefusal`
+     * follows, and for the same reason: re-stamping onto a grid staff have since edited would
+     * be wrong.
+     *
+     * `ids` is what makes a Canvas rubric writable. Our criterion ids are derived from criterion
+     * names, so nothing else can address Canvas's own `_1234`-style ids on release.
+     */
+    canvasRubricImport?: {
+        shape: ImportedRubricShape;
+        ids: CanvasRubricIdMap;
+        importedAt: Date;
+    };
+    /**
+     * Where the technical grid came from. `rubricSource` describes the writing lens only.
+     *
+     * Split per lens so a Canvas-seeded technical rubric does not make the writing lens report
+     * `canvas` and lose the metafunctions auto-fill that a lab report's writing lens needs.
+     */
+    technicalRubricSource?: 'canvas' | 'builtin';
     /** Assignment description and metadata imported from Canvas; reference material only. */
     canvasDetails?: CanvasAssignmentDetails;
     /** Submission deadline shown to staff; sourced from Canvas or manual entry. */
@@ -289,6 +313,38 @@ export type CanvasRubricRefusal =
     | 'too_few_ratings'
     | 'too_many_criteria'
     | 'too_many_levels';
+
+/**
+ * Rubric structure lifted from an imported LMS assignment, before it becomes a draft.
+ *
+ * Defined here rather than beside `seedRubricForLens` because {@link WritingAssignment}
+ * stores one, and this module deliberately imports nothing from the Writing Feedback
+ * modules that import it. `rubric-seed.ts` re-exports it, so every existing import resolves.
+ */
+export interface ImportedRubricShape {
+    criteria: WritingRubricCriterion[];
+    levels: WritingRubricLevel[];
+}
+
+/**
+ * Canvas's own ids for one imported rubric, keyed by the ids the mapper derived.
+ *
+ * The mapper builds our ids from each criterion's visible name, because a Canvas id such as
+ * `_1234` cannot satisfy the grid schema's id pattern. Writing a staff assessment back into
+ * the Canvas rubric needs the id that would otherwise be discarded, so it is kept beside the
+ * grid rather than adopted as ours — every stored feedback run, evidence record and PDF
+ * references our criterion id, and changing its format would mean migrating all of them.
+ *
+ * Lives here for the same reason {@link CanvasRubricRefusal} does: `canvas-rubric-mapping.ts`
+ * imports this module, so the type it needs on {@link WritingAssignment} cannot live there.
+ * That module re-exports it.
+ */
+export interface CanvasRubricIdMap {
+    [ourCriterionId: string]: {
+        criterionId: string; // Canvas criterion id, e.g. "_1234"
+        ratingIds: Record<string, string>; // our level id -> Canvas rating id
+    };
+}
 
 export interface CanvasImportedRubric {
     /** Canvas rubric id when `rubric_settings` reports one. */
@@ -470,10 +526,16 @@ export interface WritingFeedbackRun {
 /** Staff/model comment anchored to an exact UTF-16 span of verified submission text. */
 export interface AnchoredComment {
     id: string; // stable client/revision identity
-    // Optional rubric association for filtering. Carries no lens marker today —
-    // only linguistic comments and model seeds exist, and the Technical tab is
-    // read-only. Technical annotations will need an explicit lens field before
-    // anchored comments can distinguish linguistic vs. technical criteria.
+    /**
+     * Which rubric this comment is about.
+     *
+     * Absent on every comment stored before lab-report annotation existed, which are all
+     * linguistic; the validator supplies that default, so no migration runs. `criterion`
+     * is read against this lens's rubric, which is what lets the two lenses use criterion
+     * ids independently.
+     */
+    lens: WritingFeedbackLens;
+    /** Optional rubric association for filtering, resolved against this comment's lens. */
     criterion?: WritingCriterionId;
     /** Exact substring of the verified text; validation checksum for the offsets. */
     quote: string;
@@ -528,6 +590,12 @@ export interface StaffCriterionAssessment {
 
 /** Complete, staff-authored numeric assessment saved with a review revision. */
 export interface StaffFinalAssessment {
+    /**
+     * Which rubric this grade was awarded against. A lab report is graded on its technical
+     * rubric, so a reader cannot assume the writing one. Absent on assessments stored before
+     * two-lens grading, which are all linguistic.
+     */
+    lens?: WritingFeedbackLens;
     rubricVersion: number; // rubric version whose criteria and weights were graded
     criteria: StaffCriterionAssessment[]; // exactly one score per weighted criterion
     totalPoints: number; // server-computed sum of awarded points

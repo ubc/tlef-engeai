@@ -696,6 +696,42 @@ export async function showErrorModal(
 }
 
 /**
+ * showViewerModal - shows a document preview with an explicit download action
+ *
+ * Used for feedback PDFs. The route serves them `inline`, so the supplied frame renders the
+ * document in place rather than pushing a file at the reviewer, and Download stays available
+ * as a deliberate choice rather than the only option.
+ *
+ * @param title - Name of the document being previewed
+ * @param frame - Prepared preview element, already pointed at the document
+ * @param downloadUrl - Href for the explicit download action
+ * @returns Modal result once the reviewer closes the preview
+ */
+export async function showViewerModal(
+    title: string,
+    frame: HTMLElement,
+    downloadUrl: string
+): Promise<ModalResult> {
+    const modal = getModal();
+    return modal.show({
+        type: 'info',
+        title,
+        content: frame,
+        maxWidth: 'min(1100px, 95vw)',
+        customClass: 'modal--viewer',
+        buttons: [
+            {
+                text: 'Download',
+                type: 'secondary',
+                closeOnClick: false,
+                action: () => { window.open(downloadUrl, '_blank', 'noopener'); }
+            },
+            { text: 'Close', type: 'primary', closeOnClick: true }
+        ]
+    });
+}
+
+/**
  * Shows a warning modal
  * 
  * @param title - Modal title
@@ -1992,6 +2028,7 @@ export async function showInactivityWarningModal(
 export default {
     ModalOverlay,
     showErrorModal,
+    showViewerModal,
     showWarningModal,
     showSuccessModal,
     showInfoModal,

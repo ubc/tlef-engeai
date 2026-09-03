@@ -8,7 +8,8 @@
  */
 
 import type { ImportedRubricShape } from '../writing-feedback/rubric-seed';
-import type { CanvasRubricRefusal } from '../writing-feedback/contracts';
+import type { CanvasRubricIdMap, CanvasRubricRefusal } from '../writing-feedback/contracts';
+import type { LabReportRouting } from '../writing-feedback/rubric-seed';
 import { MongoClient, Db } from 'mongodb';
 import * as dotenv from 'dotenv';
 import {
@@ -232,6 +233,7 @@ export class EngEAI_MongoDB {
      * @param dueAt - Optional imported deadline
      * @param canvasRubric - Canvas rubric grid seeding the draft, when one could be mapped
      * @param canvasRubricRefusal - Why the Canvas rubric could not seed the draft, when it could not
+     * @param canvasRubricIds - Canvas criterion and rating ids for the mapped grid, retained for release write-back
      * @returns Newly created or concurrently existing assignment
      */
     public createCanvasWritingAssignment = async (
@@ -241,7 +243,8 @@ export class EngEAI_MongoDB {
         instructions?: string,
         dueAt?: Date,
         canvasRubric?: ImportedRubricShape,
-        canvasRubricRefusal?: CanvasRubricRefusal
+        canvasRubricRefusal?: CanvasRubricRefusal,
+        canvasRubricIds?: CanvasRubricIdMap
     ) => WritingFeedbackMongo.createCanvasWritingAssignment(
         this.ctx(),
         courseId,
@@ -250,7 +253,8 @@ export class EngEAI_MongoDB {
         instructions,
         dueAt,
         canvasRubric,
-        canvasRubricRefusal
+        canvasRubricRefusal,
+        canvasRubricIds
     );
 
     /**
@@ -310,6 +314,22 @@ export class EngEAI_MongoDB {
         draft: WritingRubricDefinition,
         lens?: WritingFeedbackLens
     ) => WritingFeedbackMongo.saveWritingRubricDraft(this.ctx(), courseId, assignmentId, draft, lens);
+
+    /**
+     * applyLabReportRubricRouting — moves an imported Canvas grid onto the technical lens.
+     *
+     * @param courseId - Owning course id
+     * @param assignmentId - Assignment being marked as a lab report
+     * @param routing - Drafts and provenance from `routeRubricsForLabReport`
+     * @param resetWriting - Whether the writing lens returns to the metafunctions
+     * @returns Updated assignment, or `null` when the scoped assignment is absent
+     */
+    public applyLabReportRubricRouting = async (
+        courseId: string,
+        assignmentId: string,
+        routing: LabReportRouting,
+        resetWriting: boolean
+    ) => WritingFeedbackMongo.applyLabReportRubricRouting(this.ctx(), courseId, assignmentId, routing, resetWriting);
 
     /**
      * discardWritingRubricDraft — removes only the editable rubric draft.

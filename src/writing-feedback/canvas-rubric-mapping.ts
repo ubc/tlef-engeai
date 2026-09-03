@@ -24,6 +24,7 @@
 
 import type {
     CanvasImportedRubric,
+    CanvasRubricIdMap,
     CanvasRubricRefusal,
     CanvasRubricRating,
     CanvasRubricRow,
@@ -33,7 +34,7 @@ import type {
 } from './contracts';
 import type { ImportedRubricShape } from './rubric-seed';
 
-export type { CanvasRubricRefusal };
+export type { CanvasRubricIdMap, CanvasRubricRefusal };
 
 /** Grid limits from `writingRubricDraftInputSchema`; a rubric outside them cannot be seeded. */
 const MIN_LEVELS = 2;
@@ -117,6 +118,8 @@ function weakestFirst(ratings: CanvasRubricRating[]): CanvasRubricRating[] {
 /** A mapped grid, or the reason there is not one. */
 export interface CanvasRubricMapping {
     shape: ImportedRubricShape | null;
+    /** Canvas's own ids for the mapped grid. Present exactly when `shape` is. */
+    ids?: CanvasRubricIdMap;
     refusal?: CanvasRubricRefusal;
 }
 
@@ -140,7 +143,8 @@ export function mapCanvasRubric(rubric: CanvasImportedRubric | null | undefined)
     if (columnCount < MIN_LEVELS) return { shape: null, refusal: 'too_few_ratings' };
     if (columnCount > MAX_LEVELS) return { shape: null, refusal: 'too_many_levels' };
 
-    return { shape: buildShape(rows, widest) };
+    const shape = buildShape(rows, widest);
+    return { shape, ids: buildIdMap(rows, shape) };
 }
 
 /**
@@ -153,6 +157,32 @@ export function mapCanvasRubric(rubric: CanvasImportedRubric | null | undefined)
  */
 export function canvasRubricToSeedShape(rubric: CanvasImportedRubric | null | undefined): ImportedRubricShape | null {
     return mapCanvasRubric(rubric).shape;
+}
+
+/**
+ * buildIdMap — Canvas's ids for a grid that has already been built.
+ *
+ * Walks the same rows in the same order `buildShape` did, so `rows[i]` and `criteria[i]`
+ * are the same criterion, and reuses `weakestFirst` so a level id and a rating id always
+ * describe the same column — the alignment {@link buildCells} depends on.
+ *
+ * @param rows - The rows the grid was built from, in their original order
+ * @param shape - The grid those rows produced
+ * @returns Canvas criterion and rating ids keyed by the derived grid ids
+ */
+function buildIdMap(rows: CanvasRubricRow[], shape: ImportedRubricShape): CanvasRubricIdMap {
+    const map: CanvasRubricIdMap = {};
+    rows.forEach((row, rowIndex) => {
+        const criterion = shape.criteria[rowIndex];
+        if (!criterion) return;
+        const ratingIds: Record<string, string> = {};
+        weakestFirst(row.ratings).forEach((rating, index) => {
+            const level = shape.levels[index];
+            if (level) ratingIds[level.id] = rating.canvasRatingId;
+        });
+        map[criterion.id] = { criterionId: row.canvasCriterionId, ratingIds };
+    });
+    return map;
 }
 
 /**

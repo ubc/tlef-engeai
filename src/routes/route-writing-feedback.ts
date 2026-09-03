@@ -45,8 +45,7 @@ import { requireCompleteSflProfile } from '../writing-feedback/sfl-analysis';
 import { listCriterionLibrary } from '../writing-feedback/criterion-library';
 import { isCourseStaff } from '../utils/course-staff';
 import { parseLens, selectRubric } from '../writing-feedback/rubric-lens';
-import { buildLabReportRubric } from '../writing-feedback/lab-report-profile';
-import { seedRubricForLens } from '../writing-feedback/rubric-seed';
+import { routeRubricsForLabReport, seedRubricForLens } from '../writing-feedback/rubric-seed';
 import { mapCanvasRubric } from '../writing-feedback/canvas-rubric-mapping';
 import {
     autofillMergeRules,
@@ -369,7 +368,8 @@ router.post('/:courseId/writing-feedback/canvas/import', withCanvasClientWhenLin
             importedInstructions,
             preview.assignment.dueAt ? new Date(preview.assignment.dueAt) : undefined,
             seedGrid,
-            mapping.refusal
+            mapping.refusal,
+            mapping.ids
         );
 
         // The brief is stored whether or not the assignment is new: an instructor who edited it
@@ -630,6 +630,30 @@ router.patch(
         const assignment = await mongo.getWritingAssignment(courseId(req), assignmentId);
         if (!assignment) return res.status(404).json({ success: false, error: 'Writing assignment not found' });
 
+        // Marking an assignment a lab report moves an imported Canvas grid onto the technical
+        // lens and returns the writing lens to the metafunctions, which discards whatever the
+        // Canvas grid had become. Refused once that grid is approved or has produced feedback,
+        // mirroring the protection the un-marking branch gives the technical lens.
+        const willResetWriting = isLabReport
+            && assignment.rubricSource === 'canvas'
+            && !assignment.technicalRubric
+            && !assignment.technicalRubricDraft;
+        if (willResetWriting) {
+            if (assignment.rubric.status === 'approved') {
+                return res.status(409).json({
+                    success: false,
+                    error: 'Mark this assignment as a lab report before approving its writing rubric'
+                });
+            }
+            const writingRunCount = await mongo.countWritingFeedbackRunsByLens(courseId(req), assignmentId, 'linguistic');
+            if (writingRunCount > 0) {
+                return res.status(409).json({
+                    success: false,
+                    error: 'Writing feedback already exists for this assignment'
+                });
+            }
+        }
+
         if (!isLabReport) {
             if (assignment.technicalRubric?.status === 'approved') {
                 return res.status(409).json({
@@ -651,14 +675,21 @@ router.patch(
         if (!updated) return res.status(404).json({ success: false, error: 'Writing assignment not found' });
 
         // Seed an editable technical draft so staff open a populated editor, never a blank one.
+        // A Canvas rubric imported before this flag was set is the technical marking scheme, so
+        // it moves here rather than staying on the writing lens, which returns to the
+        // metafunctions and gets its auto-fill back.
         if (isLabReport && !updated.technicalRubric && !updated.technicalRubricDraft) {
-            const seeded = await mongo.saveWritingRubricDraft(
+            const routing = routeRubricsForLabReport({
+                canvasRubricImport: updated.canvasRubricImport,
+                actorUserId: globalUser.userId
+            });
+            const routed = await mongo.applyLabReportRubricRouting(
                 courseId(req),
                 assignmentId,
-                buildLabReportRubric(globalUser.userId),
-                'technical'
+                routing,
+                willResetWriting
             );
-            return res.json({ success: true, data: seeded ?? updated });
+            return res.json({ success: true, data: routed ?? updated });
         }
         res.json({ success: true, data: updated });
     })
@@ -880,8 +911,12 @@ router.get('/:courseId/writing-feedback/submissions/:submissionId/feedback.pdf',
             : include === 'annotated' ? 'writing-feedback-annotated.pdf'
             : include === 'both' ? 'writing-feedback-complete.pdf'
             : 'writing-feedback.pdf';
+        // Inline by default: staff read this PDF far more often than they archive one, and a
+        // forced download meant a reviewer could not simply look at what they had just written.
+        // `?download=1` is the explicit save.
+        const disposition = req.query.download === '1' ? 'attachment' : 'inline';
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.setHeader('Content-Disposition', `${disposition}; filename="${filename}"`);
         res.send(pdf);
     } catch (error) {
         res.status(400).json({ success: false, error: safeError(error) });

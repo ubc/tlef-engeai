@@ -96,6 +96,7 @@ function comment(overrides: Partial<AnchoredComment> = {}): AnchoredComment {
     const startOffset = verifiedText.indexOf(quote);
     return {
         id: 'comment-1',
+        lens: 'linguistic',
         quote,
         startOffset,
         endOffset: startOffset + quote.length,
@@ -485,5 +486,64 @@ describe('technical section', () => {
         const text = searchableText(pdf);
         expect(text).not.toContain('confidence');
         expect(text).not.toContain('needs_review');
+    });
+});
+
+describe('lab report document order', () => {
+    const labAssignment = { ...assignmentWithCriteria(2), isLabReport: true };
+    const labTechnicalRubric = labAssignment.rubric;
+    const labTechnicalResult = feedback(labTechnicalRubric.criteria, 'advanced');
+
+    it('puts technical feedback before writing feedback in one document', async () => {
+        const pdf = await service.render({
+            assignment: labAssignment,
+            submission: submission({ assignmentId: labAssignment.id }),
+            feedback: feedback(),
+            technicalFeedback: labTechnicalResult,
+            technicalRubric: labTechnicalRubric,
+            include: 'general'
+        });
+        const text = searchableText(pdf);
+
+        expect(text).toContain('Technical feedback');
+        expect(text).toContain('What you did well');
+        expect(text.indexOf('Technical feedback')).toBeLessThan(text.indexOf('What you did well'));
+    });
+
+    it('prints the grade breakdown against the rubric the grade was awarded on', async () => {
+        const pdf = await service.render({
+            assignment: labAssignment,
+            submission: submission({ assignmentId: labAssignment.id }),
+            feedback: feedback(),
+            technicalFeedback: labTechnicalResult,
+            technicalRubric: labTechnicalRubric,
+            finalAssessment: {
+                lens: 'technical',
+                rubricVersion: labTechnicalRubric.version,
+                criteria: labTechnicalRubric.criteria.map((criterion) => ({ criterionId: criterion.id, points: 4 })),
+                totalPoints: 8,
+                maxPoints: 40
+            },
+            include: 'general'
+        });
+        const text = searchableText(pdf);
+
+        expect(text).toContain('Total: 8 / 40');
+        expect(text).toContain('Criterion');
+    });
+
+    it('never prints model suggestions or staff-only metadata', async () => {
+        const pdf = await service.render({
+            assignment: labAssignment,
+            submission: submission({ assignmentId: labAssignment.id }),
+            feedback: feedback(),
+            technicalFeedback: labTechnicalResult,
+            technicalRubric: labTechnicalRubric,
+            include: 'general'
+        });
+        const text = searchableText(pdf);
+
+        expect(text).not.toContain('Suggested');
+        expect(text).not.toContain('confidence');
     });
 });

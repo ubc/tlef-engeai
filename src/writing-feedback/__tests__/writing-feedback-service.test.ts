@@ -283,6 +283,7 @@ describe('WritingFeedbackService anchored comments', () => {
     function storedComment(overrides: Partial<AnchoredComment> = {}): AnchoredComment {
         return {
             id: 'comment-1',
+            lens: 'linguistic',
             quote: 'Verified student text.',
             startOffset: 0,
             endOffset: 22,
@@ -363,6 +364,30 @@ describe('WritingFeedbackService anchored comments', () => {
 
         expect(appendWritingReview).toHaveBeenCalledWith('course-1', 'submission-1',
             expect.objectContaining({ comments: [expect.objectContaining({ id: 'comment-1' })] }));
+    });
+
+    it('appendReview persists both lenses comments in one revision', async () => {
+        // The single Save on the review page is the whole contract: a lab report's technical
+        // and writing annotations must land together, not in two round trips.
+        const appendWritingReview = jest.fn(async (_courseId, _submissionId, revision) => revision);
+        const mongo = {
+            getWritingSubmission: jest.fn(async () => submission('draft_ready')),
+            appendWritingReview
+        } as unknown as EngEAI_MongoDB;
+
+        await new WritingFeedbackService(mongo, engine).appendReview('course-1', 'submission-1', {
+            feedbackRunId: 'run-1',
+            staffUserId: 'instructor-1',
+            studentFeedback: 'Nice work.',
+            comments: [
+                storedComment({ id: 'technical-1', lens: 'technical' }),
+                storedComment({ id: 'writing-1', lens: 'linguistic' })
+            ]
+        });
+
+        const revision = appendWritingReview.mock.calls[0][2] as { comments: Array<{ id: string; lens: string }> };
+        expect(revision.comments.map((comment) => comment.lens)).toEqual(['technical', 'linguistic']);
+        expect(revision.comments.map((comment) => comment.id)).toEqual(['technical-1', 'writing-1']);
     });
 
     it('appendReview stamps author names: carries prior attribution and names new staff comments', async () => {

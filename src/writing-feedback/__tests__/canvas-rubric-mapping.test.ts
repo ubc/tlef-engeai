@@ -221,3 +221,45 @@ describe('mapCanvasRubric reports why it refused', () => {
         expect(canvasRubricToSeedShape(rubricWith(3, 4))).not.toBeNull();
     });
 });
+
+describe('canvas rubric id map', () => {
+    it('maps our criterion and level ids back to Canvas ids', () => {
+        const mapped = mapCanvasRubric(rubric([row('Thesis', FULL_SCALE, 10)]));
+
+        expect(mapped.shape).not.toBeNull();
+        const criterionId = mapped.shape!.criteria[0].id;
+        const levelIds = mapped.shape!.levels.map((level) => level.id);
+
+        expect(mapped.ids![criterionId].criterionId).toBe('_thesis');
+        // Levels are ordered weakest-first, matching buildCells.
+        expect(mapped.ids![criterionId].ratingIds[levelIds[0]]).toBe('r_Poor');
+        expect(mapped.ids![criterionId].ratingIds[levelIds[3]]).toBe('r_Excellent');
+    });
+
+    it('maps every criterion, not only the first', () => {
+        const mapped = mapCanvasRubric(rubric([
+            row('Thesis', FULL_SCALE, 10),
+            row('Evidence', FULL_SCALE, 8)
+        ]));
+
+        expect(Object.keys(mapped.ids!)).toEqual(['thesis', 'evidence']);
+        expect(mapped.ids!.evidence.criterionId).toBe('_evidence');
+    });
+
+    it('leaves a ragged row without ids for the columns it does not reach', () => {
+        const mapped = mapCanvasRubric(rubric([
+            row('Thesis', FULL_SCALE, 10),
+            row('Evidence', [['Good', 3], ['Poor', 1]], 8)
+        ]));
+
+        const levelIds = mapped.shape!.levels.map((level) => level.id);
+        expect(Object.keys(mapped.ids!.evidence.ratingIds)).toHaveLength(2);
+        expect(mapped.ids!.evidence.ratingIds[levelIds[0]]).toBe('r_Poor');
+        expect(mapped.ids!.evidence.ratingIds[levelIds[3]]).toBeUndefined();
+    });
+
+    it('returns no id map when the rubric is refused', () => {
+        expect(mapCanvasRubric(null).ids).toBeUndefined();
+        expect(mapCanvasRubric(rubric([row('Thesis', [['Only', 1]], 10)])).ids).toBeUndefined();
+    });
+});

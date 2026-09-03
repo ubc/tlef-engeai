@@ -24,6 +24,7 @@ import {
     PRIORITY_LABELS,
     PRIORITY_TONES,
     SubmissionDetail,
+    WritingFeedbackLens,
     WritingGlossaryEntry,
     WfFunctionTag,
     WfLevelTag,
@@ -39,12 +40,32 @@ interface AnnotationContext {
     docHost: HTMLElement;
     listHost: HTMLElement;
     verifiedText: string;
+    /**
+     * Which rubric this pane annotates. A lab report renders two panes over the same
+     * document, so every read and write here is scoped to one lens; without it a technical
+     * comment would be filed against the writing rubric's criterion ids.
+     */
+    lens: WritingFeedbackLens;
     markDirty: () => void;
 }
 
-// This module owns an isolated working copy so edits cannot mutate the immutable
-// model seed or the last saved staff revision returned by the API.
-let workingComments: AnchoredComment[] = [];
+/**
+ * This module owns an isolated working copy so edits cannot mutate the immutable model seed
+ * or the last saved staff revision returned by the API.
+ *
+ * One set per lens. Both panes of a lab report are built into the DOM at setup, so a single
+ * shared array would have let whichever rendered last collect every new comment.
+ */
+const workingSets = new Map<WritingFeedbackLens, AnchoredComment[]>();
+
+/** The working set for one lens, created empty on first use. */
+function commentsFor(lens: WritingFeedbackLens): AnchoredComment[] {
+    const existing = workingSets.get(lens);
+    if (existing) return existing;
+    const created: AnchoredComment[] = [];
+    workingSets.set(lens, created);
+    return created;
+}
 let activeCommentId: string | null = null;
 let editingCommentId: string | null = null;
 let filters: { fn: 'all' | WfFunctionTag; level: 'all' | WfLevelTag } = { fn: 'all', level: 'all' };
@@ -73,7 +94,13 @@ function glossarySnapshot(entry: WritingGlossaryEntry): NonNullable<AnchoredComm
  * @param detail - Submission detail containing saved comments and model seed fallbacks
  */
 export function initAnchorWorkingSet(detail: SubmissionDetail): void {
-    workingComments = (detail.comments.length ? detail.comments : detail.seedComments).map((comment) => ({ ...comment }));
+    workingSets.clear();
+    const source = detail.comments.length ? detail.comments : detail.seedComments;
+    for (const comment of source) {
+        // Comments stored before lab-report annotation carry no lens and are all linguistic,
+        // matching the default the server's validator applies to the same records.
+        commentsFor(comment.lens ?? 'linguistic').push({ ...comment, lens: comment.lens ?? 'linguistic' });
+    }
     activeCommentId = null;
     editingCommentId = null;
     filters = { fn: 'all', level: 'all' };
@@ -85,7 +112,10 @@ export function initAnchorWorkingSet(detail: SubmissionDetail): void {
  * @returns A fresh comment array without server-derived stale flags
  */
 export function getWorkingComments(): AnchoredComment[] {
-    return workingComments.map(({ stale: _stale, ...comment }) => comment);
+    // Technical first, so a lab report's saved revision and its PDF both lead with the
+    // marking scheme the grade comes from.
+    return [...commentsFor('technical'), ...commentsFor('linguistic')]
+        .map(({ stale: _stale, ...comment }) => comment);
 }
 
 /** Accepts only offsets that still reproduce the exact quotation in verified text. */
@@ -95,16 +125,21 @@ function anchorable(comment: AnchoredComment, verifiedText: string): boolean {
         && verifiedText.slice(comment.startOffset, comment.endOffset) === comment.quote;
 }
 
-function orderedAnchorable(verifiedText: string): AnchoredComment[] {
-    return workingComments
+function orderedAnchorable(lens: WritingFeedbackLens, verifiedText: string): AnchoredComment[] {
+    return commentsFor(lens)
         .filter((comment) => anchorable(comment, verifiedText))
         .sort((a, b) => a.startOffset - b.startOffset || a.endOffset - b.endOffset);
 }
 
-/** Stable annotation numbers: position order over all anchorable comments, filter-independent. */
-function annotationNumbers(verifiedText: string): Map<string, number> {
+/**
+ * Stable annotation numbers: position order over all anchorable comments, filter-independent.
+ *
+ * Numbered within one lens, so each pane counts from 1 and a lab report does not present a
+ * technical comment as "number 7" because six writing comments precede it in the document.
+ */
+function annotationNumbers(lens: WritingFeedbackLens, verifiedText: string): Map<string, number> {
     const numbers = new Map<string, number>();
-    orderedAnchorable(verifiedText).forEach((comment, index) => numbers.set(comment.id, index + 1));
+    orderedAnchorable(lens, verifiedText).forEach((comment, index) => numbers.set(comment.id, index + 1));
     return numbers;
 }
 
@@ -157,8 +192,8 @@ function activateComment(commentId: string, rerender: () => void): void {
 function renderAnchoredText(host: HTMLElement, context: AnnotationContext, rerender: () => void): void {
     host.replaceChildren();
     const text = context.verifiedText;
-    const numbers = annotationNumbers(text);
-    const anchored = orderedAnchorable(text);
+    const numbers = annotationNumbers(context.lens, text);
+    const anchored = orderedAnchorable(context.lens, text);
 
     // Rebuild the document as alternating plain-text and anchored segments while
     // retaining absolute offsets on every segment for later selection mapping.
@@ -284,13 +319,15 @@ function bindSelectionPopover(
             // tuple again instead of trusting browser selection state.
             const comment: AnchoredComment = {
                 id: crypto.randomUUID(),
+                // Single working set today, so every staff comment is linguistic.
+                lens: 'linguistic',
                 quote,
                 startOffset: from,
                 endOffset: from + quote.length,
                 comment: '',
                 origin: 'staff'
             };
-            workingComments.push(comment);
+            commentsFor(context.lens).push(comment);
             activeCommentId = comment.id;
             editingCommentId = comment.id;
             filters = { fn: 'all', level: 'all' };
@@ -358,15 +395,16 @@ function renderAnnotationList(context: AnnotationContext, rerender: () => void):
 
     const list = document.createElement('div');
     list.className = 'wf-annotation-list';
-    const numbers = annotationNumbers(context.verifiedText);
+    const numbers = annotationNumbers(context.lens, context.verifiedText);
+    const comments = commentsFor(context.lens);
 
-    if (!workingComments.length) {
+    if (!comments.length) {
         list.append(createText('p', 'No annotations yet. Select a passage in the document to add the first one.', 'wf-muted-note'));
     }
 
     // Stale comments bypass active filters because reviewers must resolve them
     // before saving rather than accidentally hiding invalid anchors.
-    const visible = [...workingComments]
+    const visible = [...comments]
         .filter((comment) => comment.stale || matchesFilters(comment))
         .sort((a, b) => {
             const aStale = a.stale ? 1 : 0;
@@ -375,7 +413,7 @@ function renderAnnotationList(context: AnnotationContext, rerender: () => void):
             // numbered cards always render in ascending order.
             return aStale - bStale || a.startOffset - b.startOffset || a.endOffset - b.endOffset;
         });
-    if (workingComments.length && !visible.length) {
+    if (comments.length && !visible.length) {
         list.append(createText('p', 'No annotations match the selected filters.', 'wf-muted-note'));
     }
     visible.forEach((comment) => list.append(renderAnnotationCard(comment, numbers.get(comment.id), context, rerender)));
@@ -657,7 +695,9 @@ function deleteButton(comment: AnchoredComment, context: AnnotationContext, rere
                 'danger'
             );
             if (confirmation.action !== 'delete-comment') return;
-            workingComments = workingComments.filter((item) => item.id !== comment.id);
+            const set = commentsFor(context.lens);
+            const index = set.findIndex((item) => item.id === comment.id);
+            if (index >= 0) set.splice(index, 1);
             if (activeCommentId === comment.id) activeCommentId = null;
             if (editingCommentId === comment.id) editingCommentId = null;
             context.markDirty();

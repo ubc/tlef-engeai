@@ -17,6 +17,7 @@ import type { MongoDalContext } from './mongo-context';
 import type {
     CanvasAssignmentDetails,
     CanvasImportedRubric,
+    CanvasRubricIdMap,
     CanvasRubricRefusal,
     CanvasRubricRow,
     StaffReviewRevision,
@@ -31,7 +32,7 @@ import type {
     WritingSubmissionStatus
 } from '../../writing-feedback/contracts';
 import { buildDefaultWritingAssignment } from '../../writing-feedback/default-rubric-profile';
-import { seedRubricForLens } from '../../writing-feedback/rubric-seed';
+import { seedRubricForLens, type LabReportRouting } from '../../writing-feedback/rubric-seed';
 import type { ImportedRubricShape } from '../../writing-feedback/rubric-seed';
 import { rubricFieldPaths } from '../../writing-feedback/rubric-lens';
 
@@ -320,7 +321,8 @@ export async function createCanvasWritingAssignment(
     instructions?: string,
     dueAt?: Date,
     canvasRubric?: ImportedRubricShape,
-    canvasRubricRefusal?: CanvasRubricRefusal
+    canvasRubricRefusal?: CanvasRubricRefusal,
+    canvasRubricIds?: CanvasRubricIdMap
 ): Promise<WritingAssignment> {
     await ensureWritingFeedbackIndexes(ctx);
     const now = new Date();
@@ -336,7 +338,12 @@ export async function createCanvasWritingAssignment(
         ...(canvasRubric
             ? {
                   rubric: seedRubricForLens({ lens: 'linguistic', actorUserId: 'platform', canvasRubric, now }),
-                  rubricSource: 'canvas' as const
+                  rubricSource: 'canvas' as const,
+                  // Kept whole and unrouted: whether this rubric belongs to the technical lens
+                  // is not known until the assignment is marked a lab report, which happens later.
+                  ...(canvasRubricIds
+                      ? { canvasRubricImport: { shape: canvasRubric, ids: canvasRubricIds, importedAt: now } }
+                      : {})
               }
             : {}),
         canvasAssignmentId,
@@ -383,6 +390,51 @@ export async function saveWritingRubricDraft(
     const updated = await assignments(ctx).findOneAndUpdate(
         { id: assignmentId, courseId },
         { $set: { [fields.draft]: draft, updatedAt: new Date() } },
+        { returnDocument: 'after' }
+    );
+    return updated ? normalizeWritingAssignment(updated) : null;
+}
+
+/**
+ * applyLabReportRubricRouting — moves an imported Canvas grid onto the technical lens.
+ *
+ * One update so the two lenses can never disagree about which of them owns the imported grid.
+ * The writing lens is reset only when `resetWriting` says so: an assignment whose writing
+ * rubric was never Canvas-seeded already holds the metafunctions, and rewriting it would
+ * discard staff edits for no gain. Both drafts arrive unapproved, so approval stays the gate.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param assignmentId - Assignment being marked as a lab report
+ * @param routing - Drafts and provenance produced by `routeRubricsForLabReport`
+ * @param resetWriting - Whether the writing lens must be returned to the metafunctions
+ * @returns Updated assignment, or `null` when the scoped assignment is absent
+ */
+export async function applyLabReportRubricRouting(
+    ctx: MongoDalContext,
+    courseId: string,
+    assignmentId: string,
+    routing: LabReportRouting,
+    resetWriting: boolean
+): Promise<WritingAssignment | null> {
+    const technical = rubricFieldPaths('technical');
+    const writing = rubricFieldPaths('linguistic');
+    const updated = await assignments(ctx).findOneAndUpdate(
+        { id: assignmentId, courseId },
+        {
+            $set: {
+                [technical.draft]: routing.technicalDraft,
+                technicalRubricSource: routing.technicalRubricSource,
+                updatedAt: new Date(),
+                ...(resetWriting
+                    ? {
+                          [writing.approved]: routing.writingDraft,
+                          rubricSource: routing.writingRubricSource
+                      }
+                    : {})
+            },
+            ...(resetWriting ? { $unset: { [writing.draft]: '' } } : {})
+        },
         { returnDocument: 'after' }
     );
     return updated ? normalizeWritingAssignment(updated) : null;

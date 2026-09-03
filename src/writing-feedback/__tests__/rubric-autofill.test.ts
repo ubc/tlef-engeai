@@ -52,14 +52,9 @@ describe('autofillMergeRules', () => {
             .toEqual({ mayAddRows: false, mayWriteRow: false, mayWriteCells: true });
     });
 
-    it('locks rows but allows weights for a lab report writing rubric', () => {
-        expect(autofillMergeRules('metafunctions_lab'))
+    it('locks the metafunction rows but allows their meaning to be written', () => {
+        expect(autofillMergeRules('metafunctions'))
             .toEqual({ mayAddRows: false, mayWriteRow: true, mayWriteCells: true });
-    });
-
-    it('allows added rows on a plain assignment', () => {
-        expect(autofillMergeRules('metafunctions_plain'))
-            .toEqual({ mayAddRows: true, mayWriteRow: true, mayWriteCells: true });
     });
 });
 
@@ -90,14 +85,21 @@ describe('mergeAutofill', () => {
     });
 
     it('never adds a row when rows are locked', () => {
-        const merged = mergeAutofill(draft(existing), proposal, autofillMergeRules('metafunctions_lab'));
+        const merged = mergeAutofill(draft(existing), proposal, autofillMergeRules('metafunctions'));
         expect(merged.criteria.map((c) => c.id)).toEqual(['organization']);
         expect(merged.criteria[0].points).toBe(25);
     });
 
-    it('adds a proposed row on a plain assignment', () => {
-        const merged = mergeAutofill(draft(existing), proposal, autofillMergeRules('metafunctions_plain'));
+    it('adds a proposed row only when the rules permit it', () => {
+        // No grid source grants mayAddRows any more — the metafunctions are fixed for every
+        // writing assignment — but mergeAutofill still honours the flag, so it stays pinned.
+        const merged = mergeAutofill(draft(existing), proposal, { mayAddRows: true, mayWriteRow: true, mayWriteCells: true });
         expect(merged.criteria.map((c) => c.id)).toEqual(['organization', 'method']);
+    });
+
+    it('refuses a proposed row under the metafunctions rules', () => {
+        const merged = mergeAutofill(draft(existing), proposal, autofillMergeRules('metafunctions'));
+        expect(merged.criteria.map((c) => c.id)).toEqual(['organization']);
     });
 
     it('never removes an existing row, even when the proposal omits it', () => {
@@ -105,12 +107,12 @@ describe('mergeAutofill', () => {
             { id: 'organization', label: 'Organization', description: 'd' },
             { id: 'content', label: 'Content', description: 'd' }
         ];
-        const merged = mergeAutofill(draft(twoRows), proposal, autofillMergeRules('metafunctions_plain'));
+        const merged = mergeAutofill(draft(twoRows), proposal, autofillMergeRules('metafunctions'));
         expect(merged.criteria.map((c) => c.id)).toContain('content');
     });
 
     it('never changes the approval status', () => {
-        const merged = mergeAutofill(draft(existing), proposal, autofillMergeRules('metafunctions_plain'));
+        const merged = mergeAutofill(draft(existing), proposal, autofillMergeRules('metafunctions'));
         expect(merged.status).toBe('draft');
     });
 
@@ -124,7 +126,7 @@ describe('mergeAutofill', () => {
                 }
             ]
         };
-        const merged = mergeAutofill(draft(existing), badProposal, autofillMergeRules('metafunctions_plain'));
+        const merged = mergeAutofill(draft(existing), badProposal, autofillMergeRules('metafunctions'));
         expect(writingRubricDraftInputSchema.safeParse(merged).success).toBe(false);
     });
 
@@ -138,7 +140,7 @@ describe('mergeAutofill', () => {
                 }
             ]
         };
-        const merged = mergeAutofill(draft(existing), badProposal, autofillMergeRules('metafunctions_plain'));
+        const merged = mergeAutofill(draft(existing), badProposal, autofillMergeRules('metafunctions'));
         expect(merged.criteria[0].cells).toEqual({
             weak: { min: 0, max: 12, descriptor: 'W' },
             strong: { min: 13, max: 25, descriptor: 'S' }
@@ -157,7 +159,7 @@ describe('mergeAutofill', () => {
                 }
             ]
         };
-        const merged = mergeAutofill(draft(existing), wrongScaleProposal, autofillMergeRules('metafunctions_plain'));
+        const merged = mergeAutofill(draft(existing), wrongScaleProposal, autofillMergeRules('metafunctions'));
         expect(merged.criteria[0].cells).toEqual({
             weak: { min: 0, max: 15 },
             strong: { min: 16, max: 30 }
@@ -174,7 +176,7 @@ describe('mergeAutofill', () => {
                 }
             ]
         };
-        const merged = mergeAutofill(draft(existing), zeroedProposal, autofillMergeRules('metafunctions_lab'));
+        const merged = mergeAutofill(draft(existing), zeroedProposal, autofillMergeRules('metafunctions'));
         expect(merged.criteria[0].cells).toEqual({
             weak: { min: 0, max: 15 },
             strong: { min: 16, max: 30 }
@@ -182,7 +184,9 @@ describe('mergeAutofill', () => {
     });
 
     it('reconciles cells on a newly added row against that row\'s own proposed weight', () => {
-        const merged = mergeAutofill(draft(existing), proposal, autofillMergeRules('metafunctions_plain'));
+        // Explicit rules: no grid source grants mayAddRows now, but the reconciliation this
+        // pins applies to any row the merge accepts.
+        const merged = mergeAutofill(draft(existing), proposal, { mayAddRows: true, mayWriteRow: true, mayWriteCells: true });
         const added = merged.criteria.find((criterion) => criterion.id === 'method');
         // proposal's "method" row proposes points 20 with cells 0-7/8-20; the weight-
         // derived award for 20 points across two levels is 10/20, so the model's
@@ -220,12 +224,12 @@ describe('gridSourceFor', () => {
         expect(gridSourceFor(baseAssignment({ rubricSource: 'canvas' }), 'linguistic')).toBe('canvas');
     });
 
-    it('is the lab-report metafunctions for the linguistic lens on a lab report', () => {
-        expect(gridSourceFor(baseAssignment({ isLabReport: true }), 'linguistic')).toBe('metafunctions_lab');
+    it('is the metafunctions for the linguistic lens on a lab report', () => {
+        expect(gridSourceFor(baseAssignment({ isLabReport: true }), 'linguistic')).toBe('metafunctions');
     });
 
-    it('is the plain metafunctions for the linguistic lens on a non-lab assignment', () => {
-        expect(gridSourceFor(baseAssignment(), 'linguistic')).toBe('metafunctions_plain');
+    it('is the metafunctions for the linguistic lens on a non-lab assignment', () => {
+        expect(gridSourceFor(baseAssignment(), 'linguistic')).toBe('metafunctions');
     });
 });
 

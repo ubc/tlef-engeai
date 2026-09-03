@@ -37,7 +37,7 @@ import { TECHNICAL_PROMPT_VERSION, TechnicalWritingFeedbackEngine } from './tech
 import { lensesForAssignment, selectRubric } from './rubric-lens';
 import { ModelSelectionService } from '../dashboard-setting/model-selection-service';
 import { StudentWritingFeedbackPdfService } from '../report-generation/writing-feedback-report';
-import { buildStaffFinalAssessment, type StaffFinalAssessmentInput } from './staff-final-assessment';
+import { buildStaffFinalAssessment, gradedLensFor, type StaffFinalAssessmentInput } from './staff-final-assessment';
 import { requireCompleteSflProfile } from './sfl-analysis';
 import { appLogger } from '../utils/logger';
 
@@ -375,7 +375,14 @@ export class WritingFeedbackService {
         let finalAssessment;
         if (finalAssessmentInput) {
             const assignment = await this.requireAssignment(courseId, submission.assignmentId);
-            finalAssessment = buildStaffFinalAssessment(finalAssessmentInput, assignment.rubric);
+            // A lab report is graded on its technical rubric, not its writing one, so the
+            // grade is validated against the lens that actually carries it.
+            const lens = gradedLensFor(assignment);
+            const gradedRubric = selectRubric(assignment, lens).approved;
+            if (!gradedRubric) {
+                throw new Error('Approve the rubric this assignment is graded on before saving a final grade');
+            }
+            finalAssessment = buildStaffFinalAssessment(finalAssessmentInput, gradedRubric, lens);
         }
         return this.mongo.appendWritingReview(courseId, submissionId, {
             ...reviewFields,
@@ -479,34 +486,25 @@ export class WritingFeedbackService {
         this.assertCurrentRubric(feedbackRun.rubricVersion, assignment);
         const { technicalRun, technicalRubric } = await this.loadTechnicalLens(submissionId, assignment);
         const latestReview = submission.reviews?.[submission.reviews.length - 1];
-        const writingPdf = await this.pdfService.render({
+        // One document per submission. A lab report carries its technical feedback inside the
+        // same PDF, ahead of the writing feedback, rather than arriving as a second attachment
+        // a student has to open separately.
+        const completePdf = await this.pdfService.render({
             assignment,
             submission,
             feedback: feedbackRun.result,
             grade: latestReview?.finalAssessment?.totalPoints,
             staffFeedback: latestReview?.studentFeedback,
             finalAssessment: latestReview?.finalAssessment,
+            ...(technicalRun && technicalRubric
+                ? { technicalFeedback: technicalRun.result, technicalRubric }
+                : {}),
             include: 'both',
             lens: 'writing'
         });
         const artifacts: CanvasReleaseInput['artifacts'] = [
-            { kind: 'writing', filename: 'writing-feedback.pdf', data: writingPdf }
+            { kind: 'writing', filename: 'writing-feedback-complete.pdf', data: completePdf }
         ];
-        if (technicalRun && technicalRubric) {
-            artifacts.push({
-                kind: 'technical',
-                filename: 'technical-feedback.pdf',
-                data: await this.pdfService.render({
-                    assignment,
-                    submission,
-                    feedback: feedbackRun.result,
-                    technicalFeedback: technicalRun.result,
-                    technicalRubric,
-                    include: 'general',
-                    lens: 'technical'
-                })
-            });
-        }
         return releaseService.preview({
             submission,
             assignment,
@@ -534,34 +532,25 @@ export class WritingFeedbackService {
         this.assertCurrentRubric(feedbackRun.rubricVersion, assignment);
         const { technicalRun, technicalRubric } = await this.loadTechnicalLens(submissionId, assignment);
         const latestReview = submission.reviews?.[submission.reviews.length - 1];
-        const writingPdf = await this.pdfService.render({
+        // One document per submission. A lab report carries its technical feedback inside the
+        // same PDF, ahead of the writing feedback, rather than arriving as a second attachment
+        // a student has to open separately.
+        const completePdf = await this.pdfService.render({
             assignment,
             submission,
             feedback: feedbackRun.result,
             grade: latestReview?.finalAssessment?.totalPoints,
             staffFeedback: latestReview?.studentFeedback,
             finalAssessment: latestReview?.finalAssessment,
+            ...(technicalRun && technicalRubric
+                ? { technicalFeedback: technicalRun.result, technicalRubric }
+                : {}),
             include: 'both',
             lens: 'writing'
         });
         const artifacts: CanvasReleaseInput['artifacts'] = [
-            { kind: 'writing', filename: 'writing-feedback.pdf', data: writingPdf }
+            { kind: 'writing', filename: 'writing-feedback-complete.pdf', data: completePdf }
         ];
-        if (technicalRun && technicalRubric) {
-            artifacts.push({
-                kind: 'technical',
-                filename: 'technical-feedback.pdf',
-                data: await this.pdfService.render({
-                    assignment,
-                    submission,
-                    feedback: feedbackRun.result,
-                    technicalFeedback: technicalRun.result,
-                    technicalRubric,
-                    include: 'general',
-                    lens: 'technical'
-                })
-            });
-        }
         const release = await releaseService.release({
             submission,
             assignment,

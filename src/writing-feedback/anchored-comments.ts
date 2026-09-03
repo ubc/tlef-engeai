@@ -56,6 +56,9 @@ const glossarySnapshotSchema = z.object({
  */
 export const anchoredCommentInputSchema = z.object({
     id: z.string().trim().min(1).max(64),
+    // Stored comments predate lab-report annotation and carry no lens; they are all
+    // linguistic, so the default backfills them at read time rather than by migration.
+    lens: z.enum(['linguistic', 'technical']).default('linguistic'),
     criterion: z.string().trim().min(1).max(64).regex(/^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/).optional(),
     // This checksum may represent a deliberate staff span; generated seeds are capped upstream.
     quote: z.string().min(1).max(4000),
@@ -131,6 +134,10 @@ export function seedCommentsFromRun(
                 ?? CRITERION_FUNCTION_TAG[criterion.criterion];
             seeds.push({
                 id: randomUUID(),
+                // A seed belongs to the lens that produced the run it came from. Runs written
+                // before two-lens generation carry no lens and are linguistic, matching the
+                // default the stored-comment validator applies.
+                lens: run.lens ?? 'linguistic',
                 criterion: criterion.criterion,
                 quote: evidence.quote,
                 startOffset: start,

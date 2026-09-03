@@ -8,7 +8,12 @@
  */
 
 import { z } from 'zod';
-import type { StaffFinalAssessment, WritingRubricDefinition } from './contracts';
+import type {
+    StaffFinalAssessment,
+    WritingAssignment,
+    WritingFeedbackLens,
+    WritingRubricDefinition
+} from './contracts';
 import { totalRubricPoints } from './rubric-bands';
 
 const criterionId = z.string()
@@ -28,6 +33,20 @@ export const staffFinalAssessmentInputSchema = z.object({
 
 export type StaffFinalAssessmentInput = z.infer<typeof staffFinalAssessmentInputSchema>;
 
+/**
+ * gradedLensFor - which of an assignment's rubrics carries its grade.
+ *
+ * A lab report is graded on the technical rubric: the department's evaluation form, or the
+ * instructor's own Canvas rubric imported in its place, is where the marks come from. Its
+ * writing feedback is still generated, annotated and printed — it simply carries no grade.
+ *
+ * @param assignment - Assignment whose gradeable lens is being resolved
+ * @returns The lens whose rubric staff grade against
+ */
+export function gradedLensFor(assignment: WritingAssignment): WritingFeedbackLens {
+    return assignment.isLabReport ? 'technical' : 'linguistic';
+}
+
 /** Whether this rubric has a complete numeric scale that staff can grade. */
 export function rubricSupportsStaffAssessment(rubric: WritingRubricDefinition): boolean {
     return rubric.criteria.length > 0
@@ -43,7 +62,8 @@ export function rubricSupportsStaffAssessment(rubric: WritingRubricDefinition): 
  */
 export function buildStaffFinalAssessment(
     input: StaffFinalAssessmentInput,
-    rubric: WritingRubricDefinition
+    rubric: WritingRubricDefinition,
+    lens: WritingFeedbackLens = 'linguistic'
 ): StaffFinalAssessment {
     if (!rubricSupportsStaffAssessment(rubric)) {
         throw new Error('Final grading requires points on every rubric criterion');
@@ -76,6 +96,7 @@ export function buildStaffFinalAssessment(
     }
 
     return {
+        lens,
         rubricVersion: rubric.version,
         criteria,
         totalPoints: Math.round(criteria.reduce((sum, entry) => sum + entry.points, 0) * 100) / 100,

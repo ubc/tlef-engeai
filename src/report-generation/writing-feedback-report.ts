@@ -31,6 +31,7 @@
 
 import { randomUUID } from 'crypto';
 import PDFDocument from 'pdfkit';
+import { renderRubricGrid } from './rubric-grid-renderer';
 import type {
     WritingFeedbackPdfService,
     WritingFeedbackResult,
@@ -117,12 +118,19 @@ export class StudentWritingFeedbackPdfService implements WritingFeedbackPdfServi
                     renderTechnicalSections(doc, input.technicalRubric, input.technicalFeedback);
                 } else {
                     if (include === 'general' || include === 'both') {
+                        // A lab report is one document, and it leads with the technical
+                        // feedback: that is the rubric it is graded on, so it is what the
+                        // student came to read. Its writing feedback follows, ungraded.
+                        if (input.assignment.isLabReport && input.technicalFeedback && input.technicalRubric) {
+                            renderTechnicalSections(doc, input.technicalRubric, input.technicalFeedback);
+                        }
                         renderGeneralSections(
                             doc,
                             input.assignment,
                             input.feedback,
                             input.staffFeedback,
-                            input.finalAssessment
+                            input.finalAssessment,
+                            input.technicalRubric
                         );
                     }
                     if (include === 'annotated' || include === 'both') {
@@ -184,14 +192,22 @@ function renderGeneralSections(
     assignment: WritingAssignment,
     feedback: WritingFeedbackResult,
     staffFeedback?: string,
-    finalAssessment?: StaffFinalAssessment
+    finalAssessment?: StaffFinalAssessment,
+    technicalRubric?: WritingRubricDefinition
 ): void {
     sectionHeading(doc, 'What you did well');
     feedback.strengths.forEach((strength) => bullet(doc, strength));
 
     renderCriteriaAndGoals(doc, assignment.rubric, feedback);
 
-    if (finalAssessment) renderFinalAssessment(doc, assignment.rubric, finalAssessment);
+    // The grade belongs to whichever rubric it was awarded against — the technical one for a
+    // lab report — so the grid a student reads is the grid they were marked on.
+    if (finalAssessment) {
+        const gradedRubric = finalAssessment.lens === 'technical'
+            ? technicalRubric ?? assignment.technicalRubric
+            : assignment.rubric;
+        if (gradedRubric) renderFinalAssessment(doc, gradedRubric, finalAssessment);
+    }
 
     if (staffFeedback?.trim()) {
         sectionHeading(doc, 'Feedback from your teaching team');
@@ -209,16 +225,9 @@ function renderFinalAssessment(
     assessment: StaffFinalAssessment
 ): void {
     sectionHeading(doc, 'Final rubric assessment');
-    assessment.criteria.forEach((entry) => {
-        const criterion = rubric.criteria.find((candidate) => candidate.id === entry.criterionId);
-        if (!criterion) return;
-        body(doc).text(`${criterion.label}: ${entry.points} / ${criterion.points ?? 0}`, {
-            lineGap: 2,
-            paragraphGap: 3
-        });
-    });
-    doc.moveDown(0.25).font(BOLD_FONT).fontSize(BODY_SIZE).fillColor(TEXT_COLOR)
-        .text(`Total: ${assessment.totalPoints} / ${assessment.maxPoints}`);
+    // The full grid, not a list of numbers: a student asking where a grade came from needs the
+    // descriptor of the level they earned, beside the ones they did not.
+    renderRubricGrid(doc, rubric, assessment);
 }
 
 /**

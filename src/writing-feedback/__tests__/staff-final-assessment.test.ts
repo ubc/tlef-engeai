@@ -1,5 +1,6 @@
 import { buildDefaultWritingAssignment } from '../default-rubric-profile';
-import { buildStaffFinalAssessment, rubricSupportsStaffAssessment } from '../staff-final-assessment';
+import { buildStaffFinalAssessment, gradedLensFor, rubricSupportsStaffAssessment } from '../staff-final-assessment';
+import type { WritingAssignment } from '../contracts';
 
 const assignment = buildDefaultWritingAssignment('course-1', 'assignment-1', 'Writing assignment');
 const rubric = assignment.rubric;
@@ -34,5 +35,36 @@ describe('staff-final rubric assessment', () => {
                 ? { ...entry, points: (rubric.criteria[0].points ?? 0) + 1 }
                 : entry)
         }, rubric)).toThrow('exceeds');
+    });
+});
+
+describe('gradedLensFor', () => {
+    it('grades a lab report on its technical rubric', () => {
+        expect(gradedLensFor({ isLabReport: true } as WritingAssignment)).toBe('technical');
+    });
+
+    it('grades every other assignment on its writing rubric', () => {
+        expect(gradedLensFor({ isLabReport: false } as WritingAssignment)).toBe('linguistic');
+        expect(gradedLensFor({} as WritingAssignment)).toBe('linguistic');
+    });
+});
+
+describe('the graded lens is recorded on the assessment', () => {
+    it('stamps the lens it was built against', () => {
+        const built = buildStaffFinalAssessment(
+            complete(1),
+            rubric,
+            'technical'
+        );
+        expect(built.lens).toBe('technical');
+        expect(built.totalPoints).toBe(rubric.criteria.length);
+    });
+
+    it('defaults to the writing lens so existing callers are unchanged', () => {
+        const built = buildStaffFinalAssessment(
+            complete(1),
+            rubric
+        );
+        expect(built.lens).toBe('linguistic');
     });
 });
