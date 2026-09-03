@@ -984,6 +984,15 @@
     cursor: pointer;
 }
 
+.wf-rubric-section__subtitle {
+    display: block;
+    margin-top: 2px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 1.4;
+}
+
 .wf-rubric-section__title {
     flex: 1 1 auto;
     margin: 0;
@@ -1032,48 +1041,256 @@
     min-height: 44px;
 }
 
-.wf-rubric-step {
+/* Guided steps -- the same card language as .wf-assignment on the landing page,
+   so the two pages read as one product. No left-accent bar: an equally weighted
+   green rule down every header is what made the old page read as a flat stack. */
+
+.wf-step {
     margin: 0 0 20px;
     background: var(--chat-bg);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: 10px;
     overflow: hidden;
 }
 
-.wf-rubric-step-header {
+.wf-step-header {
     display: flex;
     align-items: center;
-    gap: 12px;
-    min-height: 52px;
-    padding: 16px 20px;
+    gap: 14px;
+    min-height: 56px;
+    padding: 14px 20px;
+    background: var(--background-2);
     cursor: pointer;
-    border-left: 4px solid var(--color-chbe-green);
+    transition: background-color 0.2s ease;
 }
 
-.wf-rubric-step-header .wf-section-title {
+.wf-step-header:hover {
+    background: var(--hover-bg);
+}
+
+.wf-step-header--static {
+    cursor: default;
+}
+
+.wf-step-header--static:hover {
+    background: var(--background-2);
+}
+
+.wf-step-title {
     flex: 1 1 auto;
     margin: 0;
+    color: var(--text-primary);
+    font-size: 18px;
+    font-weight: 600;
+    line-height: 1.3;
 }
 
-.wf-rubric-step-meta {
+.wf-step-meta {
     color: var(--text-secondary);
     font-size: 13px;
     white-space: nowrap;
 }
 
-.wf-rubric-step-body {
-    padding: 0 20px 20px;
+.wf-step-body {
+    padding: 20px;
 }
 
-.wf-rubric-step-body > .wf-rubric-step {
+/* Every control inside a step is a touch target at every width. The grid tools
+   already carried this; the description form's own actions did not, so
+   'Fill these in for me', 'Start over from the standard rubric' and the stage
+   repeater's Add measured 36px on a phone. */
+
+.wf-step-body .wf-button,
+.wf-approve-row .wf-button {
+    min-height: 44px;
+}
+
+.wf-step-body > .wf-step {
     margin: 0 0 15px;
 }
 
-.wf-rubric-step-body > .wf-rubric-step:last-child {
+.wf-step-body > .wf-step:last-child {
     margin-bottom: 0;
 }
 
-.wf-sfl-box {
+.wf-step-token {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: var(--color-chbe-green);
+    color: white;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.wf-step-token svg,
+.wf-step-token .feather {
+    width: 15px;
+    height: 15px;
+    stroke-width: 3;
+}
+
+/* A step's own headings drop .wf-section-title's green underline: a 1.5rem green
+   rule under every heading is a large part of why the page read as repetition. */
+
+.wf-step-body .wf-section-title,
+.wf-step-body .wf-subsection-title {
+    padding-bottom: 0;
+    border-bottom: 0;
+    color: var(--text-primary);
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0;
+}
+
+/* Progress strip -- three derived cells that always say where the user is */
+
+.wf-steps {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0;
+    margin: 0 0 28px;
+    padding: 0;
+    list-style: none;
+    background: var(--chat-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.wf-steps__item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 20px;
+    border-right: 1px solid var(--border-color);
+}
+
+.wf-steps__item:last-child {
+    border-right: 0;
+}
+
+.wf-steps__item[data-state="current"] {
+    background: var(--gingham-color);
+}
+
+.wf-steps__token {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--color-chbe-green);
+    color: white;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.wf-steps__item[data-state="pending"] .wf-steps__token {
+    background: var(--chat-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+}
+
+.wf-steps__token svg,
+.wf-steps__token .feather {
+    width: 16px;
+    height: 16px;
+    stroke-width: 3;
+}
+
+.wf-steps__text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.wf-steps__label {
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.wf-steps__item[data-state="pending"] .wf-steps__label {
+    color: var(--text-secondary);
+}
+
+.wf-steps__detail {
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+/* Page heading -- the assignment's own name, matching .page-header h1 */
+
+.wf-rubric-header {
+    margin: 0 0 20px;
+}
+
+.wf-rubric-title {
+    margin: 0;
+    color: var(--color-chbe-green);
+    font-size: 2rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+/* Step 3 -- approve, plus what is still owed before feedback */
+
+.wf-approve-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    flex-wrap: wrap;
+}
+
+.wf-approve-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.wf-approve-copy p {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 14px;
+    line-height: 1.55;
+}
+
+.wf-owed {
+    margin-top: 16px;
+    padding: 12px 16px;
+    background: rgba(230, 126, 34, 0.1);
+    border: 1px solid color-mix(in srgb, var(--color-eng-red) 60%, var(--color-chbe-green));
+    border-radius: 8px;
+    color: color-mix(in srgb, var(--color-eng-red) 65%, var(--text-primary));
+}
+
+.wf-owed[hidden] {
+    display: none;
+}
+
+.wf-owed p {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.wf-owed__title {
+    font-weight: 600;
+}
+
+/* "What kind of writing is this?" -- the one sub-card inside step 1 */
+
+.wf-profile-box {
     margin: 16px 0 0;
     background: var(--background-2);
     border: 1px solid var(--border-color);
@@ -1081,7 +1298,7 @@
     overflow: hidden;
 }
 
-.wf-sfl-box-header {
+.wf-profile-box-header {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -1090,18 +1307,18 @@
     cursor: pointer;
 }
 
-.wf-sfl-box-header .wf-section-title {
+.wf-profile-box-header .wf-subsection-title {
     flex: 1 1 auto;
     margin: 0;
     font-size: 15px;
 }
 
-.wf-sfl-box-body {
+.wf-profile-box-body {
     padding: 4px 16px 16px;
 }
 
-.wf-sfl-group-label {
-    margin: 14px 0 6px;
+.wf-group-label {
+    margin: 16px 0 8px;
     color: var(--text-secondary);
     font-size: 12px;
     font-weight: 700;
@@ -1109,11 +1326,11 @@
     letter-spacing: 0.04em;
 }
 
-.wf-sfl-group-label:first-child {
+.wf-group-label:first-of-type {
     margin-top: 0;
 }
 
-.wf-sfl-hint {
+.wf-field-hint {
     display: block;
     margin-top: 4px;
     color: var(--text-secondary);
@@ -2373,6 +2590,38 @@ mark.wf-anchor.is-filtered-out,
 @media (max-width: 768px) {
     .wf-header {
         flex-wrap: wrap;
+    }
+
+    /* The three-cell strip becomes three rows; the grid keeps its own
+       overflow-x, so the page itself still never scrolls sideways. */
+    .wf-steps {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .wf-steps__item {
+        border-right: 0;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .wf-steps__item:last-child {
+        border-bottom: 0;
+    }
+
+    .wf-rubric-title {
+        font-size: 1.5rem;
+    }
+
+    .wf-step-header {
+        flex-wrap: wrap;
+    }
+
+    .wf-approve-row {
+        align-items: stretch;
+    }
+
+    .wf-approve-row .wf-button {
+        width: 100%;
+        min-height: 44px;
     }
 
     .wf-header-actions {

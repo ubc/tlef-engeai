@@ -1035,7 +1035,7 @@ export async function collapseDisclosure(panel: HTMLElement): Promise<void> {
  * @param panel - Body element this header expands and collapses; mutated (id, class, hidden)
  * @param panelId - Id assigned to `panel` for `aria-controls`
  * @param initiallyOpen - Whether the panel starts expanded
- * @param className - Header class name, e.g. `wf-rubric-step-header`
+ * @param className - Header class name, e.g. `wf-step-header`
  * @returns Detached header; caller appends both the header and `panel` into the DOM
  */
 export function disclosureHeader(

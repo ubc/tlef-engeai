@@ -330,7 +330,7 @@ export function renderRubricGrid(
         toolbar.className = 'wf-rubric-tools';
 
         toolbar.append(createButton(
-            'Add criterion',
+            'Add a row',
             'secondary',
             async () => {
                 syncFromForm();
@@ -348,7 +348,7 @@ export function renderRubricGrid(
         ));
 
         toolbar.append(createButton(
-            'Add level',
+            'Add a column',
             'secondary',
             async () => {
                 syncFromForm();
@@ -366,7 +366,7 @@ export function renderRubricGrid(
         ));
 
         toolbar.append(createButton(
-            'Space points evenly',
+            'Spread points evenly',
             'secondary',
             async () => {
                 syncFromForm();
@@ -405,7 +405,7 @@ export function renderRubricGrid(
         });
         librarySelect.disabled = !available.length || draft.criteria.length >= MAX_CRITERIA;
         const addFromLibrary = createButton(
-            'Add from library',
+            'Add a suggested row',
             'secondary',
             async () => {
                 const candidate = available.find((entry) => entry.id === librarySelect.value);
@@ -438,7 +438,7 @@ export function renderRubricGrid(
 
     const head = document.createElement('thead');
     const headRow = document.createElement('tr');
-    const criterionHead = createText('th', 'Criterion', 'wf-grid-corner');
+    const criterionHead = createText('th', 'What you mark', 'wf-grid-corner');
     criterionHead.id = `${gridId}-criterion`;
     criterionHead.setAttribute('scope', 'col');
     headRow.append(criterionHead);
@@ -659,9 +659,9 @@ export function renderRubricGrid(
                 descriptor.readOnly = !canEdit || !bandFilled;
                 cell.classList.toggle('wf-grid-cell--empty', !bandFilled);
                 if (!bandFilled) {
-                    hint.textContent = 'Enter points';
+                    hint.textContent = 'Add points';
                 } else if (!descriptor.value.trim()) {
-                    hint.textContent = 'Enter a description';
+                    hint.textContent = 'Say what this looks like';
                 } else {
                     hint.textContent = '';
                 }
