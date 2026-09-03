@@ -363,6 +363,101 @@ export interface CourseLmsLink {
     linkedBy: string;
 }
 
+/**
+ * One student on an imported course's LMS roster.
+ *
+ * Deliberately carries no name and no raw identifier. The roster is stored to answer one
+ * question — "is the person signing in enrolled in this course?" — which needs equality and
+ * nothing else. See `src/utils/roster-identity.ts` for why the identifier is keyed and one-way.
+ */
+export interface CourseRosterEntry {
+    /** Keyed digest of the roster row's PUID. Comparable only to hashes made under the same salt. */
+    puidHash: string;
+    /**
+     * The LMS's own user id for this person, provider-scoped.
+     *
+     * Stored because recognizing someone and *addressing* them are different problems: writing a
+     * grade or feedback back to Canvas targets this id, not the PUID. Never treat it as an
+     * EngE-AI user id and never compare it across providers.
+     */
+    lmsUserId: string;
+}
+
+/**
+ * Why a roster sync ended the way it did.
+ *
+ * `identifiers_withheld` is the one that must never be read as an empty class. Canvas hides
+ * `integration_id` from callers without `read_sis`, and the symptom — a roster where nobody
+ * carries an identifier — is indistinguishable from a course nobody is enrolled in. Acting on
+ * that as though it were real would silently strand a whole class.
+ */
+export type RosterSyncStatus =
+    /** Roster read and stored. */
+    | 'ok'
+    /** Canvas returned rows but no SIS identifiers; the previous snapshot is kept. */
+    | 'identifiers_withheld'
+    /** No usable LMS credential is on file for this course, so no fetch was attempted. */
+    | 'no_credential'
+    /** The LMS call failed. The previous snapshot is kept. */
+    | 'failed'
+    /**
+     * The LMS course is not published, so it reports no students regardless of who is enrolled.
+     * Distinguished from a genuinely empty roster because only this one has an obvious fix, and
+     * because it is the state an instructor is most likely to sync from — a course is usually
+     * wired up to its tools before it is opened to students.
+     */
+    | 'unpublished';
+
+/**
+ * A course's stored LMS roster, one document per EngE-AI course.
+ *
+ * Replaced wholesale on each successful sync rather than merged. A merge would make a dropped
+ * student indistinguishable from a student the last fetch happened to miss, and the snapshot's
+ * job is to describe the roster *as Canvas reported it at `syncedAt`*. Note that replacing the
+ * snapshot does not un-enroll anyone: enrollment only ever accrues, per `canvas-course-sync.ts`.
+ */
+export interface CourseRosterSnapshot {
+    /** `activeCourse.id` this roster belongs to. */
+    courseId: string;
+    provider: CourseLmsLink['provider'];
+    /** The LMS course the roster was read from; must agree with the course's `lmsLink`. */
+    lmsCourseId: string;
+    entries: CourseRosterEntry[];
+    syncedAt: Date;
+    /**
+     * `GlobalUser.userId` whose stored LMS credential the fetch ran under.
+     *
+     * Recorded because the credential belongs to a person who can revoke it or leave. When sync
+     * starts failing, this is the only thing that says whose reconnection would fix it.
+     */
+    syncCredentialUserId: string;
+    /** `GlobalUser.userId` who pressed sync; absent when the scheduled job ran it. */
+    triggeredBy?: string;
+    status: RosterSyncStatus;
+    /** Roster rows Canvas returned, before the identifier filter. */
+    rosterSize: number;
+    /** Rows that carried a usable identifier — the coverage guard's evidence. */
+    identifiedCount: number;
+    /** Present on `failed`; a short reason, never an LMS payload. */
+    lastError?: string;
+}
+
+/**
+ * Staff-facing result of one roster sync.
+ *
+ * Carries counts, never people: the snapshot's entries are not projectable to any client, and
+ * an instructor's question at this point is "did it work and how many", not "who".
+ */
+export interface CourseRosterSyncSummary {
+    courseId: string;
+    status: RosterSyncStatus;
+    syncedAt: Date;
+    rosterSize: number;
+    identifiedCount: number;
+    /** Human-readable outcome, safe to show in the instructor UI. */
+    message: string;
+}
+
 export interface activeCourse {
     id : string,
     date : Date,

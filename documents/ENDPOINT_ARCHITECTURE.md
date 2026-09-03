@@ -710,7 +710,7 @@ On expiry the frontend redirects to `GET /auth/logout` (same as the Logout butto
 Per-user connections to Canvas (OAuth 2.0) and Moodle (pasted web service token),
 provided by `@ubc/ubc-genai-toolkit-lms-integration`. Implemented in
 `src/routes/route-lms.ts`, with the enrollment-sync logic in
-`src/lms/canvas-course-sync.ts`.
+`src/lms/canvas-course-sync.ts` and roster sync in `src/lms/canvas-roster-sync.ts`.
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
@@ -718,12 +718,76 @@ provided by `@ubc/ubc-genai-toolkit-lms-integration`. Implemented in
 | GET | `/api/lms/canvas/auth/login` | Authenticated | Redirect to the Canvas authorize screen |
 | GET | `/api/lms/canvas/auth/callback` | Authenticated | Exchange the OAuth code and store tokens |
 | POST | `/api/lms/canvas/auth/logout` | Authenticated | Revoke and clear stored Canvas tokens |
-| GET | `/api/lms/canvas/available-courses` | Authenticated + Canvas connection | The user's Canvas courses, annotated with whether EngE-AI already has each one |
-| POST | `/api/lms/canvas/connect-course` | Authenticated + Canvas connection | Import (instructor) or join (student) one Canvas course; body `{ canvasCourseId, academicPeriodId? }`. On import the term comes from step 3 of the connect flow; an unknown or absent id falls back to the default period |
+| GET | `/api/lms/canvas/available-courses` | Faculty/admin + Canvas connection | The user's Canvas courses, annotated with whether EngE-AI already has each one. `403` + `reason: student_path_removed` for a student |
+| POST | `/api/lms/canvas/connect-course` | Faculty/admin + Canvas connection | Import one Canvas course, or join the EngE-AI course a co-instructor already imported; body `{ canvasCourseId, academicPeriodId? }`. On import the term comes from step 3 of the connect flow; an unknown or absent id falls back to the default period. `403` + `reason: student_path_removed` for a student |
 | GET | `/api/lms/canvas/courses` | Instructor + Canvas connection | Raw Canvas course list including provider `raw`; diagnostics only |
+| GET | `/api/lms/canvas/courses/:courseId/roster-status` | Course staff | When this course's roster last synced and how it went, as a `CourseRosterSyncSummary` with an empty `message`; `summary: null` when it has never synced. Projects counts and status only — roster entries are never returned |
+| POST | `/api/lms/canvas/courses/:courseId/sync-roster` | Roster manage (course instructor or platform admin; TAs excluded) | Re-reads the linked Canvas course's **student** roster into stored matchable identities. Returns `200` with a `CourseRosterSyncSummary` even when the sync produced nothing usable; `409` when the course has no Canvas link, `503` when `ROSTER_HASH_SALT` is unset. Notably does **not** require the caller to have a Canvas connection — see below |
 | POST | `/api/lms/moodle/auth/connect` | Instructor | Validate and store a pasted `wstoken` (body `{ token }`) |
 | POST | `/api/lms/moodle/auth/disconnect` | Instructor | Delete the stored Moodle token (does not revoke it in Moodle) |
 | GET | `/api/lms/moodle/courses` | Instructor + Moodle connection | Moodle courses the user is enrolled in |
+
+**The student Canvas path was removed**
+
+- Students can no longer connect Canvas. Both `available-courses` and `connect-course` refuse a
+  caller whose resolved `canvasRoleFor` is `student`, with `403` and
+  `reason: student_path_removed`. The refusal lives in `canvas-course-sync.ts`, before any Canvas
+  call, so the stored token is never used to enumerate anything — hiding the button would not
+  have removed the capability, since the route stayed reachable by a crafted request.
+- It was removed rather than repaired because it could not be made safe. OAuth proves only that
+  *some* Canvas account authorized EngE-AI, and the check that closes that for instructors —
+  comparing the token account's `integration_id` against the CWL PUID — is impossible for a
+  student, because Canvas grants `read_sis` through a *teacher* enrollment. A browser still
+  signed in to a classmate's Canvas therefore let one student list and join the other's courses.
+- Students now reach Canvas-imported courses through the roster their instructor syncs, where
+  identity comes from the instructor's credential, or through the six-character course code.
+  Students whose Canvas account carries no SIS identifier can only ever use the course code.
+- Enrollment already granted through the old path is untouched; nothing revokes it.
+- The `awaiting_instructor` result is gone with the path that produced it.
+
+**Roster-based enrollment**
+
+- An instructor's roster sync reads the linked Canvas course's student roster and stores
+  one keyed digest per enrolled student in `course-lms-rosters`. At login, the signing-in
+  user's PUID is hashed the same way and matched against those snapshots, so **a student
+  never authorizes Canvas at all**. A student's own token could not read SIS identifiers
+  anyway (Canvas grants `read_sis` through a *teacher* enrollment), and requiring one is
+  what allowed a browser still signed in to another student's Canvas account to import
+  that person's courses.
+- **The roster read runs under the course's credential, never the caller's.**
+  `lmsLink.linkedBy` names the importing instructor, and their stored token is used
+  whether an instructor pressed sync, a platform admin did, or the scheduled job ran. A
+  platform admin holds no Canvas enrollment, so any design keyed on the caller's token
+  would work for instructors and fail confusingly for admins. Authorization to *trigger*
+  a sync and the credential it *runs under* are separate questions; the route decides
+  only the first.
+- `assertInstructorIdentity` does not run on this path and cannot: there is no signed-in
+  user to compare a PUID against on the scheduled path. Identity was proven once, at
+  import, by the instructor who created the link.
+- **An empty roster triggers a publish-state check.** An unpublished Canvas course reports no
+  students whoever is enrolled — Canvas holds their enrollments in `creation_pending` until the
+  course is published, and the roster read asks for `active` and `invited` only. That returns
+  `status: 'unpublished'` naming the fix, and keeps the previous snapshot. A *published* course
+  with nobody in it stores a real empty snapshot as `ok`, so `syncedAt` advances. The extra
+  `/courses/:id` read happens only when the roster is empty, and a failure to read the publish
+  state degrades to the ordinary empty-roster result rather than failing the sync.
+- **A roster with rows but no SIS identifiers is a Canvas permission gap, not an empty
+  class.** That case returns `status: 'identifiers_withheld'` and leaves the previous
+  snapshot in place. The same holds for `no_credential` (revoked token) and `failed`
+  (Canvas unreachable): a failed sync never clears a good roster. Partial coverage is
+  kept — students carrying an identifier sync, and the message names how many did not.
+- The login-time check runs on **every** sign-in. It is one indexed query against
+  `course-lms-rosters` with no LMS call, it never blocks a login on failure, and it skips
+  courses still in setup (`courseSetup !== true`). There is deliberately no student-facing
+  "refresh courses" button: a student holds no credential that could reach Canvas, so it
+  could only re-read a snapshot that only staff can refresh.
+- There is deliberately **no scheduled roster job**. It would run under a stored instructor
+  credential unobserved, and its failure mode is silent — a revoked token means the roster
+  quietly stops updating until a student complains. A student who enrolls after the last sync
+  still joins with the six-character course code, so the gap has a working fallback. The sync
+  function takes an optional `triggeredBy` so a job can be added later with no signature change.
+- Roster sync requires `ROSTER_HASH_SALT`. Without it the route returns `503` and the
+  login check is a no-op; course-code entry is unaffected.
 
 **Course enrollment sync**
 

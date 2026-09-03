@@ -614,6 +614,90 @@
     text-align: left;
 }
 
+/* ---------- Canvas roster sync ---------- */
+
+/* Right-hand header column: course code, with the roster button stacked beneath it. */
+.dashboard-topbar-aside {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.75rem;
+    flex-shrink: 0;
+}
+
+.dashboard-roster-sync-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: white;
+    color: var(--color-chbe-green);
+    border: 2px solid var(--color-chbe-green);
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.22s ease;
+}
+
+/*
+ * Required, not redundant: the `display: flex` above outranks the user-agent rule behind the
+ * `hidden` attribute, so without this the button stays visible on a course with no Canvas
+ * link — exactly the case it is hidden for.
+ */
+.dashboard-roster-sync-btn[hidden] {
+    display: none;
+}
+
+.dashboard-roster-sync-btn:hover:not(:disabled) {
+    transform: scale(1.05);
+}
+
+.dashboard-roster-sync-btn svg,
+.dashboard-roster-sync-btn .feather {
+    width: 18px;
+    height: 18px;
+    color: var(--color-chbe-green);
+}
+
+/* Covers in-flight, cooldown, and course staff who may not sync at all. */
+.dashboard-roster-sync-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+/* Spin only while a sync is running, and only for viewers who want motion. */
+.dashboard-roster-sync-btn[aria-busy='true'] svg {
+    animation: dashboard-roster-spin 1s linear infinite;
+}
+
+@keyframes dashboard-roster-spin {
+    to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dashboard-roster-sync-btn {
+        transition: none;
+    }
+
+    .dashboard-roster-sync-btn:hover:not(:disabled) {
+        transform: none;
+    }
+
+    .dashboard-roster-sync-btn[aria-busy='true'] svg {
+        animation: none;
+    }
+}
+
+@media (max-width: 768px) {
+    .dashboard-topbar-aside {
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: flex-end;
+    }
+}
+
 .dashboard-save-features-btn {
     padding: 0.75rem 1.25rem;
     border: none;

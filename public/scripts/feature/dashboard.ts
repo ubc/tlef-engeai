@@ -22,6 +22,7 @@ import { authService } from '../services/auth-service.js';
 import { showErrorModal } from '../ui/modal-overlay.js';
 import { showErrorToast, showSuccessToast } from '../ui/toast-notification.js';
 import { initializeModelSettings, refreshModelSettingsVisibility } from './model-setting.js';
+import { wireCanvasRosterSync } from './canvas-roster-sync.js';
 
 interface DashboardCardDef {
     view: string;
@@ -396,6 +397,7 @@ async function wireAdvancedSettings(currentClass: activeCourse, canManage: boole
     if (featuresTaNote) featuresTaNote.hidden = canManage;
 
     await wireFeatureToggles(currentClass, canManage);
+    wireCanvasRosterSync(currentClass, canManage);
 }
 
 /**

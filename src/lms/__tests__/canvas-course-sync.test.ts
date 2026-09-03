@@ -35,7 +35,11 @@ jest.mock('../../utils/logger', () => ({
 }));
 
 import { canvas } from '@ubc/ubc-genai-toolkit-lms-integration';
-import { connectCanvasCourse, listCanvasCourseOptions } from '../canvas-course-sync';
+import {
+    CanvasStudentPathRemovedError,
+    connectCanvasCourse,
+    listCanvasCourseOptions,
+} from '../canvas-course-sync';
 import { provisionCourse } from '../../helpers/provision-course';
 import type { EngEAI_MongoDB } from '../../db/enge-ai-mongodb';
 import type { activeCourse, GlobalUser } from '../../types/shared';
@@ -124,14 +128,11 @@ describe('listCanvasCourseOptions', () => {
         getCourseUsers.mockResolvedValue(MATCHING_TEACHER_ROSTER);
     });
 
-    it('reads teacher enrollments for faculty and student enrollments for students', async () => {
+    it('reads teacher enrollments, the only role that reaches this list', async () => {
         getCourses.mockResolvedValue([CANVAS_COURSE]);
 
         await listCanvasCourseOptions(api, mongoStub(), instructor);
         expect(getCourses).toHaveBeenCalledWith(api, { enrollment_type: 'teacher' });
-
-        await listCanvasCourseOptions(api, mongoStub(), student);
-        expect(getCourses).toHaveBeenLastCalledWith(api, { enrollment_type: 'student' });
     });
 
     it('marks courses EngE-AI already has, and leaves the rest unconnected', async () => {
@@ -140,7 +141,7 @@ describe('listCanvasCourseOptions', () => {
             findCoursesByLmsLinks: jest.fn(async () => new Map([['742', linkedCourse]])),
         });
 
-        const options = await listCanvasCourseOptions(api, mongoDB, student);
+        const options = await listCanvasCourseOptions(api, mongoDB, instructor);
 
         expect(options).toHaveLength(2);
         expect(options[0]).toMatchObject({ canvasCourseId: '742', connected: true, engeAiCourseId: 'engeai-course-1' });
@@ -151,7 +152,7 @@ describe('listCanvasCourseOptions', () => {
     it('does not expose the provider raw payload to callers', async () => {
         getCourses.mockResolvedValue([{ ...CANVAS_COURSE, raw: { secret_sis_id: 'do-not-leak' } }]);
 
-        const options = await listCanvasCourseOptions(api, mongoStub(), student);
+        const options = await listCanvasCourseOptions(api, mongoStub(), instructor);
 
         expect(JSON.stringify(options)).not.toContain('do-not-leak');
         expect(options[0]).not.toHaveProperty('raw');
@@ -207,22 +208,12 @@ describe('connectCanvasCourse — authorization', () => {
         expect(mongoDB.enrollUserInCourse).not.toHaveBeenCalled();
     });
 
-    it('refuses a Canvas course the student is not enrolled in', async () => {
-        getCourses.mockResolvedValue([CANVAS_COURSE]);
-        const mongoDB = mongoStub();
-
-        await expect(connectCanvasCourse(api, mongoDB, student, '999')).rejects.toThrow(
-            /not enrolled in/
-        );
-        expect(mongoDB.enrollUserInCourse).not.toHaveBeenCalled();
-    });
-
     it('re-reads enrollment from Canvas rather than trusting the requested id', async () => {
         getCourses.mockResolvedValue([]);
         const mongoDB = mongoStub({ findCourseByLmsLink: jest.fn(async () => linkedCourse) });
 
         // The course exists and is linked; only the caller's Canvas enrollment is missing.
-        await expect(connectCanvasCourse(api, mongoDB, student, '742')).rejects.toThrow();
+        await expect(connectCanvasCourse(api, mongoDB, instructor, '742')).rejects.toThrow();
         expect(mongoDB.enrollUserInCourse).not.toHaveBeenCalled();
     });
 
@@ -241,14 +232,6 @@ describe('connectCanvasCourse — authorization', () => {
         }
     });
 
-    it('reads no roster at all on the student path', async () => {
-        getCourses.mockResolvedValue([CANVAS_COURSE]);
-
-        await connectCanvasCourse(api, mongoStub(), student, '742');
-        await listCanvasCourseOptions(api, mongoStub(), student);
-
-        expect(getCourseUsers).not.toHaveBeenCalled();
-    });
 });
 
 describe('connectCanvasCourse — instructor identity verification', () => {
@@ -403,14 +386,6 @@ describe('connectCanvasCourse — instructor identity verification', () => {
         );
     });
 
-    it('does not verify identity on the student path — Canvas cannot supply it', async () => {
-        const mongoDB = mongoStub({ findCourseByLmsLink: jest.fn(async () => linkedCourse) });
-
-        const result = await connectCanvasCourse(api, mongoDB, student, '742');
-
-        expect(result.status).toBe('joined');
-        expect(getCourseUsers).not.toHaveBeenCalled();
-    });
 });
 
 describe('connectCanvasCourse — instructor', () => {
@@ -510,46 +485,66 @@ describe('connectCanvasCourse — instructor', () => {
     });
 });
 
-describe('connectCanvasCourse — student', () => {
-    beforeEach(() => {
+describe('the removed student path', () => {
+    /**
+     * The student path was deleted, not disabled behind a flag. It could not be made safe:
+     * Canvas grants `read_sis` through a *teacher* enrollment, so a student's token cannot read
+     * `integration_id` for anyone including themselves, and OAuth alone never proves the token
+     * belongs to the signed-in user. A browser still signed in to a classmate's Canvas let one
+     * student list and join the other's courses.
+     *
+     * These pin the refusal at the service, not the route, because hiding the button is not the
+     * same as removing the capability — the endpoint stays reachable by a crafted request.
+     */
+    it('refuses a student listing their Canvas courses', async () => {
         getCourses.mockResolvedValue([CANVAS_COURSE]);
+
+        await expect(listCanvasCourseOptions(api, mongoStub(), student)).rejects.toBeInstanceOf(
+            CanvasStudentPathRemovedError
+        );
     });
 
-    it('enrolls into the course the instructor imported', async () => {
+    it('refuses a student connecting a course', async () => {
+        getCourses.mockResolvedValue([CANVAS_COURSE]);
         const mongoDB = mongoStub({ findCourseByLmsLink: jest.fn(async () => linkedCourse) });
 
-        const result = await connectCanvasCourse(api, mongoDB, student, '742');
-
-        expect(result.status).toBe('joined');
-        expect(result.courseId).toBe('engeai-course-1');
-        expect(mongoDB.enrollUserInCourse).toHaveBeenCalledWith(student, 'engeai-course-1', 'student');
-    });
-
-    it('reports the wait on the instructor rather than failing, when nothing is linked', async () => {
-        const mongoDB = mongoStub();
-
-        const result = await connectCanvasCourse(api, mongoDB, student, '742');
-
-        expect(result.status).toBe('awaiting_instructor');
-        expect(result.courseId).toBeUndefined();
-        expect(result.message).toMatch(/instructor/i);
+        await expect(connectCanvasCourse(api, mongoDB, student, '742')).rejects.toBeInstanceOf(
+            CanvasStudentPathRemovedError
+        );
         expect(mongoDB.enrollUserInCourse).not.toHaveBeenCalled();
     });
 
-    it('never creates a course', async () => {
-        await connectCanvasCourse(api, mongoStub(), student, '742');
-
-        expect(provisionCourseMock).not.toHaveBeenCalled();
-    });
-
-    it('never removes enrollment — sync only ever adds', async () => {
+    it('refuses before touching Canvas at all', async () => {
         const mongoDB = mongoStub({ findCourseByLmsLink: jest.fn(async () => linkedCourse) });
 
-        await connectCanvasCourse(api, mongoDB, student, '742');
+        await expect(connectCanvasCourse(api, mongoDB, student, '742')).rejects.toThrow();
+        await expect(listCanvasCourseOptions(api, mongoStub(), student)).rejects.toThrow();
 
-        // A course the student holds in EngE-AI but no longer in Canvas is simply not visited;
-        // nothing in this path can drop an enrollment.
-        expect(Object.keys(mongoDB)).not.toContain('removeCourseFromGlobalUser');
-        expect(mongoDB.updateActiveCourse).not.toHaveBeenCalled();
+        // The stored token may belong to someone else entirely, so it must not be used to
+        // enumerate anything — not even the course list the refusal would discard.
+        expect(getCourses).not.toHaveBeenCalled();
+        expect(getCourseUsers).not.toHaveBeenCalled();
+    });
+
+    it('tells the refused student where they can actually get in', async () => {
+        await expect(connectCanvasCourse(api, mongoStub(), student, '742')).rejects.toThrow(
+            /course code/i
+        );
+    });
+
+    it('still allows a platform admin, who follows the instructor path', async () => {
+        getCourses.mockResolvedValue([CANVAS_COURSE]);
+        getCourseUsers.mockResolvedValue([
+            { id: '11', name: 'Admin', integrationId: 'PUID_ADMIN', raw: {} },
+        ]);
+        connectedAs('11');
+        provisionCourseMock.mockResolvedValue({ id: 'new-course', courseName: 'APSC 183' });
+
+        // A student-affiliated platform admin: `canvasRoleFor` routes on admin status, so the
+        // refusal must key on the resolved role rather than on `affiliation` alone.
+        const admin = { ...student, isAdmin: true, puid: 'PUID_ADMIN' } as any;
+        const result = await connectCanvasCourse(api, mongoStub(), admin, '742');
+
+        expect(result.status).toBe('imported');
     });
 });
