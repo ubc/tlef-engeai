@@ -15,6 +15,7 @@ import type {
     WritingReleasePayload
 } from './contracts';
 import { computeReleaseFingerprint } from './canvas-release-service';
+import { planRubricWrite, rubricRefusalMessage, type RubricWritePlan } from './canvas-rubric-write';
 
 type ApiClient = NonNullable<Parameters<typeof canvas.getCourses>[0]>;
 type GradeBatch = Parameters<typeof canvas.preflightGradeExport>[1]['batch'];
@@ -36,6 +37,10 @@ interface PreparedRelease {
     gradeBatch: GradeBatch;
     gradePreflight: GradePreflight;
     feedbackPreflight: FeedbackPreflight;
+    /** Planned rubric assessment, decided at preview so a refusal happens before any write. */
+    rubricPlan: RubricWritePlan;
+    /** When Canvas grades from the rubric, writing the assessment already sets the grade. */
+    useRubricForGrading: boolean;
 }
 
 /** Server-local reviewed operations. A restart deliberately requires a fresh preview. */
@@ -126,19 +131,19 @@ export class LiveCanvasReleaseService implements CanvasReleaseService {
             writes: [{ userId, postedGrade: assessment.totalPoints }],
             unresolved: []
         };
-        const primary = input.artifacts.find((artifact) => artifact.kind === 'writing')!;
+        // Every artifact, so the preflight cannot drift from what attachFeedback uploads.
         const feedbackBatch: FeedbackBatch = {
             courseId: this.canvasCourseId,
             gradeItemId: assignmentId,
             maxBytesPerFile: MAX_PDF_BYTES,
-            writes: [{
-                feedbackId: payloadFingerprint,
+            writes: input.artifacts.map((artifact) => ({
+                feedbackId: `${payloadFingerprint}-${artifact.kind}`,
                 userId,
                 attempt: input.submission.attempt,
-                filename: primary.filename,
-                data: primary.data,
+                filename: artifact.filename,
+                data: artifact.data,
                 textComment: 'Your approved writing feedback is attached.'
-            }],
+            })),
             unresolved: []
         };
 
@@ -161,6 +166,27 @@ export class LiveCanvasReleaseService implements CanvasReleaseService {
             throw new Error('Canvas returned inconsistent posting policy during release preflight');
         }
 
+        // The instructor's live Canvas rubric, read now rather than trusted from import time.
+        // The toolkit exposes no rubric API, so both of these come from the raw client.
+        const liveAssignment = await this.client.get<{
+            rubric?: Array<{ id?: string | number }>;
+            use_rubric_for_grading?: boolean;
+        }>(`/courses/${encodeURIComponent(this.canvasCourseId)}/assignments/${encodeURIComponent(assignmentId)}`);
+
+        const rubricPlan = planRubricWrite({
+            assessment,
+            rubric: input.gradedRubric,
+            ids: input.assignment.canvasRubricImport?.ids,
+            liveCanvasCriterionIds: (liveAssignment.rubric ?? []).map((row) => String(row.id))
+        });
+        // A rubric that was never imported from Canvas has nothing to fill, and that is a
+        // legitimate release: the total grade goes over on its own. A *broken* mapping is
+        // different — it stops the release before a single Canvas write, because a partially
+        // filled rubric looks complete to a student and says nothing about what is missing.
+        if (rubricPlan.refusal && rubricPlan.refusal !== 'no_id_map') {
+            throw new Error(rubricRefusalMessage(rubricPlan.refusal));
+        }
+
         cleanPrepared();
         preparedReleases.set(payloadFingerprint, {
             createdAt: Date.now(),
@@ -171,7 +197,9 @@ export class LiveCanvasReleaseService implements CanvasReleaseService {
             artifacts: input.artifacts.map((artifact) => ({ ...artifact, data: Buffer.from(artifact.data) })),
             gradeBatch,
             gradePreflight,
-            feedbackPreflight
+            feedbackPreflight,
+            rubricPlan,
+            useRubricForGrading: liveAssignment.use_rubric_for_grading === true
         });
 
         if (existing) return existing;
@@ -211,6 +239,12 @@ export class LiveCanvasReleaseService implements CanvasReleaseService {
             if (release.status !== 'feedback_attached') return release;
         }
 
+        const scored = await this.writeRubricAssessment(fingerprint, prepared);
+        if (scored.status !== 'feedback_attached') return scored;
+
+        // When the Canvas rubric grades the assignment, the assessment above already set the
+        // grade. Posting a total as well would overwrite it with a number Canvas did not derive.
+        if (prepared.useRubricForGrading) return this.finishRubricOnlyRelease(fingerprint);
         return this.writeGrade(fingerprint, prepared);
     }
 
@@ -279,6 +313,64 @@ export class LiveCanvasReleaseService implements CanvasReleaseService {
             sanitizedError: undefined
         });
         if (!updated) throw new Error('Release reconciliation record was not found');
+        return updated;
+    }
+
+    /**
+     * Fills the instructor's Canvas rubric with the staff-final score for each criterion.
+     *
+     * Runs after the PDFs are attached and before any total is posted, so a student who opens
+     * the rubric sees the same numbers the attached feedback explains. A definite rejection
+     * fails the release; an uncertain outcome enters reconciliation rather than being retried,
+     * because Canvas offers no idempotency key here either.
+     */
+    private async writeRubricAssessment(
+        fingerprint: string,
+        prepared: PreparedRelease
+    ): Promise<WritingRelease> {
+        const payload = prepared.rubricPlan.payload;
+        if (!payload) {
+            // Preview refuses on a refusal, so this is only reachable when nothing was planned.
+            const unchanged = await this.updateRelease(fingerprint, {});
+            if (!unchanged) throw new Error('Release reconciliation record was not found');
+            return unchanged;
+        }
+        try {
+            await this.client.put(
+                submissionPath(prepared.courseId, prepared.assignmentId, prepared.userId),
+                { rubric_assessment: payload }
+            );
+        } catch (error) {
+            const definite = error instanceof canvas.CanvasApiError;
+            const updated = await this.updateRelease(fingerprint, {
+                status: definite ? 'failed' : 'reconciliation_required',
+                failureStage: 'grade',
+                sanitizedError: definite
+                    ? 'Canvas rejected the rubric assessment'
+                    : 'Canvas rubric assessment outcome is unknown'
+            });
+            if (!updated) throw new Error('Release reconciliation record was not found');
+            return updated;
+        }
+        const updated = await this.updateRelease(fingerprint, { rubricAssessmentWritten: true });
+        if (!updated) throw new Error('Release reconciliation record was not found');
+        return updated;
+    }
+
+    /**
+     * Completes a release whose grade came from the rubric assessment itself.
+     *
+     * Canvas derives the score when the rubric is set to grade the assignment, so there is no
+     * bulk-grade job and no progress id to wait on — the release is already done.
+     */
+    private async finishRubricOnlyRelease(fingerprint: string): Promise<WritingRelease> {
+        const updated = await this.updateRelease(fingerprint, {
+            status: 'released',
+            failureStage: undefined,
+            sanitizedError: undefined
+        });
+        if (!updated) throw new Error('Release reconciliation record was not found');
+        preparedReleases.delete(fingerprint);
         return updated;
     }
 

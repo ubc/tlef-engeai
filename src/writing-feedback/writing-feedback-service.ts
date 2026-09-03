@@ -505,11 +505,17 @@ export class WritingFeedbackService {
         const artifacts: CanvasReleaseInput['artifacts'] = [
             { kind: 'writing', filename: 'writing-feedback-complete.pdf', data: completePdf }
         ];
+        // The lens is known here, so the adapter never re-derives which rubric carries marks.
+        const gradedRubric = selectRubric(assignment, gradedLensFor(assignment)).approved;
+        if (!gradedRubric) {
+            throw new Error('Approve the rubric this assignment is graded on before releasing');
+        }
         return releaseService.preview({
             submission,
             assignment,
             feedbackRun,
             artifacts,
+            gradedRubric,
             finalAssessment: latestReview?.finalAssessment,
             studentFeedback: latestReview?.studentFeedback,
             ...(technicalRun ? { technicalFeedbackRun: technicalRun } : {})
@@ -551,11 +557,16 @@ export class WritingFeedbackService {
         const artifacts: CanvasReleaseInput['artifacts'] = [
             { kind: 'writing', filename: 'writing-feedback-complete.pdf', data: completePdf }
         ];
+        const gradedRubric = selectRubric(assignment, gradedLensFor(assignment)).approved;
+        if (!gradedRubric) {
+            throw new Error('Approve the rubric this assignment is graded on before releasing');
+        }
         const release = await releaseService.release({
             submission,
             assignment,
             feedbackRun,
             artifacts,
+            gradedRubric,
             finalAssessment: latestReview?.finalAssessment,
             studentFeedback: latestReview?.studentFeedback,
             ...(technicalRun ? { technicalFeedbackRun: technicalRun } : {})

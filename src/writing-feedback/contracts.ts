@@ -609,6 +609,8 @@ export interface WritingRelease {
     submissionId: string; // released submission attempt
     feedbackRunId: string; // immutable draft provenance
     rubricVersion?: number; // approved rubric used for the payload
+    /** Whether per-criterion points reached the instructor's Canvas rubric. */
+    rubricAssessmentWritten?: boolean;
     payloadFingerprint: string; // idempotency key across preview and retry
     status: 'previewed' | 'feedback_attached' | 'grade_queued' | 'released' | 'reconciliation_required' | 'failed' | 'reconciled'; // external-write lifecycle
     grade?: number; // staff-final total sent to Canvas
@@ -733,6 +735,13 @@ export interface CanvasReleaseInput {
     artifacts: Array<{ kind: 'writing' | 'technical'; filename: string; data: Buffer }>;
     /** Complete staff-authored grade saved in the latest review revision. */
     finalAssessment?: StaffFinalAssessment;
+    /**
+     * The rubric the grade was awarded against — the technical one for a lab report.
+     *
+     * Resolved by the service, where the lens is already known, so the release adapter never
+     * re-derives which of an assignment's two rubrics carries its marks.
+     */
+    gradedRubric: WritingRubricDefinition;
     /** Latest staff-approved narrative, so an edited re-approval releases as new content. */
     studentFeedback?: string;
     /** Technical model draft released alongside the linguistic one, when the assignment has one. */

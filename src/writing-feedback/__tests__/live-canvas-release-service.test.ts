@@ -53,6 +53,7 @@ function input(id: string): CanvasReleaseInput {
             { kind: 'technical', filename: 'technical-feedback.pdf', data: Buffer.from('%PDF-1.7\ntechnical') }
         ],
         finalAssessment: assessment,
+        gradedRubric: assignment.rubric,
         studentFeedback: 'Approved narrative.'
     };
 }
@@ -73,7 +74,9 @@ function harness(clientOverrides: Record<string, jest.Mock> = {}) {
     const records = new Map<string, WritingRelease>();
     let file = 0;
     const client = {
-        get: jest.fn(async () => ({ assignment_id: 88, user_id: 42, attempt: 2 })),
+        get: jest.fn(async (path: string) => (path.includes('/submissions/')
+            ? { assignment_id: 88, user_id: 42, attempt: 2 }
+            : { id: 88, rubric: liveCanvasRubric(), use_rubric_for_grading: false })),
         uploadFile: jest.fn(async () => ({ id: String(++file) })),
         put: jest.fn(async () => ({ id: 900 })),
         ...clientOverrides
@@ -122,8 +125,9 @@ describe('LiveCanvasReleaseService', () => {
         const { service, client } = harness();
         const preview = await service.preview(input('submission-preview'));
         expect(preview).toMatchObject({ status: 'previewed', grade: assessment.totalPoints, postManually: true });
-        expect(client.get).not.toHaveBeenCalled();
+        // Reading the live rubric is a GET; nothing is written.
         expect(client.uploadFile).not.toHaveBeenCalled();
+        expect(client.put).not.toHaveBeenCalled();
         expect(canvas.postGrades).not.toHaveBeenCalled();
     });
 
@@ -200,5 +204,95 @@ describe('LiveCanvasReleaseService', () => {
         expect(client.uploadFile).not.toHaveBeenCalled();
         expect(canvas.postGrades).not.toHaveBeenCalled();
         expect(released.status).toBe('released');
+    });
+});
+
+/** The Canvas rubric as the live assignment reports it, matching the import id map below. */
+function liveCanvasRubric() {
+    return assignment.rubric.criteria.map((criterion) => ({ id: `canvas_${criterion.id}` }));
+}
+
+describe('canvas rubric assessment', () => {
+    beforeEach(() => {
+        assignment.canvasRubricImport = {
+            shape: { criteria: assignment.rubric.criteria, levels: assignment.rubric.levels },
+            ids: Object.fromEntries(assignment.rubric.criteria.map((criterion) => [
+                criterion.id,
+                {
+                    criterionId: `canvas_${criterion.id}`,
+                    ratingIds: Object.fromEntries(assignment.rubric.levels.map((level) => [level.id, `rating_${level.id}`]))
+                }
+            ])),
+            importedAt: new Date()
+        };
+        jest.spyOn(canvas, 'preflightGradeExport').mockResolvedValue({
+            courseId: '7', gradeItemId: '88', postManually: true,
+            maxScore: assessment.maxPoints, gradingType: 'points', assignmentName: 'Canvas assignment', raw: {}
+        } as never);
+        jest.spyOn(canvas, 'preflightSubmissionFeedbackExport').mockResolvedValue({
+            courseId: '7', gradeItemId: '88', assignmentName: 'Canvas assignment', postManually: true,
+            fileCount: 1, totalBytes: 20, batchFingerprint: 'a'.repeat(64), raw: {}
+        } as never);
+        jest.spyOn(canvas, 'postGrades').mockResolvedValue({
+            progressId: 'progress-1', workflowState: 'queued', postManually: true, raw: {}
+        } as never);
+        jest.spyOn(canvas, 'waitForProgress').mockResolvedValue({
+            progressId: 'progress-1', workflowState: 'completed', completion: 100, raw: {}
+        } as never);
+    });
+
+    afterEach(() => {
+        delete assignment.canvasRubricImport;
+        jest.restoreAllMocks();
+    });
+
+    it('writes the rubric assessment criterion by criterion, before the total grade', async () => {
+        const { service, client } = harness();
+        const releaseInput = input('submission-rubric');
+        await service.preview(releaseInput);
+        await service.release(releaseInput);
+
+        const rubricPut = (client.put as jest.Mock).mock.calls
+            .find(([, body]) => body && 'rubric_assessment' in body);
+        expect(rubricPut).toBeDefined();
+        const firstCriterion = assignment.rubric.criteria[0];
+        expect(rubricPut![1].rubric_assessment[`canvas_${firstCriterion.id}`].points)
+            .toBe(firstCriterion.points);
+        expect(canvas.postGrades).toHaveBeenCalled();
+    });
+
+    it('does not post a total when the canvas rubric grades the assignment', async () => {
+        const { service } = harness({
+            get: jest.fn(async (path: string) => (path.includes('/submissions/')
+                ? { assignment_id: 88, user_id: 42, attempt: 2 }
+                : { id: 88, rubric: liveCanvasRubric(), use_rubric_for_grading: true }))
+        });
+        const releaseInput = input('submission-rubric-grades');
+        await service.preview(releaseInput);
+        const released = await service.release(releaseInput);
+
+        expect(canvas.postGrades).not.toHaveBeenCalled();
+        expect(released.status).toBe('released');
+    });
+
+    it('refuses at preview when the live canvas rubric no longer matches the import', async () => {
+        const { service, client } = harness({
+            get: jest.fn(async (path: string) => (path.includes('/submissions/')
+                ? { assignment_id: 88, user_id: 42, attempt: 2 }
+                : { id: 88, rubric: [{ id: 'rebuilt_in_canvas' }], use_rubric_for_grading: false }))
+        });
+
+        await expect(service.preview(input('submission-stale'))).rejects.toThrow('changed since');
+        expect(client.uploadFile).not.toHaveBeenCalled();
+        expect(client.put).not.toHaveBeenCalled();
+    });
+
+    it('preflights every artifact rather than only the first', async () => {
+        const { service } = harness();
+        const releaseInput = input('submission-preflight');
+        await service.preview(releaseInput);
+
+        const batch = (canvas.preflightSubmissionFeedbackExport as jest.Mock).mock.calls[0][1].batch;
+        expect(batch.writes).toHaveLength(releaseInput.artifacts.length);
     });
 });
