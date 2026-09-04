@@ -319,8 +319,7 @@ function bindSelectionPopover(
             // tuple again instead of trusting browser selection state.
             const comment: AnchoredComment = {
                 id: crypto.randomUUID(),
-                // Single working set today, so every staff comment is linguistic.
-                lens: 'linguistic',
+                lens: context.lens,
                 quote,
                 startOffset: from,
                 endOffset: from + quote.length,

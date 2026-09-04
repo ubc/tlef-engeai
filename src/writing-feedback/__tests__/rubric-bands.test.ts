@@ -6,7 +6,7 @@
  * band rather than producing an invalid one.
  */
 
-import { resolveBand, spaceBandsEvenly, totalRubricPoints } from '../rubric-bands';
+import { earnedLevelFor, resolveBand, spaceBandsEvenly, totalRubricPoints } from '../rubric-bands';
 import type { WritingRubricLevel } from '../contracts';
 
 const levels: WritingRubricLevel[] = [
@@ -113,5 +113,81 @@ describe('totalRubricPoints', () => {
             { id: 'a', label: 'A', description: 'd', points: 30 },
             { id: 'b', label: 'B', description: 'd' }
         ])).toBe(30);
+    });
+});
+
+describe('earnedLevelFor', () => {
+    it('finds the level whose authored band contains the points', () => {
+        const criterion = {
+            id: 'c', label: 'C', description: 'd', points: 30,
+            cells: {
+                weak: { min: 0, max: 7 },
+                developing: { min: 8, max: 15 },
+                proficient: { min: 16, max: 22 },
+                exemplary: { min: 23, max: 30 }
+            }
+        };
+        expect(earnedLevelFor(criterion, levels, 18)?.id).toBe('proficient');
+    });
+
+    it('derives the band when the criterion authored none', () => {
+        // cells is sparse: a criterion carrying only a weight still awards a level, and
+        // the PDF left every such row unmarked because it read cells directly.
+        const criterion = { id: 'c', label: 'C', description: 'd', points: 30 };
+        expect(earnedLevelFor(criterion, levels, 18)?.id).toBe('proficient');
+    });
+
+    it('marks a level when only some of the cells are authored', () => {
+        const criterion = {
+            id: 'c', label: 'C', description: 'd', points: 30,
+            cells: { proficient: { min: 16, max: 22 } }
+        };
+        expect(earnedLevelFor(criterion, levels, 25)?.id).toBe('proficient');
+    });
+
+    it('places a fractional grade in the band it falls inside', () => {
+        const criterion = { id: 'c', label: 'C', description: 'd', points: 30 };
+        expect(earnedLevelFor(criterion, levels, 15.5)?.id).toBe('developing');
+    });
+
+    it('resolves collapsed single-value bands, which few grades match exactly', () => {
+        // The superseded D-072 stored min === max, so only a grade landing exactly on a
+        // band value was ever marked.
+        const criterion = {
+            id: 'c', label: 'C', description: 'd', points: 30,
+            cells: {
+                weak: { min: 0, max: 0 },
+                developing: { min: 10, max: 10 },
+                proficient: { min: 20, max: 20 },
+                exemplary: { min: 30, max: 30 }
+            }
+        };
+        expect(earnedLevelFor(criterion, levels, 22)?.id).toBe('proficient');
+    });
+
+    it('clamps points above every band to the highest banded level', () => {
+        const criterion = {
+            id: 'c', label: 'C', description: 'd', points: 30,
+            cells: { weak: { min: 0, max: 4 }, developing: { min: 5, max: 9 } }
+        };
+        expect(earnedLevelFor(criterion, levels, 99)?.id).toBe('developing');
+    });
+
+    it('gives zero the lowest level', () => {
+        const criterion = { id: 'c', label: 'C', description: 'd', points: 30 };
+        expect(earnedLevelFor(criterion, levels, 0)?.id).toBe('weak');
+    });
+
+    it('gives points below every band the lowest banded level', () => {
+        const criterion = {
+            id: 'c', label: 'C', description: 'd', points: 30,
+            cells: { proficient: { min: 16, max: 22 }, exemplary: { min: 23, max: 30 } }
+        };
+        expect(earnedLevelFor(criterion, levels, 3)?.id).toBe('proficient');
+    });
+
+    it('returns undefined for an ordinal criterion with no weight and no cells', () => {
+        const criterion = { id: 'c', label: 'C', description: 'd' };
+        expect(earnedLevelFor(criterion, levels, 12)).toBeUndefined();
     });
 });

@@ -57,6 +57,31 @@ function render(rubric: WritingRubricDefinition): Promise<Buffer> {
     });
 }
 
+/** The earned-cell fill, as PDFKit writes #e4efe4 into an uncompressed content stream. */
+const EARNED_FILL_OP = '0.8941176470588236 0.9372549019607843 0.8941176470588236 scn';
+
+/** How many cells the grid painted as earned. */
+function countEarnedFills(pdf: Buffer): number {
+    return pdf.toString('latin1').split(EARNED_FILL_OP).length - 1;
+}
+
+/** Renders without compression, so the drawing operators can be counted. */
+function renderUncompressed(rubric: WritingRubricDefinition, assessment: StaffFinalAssessment): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+        const doc = new PDFDocument({ size: 'LETTER', margin: 64, bufferPages: true, compress: false });
+        const chunks: Buffer[] = [];
+        doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+        doc.on('end', () => resolve(Buffer.concat(chunks)));
+        doc.on('error', reject);
+        try {
+            renderRubricGrid(doc, rubric, assessment);
+            doc.end();
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
 describe('renderRubricGrid', () => {
     it('renders a portrait grid at the narrow end of the contract', async () => {
         const pdf = await render(rubricWith(2, 1));
@@ -69,20 +94,36 @@ describe('renderRubricGrid', () => {
         expect(pdf.length).toBeGreaterThan(1000);
     });
 
-    it('renders when no awarded points fall inside any band', async () => {
+    it('marks the top level when the awarded points sit above every band', async () => {
         // spaceBandsEvenly produces contiguous bands, but an imported Canvas rubric can leave
-        // gaps; the grid must still draw, just without marking a cell.
+        // gaps. Points outside every band are clamped to the highest level they reach rather
+        // than leaving the row unmarked, so a staff-final grade always shows a level.
         const rubric = rubricWith(4, 2);
         const assessment = { ...assessmentFor(rubric), criteria: rubric.criteria.map((c) => ({ criterionId: c.id, points: 99 })) };
-        const pdf = await new Promise<Buffer>((resolve, reject) => {
-            const doc = new PDFDocument({ size: 'LETTER', margin: 64, bufferPages: true });
-            const chunks: Buffer[] = [];
-            doc.on('data', (c: Buffer) => chunks.push(c));
-            doc.on('end', () => resolve(Buffer.concat(chunks)));
-            doc.on('error', reject);
-            renderRubricGrid(doc, rubric, assessment);
-            doc.end();
-        });
+        const pdf = await renderUncompressed(rubric, assessment);
         expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+        expect(countEarnedFills(pdf)).toBe(rubric.criteria.length);
+    });
+
+    it('marks every criterion of a rubric that authored no cells', async () => {
+        // cells is sparse (D-060). Reading it directly left every unbanded criterion
+        // unmarked, so a grid drew one green cell at most however many criteria it had.
+        const rubric = rubricWith(4, 5);
+        rubric.criteria.forEach((criterion) => { delete criterion.cells; });
+        const pdf = await renderUncompressed(rubric, assessmentFor(rubric));
+        expect(countEarnedFills(pdf)).toBe(5);
+    });
+
+    it('marks every criterion whose bands collapsed onto single values', async () => {
+        // The superseded D-072 stored min === max, so only a grade landing exactly on a
+        // band value was ever marked.
+        const rubric = rubricWith(4, 3);
+        rubric.criteria.forEach((criterion) => {
+            criterion.cells = Object.fromEntries(rubric.levels.map((level, index) => [
+                level.id, { min: index * 5, max: index * 5, descriptor: 'D' }
+            ]));
+        });
+        const pdf = await renderUncompressed(rubric, assessmentFor(rubric));
+        expect(countEarnedFills(pdf)).toBe(3);
     });
 });

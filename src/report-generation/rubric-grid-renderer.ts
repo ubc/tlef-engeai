@@ -23,6 +23,7 @@ import type {
     WritingRubricCriterion,
     WritingRubricLevel
 } from '../writing-feedback/contracts';
+import { earnedLevelFor } from '../writing-feedback/rubric-bands';
 
 /**
  * Narrowest column that still wraps a descriptor into readable lines.
@@ -134,18 +135,6 @@ export function measureRubricGrid(rubric: WritingRubricDefinition, page: GridPag
     return { landscape, columnWidth, criterionColumnWidth: CRITERION_COLUMN_WIDTH, rowHeights, pageBreakAfter };
 }
 
-/** The level a criterion's awarded points fall in, or undefined when no band contains them. */
-function earnedLevel(
-    criterion: WritingRubricCriterion,
-    levels: WritingRubricLevel[],
-    points: number
-): WritingRubricLevel | undefined {
-    return levels.find((level) => {
-        const cell = criterion.cells?.[level.id];
-        return cell !== undefined && points >= cell.min && points <= cell.max;
-    });
-}
-
 /** Draws one header row of level names. */
 function drawHeader(
     doc: PDFKit.PDFDocument,
@@ -202,7 +191,9 @@ export function renderRubricGrid(
     rubric.criteria.forEach((criterion, index) => {
         const height = geometry.rowHeights[index];
         const points = awarded.get(criterion.id);
-        const earned = points === undefined ? undefined : earnedLevel(criterion, rubric.levels, points);
+        // earnedLevelFor, not the cells map: cells is sparse, so reading it directly left
+        // every criterion without authored bands unmarked.
+        const earned = points === undefined ? undefined : earnedLevelFor(criterion, rubric.levels, points);
 
         rubric.levels.forEach((level, column) => {
             const x = left + geometry.criterionColumnWidth + geometry.columnWidth * column;

@@ -16,7 +16,7 @@
  * @description: Coordinates transcript verification, review revisions, PDF downloads, approval, and release.
  */
 
-import { showConfirmModal, showErrorModal, showViewerModal } from '../ui/modal-overlay.js';
+import { showConfirmModal, showErrorModal, showGridModal, showViewerModal } from '../ui/modal-overlay.js';
 import { showErrorToast, showSuccessToast } from '../ui/toast-notification.js';
 import {
     AnchoredComment,
@@ -25,6 +25,7 @@ import {
     FeedbackRun,
     FUNCTION_TAG_LABELS,
     ReviewRevision,
+    RubricCriterion,
     RubricDefinition,
     SOURCE_LABELS,
     StaffFinalAssessment,
@@ -53,7 +54,7 @@ import {
     views
 } from './writing-feedback-shared.js';
 import { getWorkingComments, initAnchorWorkingSet, renderAnnotations } from './writing-feedback-anchors.js';
-import { formatBand, resolveBand, totalRubricPoints } from './writing-feedback-grid.js';
+import { earnedLevelFor, formatBand, resolveBand, totalRubricPoints } from './writing-feedback-grid.js';
 
 function latestReview(submission: Submission): ReviewRevision | undefined {
     return submission.reviews?.[submission.reviews.length - 1];
@@ -180,17 +181,16 @@ function renderSuggestedGrading(
         )
     );
 
+    // The panel lives outside the page and is handed to the modal, which shows this very
+    // element rather than a copy. Detached inputs keep their values, so a grade typed here
+    // survives closing and reopening and readAssessment below still reads it.
     const panel = document.createElement('div');
     panel.className = 'wf-suggested-grading__panel';
-    panel.hidden = true;
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'wf-button wf-button--secondary';
-    button.textContent = 'Show suggested grading';
-    button.addEventListener('click', () => {
-        panel.hidden = !panel.hidden;
-        button.textContent = panel.hidden ? 'Show suggested grading' : 'Hide suggested grading';
-    });
+    button.textContent = 'Open rubric grading';
+    button.addEventListener('click', () => { void showGridModal('Rubric grading', panel); });
     header.append(button);
 
     const scroll = document.createElement('div');
@@ -202,14 +202,14 @@ function renderSuggestedGrading(
     const corner = createText('th', 'Criterion');
     corner.setAttribute('scope', 'col');
     headRow.append(corner);
-    rubric.levels
-        .slice()
-        .sort((left, right) => left.rank - right.rank)
-        .forEach((level) => {
-            const heading = createText('th', level.label);
-            heading.setAttribute('scope', 'col');
-            headRow.append(heading);
-        });
+    // Sorted once: the header, every row, and the earned-level mark must agree on which
+    // column is which, and rank is the only thing that decides that.
+    const ordered = rubric.levels.slice().sort((left, right) => left.rank - right.rank);
+    ordered.forEach((level) => {
+        const heading = createText('th', level.label);
+        heading.setAttribute('scope', 'col');
+        headRow.append(heading);
+    });
     const finalHeading = createText('th', 'Final grade');
     finalHeading.setAttribute('scope', 'col');
     headRow.append(finalHeading);
@@ -220,6 +220,29 @@ function renderSuggestedGrading(
     const feedbackByCriterion = new Map(run.result.criteria.map((feedback) => [feedback.criterion, feedback]));
     const savedByCriterion = new Map(saved?.criteria.map((entry) => [entry.criterionId, entry.points]) ?? []);
     const gradeInputs = new Map<string, HTMLInputElement>();
+    /** Level cells of one criterion, in rank order, so the earned one can be repainted. */
+    const levelCells = new Map<string, HTMLTableCellElement[]>();
+    /** Every grade input in criterion order, which is the order Enter walks. */
+    const gradeOrder: HTMLInputElement[] = [];
+
+    /**
+     * Paints the level a typed grade falls in, and clears the rest of that row. Staff see
+     * where the number lands before they save it, and the mark matches the one the PDF
+     * draws because both answer to earnedLevelFor.
+     */
+    const paintEarned = (criterion: RubricCriterion, input: HTMLInputElement): void => {
+        const cells = levelCells.get(criterion.id) ?? [];
+        cells.forEach((cell) => cell.classList.remove('wf-suggested-grading__earned'));
+        const raw = input.value.trim();
+        if (raw === '') return;
+        const points = Number(raw);
+        if (!Number.isFinite(points)) return;
+        const earned = earnedLevelFor(criterion, ordered, points);
+        if (!earned) return;
+        const index = ordered.findIndex((level) => level.id === earned.id);
+        cells[index]?.classList.add('wf-suggested-grading__earned');
+    };
+
     rubric.criteria.forEach((criterion) => {
         const feedback = feedbackByCriterion.get(criterion.id);
         if (!feedback) return;
@@ -227,22 +250,22 @@ function renderSuggestedGrading(
         const rowHeading = createText('th', criterion.label);
         rowHeading.setAttribute('scope', 'row');
         row.append(rowHeading);
-        rubric.levels
-            .slice()
-            .sort((left, right) => left.rank - right.rank)
-            .forEach((level) => {
-                const cell = document.createElement('td');
-                const band = resolveBand(criterion, level.id, rubric.levels);
-                if (band) cell.append(createText('strong', formatBand(band), 'wf-suggested-grading__band'));
-                if (feedback.suggestedLevel === level.id) {
-                    cell.classList.add('wf-suggested-grading__choice');
-                    cell.append(
-                        createText('span', 'Suggested', 'wf-suggested-grading__tag'),
-                        createText('p', feedback.explanation, 'wf-suggested-grading__reason')
-                    );
-                }
-                row.append(cell);
-            });
+        const cellsForRow: HTMLTableCellElement[] = [];
+        ordered.forEach((level) => {
+            const cell = document.createElement('td');
+            const band = resolveBand(criterion, level.id, rubric.levels);
+            if (band) cell.append(createText('strong', formatBand(band), 'wf-suggested-grading__band'));
+            if (feedback.suggestedLevel === level.id) {
+                cell.classList.add('wf-suggested-grading__choice');
+                cell.append(
+                    createText('span', 'Suggested', 'wf-suggested-grading__tag'),
+                    createText('p', feedback.explanation, 'wf-suggested-grading__reason')
+                );
+            }
+            cellsForRow.push(cell);
+            row.append(cell);
+        });
+        levelCells.set(criterion.id, cellsForRow);
         const gradeCell = document.createElement('td');
         const gradeInput = document.createElement('input');
         gradeInput.type = 'number';
@@ -254,11 +277,31 @@ function renderSuggestedGrading(
         gradeInput.setAttribute('aria-label', `Final points for ${criterion.label}, out of ${criterion.points}`);
         const savedPoints = savedByCriterion.get(criterion.id);
         if (savedPoints !== undefined) gradeInput.value = String(savedPoints);
-        gradeInput.addEventListener('input', markDirty);
+        gradeInput.addEventListener('input', () => {
+            markDirty();
+            paintEarned(criterion, gradeInput);
+        });
+        gradeInput.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter') return;
+            // These inputs sit outside any form, so Enter submits nothing; it is free to
+            // mean "next criterion", which is how a marker works down a column of grades.
+            event.preventDefault();
+            const at = gradeOrder.indexOf(gradeInput);
+            const next = gradeOrder[at + (event.shiftKey ? -1 : 1)];
+            if (next) {
+                next.focus();
+                next.select();
+            } else {
+                gradeInput.blur();
+            }
+        });
         gradeCell.append(gradeInput, createText('span', ` / ${criterion.points}`, 'wf-muted-note'));
         gradeInputs.set(criterion.id, gradeInput);
+        gradeOrder.push(gradeInput);
         row.append(gradeCell);
         tbody.append(row);
+        // A saved grade should already show its level when the page opens.
+        paintEarned(criterion, gradeInput);
     });
     table.append(tbody);
     scroll.append(table);
@@ -267,16 +310,17 @@ function renderSuggestedGrading(
     const totalText = grading.totalMin === grading.totalMax
         ? `${grading.totalMax} of ${total}`
         : `${grading.totalMin} – ${grading.totalMax} of ${total}`;
+    const savedText = saved
+        ? `Saved final grade: ${saved.totalPoints} of ${saved.maxPoints}`
+        : 'No final grade has been saved yet.';
     panel.append(
         scroll,
         createText('p', `Model suggestion: ${totalText}`, 'wf-suggested-grading__total'),
-        createText(
-            'p',
-            saved ? `Saved final grade: ${saved.totalPoints} of ${saved.maxPoints}` : 'No final grade has been saved yet.',
-            'wf-suggested-grading__total'
-        )
+        createText('p', savedText, 'wf-suggested-grading__total')
     );
-    section.append(header, panel);
+    // The grid now opens in a modal, so the page itself has to keep stating where the grade
+    // stands; otherwise closing the modal loses the one number staff came here to check.
+    section.append(header, createText('p', savedText, 'wf-suggested-grading__total'));
     return {
         element: section,
         readAssessment: () => {
@@ -812,10 +856,11 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
     annotationsBody.append(annotationsListHost);
     panel.append(annotationsBody, summaryBody);
 
-    // Technical tab — the read-only technical draft, then the technical rubric's own
-    // annotations. Approval and release remain whole-submission actions on the Summary tab.
+    // Technical tab — rubric-specific annotations first, then the read-only technical
+    // draft below them. Approval and release remain whole-submission actions on the
+    // Summary tab.
     if (detail.technicalFeedbackRun) {
-        technicalBody.append(...renderTechnicalTab(detail.technicalFeedbackRun, assignment), technicalListHost);
+        technicalBody.append(technicalListHost, ...renderTechnicalTab(detail.technicalFeedbackRun, assignment));
         panel.append(technicalBody);
     }
 

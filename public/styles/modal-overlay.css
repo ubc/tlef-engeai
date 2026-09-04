@@ -1208,3 +1208,41 @@ body.modal-open {
         font-size: 12px;
     }
 }
+
+/* ===========================================
+   DOCUMENT VIEWER AND GRID MODALS
+   =========================================== */
+
+/*
+ * The viewer shows a whole page of a PDF, so it wants the width its maxWidth already asks
+ * for and the height the frame inside it asks for. The shared 60vh body cap was clipping
+ * that frame into a scroll box, which is what made the preview read as narrow and tight.
+ */
+.modal--viewer .modal-body,
+.modal--grading .modal-body {
+    max-height: none;
+    padding: 1rem 1.25rem;
+}
+
+.modal--viewer .modal-content,
+.modal--grading .modal-content {
+    line-height: 1.4;
+}
+
+/*
+ * The grading grid is read against the page it grades, so the page behind it is blurred
+ * rather than merely dimmed. The blur is scoped here on purpose: the global one on
+ * .modal-overlay was removed deliberately and stays removed.
+ */
+.modal-overlay--grading {
+    background-color: rgba(0, 0, 0, 0.42);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .modal-overlay--grading {
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+}

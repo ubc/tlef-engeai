@@ -158,6 +158,10 @@ export class ModalOverlay {
         this.overlay.setAttribute('aria-modal', 'true');
         this.overlay.setAttribute('aria-labelledby', this.titleId);
 
+        if (config.overlayClass) {
+            this.overlay.classList.add(config.overlayClass);
+        }
+
         // Create container
         this.container = document.createElement('div');
         this.container.className = `modal-container modal-${config.type}`;
@@ -717,7 +721,7 @@ export async function showViewerModal(
         type: 'info',
         title,
         content: frame,
-        maxWidth: 'min(1100px, 95vw)',
+        maxWidth: 'min(1500px, 96vw)',
         customClass: 'modal--viewer',
         buttons: [
             {
@@ -726,6 +730,38 @@ export async function showViewerModal(
                 closeOnClick: false,
                 action: () => { window.open(downloadUrl, '_blank', 'noopener'); }
             },
+            { text: 'Close', type: 'primary', closeOnClick: true }
+        ]
+    });
+}
+
+/**
+ * showGridModal - shows a wide table for reading and editing, over a blurred page
+ *
+ * Used for the Writing Feedback rubric grading grid. The supplied element is shown, not
+ * copied, so a caller may hand over a live editor and keep reading its inputs after the
+ * modal closes. The overlay blurs rather than only dimming, because the grid is read
+ * against the feedback it grades and the page behind should recede.
+ *
+ * @param title - Name of what is being shown
+ * @param content - Prepared element, shown in place
+ * @returns Modal result once the reviewer closes it
+ */
+export async function showGridModal(
+    title: string,
+    content: HTMLElement
+): Promise<ModalResult> {
+    const modal = getModal();
+    return modal.show({
+        type: 'info',
+        title,
+        content,
+        maxWidth: 'min(1400px, 96vw)',
+        customClass: 'modal--grading',
+        overlayClass: 'modal-overlay--grading',
+        // Grades are typed in here, so a stray click beside the grid must not dismiss it.
+        closeOnOverlayClick: false,
+        buttons: [
             { text: 'Close', type: 'primary', closeOnClick: true }
         ]
     });
@@ -2028,6 +2064,7 @@ export async function showInactivityWarningModal(
 export default {
     ModalOverlay,
     showErrorModal,
+    showGridModal,
     showViewerModal,
     showWarningModal,
     showSuccessModal,

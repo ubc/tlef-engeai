@@ -10,8 +10,8 @@
  * @author: @rdschrs
  */
 
-import { spaceBandsEvenly as backendBands } from '../../../../src/writing-feedback/rubric-bands';
-import { spaceBandsEvenly as browserBands, formatBand, parseBand } from '../writing-feedback-grid';
+import { earnedLevelFor as backendEarned, spaceBandsEvenly as backendBands } from '../../../../src/writing-feedback/rubric-bands';
+import { earnedLevelFor as browserEarned, spaceBandsEvenly as browserBands, formatBand, parseBand } from '../writing-feedback-grid';
 import type { RubricLevel } from '../writing-feedback-shared';
 
 const FOUR: RubricLevel[] = [
@@ -58,6 +58,41 @@ describe('band display round-trips', () => {
     it('round-trips every band the spread rule produces', () => {
         Object.values(browserBands(30, FOUR)).forEach((band) => {
             expect(parseBand(formatBand(band))).toEqual({ min: band.min, max: band.max });
+        });
+    });
+});
+
+describe('the two earnedLevelFor copies agree', () => {
+    it('awards the same level for every grade a criterion can carry', () => {
+        for (let count = 2; count <= 8; count += 1) {
+            const levels = levelsOf(count);
+            [1, 2, 3, 5, 7, 10, 30, 45, 100].forEach((points) => {
+                const criterion = { id: 'c', label: 'C', description: 'd', points };
+                // Halves as well as whole points: the review page admits 0.01 steps, and a
+                // grade landing between two integer bands is exactly where the two copies
+                // could disagree.
+                for (let grade = 0; grade <= points; grade += 0.5) {
+                    expect(browserEarned(criterion, levels, grade)?.id)
+                        .toBe(backendEarned(criterion as never, levels as never, grade)?.id);
+                }
+            });
+        }
+    });
+
+    it('agrees on authored, sparse, and collapsed cells alike', () => {
+        const levels = levelsOf(4);
+        const shapes: Array<{ cells?: Record<string, { min: number; max: number }> }> = [
+            { cells: { l1: { min: 0, max: 7 }, l2: { min: 8, max: 15 }, l3: { min: 16, max: 22 }, l4: { min: 23, max: 30 } } },
+            { cells: { l3: { min: 16, max: 22 } } },
+            { cells: { l1: { min: 0, max: 0 }, l2: { min: 10, max: 10 }, l3: { min: 20, max: 20 }, l4: { min: 30, max: 30 } } },
+            {}
+        ];
+        shapes.forEach((shape) => {
+            const criterion = { id: 'c', label: 'C', description: 'd', points: 30, ...shape };
+            for (let grade = 0; grade <= 33; grade += 0.5) {
+                expect(browserEarned(criterion, levels, grade)?.id)
+                    .toBe(backendEarned(criterion as never, levels as never, grade)?.id);
+            }
         });
     });
 });

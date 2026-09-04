@@ -1054,6 +1054,8 @@ export interface ModalConfig {
     closeOnEscape?: boolean;
     maxWidth?: string;
     customClass?: string;
+    /** Extra class on the overlay itself, for effects that belong behind the container. */
+    overlayClass?: string;
 }
 
 /** Result of modal interaction */

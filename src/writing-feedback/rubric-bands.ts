@@ -89,3 +89,45 @@ export function resolveBand(
 export function totalRubricPoints(criteria: ReadonlyArray<WritingRubricCriterion>): number {
     return criteria.reduce((total, criterion) => total + (criterion.points ?? 0), 0);
 }
+
+/**
+ * earnedLevelFor - the level a staff-final grade falls in.
+ *
+ * Resolves through {@link resolveBand}, so a criterion that authored no cells still
+ * awards a level rather than none: `cells` is sparse, and reading it directly left
+ * every unbanded criterion unmarked wherever this answer is drawn.
+ *
+ * Bands do not always cover the criterion. An imported rubric can leave gaps, a rubric
+ * stored under the superseded single-value rule has `min === max` at every level, and a
+ * grade may be fractional. In each case the points fall in no band at all, so the answer
+ * clamps: the highest-ranked level the points reach, or the lowest banded level when
+ * they reach none. No band is invented — every band here is one the rubric page already
+ * shows staff.
+ *
+ * @param criterion - Criterion the grade was awarded against
+ * @param levels - Complete level set of the rubric
+ * @param points - Staff-final points awarded for this criterion
+ * @returns The level earned, or undefined when the criterion has no bands to compare
+ */
+export function earnedLevelFor(
+    criterion: WritingRubricCriterion,
+    levels: ReadonlyArray<WritingRubricLevel>,
+    points: number
+): WritingRubricLevel | undefined {
+    if (!Number.isFinite(points)) return undefined;
+
+    const banded = [...levels]
+        .sort((left, right) => left.rank - right.rank)
+        .map((level) => ({ level, band: resolveBand(criterion, level.id, levels) }))
+        .filter((entry): entry is { level: WritingRubricLevel; band: WritingRubricCell } =>
+            entry.band !== undefined);
+    if (!banded.length) return undefined;
+
+    const containing = banded.find((entry) => points >= entry.band.min && points <= entry.band.max);
+    if (containing) return containing.level;
+
+    // No band contains the points, so award the highest level they reach. Below every
+    // band, that is the lowest level the criterion offers.
+    const reached = banded.filter((entry) => points >= entry.band.min);
+    return reached.length ? reached[reached.length - 1].level : banded[0].level;
+}

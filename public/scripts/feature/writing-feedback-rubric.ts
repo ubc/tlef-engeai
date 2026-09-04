@@ -1403,10 +1403,14 @@ function renderRubricPage(
         step2Body.append(dropped);
     }
 
+    // The heading names the rubric (D-066) and the plain-English line explains it. A lab
+    // report shows two grids at once, so the name is what tells them apart.
     step2Body.append(renderRubricSection(pageContext, linguisticData, 'linguistic', {
-        heading: isLabReport ? 'How they wrote it' : 'The marking grid',
-        subtitle: 'Structure, clarity, and how the writing speaks to its reader',
-        errorLabel: isLabReport ? 'the writing grid' : '',
+        heading: isLabReport ? 'Writing rubric' : 'Rubric',
+        subtitle: isLabReport
+            ? 'How they wrote it — structure, clarity, and how the writing speaks to its reader'
+            : 'Structure, clarity, and how the writing speaks to its reader',
+        errorLabel: isLabReport ? 'the writing rubric' : '',
         showState: isLabReport
     }));
 
@@ -1418,9 +1422,9 @@ function renderRubricPage(
             step2Body.append(renderMissingTechnicalRubric(assignment));
         } else {
             step2Body.append(renderRubricSection(pageContext, technicalData, 'technical', {
-                heading: 'The experiment itself',
-                subtitle: 'Whether the reasoning holds together and the data supports the claims',
-                errorLabel: 'the experiment grid',
+                heading: 'Technical rubric',
+                subtitle: 'The experiment itself — whether the reasoning holds together and the data supports the claims',
+                errorLabel: 'the technical rubric',
                 showState: true
             }));
         }
