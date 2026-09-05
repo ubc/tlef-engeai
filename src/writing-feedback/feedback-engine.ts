@@ -45,7 +45,7 @@ import {
 import { sflAnalysisSchema, requireCompleteSflProfile, validateSflAnalysis } from './sfl-analysis';
 import { stripNulls } from './strip-nulls';
 import {
-    resolveCourseMaterialMentions,
+    resolveCourseMaterialGrounding,
     type WritingFeedbackMaterialRetriever,
     WRITING_FEEDBACK_COURSE_SOURCE_VERSION
 } from './course-material-mentions';
@@ -186,6 +186,10 @@ export function buildWritingFeedbackSystemPrompt(assignment: WritingAssignment):
     return [
         'You are the feedback-writer step in a staff review workspace.',
         'Use only the validated SFL analysis, the approved assignment profile, the approved rubric, and allowlisted course-material labels.',
+        'Course-material excerpts are provided so your guidance reflects what this course actually taught. Ground your explanations in them where they apply.',
+        'Cite a course material only by a courseMaterialMention.id from the allowlist. An excerpt without a mentionId may inform your guidance but must never be named to the student.',
+        'Never present excerpt text to the student as if it were their own writing, and never quote an excerpt as evidence.',
+        'If no excerpt genuinely applies to a finding, abstain from citing rather than stretching a document to fit.',
         'Do not use course materials as hidden criteria or to judge disciplinary technical correctness.',
         `Assess every approved criterion exactly once. Use only these criterion ids: ${rubric.criteria.map((criterion) => criterion.id).join(', ')}.`,
         `Use only these performance-level ids: ${rubric.levels.map((level) => level.id).join(', ')}.`,
@@ -320,7 +324,8 @@ export class RubricWritingFeedbackEngine implements WritingFeedbackEngine {
                 input.verifiedText,
                 input.assignment.rubric.sflContext
             );
-            const mentions = await resolveCourseMaterialMentions(input.assignment, analysis, this.materialRetriever);
+            const grounding = await resolveCourseMaterialGrounding(input.assignment, analysis, this.materialRetriever);
+            const mentions = grounding.studentMentions;
             const result = validateExactEvidence(
                 deterministicFeedback(input.assignment, input.verifiedText, analysis, mentions),
                 input.verifiedText
@@ -332,6 +337,8 @@ export class RubricWritingFeedbackEngine implements WritingFeedbackEngine {
                 writerPromptVersion: SFL_WRITER_PROMPT_VERSION,
                 sflAnalysis: analysis,
                 courseMaterialMentions: mentions,
+                courseMaterialExcerpts: grounding.excerpts,
+                staffCourseMaterialMentions: grounding.staffMentions,
                 courseSourceVersion: WRITING_FEEDBACK_COURSE_SOURCE_VERSION
             };
             return result;
@@ -361,7 +368,8 @@ export class RubricWritingFeedbackEngine implements WritingFeedbackEngine {
 
         // Retrieve course materials only after analysis, using assignment/rule labels
         // rather than raw student text or evidence quotations.
-        const mentions = await resolveCourseMaterialMentions(input.assignment, analysis, this.materialRetriever);
+        const grounding = await resolveCourseMaterialGrounding(input.assignment, analysis, this.materialRetriever);
+        const mentions = grounding.studentMentions;
 
         // Second call: write feedback from validated analysis and allowlisted material labels.
         const writerMessages: Message[] = [
@@ -370,7 +378,8 @@ export class RubricWritingFeedbackEngine implements WritingFeedbackEngine {
                 role: 'user',
                 content: [
                     `<validated_sfl_analysis>${JSON.stringify(analysis)}</validated_sfl_analysis>`,
-                    `<allowlisted_course_material_mentions>${JSON.stringify(mentions)}</allowlisted_course_material_mentions>`
+                    `<allowlisted_course_material_mentions>${JSON.stringify(mentions)}</allowlisted_course_material_mentions>`,
+                    `<course_material_excerpts>${JSON.stringify(grounding.excerpts)}</course_material_excerpts>`
                 ].join('\n')
             }
         ];
@@ -400,6 +409,8 @@ export class RubricWritingFeedbackEngine implements WritingFeedbackEngine {
             writerPromptVersion: SFL_WRITER_PROMPT_VERSION,
             sflAnalysis: analysis,
             courseMaterialMentions: mentions,
+            courseMaterialExcerpts: grounding.excerpts,
+            staffCourseMaterialMentions: grounding.staffMentions,
             courseSourceVersion: WRITING_FEEDBACK_COURSE_SOURCE_VERSION
         };
         return result;

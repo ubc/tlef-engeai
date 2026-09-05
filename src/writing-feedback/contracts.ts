@@ -507,6 +507,8 @@ export interface WritingFeedbackRunTrace {
     writerPromptVersion?: string; // writer prompt contract version
     sflAnalysis?: SflAnalysis; // validated analyzer trace, staff-only
     courseMaterialMentions?: CourseMaterialMention[]; // allowlisted retrieved sources used by writer
+    courseMaterialExcerpts?: CourseMaterialExcerpt[]; // course text shown to the writer, staff-only
+    staffCourseMaterialMentions?: CourseMaterialMention[]; // retrieved material including unpublished, staff-only
     courseSourceVersion?: string; // retrieval/metadata resolver contract version
     glossaryEntryVersions?: WritingGlossarySnapshot[]; // glossary definitions referenced by the draft
 }

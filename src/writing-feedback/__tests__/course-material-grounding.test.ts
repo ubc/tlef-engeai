@@ -205,3 +205,62 @@ describe('retrieval stays advisory', () => {
         expect(grounding.byFinding.size).toBe(0);
     });
 });
+
+import { EXCERPT_BUDGET_CHARS, MAX_EXCERPT_CHARS } from '../course-material-mentions';
+import { COURSE_MATERIAL_RESOLVER_VERSION, SFL_WRITER_PROMPT_VERSION } from '../sfl-foundation';
+
+/** A retriever answering with chunks of a chosen length, score, and publication state. */
+function chunkyRetriever(chunks: Array<{ content: string; score: number; published: boolean; id: string }>): WritingFeedbackMaterialRetriever {
+    return {
+        async retrieve() {
+            return chunks.map((chunk) => ({
+                content: chunk.content,
+                score: chunk.score,
+                published: chunk.published,
+                metadata: { id: chunk.id, topicOrWeekTitle: 'Week 4', itemTitle: `Item ${chunk.id}`, name: chunk.id }
+            }));
+        }
+    };
+}
+
+describe('excerpt budgeting', () => {
+    it('truncates each chunk and stops at the total budget, highest score first', async () => {
+        const grounding = await resolveCourseMaterialGrounding(
+            assignment(),
+            analysisOf([finding()]),
+            chunkyRetriever([
+                { id: 'low', content: 'l'.repeat(2000), score: 0.5, published: true },
+                { id: 'high', content: 'h'.repeat(2000), score: 0.99, published: true },
+                { id: 'mid', content: 'm'.repeat(2000), score: 0.8, published: true }
+            ])
+        );
+        expect(grounding.excerpts[0]!.text.startsWith('h')).toBe(true);
+        grounding.excerpts.forEach((excerpt) => {
+            expect(excerpt.text.length).toBeLessThanOrEqual(MAX_EXCERPT_CHARS);
+        });
+        const total = grounding.excerpts.reduce((sum, excerpt) => sum + excerpt.text.length, 0);
+        expect(total).toBeLessThanOrEqual(EXCERPT_BUDGET_CHARS);
+    });
+
+    it('carries a citable id only for published material', async () => {
+        const grounding = await resolveCourseMaterialGrounding(
+            assignment(),
+            analysisOf([finding()]),
+            chunkyRetriever([
+                { id: 'open', content: 'published text', score: 0.9, published: true },
+                { id: 'draft', content: 'unpublished text', score: 0.8, published: false }
+            ])
+        );
+        const open = grounding.excerpts.find((excerpt) => excerpt.text === 'published text');
+        const draft = grounding.excerpts.find((excerpt) => excerpt.text === 'unpublished text');
+        expect(open?.mentionId).toBe('open');
+        expect(draft?.mentionId).toBeUndefined();
+    });
+});
+
+describe('prompt contract versions move with the contract', () => {
+    it('names the grounded writer and resolver versions', () => {
+        expect(SFL_WRITER_PROMPT_VERSION).toBe('sfl-feedback-writer-v2.1.0');
+        expect(COURSE_MATERIAL_RESOLVER_VERSION).toBe('course-material-mentions-v2.0.0');
+    });
+});

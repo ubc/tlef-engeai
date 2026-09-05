@@ -114,6 +114,10 @@ const STUDENT_MENTION_LIMIT = 5;
 
 /** Retrieval budget per run: enough for a typical three-to-six cluster analysis, bounded. */
 export const MAX_RETRIEVAL_QUERIES = 8;
+/** Per-chunk truncation: enough to carry an idea, short enough that several fit. */
+export const MAX_EXCERPT_CHARS = 600;
+/** Total course text one writer call may read. */
+export const EXCERPT_BUDGET_CHARS = 4000;
 const RETRIEVAL_LIMIT = 5;
 const RETRIEVAL_SCORE_THRESHOLD = 0.45;
 
@@ -208,6 +212,33 @@ export function buildWritingFeedbackRetrievalQuery(assignment: WritingAssignment
 }
 
 /**
+ * buildExcerpts - fills the writer's reading budget, best match first.
+ *
+ * An excerpt carries a `mentionId` only when its material is published: that id is the only
+ * thing the writer may cite, so unpublished text can inform the guidance without being
+ * nameable to the student.
+ *
+ * @param chunks - Retrieved chunks across every query in the run
+ * @returns Truncated excerpts within the per-chunk and total budgets
+ */
+function buildExcerpts(chunks: PublishedTaggedChunk[]): CourseMaterialExcerpt[] {
+    const excerpts: CourseMaterialExcerpt[] = [];
+    const seen = new Set<string>();
+    let used = 0;
+    [...chunks]
+        .sort((left, right) => (right.score ?? 0) - (left.score ?? 0))
+        .forEach((chunk, index) => {
+            const text = (chunk.content ?? '').trim().replace(/\s+/g, ' ').slice(0, MAX_EXCERPT_CHARS);
+            if (!text || seen.has(text) || used + text.length > EXCERPT_BUDGET_CHARS) return;
+            seen.add(text);
+            used += text.length;
+            const mention = chunk.published ? mentionFromChunk(chunk, index) : null;
+            excerpts.push({ ...(mention ? { mentionId: mention.id } : {}), text });
+        });
+    return excerpts;
+}
+
+/**
  * resolveCourseMaterialGrounding - retrieves course material per finding cluster.
  *
  * Retrieval is advisory: any failure yields empty lists and generation continues with
@@ -279,7 +310,7 @@ export async function resolveCourseMaterialGrounding(
             studentMentions: mentions.slice(0, STUDENT_MENTION_LIMIT),
             staffMentions,
             byFinding,
-            excerpts: []
+            excerpts: buildExcerpts(allChunks)
         };
     } catch {
         return empty;
