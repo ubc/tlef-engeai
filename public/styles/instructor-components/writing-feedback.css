@@ -2799,7 +2799,7 @@ mark.wf-anchor.is-filtered-out,
 .wf-pdf-frame {
     display: block;
     width: 100%;
-    height: min(82vh, 1000px);
+    height: 100%;
     border: 1px solid var(--border-1, #c9d4c9);
     border-radius: 6px;
     background: var(--background-2);

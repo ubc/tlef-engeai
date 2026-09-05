@@ -305,6 +305,20 @@
         max-width: calc(100vw - 2rem);
         max-height: calc(100vh - 2rem);
     }
+
+    /*
+     * The rule above caps every modal at `calc(100vw - 2rem)`. The viewer is the one
+     * surface that must reach the edges: on a phone a PDF page at 90% width is unreadable.
+     */
+    .modal--viewer.modal-container {
+        width: 100vw;
+        height: 100vh;
+        height: 100dvh;
+        max-width: none;
+        max-height: none;
+        margin: 0;
+        border-radius: 0;
+    }
     
     .modal-header,
     .modal-body,
@@ -1218,15 +1232,46 @@ body.modal-open {
  * for and the height the frame inside it asks for. The shared 60vh body cap was clipping
  * that frame into a scroll box, which is what made the preview read as narrow and tight.
  */
-.modal--viewer .modal-body,
-.modal--grading .modal-body {
+/*
+ * The viewer is the document, not a dialog about the document, so it takes the screen.
+ * `.modal-container` sets a max-width and no width: a shrink-to-fit box holding an iframe
+ * resolved that iframe's `width: 100%` against the iframe's own intrinsic 300px, so the
+ * 1500px cap was never reached. A real width, a flex column, and `min-height: 0` on the
+ * body are what make the frame fill the modal instead of being clipped by `max-height: 90vh`.
+ * `dvh` keeps the footer clear of a mobile browser's collapsing address bar; the `vh`
+ * declaration above it is the fallback for engines without `dvh`.
+ */
+.modal--viewer.modal-container {
+    width: 96vw;
+    height: 96vh;
+    height: 96dvh;
+    max-width: none;
     max-height: none;
-    padding: 1rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+}
+
+.modal--viewer .modal-header {
+    padding: 0.75rem 1.25rem 0.75rem 1.5rem;
+}
+
+.modal--viewer .modal-body {
+    flex: 1;
+    /* A flex child will not shrink below its content without this, which puts the clipping back. */
+    min-height: 0;
+    max-height: none;
+    overflow: hidden;
+    padding: 0.5rem;
 }
 
 .modal--viewer .modal-content,
 .modal--grading .modal-content {
     line-height: 1.4;
+}
+
+.modal--grading .modal-body {
+    max-height: none;
+    padding: 1rem 1.25rem;
 }
 
 /*

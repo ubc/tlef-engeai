@@ -706,6 +706,9 @@ export async function showErrorModal(
  * document in place rather than pushing a file at the reviewer, and Download stays available
  * as a deliberate choice rather than the only option.
  *
+ * Geometry lives in `.modal--viewer` rather than an inline `maxWidth`: an inline style
+ * outranks the class, so the two cannot both own the width.
+ *
  * @param title - Name of the document being previewed
  * @param frame - Prepared preview element, already pointed at the document
  * @param downloadUrl - Href for the explicit download action
@@ -721,7 +724,6 @@ export async function showViewerModal(
         type: 'info',
         title,
         content: frame,
-        maxWidth: 'min(1500px, 96vw)',
         customClass: 'modal--viewer',
         buttons: [
             {
