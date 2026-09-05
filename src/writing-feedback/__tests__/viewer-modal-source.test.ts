@@ -50,9 +50,29 @@ describe('the PDF viewer modal owns its own geometry', () => {
         expect(modalCss).toContain('.modal--viewer.modal-container {\n        width: 100vw;');
     });
 
+    it('declares the narrow-screen override after the rule it overrides', () => {
+        // Same specificity, so source order decides. Declared before the 96vw rule, the
+        // 100vw override lost and a phone got a 96vw modal inside a 100vw screen.
+        const base = modalCss.indexOf('\n.modal--viewer.modal-container {');
+        const override = modalCss.indexOf('.modal--viewer.modal-container {\n        width: 100vw;');
+        expect(base).toBeGreaterThan(-1);
+        expect(override).toBeGreaterThan(base);
+    });
+
     it('keeps the grading modal off the viewer rules', () => {
         expect(modalCss).not.toContain('.modal--viewer .modal-body,\n.modal--grading .modal-body {');
         expect(rule(modalCss, '.modal--grading .modal-body {')).toContain('max-height: none;');
+    });
+
+    it('passes the body height through the content wrapper the frame sits in', () => {
+        // The frame asks for 100% of a wrapper that is a plain block: with the wrapper at
+        // auto height the iframe fell back to its intrinsic 150px inside an 718px body.
+        const body = rule(modalCss, '.modal--viewer .modal-body {');
+        expect(body).toContain('display: flex;');
+        expect(body).toContain('flex-direction: column;');
+        const content = rule(modalCss, '.modal--viewer .modal-body > .modal-content {');
+        expect(content).toContain('flex: 1;');
+        expect(content).toContain('min-height: 0;');
     });
 
     it('makes the frame follow its container instead of competing with it', () => {
