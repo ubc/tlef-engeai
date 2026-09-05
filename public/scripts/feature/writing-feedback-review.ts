@@ -1145,7 +1145,14 @@ function renderSummaryTab(
     // unpublished document can ground the writing without being nameable to the student, and
     // a reviewer needs to know which is which. Students see the published list only.
     const publishedMentions = feedbackRun.result.courseMaterialMentions ?? [];
-    const publishedIds = new Set(publishedMentions.map((mention) => mention.id));
+    // The run carries the citable ids because the student-facing list is capped at five:
+    // inferring publication from it marks a sixth published document "not published".
+    // Runs written before that field fall back to the student list, as they always did.
+    const publishedIds = new Set(
+        feedbackRun.citableCourseMaterialMentionIds?.length
+            ? feedbackRun.citableCourseMaterialMentionIds
+            : publishedMentions.map((mention) => mention.id)
+    );
     const mentions = feedbackRun.staffCourseMaterialMentions?.length
         ? feedbackRun.staffCourseMaterialMentions
         : publishedMentions;

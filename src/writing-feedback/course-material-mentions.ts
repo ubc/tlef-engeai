@@ -59,7 +59,18 @@ function textField(metadata: Record<string, unknown>, key: string): string | und
     return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
-function mentionFromChunk(chunk: RetrievedChunk, index: number): CourseMaterialMention | null {
+/**
+ * mentionFromChunk - one retrieved chunk as a citable source label.
+ *
+ * The fallback id is built from the same titles `uniqueMentions` dedupes on, deliberately
+ * not from the chunk's position: the citable list, the staff list, and each per-finding list
+ * enumerate different arrays, so a positional id gave one document three different ids and
+ * the per-finding citation was then filtered out as uncitable.
+ *
+ * @param chunk - Retrieved chunk, with metadata as the pipeline stored it
+ * @returns The mention, or null when the chunk carries no nameable material
+ */
+function mentionFromChunk(chunk: RetrievedChunk): CourseMaterialMention | null {
     const metadata = parseMetadata(chunk.metadata);
     const topicTitle = textField(metadata, 'topicOrWeekTitle');
     const itemTitle = textField(metadata, 'itemTitle');
@@ -72,7 +83,7 @@ function mentionFromChunk(chunk: RetrievedChunk, index: number): CourseMaterialM
     if (!label) return null;
 
     return {
-        id: textField(metadata, 'id') ?? `${topicTitle ?? 'topic'}:${itemTitle ?? 'item'}:${index}`,
+        id: textField(metadata, 'id') ?? `${topicTitle ?? 'topic'}:${itemTitle ?? 'item'}:${materialName ?? 'material'}`,
         label,
         ...(textField(metadata, 'courseId') ? { courseId: textField(metadata, 'courseId') } : {}),
         ...(textField(metadata, 'topicOrWeekId') ? { topicOrWeekId: textField(metadata, 'topicOrWeekId') } : {}),
@@ -98,8 +109,8 @@ function mentionFromChunk(chunk: RetrievedChunk, index: number): CourseMaterialM
 function uniqueMentions(chunks: PublishedTaggedChunk[], limit = STUDENT_MENTION_LIMIT): CourseMaterialMention[] {
     const seen = new Set<string>();
     const mentions: CourseMaterialMention[] = [];
-    chunks.forEach((chunk, index) => {
-        const mention = mentionFromChunk(chunk, index);
+    chunks.forEach((chunk) => {
+        const mention = mentionFromChunk(chunk);
         if (!mention) return;
         const key = mention.materialId ?? `${mention.topicOrWeekTitle ?? ''}/${mention.itemTitle ?? ''}/${mention.materialName ?? ''}`;
         if (!key.trim() || seen.has(key)) return;
@@ -178,6 +189,12 @@ export interface CourseMaterialGrounding {
     studentMentions: CourseMaterialMention[];
     /** Everything retrieved, published or not. Staff-only. */
     staffMentions: CourseMaterialMention[];
+    /**
+     * Ids of every citable mention. The staff list is uncapped while the student list stops
+     * at five, so publication cannot be inferred from the student list without calling the
+     * sixth published document one the student may not open.
+     */
+    citableMentionIds: string[];
     /** Citable mentions per finding id. An empty list means this finding cites nothing. */
     byFinding: Map<string, CourseMaterialMention[]>;
     /** Course text for the writer to read. Staff- and model-only; never student-facing. */
@@ -227,12 +244,12 @@ function buildExcerpts(chunks: PublishedTaggedChunk[]): CourseMaterialExcerpt[] 
     let used = 0;
     [...chunks]
         .sort((left, right) => (right.score ?? 0) - (left.score ?? 0))
-        .forEach((chunk, index) => {
+        .forEach((chunk) => {
             const text = (chunk.content ?? '').trim().replace(/\s+/g, ' ').slice(0, MAX_EXCERPT_CHARS);
             if (!text || seen.has(text) || used + text.length > EXCERPT_BUDGET_CHARS) return;
             seen.add(text);
             used += text.length;
-            const mention = chunk.published ? mentionFromChunk(chunk, index) : null;
+            const mention = chunk.published ? mentionFromChunk(chunk) : null;
             excerpts.push({ ...(mention ? { mentionId: mention.id } : {}), text });
         });
     return excerpts;
@@ -255,7 +272,7 @@ export async function resolveCourseMaterialGrounding(
     retriever?: WritingFeedbackMaterialRetriever
 ): Promise<CourseMaterialGrounding> {
     const empty: CourseMaterialGrounding = {
-        mentions: [], studentMentions: [], staffMentions: [], byFinding: new Map(), excerpts: []
+        mentions: [], studentMentions: [], staffMentions: [], citableMentionIds: [], byFinding: new Map(), excerpts: []
     };
     if (isMockResponse() && !retriever) return empty;
 
@@ -309,6 +326,7 @@ export async function resolveCourseMaterialGrounding(
             mentions,
             studentMentions: mentions.slice(0, STUDENT_MENTION_LIMIT),
             staffMentions,
+            citableMentionIds: [...citable],
             byFinding,
             excerpts: buildExcerpts(allChunks)
         };

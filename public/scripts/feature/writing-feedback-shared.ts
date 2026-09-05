@@ -183,6 +183,12 @@ export interface FeedbackRun {
     }; // validated structured result; never edited in place by the browser
     /** Everything retrieval found, published or not. Staff-only; never rendered to a student. */
     staffCourseMaterialMentions?: CourseMaterialMention[];
+    /**
+     * Ids of the material a student may be pointed at. Sent because the student-facing list
+     * stops at five while the staff list does not, so the sixth published document would
+     * otherwise read as one the student cannot open.
+     */
+    citableCourseMaterialMentionIds?: string[];
 }
 
 /** Server-resolved course material label safe for student-facing feedback. */

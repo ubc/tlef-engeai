@@ -129,6 +129,10 @@ export function createAutosave(options: AutosaveOptions): Autosave {
             // seconds for as long as the page stays open, with nobody asking for it.
             dirty = true;
             failed = true;
+            // Restart the dirty clock with the failure. Left where it was, its forced-flush
+            // deadline is already behind us, and the next keystroke would arm a zero-delay
+            // write against the server that just refused this one.
+            dirtySince = now();
             publish({
                 status: 'error',
                 ...(current.savedAt !== undefined ? { savedAt: current.savedAt } : {}),

@@ -312,3 +312,66 @@ describe('student-facing source list', () => {
         expect(section).not.toContain('score');
     });
 });
+
+describe('mention identity', () => {
+    /** Answers with the same two materials every call, neither carrying a metadata id. */
+    function untaggedRetriever(): WritingFeedbackMaterialRetriever {
+        return {
+            async retrieve() {
+                return [
+                    { content: 'open text', score: 0.9, published: true, metadata: { topicOrWeekTitle: 'Week 4', itemTitle: 'Lecture 1', name: 'Information flow' } },
+                    { content: 'closed text', score: 0.8, published: false, metadata: { topicOrWeekTitle: 'Week 5', itemTitle: 'Lecture 2', name: 'Nominalisation' } }
+                ];
+            }
+        };
+    }
+
+    it('gives one material the same id wherever it appears', async () => {
+        // Without a metadata id the label is all there is to go on. An id that also counted
+        // the chunk's position gave the same document different ids in the citable list, the
+        // staff list, and the per-finding map, which silently dropped the citation.
+        const grounding = await resolveCourseMaterialGrounding(
+            assignment(),
+            analysisOf([finding(), finding({ id: 'f2', primaryFunction: 'organizational' })]),
+            untaggedRetriever()
+        );
+        const citable = grounding.mentions[0]!;
+        expect(grounding.staffMentions.map((mention) => mention.id)).toContain(citable.id);
+        expect(grounding.byFinding.get('f1')?.map((mention) => mention.id)).toEqual([citable.id]);
+        expect(grounding.byFinding.get('f2')?.map((mention) => mention.id)).toEqual([citable.id]);
+    });
+});
+
+describe('published material past the student cap', () => {
+    /** One distinct published material per call, so a run retrieves more than five. */
+    function manyMaterialsRetriever(): WritingFeedbackMaterialRetriever {
+        let call = 0;
+        return {
+            async retrieve() {
+                call += 1;
+                return [{
+                    content: `text ${call}`,
+                    score: 0.9,
+                    published: true,
+                    metadata: { id: `m${call}`, topicOrWeekTitle: 'Week 4', itemTitle: `Lecture ${call}`, name: `Handout ${call}` }
+                }];
+            }
+        };
+    }
+
+    it('stays citable and stays marked published beyond the five a student sees', async () => {
+        const findings = ['content', 'organizational', 'interpersonal', 'content', 'organizational', 'interpersonal']
+            .map((primaryFunction, index) => finding({
+                id: `f${index}`,
+                primaryFunction: primaryFunction as SflFinding['primaryFunction'],
+                languageLevel: index % 2 ? 'text' : 'clause_word'
+            }));
+        const grounding = await resolveCourseMaterialGrounding(assignment(), analysisOf(findings), manyMaterialsRetriever());
+
+        expect(grounding.studentMentions).toHaveLength(5);
+        expect(grounding.mentions.length).toBeGreaterThan(5);
+        // Every citable mention is published, so nothing past the student cap may be
+        // reported to staff as material the student cannot open.
+        expect(grounding.citableMentionIds).toEqual(grounding.mentions.map((mention) => mention.id));
+    });
+});

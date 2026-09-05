@@ -13,6 +13,7 @@
 
 import { CANVAS_IMPORT_PLACEHOLDERS, canvasRubricToSeedShape, mapCanvasRubric } from '../canvas-rubric-mapping';
 import { writingRubricDraftInputSchema } from '../rubric-schema';
+import { earnedLevelFor } from '../rubric-bands';
 import { buildDefaultWritingRubric } from '../default-rubric-profile';
 import { seedRubricForLens } from '../rubric-seed';
 import type { CanvasImportedRubric, CanvasRubricRow } from '../contracts';
@@ -292,10 +293,43 @@ describe('a Canvas rating is read as the top of a band', () => {
         const mapped = mapCanvasRubric(rubric([row('Clarity', [['Best', 3], ['Same', 3], ['Also', 3]], 3)]));
         const shape = mapped.shape!;
         const cells = shape.criteria[0]!.cells!;
-        shape.levels.forEach((level) => {
-            const cell = cells[level.id]!;
+        // Tied ratings leave columns unbanded rather than inverted or overlapping; whatever
+        // band survives still reads floor-then-ceiling.
+        Object.values(cells).forEach((cell) => {
             expect(cell.min).toBeLessThanOrEqual(cell.max);
         });
+        expect(writingRubricDraftInputSchema.safeParse({
+            ...buildDefaultWritingRubric('user-1'),
+            ...shape
+        }).success).toBe(true);
+    });
+
+    it('gives a shared cut point to the strongest level that holds it, not to overlapping bands', () => {
+        // Ratings at the same points cannot be told apart by score. Banding each of them
+        // made overlapping cells, and `earnedLevelFor` matches weakest-first, so a student
+        // scoring the top of the range was awarded the weakest of the tied levels.
+        const mapped = mapCanvasRubric(rubric([row('Clarity', [['Best', 3], ['Same', 3], ['Also', 3]], 3)]));
+        const shape = mapped.shape!;
+        const criterion = shape.criteria[0]!;
+        const ordered = [...shape.levels].sort((left, right) => left.rank - right.rank);
+        const bands = ordered.map((level) => criterion.cells![level.id]).filter(Boolean) as Array<{ min: number; max: number }>;
+
+        expect(bands).toHaveLength(1);
+        expect(earnedLevelFor(criterion as never, shape.levels as never, 3)).toBe(ordered[ordered.length - 1]);
+    });
+
+    it('keeps a repeated weakest rating from swallowing the band above it', () => {
+        const mapped = mapCanvasRubric(rubric([row('Clarity', [['Missing', 0], ['Poor', 0], ['Strong', 4]], 4)]));
+        const criterion = mapped.shape!.criteria[0]!;
+        const ordered = [...mapped.shape!.levels].sort((left, right) => left.rank - right.rank);
+        const bands = ordered.map((level) => criterion.cells![level.id]).filter(Boolean) as Array<{ min: number; max: number }>;
+
+        // Contiguous and non-overlapping: every band starts above the one before it.
+        bands.forEach((band, index) => {
+            expect(band.min).toBeLessThanOrEqual(band.max);
+            if (index > 0) expect(band.min).toBeGreaterThan(bands[index - 1]!.max);
+        });
+        expect(earnedLevelFor(criterion as never, mapped.shape!.levels as never, 4)).toBe(ordered[ordered.length - 1]);
     });
 
     it('falls back to even spacing when no rating carries points', () => {

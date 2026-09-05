@@ -273,8 +273,16 @@ function buildCells(row: CanvasRubricRow, levels: WritingRubricLevel[]): Record<
         const top = index === ordered.length - 1 && rowPoints !== undefined
             ? Math.max(rated, rowPoints)
             : rated;
-        // Duplicate or descending rating points would otherwise produce a floor above the
-        // ceiling, which the draft schema rejects outright. Same guard `spaceBandsEvenly` uses.
+        // Ratings sharing a cut point cannot be told apart by a score, so the strongest of
+        // the tied group owns the band and the weaker ones are left unbanded. Banding each
+        // of them produced overlapping cells, and `earnedLevelFor` matches weakest-first,
+        // which awarded the weakest of the tie to a student who scored the top of the range.
+        // An unbanded column reads as a gap the instructor fills before approving, exactly
+        // as a short row's missing columns do.
+        const nextRated = index + 1 < ordered.length
+            ? pointsOrUndefined(ordered[index + 1]!.points) ?? 0
+            : undefined;
+        if (nextRated !== undefined && nextRated <= top) return;
         const min = Math.min(previousTop + 1, top);
         cells[level.id] = { min, max: top, ...spread };
         previousTop = top;

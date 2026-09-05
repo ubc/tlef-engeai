@@ -98,6 +98,32 @@ describe('failure handling', () => {
         expect(write).toHaveBeenCalledTimes(2);
     });
 
+    it('debounces again after a failed forced flush instead of writing on every keystroke', async () => {
+        // The forced flush fires once the dirty clock passes the max wait. A failure leaves
+        // the draft dirty; if it leaves that clock where it was, the deadline stays in the
+        // past and every later keystroke arms a zero-delay write against the server that
+        // just refused one.
+        const write = jest.fn().mockRejectedValue(new Error('Network down'));
+        const { autosave } = harness(write as () => Promise<void>, { maxWaitMs: 30000 });
+
+        autosave.markDirty();
+        for (let elapsed = 1000; elapsed < 30000; elapsed += 1000) {
+            jest.advanceTimersByTime(1000);
+            autosave.markDirty();
+        }
+        await jest.runAllTimersAsync();
+        expect(write).toHaveBeenCalledTimes(1);
+
+        autosave.markDirty();
+        jest.advanceTimersByTime(500);
+        await Promise.resolve();
+        expect(write).toHaveBeenCalledTimes(1);
+
+        jest.advanceTimersByTime(1500);
+        await jest.runAllTimersAsync();
+        expect(write).toHaveBeenCalledTimes(2);
+    });
+
     it('stops the loop when the session has expired', async () => {
         const write = jest.fn(async () => { throw new AutosaveSignedOutError(); });
         const { autosave } = harness(write);

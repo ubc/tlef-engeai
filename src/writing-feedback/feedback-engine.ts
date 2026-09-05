@@ -370,6 +370,7 @@ export class RubricWritingFeedbackEngine implements WritingFeedbackEngine {
                 courseMaterialMentions: mentions,
                 courseMaterialExcerpts: grounding.excerpts,
                 staffCourseMaterialMentions: grounding.staffMentions,
+                citableCourseMaterialMentionIds: grounding.citableMentionIds,
                 courseSourceVersion: WRITING_FEEDBACK_COURSE_SOURCE_VERSION
             };
             return result;
@@ -445,6 +446,7 @@ export class RubricWritingFeedbackEngine implements WritingFeedbackEngine {
             courseMaterialMentions: mentions,
             courseMaterialExcerpts: grounding.excerpts,
             staffCourseMaterialMentions: grounding.staffMentions,
+            citableCourseMaterialMentionIds: grounding.citableMentionIds,
             courseSourceVersion: WRITING_FEEDBACK_COURSE_SOURCE_VERSION
         };
         return result;

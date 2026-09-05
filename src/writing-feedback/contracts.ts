@@ -509,6 +509,7 @@ export interface WritingFeedbackRunTrace {
     courseMaterialMentions?: CourseMaterialMention[]; // allowlisted retrieved sources used by writer
     courseMaterialExcerpts?: CourseMaterialExcerpt[]; // course text shown to the writer, staff-only
     staffCourseMaterialMentions?: CourseMaterialMention[]; // retrieved material including unpublished, staff-only
+    citableCourseMaterialMentionIds?: string[]; // ids staff may cite; the rest are unpublished, staff-only
     courseSourceVersion?: string; // retrieval/metadata resolver contract version
     glossaryEntryVersions?: WritingGlossarySnapshot[]; // glossary definitions referenced by the draft
 }
@@ -535,6 +536,12 @@ export interface WritingFeedbackRun {
     writerPromptVersion?: string;
     sflAnalysis?: SflAnalysis;
     courseMaterialMentions?: CourseMaterialMention[];
+    /** Citable mention ids, including published material beyond the student-facing display cap. */
+    citableCourseMaterialMentionIds?: string[];
+    /** Staff-only retrieved material labels, including unpublished sources. */
+    staffCourseMaterialMentions?: CourseMaterialMention[];
+    /** Staff/model-only course text excerpts shown to the writer. */
+    courseMaterialExcerpts?: CourseMaterialExcerpt[];
     courseSourceVersion?: string;
     glossaryEntryVersions?: WritingGlossarySnapshot[];
 }
