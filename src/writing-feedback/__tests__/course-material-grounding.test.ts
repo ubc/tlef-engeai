@@ -25,3 +25,183 @@ describe('Writing Feedback retrieval scope', () => {
         expect(RAGApp.prototype.retrieveForWritingFeedback.toString()).toContain('published:');
     });
 });
+
+import {
+    MAX_RETRIEVAL_QUERIES,
+    buildFindingRetrievalQuery,
+    findingClusterKey,
+    resolveCourseMaterialGrounding
+} from '../course-material-mentions';
+import type { WritingFeedbackMaterialRetriever } from '../course-material-mentions';
+import type { SflAnalysis, SflFinding, WritingAssignment } from '../contracts';
+
+const QUOTE = 'ZZQUOTEZZ the reaction proceeded rapidly';
+const OBSERVATION = 'ZZOBSERVATIONZZ nominalisation carries the process';
+const INTERPRETATION = 'ZZINTERPRETATIONZZ the writer compresses the method';
+
+function finding(overrides: Partial<SflFinding> = {}): SflFinding {
+    return {
+        id: 'f1',
+        evidence: [{ quote: QUOTE }],
+        observation: OBSERVATION,
+        functionalInterpretation: INTERPRETATION,
+        primaryFunction: 'content',
+        crossFunctions: [],
+        languageLevel: 'clause_word',
+        ruleIds: [],
+        sourceIds: [],
+        confidence: 0.6,
+        alternatives: [],
+        ...overrides
+    } as SflFinding;
+}
+
+function assignment(): WritingAssignment {
+    return {
+        id: 'a1',
+        courseId: 'c1',
+        title: 'Process description',
+        rubric: {
+            status: 'approved',
+            task: 'Describe a process you observed in the lab.',
+            criteria: [],
+            levels: [],
+            sflContext: {
+                genreLabel: 'Process description',
+                field: 'Chemical engineering',
+                mode: 'Written report',
+                genreState: 'staff_confirmed',
+                stages: [{ id: 's1', label: 'Method', purpose: 'Say what was done' }]
+            }
+        }
+    } as unknown as WritingAssignment;
+}
+
+function analysisOf(findings: SflFinding[]): SflAnalysis {
+    return {
+        schemaVersion: 'writing-feedback-v2',
+        foundationVersion: 'v1',
+        profileGenreState: 'staff_confirmed',
+        findings,
+        abstentions: [],
+        internalFlags: []
+    } as SflAnalysis;
+}
+
+/** Records every query it is asked, and answers with one chunk per call. */
+function recordingRetriever(published = true): WritingFeedbackMaterialRetriever & { queries: string[] } {
+    const queries: string[] = [];
+    return {
+        queries,
+        async retrieve(input) {
+            queries.push(input.query);
+            return [{
+                content: `Course text for ${input.query.slice(0, 12)}`,
+                score: 0.9,
+                published,
+                metadata: {
+                    id: `m${queries.length}`,
+                    topicOrWeekTitle: 'Week 4',
+                    itemTitle: `Lecture ${queries.length}`,
+                    name: 'Information flow'
+                }
+            }];
+        }
+    };
+}
+
+describe('the per-finding query never contains student text', () => {
+    it('omits the evidence quote, the observation, and the interpretation', () => {
+        const query = buildFindingRetrievalQuery(assignment(), finding());
+        expect(query).not.toContain('ZZQUOTEZZ');
+        expect(query).not.toContain('ZZOBSERVATIONZZ');
+        expect(query).not.toContain('ZZINTERPRETATIONZZ');
+    });
+
+    it('carries the curated fields that make the query useful', () => {
+        const query = buildFindingRetrievalQuery(assignment(), finding({ stageId: 's1' }));
+        expect(query).toContain('content');
+        expect(query).toContain('clause_word');
+        expect(query).toContain('Process description');
+        expect(query).toContain('Method');
+    });
+
+    it('sends no query containing student text through a whole run', async () => {
+        const retriever = recordingRetriever();
+        await resolveCourseMaterialGrounding(
+            assignment(),
+            analysisOf([finding(), finding({ id: 'f2', primaryFunction: 'organizational' })]),
+            retriever
+        );
+        retriever.queries.forEach((query) => {
+            expect(query).not.toMatch(/ZZQUOTEZZ|ZZOBSERVATIONZZ|ZZINTERPRETATIONZZ/);
+        });
+    });
+});
+
+describe('finding clustering', () => {
+    it('gives identical findings one query, not one each', async () => {
+        const retriever = recordingRetriever();
+        await resolveCourseMaterialGrounding(
+            assignment(),
+            analysisOf([finding(), finding({ id: 'f2' }), finding({ id: 'f3' })]),
+            retriever
+        );
+        // One clustered query plus the run-level query.
+        expect(retriever.queries).toHaveLength(2);
+    });
+
+    it('is insensitive to rule id order', () => {
+        expect(findingClusterKey(finding({ ruleIds: ['b', 'a'] })))
+            .toBe(findingClusterKey(finding({ id: 'other', ruleIds: ['a', 'b'] })));
+    });
+
+    it('caps the queries and falls back rather than dropping a finding', async () => {
+        const retriever = recordingRetriever();
+        const many = Array.from({ length: 12 }, (_, index) => finding({
+            id: `f${index}`,
+            ruleIds: [`rule-${index}`]
+        }));
+        const grounding = await resolveCourseMaterialGrounding(assignment(), analysisOf(many), retriever);
+        expect(retriever.queries.length).toBeLessThanOrEqual(MAX_RETRIEVAL_QUERIES + 1);
+        many.forEach((item) => {
+            expect(grounding.byFinding.get(item.id)?.length ?? 0).toBeGreaterThan(0);
+        });
+    });
+});
+
+describe('the student list stays inside the schema cap', () => {
+    it('keeps at most five mentions for the student while the allowlist stays whole', async () => {
+        const retriever = recordingRetriever();
+        const many = Array.from({ length: 12 }, (_, index) => finding({ id: 'f' + index, ruleIds: ['rule-' + index] }));
+        const grounding = await resolveCourseMaterialGrounding(assignment(), analysisOf(many), retriever);
+        expect(grounding.studentMentions).toHaveLength(5);
+        expect(grounding.mentions.length).toBeGreaterThan(5);
+    });
+});
+
+describe('citation is restricted to published material', () => {
+    it('keeps unpublished material out of the citable list and in the staff list', async () => {
+        const retriever = recordingRetriever(false);
+        const grounding = await resolveCourseMaterialGrounding(assignment(), analysisOf([finding()]), retriever);
+        expect(grounding.mentions).toEqual([]);
+        expect(grounding.studentMentions).toEqual([]);
+        expect(grounding.staffMentions.length).toBeGreaterThan(0);
+        expect(grounding.byFinding.get('f1') ?? []).toEqual([]);
+    });
+});
+
+describe('retrieval stays advisory', () => {
+    it('produces nothing rather than failing the run', async () => {
+        const grounding = await resolveCourseMaterialGrounding(
+            assignment(),
+            analysisOf([finding()]),
+            { async retrieve() { throw new Error('Qdrant unavailable'); } }
+        );
+        expect(grounding.mentions).toEqual([]);
+        expect(grounding.studentMentions).toEqual([]);
+        expect(grounding.staffMentions).toEqual([]);
+        expect(grounding.excerpts).toEqual([]);
+        expect(grounding.byFinding.size).toBe(0);
+    });
+});

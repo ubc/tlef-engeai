@@ -463,6 +463,20 @@ export interface CourseMaterialMention {
     version?: string; // material/source version when metadata supplies one
 }
 
+/**
+ * Staff- and model-only course text.
+ *
+ * Deliberately separate from {@link CourseMaterialMention}: a mention is a student-facing
+ * label, and this is the document text behind it. It must never reach an AnchoredComment,
+ * a mention, a generated student PDF, or a release payload.
+ */
+export interface CourseMaterialExcerpt {
+    /** Present only for published material, which is the only material the writer may cite. */
+    mentionId?: string;
+    /** Truncated course-document text. Never student writing. */
+    text: string;
+}
+
 /** Versioned course glossary entry staff can reuse in annotations. */
 export interface WritingGlossaryEntry {
     id: string; // internal glossary id

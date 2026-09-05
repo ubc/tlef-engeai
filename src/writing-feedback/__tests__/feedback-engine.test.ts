@@ -187,7 +187,7 @@ describe('RubricWritingFeedbackEngine generic rubric contract', () => {
                 : { parsed: writerResult }
         ));
         const llm = { sendStructuredConversation } as unknown as LLMModule;
-        const retriever = { retrieve: jest.fn(async () => [{ content: 'x', score: 0.9, metadata: { id: 'material-1', topicOrWeekTitle: 'Week 4', itemTitle: 'Lecture 2', name: 'Information flow' } }]) };
+        const retriever = { retrieve: jest.fn(async () => [{ content: 'x', score: 0.9, published: true, metadata: { id: 'material-1', topicOrWeekTitle: 'Week 4', itemTitle: 'Lecture 2', name: 'Information flow' } }]) };
 
         process.env.MOCK_RESPONSE = 'false';
         try {
