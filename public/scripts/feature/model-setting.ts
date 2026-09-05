@@ -27,6 +27,7 @@ import {
 } from '../types.js';
 import { showErrorModal } from '../ui/modal-overlay.js';
 import { showErrorToast, showSuccessToast } from '../ui/toast-notification.js';
+import { isBrowserCourseFeatureEnabled } from '../utils/course-features.js';
 
 type PickerKind = 'reasoning' | 'model';
 
@@ -224,7 +225,7 @@ function syncFeatureRowInteractivity(container: HTMLElement): void {
  */
 function isFeatureInteractive(feature: FeatureCatalogEntry): boolean {
     if (!feature.requiresCapability) return true;
-    return currentCourseRef?.features?.[feature.requiresCapability]?.enabled === true;
+    return isBrowserCourseFeatureEnabled(currentCourseRef, feature.requiresCapability);
 }
 
 function inactiveHintText(label: string): string {

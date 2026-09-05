@@ -62,7 +62,7 @@
   - **`additionalMaterials[]`** — one parent record per uploaded file (not a chunk). Display title is `name`; OS filename is top-level `fileName`. `qdrantChunkIds[]` holds Qdrant point UUIDs; `chunksGenerated` equals that list length after `npm run migrate` C. Nested `file` blobs and singular `qdrantId` are stripped by migrate op A. Qdrant stores chunk vectors only; original file bytes are not in Mongo.
 - **Course capabilities** (`activeCourse.features` on `active-course-list`):
   - Keys: `writingFeedback`, `memoryAgent`, `guidedPathway`, `scenarioGeneration` — each `{ enabled, enabledAt?, enabledBy? }`; missing = disabled at read time.
-  - New-course defaults live in `src/dashboard-setting/course-feature-defaults.ts` (builders in `course-features.ts`). Create/setup persist a full map with all off unless opted in.
+  - New-course defaults live in `src/dashboard-setting/course-feature-defaults.ts` (builders in `course-features.ts`). New-course policy is **all on**: `defaultEnabledForNewCourse` is true for every key, and `normalizeCourseFeaturesInput` applies it to any key the request body omits. An explicit `enabled: false` still disables, so unchecking a box in Course Setup persists as off. Missing keys on *existing* courses still read as disabled.
   - Staff-visible on course GET; student / non-staff course payloads omit `features` entirely (`course-student-view.ts`). Runtime chat/API gates still read Mongo server-side. Students may fetch `{ scenarioGeneration }` only via `GET .../student-capabilities`.
   - `scenarioGeneration` Extra Feature gates Practice Scenarios / Scenario Questions (pages + APIs) and unstruggle Yes scenario chips.
 - **Course LLM settings** (`activeCourse.llmSettings` on `active-course-list`):

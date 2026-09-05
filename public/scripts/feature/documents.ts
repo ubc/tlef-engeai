@@ -33,6 +33,7 @@ import { showConfirmModal, openUploadModal, openStruggleTopicsReviewModal, openL
 import { buildCatalogSectionForItem } from './catalog-section.js';
 import { showToast, showSuccessToast } from '../ui/toast-notification.js';
 import { renderFeatherIcons } from '../api/api.js';
+import { isBrowserCourseFeatureEnabled } from '../utils/course-features.js';
 
 // Feature flag for scheduled publish - set to true to enable
 const SCHEDULED_PUBLISH_ENABLED = true;
@@ -99,7 +100,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         // Load learning objectives from database for all content items
         await loadAllLearningObjectives();
         // Struggle-topic catalog API is gated by Memory Agent — skip when off (use embedded course payload).
-        if (currentClass.features?.memoryAgent?.enabled === true) {
+        if (isBrowserCourseFeatureEnabled(currentClass, 'memoryAgent')) {
             await loadAllStruggleTopics();
         }
 
@@ -1786,7 +1787,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             console.log(`Generated ${uploadResult.chunksGenerated} chunks in Qdrant`);
 
             const generatedCount = uploadResult.generatedStruggleTopics?.length ?? 0;
-            const memoryAgentOn = currentClass.features?.memoryAgent?.enabled === true;
+            const memoryAgentOn = isBrowserCourseFeatureEnabled(currentClass, 'memoryAgent');
             const sectionTitle = `${instance_topicOrWeek.title} / ${contentItem.title}`;
             const reviewTopicOrWeekId = topicOrWeekId;
             const reviewItemId = material.itemId;
@@ -2960,7 +2961,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     }
 
     async function openStruggleTopicsEditForSection(topicOrWeekId: string, contentId: string): Promise<void> {
-        if (currentClass?.features?.memoryAgent?.enabled !== true) return;
+        if (!isBrowserCourseFeatureEnabled(currentClass, 'memoryAgent')) return;
         if (!courseId) {
             await showSimpleErrorModal('Cannot edit struggle topics: Course ID is missing.', 'Edit Struggle Topics');
             return;
@@ -3010,7 +3011,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
      * @param container - Root `.struggle-topics` element from the catalog builder
      */
     function applyStruggleTopicsInactiveState(container: HTMLElement): void {
-        const inactive = currentClass?.features?.memoryAgent?.enabled !== true;
+        const inactive = !isBrowserCourseFeatureEnabled(currentClass, 'memoryAgent');
         const header = container.querySelector('.objectives-header') as HTMLElement | null;
         const twId = header?.getAttribute('data-topic-or-week-instance') || '0';
         const contentId = header?.getAttribute('data-content') || '0';
@@ -3050,7 +3051,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
      */
     async function loadAllStruggleTopics(): Promise<void> {
         if (!currentClass) return;
-        if (currentClass.features?.memoryAgent?.enabled !== true) return;
+        if (!isBrowserCourseFeatureEnabled(currentClass, 'memoryAgent')) return;
         try {
             for (const instance_topicOrWeek of courseData) {
                 for (const contentItem of instance_topicOrWeek.items) {
@@ -3074,7 +3075,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
      */
     async function loadStruggleTopics(topicOrWeekId: string, contentId: string): Promise<void> {
         if (!courseId) return;
-        if (currentClass?.features?.memoryAgent?.enabled !== true) return;
+        if (!isBrowserCourseFeatureEnabled(currentClass, 'memoryAgent')) return;
         try {
             const response = await fetch(
                 `/api/courses/${courseId}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/struggle-topics`,
@@ -3107,7 +3108,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
      * @param contentId - Content item id
      */
     async function addStruggleTopic(topicOrWeekId: string, contentId: string) {
-        if (currentClass?.features?.memoryAgent?.enabled !== true) return;
+        if (!isBrowserCourseFeatureEnabled(currentClass, 'memoryAgent')) return;
         const input = document.getElementById(`new-struggle-${topicOrWeekId}-${contentId}`) as HTMLInputElement | null;
         if (!input) return;
         const text = input.value.trim();

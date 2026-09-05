@@ -35,6 +35,7 @@ import { initializeScenarioQuestionsInstructor, isScenarioQuestionsMounted, sync
 import { initializePathwayLibrary } from '../feature/pathway-library.js';
 import { initializeDashboard, renderDashboardCards } from '../feature/dashboard.js';
 import { canManageGuidedPathways } from '../utils/course-permissions.js';
+import { isBrowserCourseFeatureEnabled } from '../utils/course-features.js';
 import { 
     getCourseIdFromURL, 
     getInstructorViewFromURL, 
@@ -858,7 +859,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // Show welcome screen (chat view with no chats)
                 currentState = StateEvent.Chat;
                 await showChatContent();
-            } else if (view === 'writing-feedback' && currentClass.features?.writingFeedback?.enabled !== true) {
+            } else if (view === 'writing-feedback' && !isBrowserCourseFeatureEnabled(currentClass, 'writingFeedback')) {
                 await showSimpleErrorModal(
                     'Writing Feedback is not enabled for this course. You can enable it from Advanced Settings on the Dashboard if you have instructor or admin access.',
                     'Feature unavailable'
@@ -870,13 +871,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                     'Access denied'
                 );
                 navigateToInstructorView('dashboard');
-            } else if (view === 'pathway-library' && currentClass.features?.guidedPathway?.enabled !== true) {
+            } else if (view === 'pathway-library' && !isBrowserCourseFeatureEnabled(currentClass, 'guidedPathway')) {
                 await showSimpleErrorModal(
                     'Guided Pathway is not enabled for this course. You can enable it from Advanced Settings on the Dashboard if you have instructor or admin access.',
                     'Feature unavailable'
                 );
                 navigateToInstructorView('dashboard');
-            } else if (view === 'scenario-questions' && currentClass.features?.scenarioGeneration?.enabled !== true) {
+            } else if (view === 'scenario-questions' && !isBrowserCourseFeatureEnabled(currentClass, 'scenarioGeneration')) {
                 await showSimpleErrorModal(
                     'Scenario Questions is not enabled for this course. You can enable it from Advanced Settings on the Dashboard if you have instructor or admin access.',
                     'Feature unavailable'
@@ -961,7 +962,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 await initializeWritingFeedback(currentClass);
             }
             else if (componentName === 'flag-instructor') {
-                const gpEnabled = currentClass.features?.guidedPathway?.enabled === true;
+                const gpEnabled = isBrowserCourseFeatureEnabled(currentClass, 'guidedPathway');
                 await initializeFlagManagement({
                     courseId: currentClass.id,
                     canAccessGuidedPathway: gpEnabled && canManageGuidedPathwayFeatures,
@@ -1082,7 +1083,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             hideChatList(); // Ensure chat list is hidden
         }
         else if (currentState === StateEvent.WritingFeedback) {
-            if (currentClass.features?.writingFeedback?.enabled !== true) {
+            if (!isBrowserCourseFeatureEnabled(currentClass, 'writingFeedback')) {
                 void showSimpleErrorModal(
                     'Writing Feedback is not enabled for this course. You can enable it from Advanced Settings on the Dashboard if you have instructor or admin access.',
                     'Feature unavailable'
@@ -1115,7 +1116,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             hideChatList(); // Ensure chat list is hidden
         }
         else if ( currentState === StateEvent.ScenarioQuestions){
-            if (currentClass.features?.scenarioGeneration?.enabled !== true) {
+            if (!isBrowserCourseFeatureEnabled(currentClass, 'scenarioGeneration')) {
                 void showSimpleErrorModal(
                     'Scenario Questions is not enabled for this course. You can enable it from Advanced Settings on the Dashboard if you have instructor or admin access.',
                     'Feature unavailable'
@@ -1137,7 +1138,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 navigateToInstructorView('dashboard');
                 return;
             }
-            if (currentClass.features?.guidedPathway?.enabled !== true) {
+            if (!isBrowserCourseFeatureEnabled(currentClass, 'guidedPathway')) {
                 void showSimpleErrorModal(
                     'Guided Pathway is not enabled for this course. You can enable it from Advanced Settings on the Dashboard if you have instructor or admin access.',
                     'Feature unavailable'
@@ -1257,9 +1258,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     const updateFeatureNavigation = () => {
-        const wfEnabled = currentClass.features?.writingFeedback?.enabled === true;
-        const pathwayEnabled = currentClass.features?.guidedPathway?.enabled === true;
-        const scenarioEnabled = currentClass.features?.scenarioGeneration?.enabled === true;
+        const wfEnabled = isBrowserCourseFeatureEnabled(currentClass, 'writingFeedback');
+        const pathwayEnabled = isBrowserCourseFeatureEnabled(currentClass, 'guidedPathway');
+        const scenarioEnabled = isBrowserCourseFeatureEnabled(currentClass, 'scenarioGeneration');
 
         // Hide the whole sidebar list item (not only the button) when a capability is off.
         if (writingFeedbackStateEl) {

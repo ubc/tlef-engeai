@@ -745,7 +745,7 @@ router.post(
             updatedInstructors.push({ userId: creatorUserId, name: creatorName });
         }
 
-        // Apply Extra Features from setup body via shared normalizer (defaults all off).
+        // Apply Extra Features from setup body via shared normalizer (defaults all on).
         const features = normalizeCourseFeaturesInput(req.body?.features, creatorUserId);
 
         await instance.updateActiveCourse(courseId, {
