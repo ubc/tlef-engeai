@@ -636,6 +636,11 @@ export class CanvasAuthRequiredError extends Error {
     }
 }
 
+/** A failed request, carrying the HTTP status alongside the server's message. */
+export interface WritingFeedbackRequestError extends Error {
+    status?: number;
+}
+
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const response = await fetch(`${baseUrl()}${path}`, { credentials: 'same-origin', ...init });
     const body = await response.json().catch(() => ({}));
@@ -644,7 +649,14 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
     if (response.status === 401 && typeof body.connectUrl === 'string') {
         throw new CanvasAuthRequiredError(body.connectUrl);
     }
-    if (!response.ok || !body.success) throw new Error(body.error || 'Writing Feedback request failed');
+    if (!response.ok || !body.success) {
+        // The status rides along with the message: an expired session reads
+        // "Authentication required", which no wording test would recognise, and the
+        // background autosave loop has to tell that apart from a retryable failure.
+        const failure = new Error(body.error || 'Writing Feedback request failed') as WritingFeedbackRequestError;
+        failure.status = response.status;
+        throw failure;
+    }
     return body.data as T;
 }
 

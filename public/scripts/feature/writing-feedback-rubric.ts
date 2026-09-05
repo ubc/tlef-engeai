@@ -2017,11 +2017,16 @@ async function autosaveAssignmentRubrics(context: RubricPageContext): Promise<vo
                 input
             );
         } catch (error) {
-            // The shared envelope reports an expired session as a plain failed request, so
-            // the message is what identifies it. Retrying that blind would spin against a
-            // login wall; the loop stops instead and the page says which draft is stored.
+            // The shared envelope reports an expired session as a plain failed request whose
+            // message is the course guard's "Authentication required", so the status is what
+            // identifies it; the wording test stays as a fallback for other 401 phrasings.
+            // Retrying blind would spin against a login wall, so the loop stops instead and
+            // the page says which draft is stored.
             const message = error instanceof Error ? error.message : '';
-            if (/unauthor|not signed in|session/i.test(message)) throw new AutosaveSignedOutError(message);
+            const status = (error as { status?: number } | null)?.status;
+            if (status === 401 || /unauthor|not signed in|session/i.test(message)) {
+                throw new AutosaveSignedOutError(message);
+            }
             throw error;
         }
     }
