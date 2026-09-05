@@ -33,6 +33,7 @@ import type {
     WritingRubricLevel
 } from './contracts';
 import type { ImportedRubricShape } from './rubric-seed';
+import { spaceBandsEvenly } from './rubric-bands';
 
 export type { CanvasRubricIdMap, CanvasRubricRefusal };
 
@@ -222,7 +223,14 @@ function buildShape(rows: CanvasRubricRow[], widest: CanvasRubricRow): ImportedR
 }
 
 /**
- * Aligns one row's ratings to the shared columns, weakest to weakest.
+ * Aligns one row's ratings to the shared columns, weakest to weakest, and derives a
+ * points band per level.
+ *
+ * A Canvas rating is a cut point rather than a single awarded value (D-102), so each
+ * level's band runs from one point above the previous rating up to its own rating. The
+ * bands do not overlap, which is what lets `earnedLevelFor` name exactly one level for a
+ * staff-final score. This happens at import rather than at display time: the stored draft
+ * is what the student PDF, suggested grading, and the Canvas write-back all read.
  *
  * A row with fewer ratings than the rubric has columns leaves its strongest columns absent,
  * which the grid renders as empty cells. Canvas gives no way to know *which* distinction a
@@ -231,20 +239,46 @@ function buildShape(rows: CanvasRubricRow[], widest: CanvasRubricRow): ImportedR
  */
 function buildCells(row: CanvasRubricRow, levels: WritingRubricLevel[]): Record<string, WritingRubricCell> {
     const cells: Record<string, WritingRubricCell> = {};
-    weakestFirst(row.ratings).forEach((rating, index) => {
+    const ordered = weakestFirst(row.ratings);
+    const rowPoints = pointsOrUndefined(row.points);
+
+    // Step 1: a row whose ratings carry no points at all has no cut points to read, so its
+    // weight is spread evenly across the columns it does fill, exactly as a hand-authored
+    // criterion is. With no weight either, there is nothing to band and the cells stay ordinal.
+    const unrated = ordered.every((rating) => pointsOrUndefined(rating.points) === undefined);
+    const evenly = unrated && rowPoints !== undefined
+        ? spaceBandsEvenly(rowPoints, levels.slice(0, ordered.length))
+        : undefined;
+
+    // Step 2: walk weakest to strongest, each band starting one point above the last.
+    let previousTop = -1;
+    ordered.forEach((rating, index) => {
         const level = levels[index];
         if (!level) return;
-        // A Canvas rating is a single value, not a band, so the band has no width to spread.
-        const points = pointsOrUndefined(rating.points) ?? 0;
         // Only a descriptor Canvas actually supplied. `descriptor` is optional, and the grid
         // already prompts "Enter a description" on a cell that has none — which is the honest
         // state here. Falling back to the rating name would just repeat the column header.
         const descriptor = (rating.description ?? '').trim().replace(/\s+/g, ' ').slice(0, MAX_DESCRIPTOR);
-        cells[level.id] = {
-            min: points,
-            max: points,
-            ...(descriptor ? { descriptor } : {})
-        };
+        const spread = descriptor ? { descriptor } : {};
+
+        if (evenly) {
+            const band = evenly[level.id];
+            if (band) cells[level.id] = { ...band, ...spread };
+            return;
+        }
+
+        const rated = pointsOrUndefined(rating.points) ?? 0;
+        // The strongest rating can sit below the criterion's own weight; the top band reaches
+        // the weight so the row's full points stay awardable.
+        const top = index === ordered.length - 1 && rowPoints !== undefined
+            ? Math.max(rated, rowPoints)
+            : rated;
+        // Duplicate or descending rating points would otherwise produce a floor above the
+        // ceiling, which the draft schema rejects outright. Same guard `spaceBandsEvenly` uses.
+        const min = Math.min(previousTop + 1, top);
+        cells[level.id] = { min, max: top, ...spread };
+        previousTop = top;
     });
+
     return cells;
 }

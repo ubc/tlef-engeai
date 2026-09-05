@@ -77,11 +77,13 @@ describe('canvasRubricToSeedShape', () => {
         expect(shape.levels).toHaveLength(4);
     });
 
-    it('carries the rating points into a single-value band', () => {
+    it('reads each rating as the top of a band', () => {
         const shape = canvasRubricToSeedShape(rubric([row('Thesis', FULL_SCALE)]))!;
         const cells = shape.criteria[0].cells!;
-        // A Canvas rating is one value, not a range, so the band has no width.
-        expect(cells.poor).toMatchObject({ min: 1, max: 1 });
+        // A Canvas rating is a cut point (D-100): the weakest band reaches down to zero and
+        // each one above it starts a point above the rating below. Adjacent ratings one point
+        // apart leave bands one point wide, which is the honest reading of a 1-4 scale.
+        expect(cells.poor).toMatchObject({ min: 0, max: 1 });
         expect(cells.excellent).toMatchObject({ min: 4, max: 4, descriptor: 'Excellent descriptor' });
     });
 
@@ -261,5 +263,80 @@ describe('canvas rubric id map', () => {
     it('returns no id map when the rubric is refused', () => {
         expect(mapCanvasRubric(null).ids).toBeUndefined();
         expect(mapCanvasRubric(rubric([row('Thesis', [['Only', 1]], 10)])).ids).toBeUndefined();
+    });
+});
+
+describe('a Canvas rating is read as the top of a band', () => {
+    it('derives contiguous non-overlapping bands from the rating cut points', () => {
+        const mapped = mapCanvasRubric(rubric([
+            row('Clarity', [['Exemplary', 15], ['Proficient', 12], ['Developing', 8], ['Weak', 5]], 15)
+        ]));
+        const shape = mapped.shape!;
+        const cells = shape.criteria[0]!.cells!;
+        expect(shape.levels.map((level) => cells[level.id])).toEqual([
+            { min: 0, max: 5, descriptor: 'Weak descriptor' },
+            { min: 6, max: 8, descriptor: 'Developing descriptor' },
+            { min: 9, max: 12, descriptor: 'Proficient descriptor' },
+            { min: 13, max: 15, descriptor: 'Exemplary descriptor' }
+        ]);
+    });
+
+    it('reaches the criterion weight when the strongest rating sits below it', () => {
+        const mapped = mapCanvasRubric(rubric([row('Clarity', [['Strong', 8], ['Weak', 4]], 10)]));
+        const shape = mapped.shape!;
+        const cells = shape.criteria[0]!.cells!;
+        expect(shape.levels.map((level) => cells[level.id]!.max)).toEqual([4, 10]);
+    });
+
+    it('collapses duplicate rating points instead of inverting a band', () => {
+        const mapped = mapCanvasRubric(rubric([row('Clarity', [['Best', 3], ['Same', 3], ['Also', 3]], 3)]));
+        const shape = mapped.shape!;
+        const cells = shape.criteria[0]!.cells!;
+        shape.levels.forEach((level) => {
+            const cell = cells[level.id]!;
+            expect(cell.min).toBeLessThanOrEqual(cell.max);
+        });
+    });
+
+    it('falls back to even spacing when no rating carries points', () => {
+        const withoutPoints = rubric([row('Clarity', [['Weak', 0], ['Strong', 0]], 10)]);
+        withoutPoints.rows[0]!.ratings.forEach((rating) => { delete (rating as { points?: number }).points; });
+        const mapped = mapCanvasRubric(withoutPoints);
+        const shape = mapped.shape!;
+        const cells = shape.criteria[0]!.cells!;
+        expect(shape.levels.map((level) => cells[level.id])).toEqual([
+            { min: 0, max: 5, descriptor: 'Weak descriptor' },
+            { min: 6, max: 10, descriptor: 'Strong descriptor' }
+        ]);
+    });
+
+    it('bands only the columns a short row actually has, leaving aligned gaps as gaps', () => {
+        const mapped = mapCanvasRubric(rubric([
+            row('Full', [['Exemplary', 15], ['Proficient', 12], ['Developing', 8], ['Weak', 5]], 15),
+            row('Short', [['Ok', 6], ['No', 2]], 6)
+        ]));
+        const shape = mapped.shape!;
+        const short = shape.criteria[1]!.cells!;
+        expect(Object.keys(short)).toHaveLength(2);
+        expect(short[shape.levels[0]!.id]).toEqual({ min: 0, max: 2, descriptor: 'No descriptor' });
+        expect(short[shape.levels[1]!.id]).toEqual({ min: 3, max: 6, descriptor: 'Ok descriptor' });
+    });
+
+    it('produces a draft the rubric schema still accepts', () => {
+        const shape = mapCanvasRubric(rubric([
+            row('Clarity', [['Exemplary', 15], ['Proficient', 12], ['Developing', 8], ['Weak', 5]], 15)
+        ])).shape!;
+        const parsed = writingRubricDraftInputSchema.safeParse({
+            title: 'Essay',
+            task: 'Write an essay about a process you observed.',
+            audience: 'First-year peers',
+            purpose: 'Explain a process',
+            gradingIntent: 'Grade on clarity',
+            constraints: ['800 words'],
+            learningOutcomes: ['Explain a process clearly'],
+            criteria: shape.criteria,
+            levels: shape.levels
+        });
+        expect(parsed.success).toBe(true);
     });
 });

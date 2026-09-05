@@ -96,3 +96,13 @@ describe('the two earnedLevelFor copies agree', () => {
         });
     });
 });
+
+describe('Canvas-derived bands render as ranges in the browser mirror', () => {
+    it('shows the derived band, not a single number', () => {
+        // The bands the backend derives at import (canvas-rubric-mapping buildCells) are the
+        // bands the browser grid renders; a single number here means the import regressed.
+        expect(formatBand({ min: 0, max: 5 })).toBe('0–5');
+        expect(formatBand({ min: 6, max: 8 })).toBe('6–8');
+        expect(parseBand('13–15')).toEqual({ min: 13, max: 15 });
+    });
+});
