@@ -1141,14 +1141,27 @@ function renderSummaryTab(
     });
     children.push(goalsSection);
 
-    const mentions = feedbackRun.result.courseMaterialMentions ?? [];
+    // Staff see everything retrieval read, marked where a document is not published: an
+    // unpublished document can ground the writing without being nameable to the student, and
+    // a reviewer needs to know which is which. Students see the published list only.
+    const publishedMentions = feedbackRun.result.courseMaterialMentions ?? [];
+    const publishedIds = new Set(publishedMentions.map((mention) => mention.id));
+    const mentions = feedbackRun.staffCourseMaterialMentions?.length
+        ? feedbackRun.staffCourseMaterialMentions
+        : publishedMentions;
     if (mentions.length) {
         const materialsSection = document.createElement('section');
         materialsSection.className = 'wf-feedback-section';
-        materialsSection.append(createText('h3', 'Useful course materials to revisit'));
+        materialsSection.append(createText('h3', 'Course materials this feedback draws on'));
         const materialList = document.createElement('ul');
         materialList.className = 'wf-strength-list';
-        mentions.forEach((mention) => materialList.append(createText('li', mention.label)));
+        mentions.forEach((mention) => {
+            const item = createText('li', mention.label);
+            if (!publishedIds.has(mention.id)) {
+                item.append(createText('span', ' Not published to students', 'wf-muted-note'));
+            }
+            materialList.append(item);
+        });
         materialsSection.append(materialList);
         children.push(materialsSection);
     }

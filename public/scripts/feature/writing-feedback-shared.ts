@@ -181,6 +181,8 @@ export interface FeedbackRun {
         internalFlags: string[]; // staff-only warnings excluded from PDF/release payloads
         courseMaterialMentions?: CourseMaterialMention[]; // deduplicated useful course resources
     }; // validated structured result; never edited in place by the browser
+    /** Everything retrieval found, published or not. Staff-only; never rendered to a student. */
+    staffCourseMaterialMentions?: CourseMaterialMention[];
 }
 
 /** Server-resolved course material label safe for student-facing feedback. */

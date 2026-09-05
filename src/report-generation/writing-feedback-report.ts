@@ -214,8 +214,24 @@ function renderGeneralSections(
         body(doc).text(staffFeedback.trim(), { lineGap: 3 });
     }
 
+    renderCourseMaterialSources(doc, feedback);
+
     sectionHeading(doc, 'Carry forward');
     body(doc).text('Use these goals when you plan and revise your next writing assignment.', { lineGap: 3 });
+}
+
+/**
+ * Course materials the feedback drew on, by label.
+ *
+ * Labels only: no excerpt text, no retrieval score, no material identifier. The list a
+ * student reads is the published subset the writer was allowed to cite, which is what
+ * `result.courseMaterialMentions` holds.
+ */
+function renderCourseMaterialSources(doc: PDFKit.PDFDocument, feedback: WritingFeedbackResult): void {
+    const mentions = feedback.courseMaterialMentions ?? [];
+    if (!mentions.length) return;
+    sectionHeading(doc, 'Course materials this feedback draws on');
+    mentions.forEach((mention) => bullet(doc, mention.label));
 }
 
 /** Staff-final rubric scores. Model suggestions are deliberately absent. */

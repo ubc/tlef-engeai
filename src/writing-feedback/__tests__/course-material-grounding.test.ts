@@ -264,3 +264,51 @@ describe('prompt contract versions move with the contract', () => {
         expect(COURSE_MATERIAL_RESOLVER_VERSION).toBe('course-material-mentions-v2.0.0');
     });
 });
+
+import fs from 'fs';
+import path from 'path';
+
+describe('excerpt containment', () => {
+    it('keeps course text off every student-facing carrier', async () => {
+        const grounding = await resolveCourseMaterialGrounding(
+            assignment(),
+            analysisOf([finding()]),
+            chunkyRetriever([{ id: 'open', content: 'ZZEXCERPTZZ course text', score: 0.9, published: true }])
+        );
+        const serialisedMentions = JSON.stringify([...grounding.mentions, ...grounding.staffMentions]);
+        expect(serialisedMentions).not.toContain('ZZEXCERPTZZ');
+        expect(JSON.stringify([...grounding.byFinding.values()])).not.toContain('ZZEXCERPTZZ');
+        expect(grounding.excerpts.some((excerpt) => excerpt.text.includes('ZZEXCERPTZZ'))).toBe(true);
+    });
+
+    it('never renders an excerpt in the student report', () => {
+        const report = fs.readFileSync(
+            path.join(__dirname, '..', '..', 'report-generation', 'writing-feedback-report.ts'),
+            'utf8'
+        );
+        expect(report).not.toContain('courseMaterialExcerpts');
+        expect(report).not.toContain('CourseMaterialExcerpt');
+    });
+
+    it('never mirrors the excerpt type into the browser bundle', () => {
+        const shared = fs.readFileSync(
+            path.join(__dirname, '..', '..', '..', 'public', 'scripts', 'feature', 'writing-feedback-shared.ts'),
+            'utf8'
+        );
+        expect(shared).not.toContain('CourseMaterialExcerpt');
+    });
+});
+
+describe('student-facing source list', () => {
+    it('renders published labels only, with no scores or ids', () => {
+        const report = fs.readFileSync(
+            path.join(__dirname, '..', '..', 'report-generation', 'writing-feedback-report.ts'),
+            'utf8'
+        );
+        const section = report.match(/function renderCourseMaterialSources[\s\S]*?\n}/)?.[0] ?? '';
+        expect(section).toContain('Course materials this feedback draws on');
+        expect(section).toContain('mention.label');
+        expect(section).not.toContain('mention.id');
+        expect(section).not.toContain('score');
+    });
+});

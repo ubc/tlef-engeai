@@ -46,6 +46,7 @@ import { sflAnalysisSchema, requireCompleteSflProfile, validateSflAnalysis } fro
 import { stripNulls } from './strip-nulls';
 import {
     resolveCourseMaterialGrounding,
+    type CourseMaterialGrounding,
     type WritingFeedbackMaterialRetriever,
     WRITING_FEEDBACK_COURSE_SOURCE_VERSION
 } from './course-material-mentions';
@@ -140,7 +141,7 @@ function deterministicFeedback(
     assignment: WritingAssignment,
     text: string,
     analysis: SflAnalysis,
-    mentions: CourseMaterialMention[]
+    grounding: CourseMaterialGrounding
 ): WritingFeedbackResult {
     const evidence = firstEvidence(text);
     const orderedLevels = [...assignment.rubric.levels].sort((left, right) => left.rank - right.rank);
@@ -158,7 +159,12 @@ function deterministicFeedback(
                 sflFindingIds: findingForCriterion(criterion, analysis.findings)
                     ? [findingForCriterion(criterion, analysis.findings)!.id]
                     : [],
-                ...(mentions[0] ? { courseMaterialMention: mentions[0] } : {})
+                ...((): { courseMaterialMention?: CourseMaterialMention } => {
+                    // The material retrieved for *this* finding, not the run's first mention.
+                    const found = findingForCriterion(criterion, analysis.findings);
+                    const mention = found ? grounding.byFinding.get(found.id)?.[0] : undefined;
+                    return mention ? { courseMaterialMention: mention } : {};
+                })()
             }],
             explanation: `The draft needs staff review for ${criterion.label} against the approved genre/register profile and rubric.`,
             confidence: 0.5
@@ -170,7 +176,7 @@ function deterministicFeedback(
             guidedQuestion: `What exact change would make ${criterion.label.toLowerCase()} fit the assignment purpose and reader?`
         })),
         internalFlags: [...analysis.abstentions],
-        ...(mentions.length ? { courseMaterialMentions: mentions } : {})
+        ...(grounding.studentMentions.length ? { courseMaterialMentions: grounding.studentMentions } : {})
     };
 }
 
@@ -258,6 +264,31 @@ export function buildSflAnalyzerSystemPrompt(assignment: WritingAssignment): str
     ].join('\n');
 }
 
+/**
+ * attachPerFindingMentions - gives each piece of evidence the material retrieved for its finding.
+ *
+ * The writer may choose its own citation; this only fills the gaps, and only from the
+ * published allowlist, so it cannot introduce a reference {@link validateWriterReferences}
+ * would then reject. It replaces hanging the same first mention on every criterion, which
+ * said the same thing about findings that had nothing in common.
+ *
+ * @param result - Writer output, mutated in place
+ * @param byFinding - Citable mentions per finding id
+ */
+function attachPerFindingMentions(
+    result: WritingFeedbackResult,
+    byFinding: Map<string, CourseMaterialMention[]>
+): void {
+    for (const criterion of result.criteria) {
+        for (const evidence of criterion.evidence) {
+            if (evidence.courseMaterialMention) continue;
+            const findingId = (evidence.sflFindingIds ?? [])[0];
+            const mention = findingId ? byFinding.get(findingId)?.[0] : undefined;
+            if (mention) evidence.courseMaterialMention = mention;
+        }
+    }
+}
+
 function validateWriterReferences(result: WritingFeedbackResult, analysis: SflAnalysis, mentions: CourseMaterialMention[]): void {
     const findingIds = new Set(analysis.findings.map((finding) => finding.id));
     const mentionIds = new Set(mentions.map((mention) => mention.id));
@@ -327,7 +358,7 @@ export class RubricWritingFeedbackEngine implements WritingFeedbackEngine {
             const grounding = await resolveCourseMaterialGrounding(input.assignment, analysis, this.materialRetriever);
             const mentions = grounding.studentMentions;
             const result = validateExactEvidence(
-                deterministicFeedback(input.assignment, input.verifiedText, analysis, mentions),
+                deterministicFeedback(input.assignment, input.verifiedText, analysis, grounding),
                 input.verifiedText
             ) as WritingFeedbackResultWithTrace;
             result.runTrace = {
@@ -399,7 +430,10 @@ export class RubricWritingFeedbackEngine implements WritingFeedbackEngine {
         const writerResult = stripNulls(writerResponse.parsed) as WritingFeedbackResult;
         // Repair cosmetic quote drift only when it maps back to one exact source slice.
         const result = reconcileExactEvidence(writerResult, input.verifiedText) as WritingFeedbackResultWithTrace;
-        validateWriterReferences(result, analysis, mentions);
+        attachPerFindingMentions(result, grounding.byFinding);
+        // The allowlist is every published mention retrieval found, not only the five the
+        // student list carries: a per-finding citation from a later cluster is legitimate.
+        validateWriterReferences(result, analysis, grounding.mentions);
         result.schemaVersion = WRITING_FEEDBACK_SCHEMA_V2;
         if (mentions.length && !result.courseMaterialMentions?.length) result.courseMaterialMentions = mentions;
         result.runTrace = {
