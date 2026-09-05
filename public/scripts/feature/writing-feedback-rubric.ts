@@ -23,6 +23,8 @@
 
 import { showConfirmModal } from '../ui/modal-overlay.js';
 import { showSuccessToast } from '../ui/toast-notification.js';
+import { AutosaveSignedOutError, createAutosave } from './writing-feedback-autosave.js';
+import type { Autosave, AutosaveState } from './writing-feedback-autosave.js';
 import {
     deriveGenreState,
     describeDetails,
@@ -1326,6 +1328,7 @@ function renderRubricPage(
         notice,
         onInput: () => {
             if (linguisticData.permissions.canEdit) state.panelDirty = true;
+            if (linguisticData.permissions.canEdit) rubricAutosave?.markDirty();
             clearValidation();
             refreshProgress();
         },
@@ -1351,6 +1354,7 @@ function renderRubricPage(
                 section.working.levels = defaultRubricLevels(section.lens);
             });
             state.panelDirty = linguisticData.permissions.canEdit ? true : state.panelDirty;
+            if (linguisticData.permissions.canEdit) rubricAutosave?.markDirty();
             await openRubricPage(assignment.id);
         }
     });
@@ -1485,6 +1489,38 @@ function renderRubricPage(
             }),
             createButton('Approve rubric', 'primary', async () => approveEveryRubric(pageContext))
         );
+        // A quiet marker beside Save, not a toast: this reports something that happens on
+        // its own, and it must not compete with the explicit Save's success message.
+        const autosaveStatus = document.createElement('p');
+        autosaveStatus.className = 'wf-autosave-status';
+        autosaveStatus.setAttribute('role', 'status');
+        autosaveStatus.setAttribute('aria-live', 'polite');
+        actions.append(autosaveStatus);
+
+        const savedClock = (at?: number): string =>
+            at === undefined ? '' : new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+        const renderAutosave = (autosaveState: AutosaveState): void => {
+            if (autosaveState.status === 'saved') state.panelDirty = false;
+            const stamp = savedClock(autosaveState.savedAt);
+            autosaveStatus.textContent =
+                autosaveState.status === 'saving' ? 'Saving…'
+                : autosaveState.status === 'saved' ? `Saved ${stamp}`
+                : autosaveState.status === 'stopped'
+                    ? `You've been signed out — your last saved draft is from ${stamp || 'before this session'}. Sign in again to keep editing.`
+                : autosaveState.status === 'error' ? `Not saved — ${autosaveState.message ?? 'try Save for now'}`
+                : '';
+            autosaveStatus.classList.toggle('wf-autosave-status--alert',
+                autosaveState.status === 'error' || autosaveState.status === 'stopped');
+        };
+
+        rubricAutosave = createAutosave({
+            write: () => autosaveAssignmentRubrics(pageContext),
+            onStatus: renderAutosave
+        });
+
+        registerAutosaveFlushListeners();
+
         approveRow.append(actions);
     }
 
@@ -1661,6 +1697,33 @@ interface AssignmentDetailsOptions {
 }
 
 const firstOpenAutofillAttempts = new Set<string>();
+/**
+ * The rubric page's autosave loop for the assignment currently on screen.
+ *
+ * Module scope rather than page scope: the details form and each rubric grid are built by
+ * different functions, and both must nudge the same loop. Reassigned each time the page is
+ * opened, so a stale handle from a previous assignment is never the one that fires.
+ */
+let rubricAutosave: Autosave | undefined;
+
+/**
+ * registerAutosaveFlushListeners - flushes the draft when the page is being left.
+ *
+ * Registered once for the document rather than once per page render: the rubric page is
+ * rebuilt every time it is opened, and re-adding these each time would leave a listener
+ * behind for every visit. They read the module-level handle, so they always drive the loop
+ * belonging to the assignment currently on screen.
+ */
+let autosaveFlushListenersRegistered = false;
+function registerAutosaveFlushListeners(): void {
+    if (autosaveFlushListenersRegistered) return;
+    autosaveFlushListenersRegistered = true;
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') void rubricAutosave?.flush();
+    });
+    window.addEventListener('pagehide', () => { void rubricAutosave?.flush(); });
+}
+
 let pendingRubricNotice: { message: string; tone: 'success' | 'error' } | null = null;
 
 /**
@@ -1897,6 +1960,74 @@ async function saveAssignmentRubrics(context: RubricPageContext): Promise<void> 
 }
 
 /**
+ * autosaveAssignmentRubrics - the background write, deliberately narrower than Save
+ *
+ * Save cannot be reused for this. {@link collectAssignmentDetails} throws on an incomplete
+ * form, which is right for a button and wrong for something that fires while an instructor
+ * is still typing; and {@link saveAssignmentRubrics} seeds a technical rubric when a lab
+ * report is missing one, which a background write must never do. So this reads through the
+ * non-throwing readers, validates by attempting the same collectors inside a try, and skips
+ * the cycle silently when the form is not yet writable, leaving the last good stored draft
+ * where it is.
+ *
+ * It writes only through the per-rubric draft route, which never touches the approved
+ * rubric and reuses an existing draft version, so repeating it does not walk the version
+ * number forward.
+ *
+ * @param context - Page context holding the details form and registered editors
+ * @throws AutosaveSignedOutError when the session has expired; any other transport error
+ *         as thrown, for the status line to report
+ */
+async function autosaveAssignmentRubrics(context: RubricPageContext): Promise<void> {
+    const details = readAssignmentDetails(context.detailsForm);
+    const storedGenreId = context.sections
+        .find((section) => section.lens === 'linguistic')?.working.sflContext?.genreId;
+
+    // Step 1: refuse the cycle silently on anything the real save would reject. A background
+    // write that stored a half-typed rubric would be worse than not writing at all.
+    let pending: Array<{ section: RubricSectionHandle; structure: RubricStructureInput }>;
+    let sflContext: SflContextProfile;
+    try {
+        collectAssignmentDetails(context.detailsForm);
+        sflContext = collectSflContext(context.detailsForm, details, storedGenreId ?? undefined);
+        pending = context.sections
+            .filter((section) => section.canEdit)
+            .map((section) => ({
+                section,
+                structure: collectRubricStructure(section.form, section.working, section.errorLabel)
+            }));
+    } catch {
+        return;
+    }
+
+    const labContext = rubricTextValue(context.detailsForm, 'labContext').slice(0, MAX_LAB_CONTEXT) || undefined;
+
+    // Step 2: write each editable rubric. Nothing is seeded and nothing is approved here.
+    for (const { section, structure } of pending) {
+        const input: RubricDraftInput = {
+            ...details,
+            ...structure,
+            ...(section.lens === 'linguistic' ? { sflContext } : {}),
+            ...(section.lens === 'technical' ? { labContext } : {})
+        };
+        try {
+            await jsonRequest<Assignment>(
+                `/assignments/${encodeURIComponent(context.assignment.id)}/rubric-draft${section.lens === 'technical' ? '?lens=technical' : ''}`,
+                'PUT',
+                input
+            );
+        } catch (error) {
+            // The shared envelope reports an expired session as a plain failed request, so
+            // the message is what identifies it. Retrying that blind would spin against a
+            // login wall; the loop stops instead and the page says which draft is stored.
+            const message = error instanceof Error ? error.message : '';
+            if (/unauthor|not signed in|session/i.test(message)) throw new AutosaveSignedOutError(message);
+            throw error;
+        }
+    }
+}
+
+/**
  * renderMissingTechnicalRubric - placeholder shown when a lab-report assignment
  * has neither a draft nor an approved technical rubric (the only reachable
  * empty state, since the writing template always seeds one)
@@ -2021,6 +2152,7 @@ function renderRubricSection(
     const updateSummary = (): void => { summaryMeta.textContent = rubricSizeSummary(working); };
     const markDirty = (): void => {
         if (canEdit) state.panelDirty = true;
+        if (canEdit) rubricAutosave?.markDirty();
         validation.hidden = true;
         updateSummary();
     };

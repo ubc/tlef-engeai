@@ -2804,3 +2804,20 @@ mark.wf-anchor.is-filtered-out,
     border-radius: 6px;
     background: var(--background-2);
 }
+
+/*
+ * Autosave reports itself beside Save rather than through a toast: it happens without
+ * being asked, so it should be readable and easy to ignore. The alert variant is the one
+ * state a person must act on — an expired session — so it is the only one that takes colour.
+ */
+.wf-autosave-status {
+    margin: 0;
+    align-self: center;
+    font-size: 0.85rem;
+    color: var(--text-2, #5b6b5b);
+    min-height: 1.2em;
+}
+
+.wf-autosave-status--alert {
+    color: var(--danger-1, #a3352c);
+}
