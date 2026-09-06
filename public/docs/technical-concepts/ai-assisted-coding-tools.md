@@ -7,7 +7,7 @@
 
 ```
 
-```relevant readings
+```relevant sources
 
 - [AI Agent Skills, Explained Simply](https://medium.com/@tahirbalarabe2/ai-agent-skills-explained-simply-4010f6d9db92)
 - [Best Practices I Learned for AI-Assisted Coding](https://statistician-in-stilettos.medium.com/best-practices-i-learned-for-ai-assisted-coding-70ff7359d403)
@@ -119,7 +119,7 @@ Define the problem and its audience before starting development. This step is im
 Once the problem and audience are correctly defined, think through the feature’s requirements and constraints, such as important attributes, data structures, or limitations. Be specific about the requirements and constraints, particularly when addressing edge cases. You may want to write this in a GitHub project board or issue and ask other people or your supervisor to review the requirements before beginning implementation.
 
 ``` developer-note
-Developer note: You might want to set the requirements aside for 24 hours to reduce bias or identify additional ideas and edge cases.
+Developer note: You might want to set the requirements aside for 24 hours earlier to reduce bias or identify additional ideas and edge cases.
 ```
 
 3. Create your Plan

@@ -101,12 +101,12 @@ export type DocsCalloutKind =
 	| 'developer-note'
 	| 'agent-note'
 	| 'prerequisites'
-	| 'relevant-readings';
+	| 'relevant-sources';
 
 /**
  * docsCalloutKind - maps a fence language to a docs callout, or null for normal code.
  *
- * Accepts `solution`, `developer-note`, `agent-note`, `prerequisites`, and `relevant readings`.
+ * Accepts `solution`, `developer-note`, `agent-note`, `prerequisites`, and `relevant sources`.
  *
  * @param lang - marked `lang` field (may include extra info)
  */
@@ -124,8 +124,8 @@ export function docsCalloutKind(lang: string | undefined): DocsCalloutKind | nul
 	if (name === 'prerequisites') {
 		return 'prerequisites';
 	}
-	if (name === 'relevant-readings') {
-		return 'relevant-readings';
+	if (name === 'relevant-sources') {
+		return 'relevant-sources';
 	}
 	return null;
 }

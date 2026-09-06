@@ -1,52 +1,57 @@
 # Agentic Engineering
 
-
 ```prerequisites
 - [Scope](/docs/logistics/scope)
 
 ```
 
-```relevant readings
-https://www.ibm.com/think/topics/agentic-engineering, https://www.youtube.com/watch?v=2n41YjR5QfU&t=7s, https://www.ibm.com/think/topics/vibe-coding
+```relevant sources
+- [Agentic Engineering — IBM](https://www.ibm.com/think/topics/agentic-engineering)
+- [Agentic Engineering overview — YouTube](https://www.youtube.com/watch?v=2n41YjR5QfU&t=7s)
+- [Vibe Coding — IBM](https://www.ibm.com/think/topics/vibe-coding)
 
 ```
 
+This page introduces practices for using AI-assisted coding tools effectively and responsibly. It focuses not only on technical knowledge, but also on the engineering judgment needed when developing software with AI agents.
 
-The Agentic Engineering page outlines recommended practices for using AI-assisted coding tools effectively and responsibly. This page may be the core of the documentation because it focuses not only on knowledge but also on the mindset software engineers need in the era of AI agents. This page uses an informal and reflective style rather than the style of formal documentation. By the end of this page, you should be familiar with:
+The discussion is intentionally informal and reflective. By the end of the page, you should understand:
 
-1. From Vibe Coding to Agentic Engineering
+1. The difference between Vibe Coding and Agentic Engineering
 2. Spec-Driven Development
-3. Self-Discipline in the AI Era for Software Engineering
-4. Recommendation
+3. The importance of self-discipline when using AI for software engineering
+4. Recommended practices for working with AI-assisted coding tools
 
 ## From Vibe Coding to Agentic Engineering
 
-`Vibe coding` is a term coined by Andrej Karpathy, a well-known AI researcher. It describes a development approach in which a programmer relies heavily on AI-generated code through natural-language prompts and focuses primarily on achieving the desired product outcome rather than understanding or directing every implementation detail. This approach can help developers create software quickly, but it also increases the importance of reviewing, testing, and maintaining the resulting code. What risks arise when speed becomes the primary goal?
+`Vibe coding` is a term coined by Andrej Karpathy, a well-known AI researcher. It describes a development approach in which a programmer relies heavily on AI-generated code through natural-language prompts. The programmer focuses primarily on achieving the desired product outcome rather than understanding or directing every implementation detail.
+
+This approach can help developers create software quickly. However, it also makes reviewing, testing, and maintaining the resulting code especially important. What risks arise when speed becomes the primary goal?
 
 ### The Big Question Mark
 
-The main question is whether we can be responsible for the results of vibe coding when developing a product for real users. Even if the application works, will it scale correctly and efficiently? What if the product affects a person’s health or safety? Is it our responsibility as the developer to design and test the app comprehensively before it reaches users?
+The central question is whether we can take responsibility for the results of vibe coding when we develop products for real users. Even if an application works, will it scale correctly and efficiently? What if it affects a person’s health or safety? As developers, are we responsible for designing and testing the application comprehensively before it reaches users?
 
-With the latest AI models, you may be able to develop an app incredibly fast—perhaps ten times faster—and it may work well. However, if you find a bug, can you resolve it ten times faster as well, or will it be unsolvable? Even if it is solvable, did you collaborate with AI to solve it, or did AI perform the entire debugging process for you? Does that mean you are no longer exercising independent judgment?
+With newer AI models, you may be able to develop an application incredibly quickly—perhaps ten times faster—and it may work well. However, if you find a bug, can you resolve it ten times faster as well, or will it be difficult to understand and fix? Even if the bug is solvable, did you collaborate with AI to solve it, or did AI perform the entire debugging process for you? If AI did all the work, are you still exercising your own engineering judgment?
 
-Or could you end up doing everything incorrectly and needing to return to earlier commits? There should be self-regulated boundaries around how extensively you use AI to improve your output while avoiding sloppiness and maintaining your skills. For example, these boundaries may include requiring a written specification, an approved plan, human review, automated tests, and manual validation before accepting AI-generated code.
-
+You could also make incorrect changes and eventually need to return to an earlier commit. For this reason, you should set boundaries around how you use AI. These self-imposed boundaries can help you improve your productivity without becoming careless or losing important skills. For example, you might require a written specification, an approved plan, human review, automated tests, and manual validation before accepting AI-generated code.
 
 ### Mitigation: Agentic Engineering
 
-To address these unstructured questions, agentic engineering is a principle that helps prevent these problems. It requires you to supervise the end-to-end process while you and your AI tools engineer the app. This includes defining the problem, making decisions, designing the system for each feature, ensuring code quality, testing, and completing end-to-end integration. This is known as a human-in-the-loop system. A human-in-the-loop system means that a person remains responsible for reviewing the requirements, design decisions, generated code, tests, and final outcome before release.
+Agentic Engineering provides a way to address these concerns. It means supervising the entire development process while you and your AI tools build the application together. This includes defining the problem, making design decisions, ensuring code quality, testing the result, and completing end-to-end integration.
 
-AI is there to boost your productivity, not to delegate or replace your role. By using AI, you are expected to retain your engineering judgment in software design.
+This approach is a `human-in-the-loop` system. In a human-in-the-loop system, a person remains responsible for reviewing the requirements, design decisions, generated code, tests, and final outcome before release.
+
+AI should amplify your productivity, not replace your role as a developer. When you use AI, you are still expected to understand the software, exercise engineering judgment, and take responsibility for the result.
 
 ## Spec-Driven Development
 
-Before a feature is implemented, consider its requirements, such as the problem, potential solution, and fit with the existing implementation. This brainstorming process is useful for:
+Before implementing a feature, consider its requirements. Describe the problem, the potential solution, and how the feature fits into the existing application. This process is called Spec-Driven Development. Writing a specification helps in several ways:
 
-1. Yourself: You become aware of what you are building and may discover other potential solutions that fit your challenge.
-2. AI-assisted coding tools: They can scan the current state and help determine an appropriate outcome.
-3. Peers: Documentation helps them understand your progress and provide input.
+1. **For you:** You become more aware of what you are building and may discover other solutions that better fit the problem.
+2. **For AI-assisted coding tools:** The tools can inspect the current state of the application and help determine an appropriate implementation.
+3. **For your peers:** The documentation helps them understand your work and provide useful feedback.
 
-Designing a feature specification enables you to develop your ideas more deliberately. You can place the specification anywhere that is noticeable to your peers or supervisor; a GitHub project item is a good option. The template for a feature specification is as follows:
+Designing a feature specification also helps you make decisions deliberately. Store the specification in a place that your peers or supervisor can easily find, such as a GitHub project item. A feature specification can use the following format:
 
 ```md
 # {Title}
@@ -54,54 +59,54 @@ Designing a feature specification enables you to develop your ideas more deliber
 ## Problem
 {What is your current problem, and why is it a problem? Who is the user? Which component is problematic?}
 
-{You may want to describe this as clearly and concisely as possible.}
+{Describe the problem as clearly and concisely as possible.}
 
 ## Why is this important?
-{Why do you think implementing this feature is important? You may describe the implications, along with the pros and cons.}
+{Why is implementing this feature important? Describe the implications, along with the advantages and disadvantages.}
 
 ## In-Scope
-{Which components are within the project scope? You may need to be specific; perhaps the project also involves other feature components.}
+{Which components are within the project scope? Be specific, especially if the project includes related feature components.}
 
 ## Out of Scope
-{List the components that are out of scope.}
+{List the components that are outside the project scope.}
 
 ## Optional: Potential Solution
-{List brief descriptions of potential solutions, along with their pros and cons.}
+{List brief descriptions of potential solutions, along with their advantages and disadvantages.}
 
 ```
 
-Having this description in place helps us make design decisions based on the specification. AI-assisted coding tools also provide an integrated feature called Plan Mode.
+Having this description in place helps you and your team make design decisions based on the specification. It also gives AI-assisted coding tools the context they need before planning an implementation.
 
 ## Plan Mode
 
-AI-assisted coding tools such as Cursor, Claude Code, and Codex have embedded plan-mode features. These features allow the agent to examine your codebase, libraries, and comments to provide an overview of the current state and the necessary changes. You may use the specification from the previous stage as the basis for the plan-mode input.
+AI-assisted coding tools such as Cursor, Claude Code, and Codex include Plan Mode features. In this mode, an agent can examine your codebase, libraries, and comments before proposing an overview of the current state and the changes needed for a feature. You can use the specification from the previous stage as the foundation for the plan.
 
-If the AI determines that your implementation may introduce a bug or an uncertain decision, it may ask you a list of questions about the implementation. This helps ensure that the AI has enough context to plan your feature.
+If the AI identifies a possible bug or an uncertain design decision, it may ask you several questions about the implementation. Answering these questions gives the agent the context it needs to create a useful plan.
 
-The clearer and more specific the prompt is, the more useful and accurate the plan will be. However, how specific should the prompt be? There is no single answer to this question.
+The clearer and more specific your prompt is, the more useful and accurate the plan is likely to be. There is no single correct level of detail. Include enough information for the agent to understand the feature, its constraints, and the outcome you expect.
 
-Once the plan is complete, you should review it and consider whether it fits your needs. The agent may create the plan, but you should not delegate your judgment. You may need to examine the RBAC system in the middleware, time and space complexity, test scope, and other important details.
+After the plan is complete, review it carefully. The agent may create the plan, but you should not delegate your judgment. For example, you may need to examine the role-based access control (RBAC) system in the middleware, time and space complexity, test scope, and other important implementation details.
 
-If something does not meet your needs, you may ask the agent to compare it with another solution. In this phase, you can create a feedback loop so that your plan becomes more precise. Before finalizing the plan, you should be able to take responsibility for the outcome.
+If the plan does not meet your needs, ask the agent to compare it with another solution or revise it. Use this feedback loop to make the plan more precise. Before approving the plan, you should be able to take responsibility for the proposed outcome.
 
-You should review the code carefully and make sure that the outcome fits the description. You may want to add comments to the implementation to ease debugging or help your peers.
+Once implementation begins, review the code carefully and confirm that it matches the specification and approved plan. Adding clear comments can make the code easier to debug and help your peers understand it.
 
-Although this process takes more time, it can produce results that are faster and more accurate while matching your needs and coding style. It also helps you retain your judgment and save tokens. See the appendix for a suggested plan-mode workflow.
+Although this process takes more time at the beginning, it can lead to results that are faster to maintain and more accurate over the long term. It also helps you retain your engineering judgment and use your AI tools more efficiently. The appendix contains a suggested Plan Mode workflow.
 
-One way to improve the accuracy of both the coding agent and plan mode is to use skills and rules.
+One way to improve the accuracy of both the coding agent and Plan Mode is to use skills and rules.
 
 ## Skills and Rules
 
-Skills and rules are two ways to guide an AI coding agent. A skill is a reusable set of instructions that may be available globally or within a project, depending on the platform. A rule is an instruction that defines how the agent should behave while working in a specific codebase.
+Skills and rules are two ways to guide an AI coding agent. A skill is a reusable set of instructions that may be available globally or within a project. A rule is an instruction that defines how the agent should behave while working in a specific codebase.
 
-Having skills and rules in place is useful for providing the coding agent with more accurate context. They help us create both accurate plans and correct implementations. Nevertheless, how large should a skill be while still ensuring correctness? As a rule of thumb, make the description as concise as possible while covering all edge cases and their priorities. See https://cursor.com/docs/rules for more information.
+Skills and rules give the coding agent more accurate context. They can help the agent create better plans and more reliable implementations. Keep each skill or rule as concise as possible while still covering important edge cases and priorities. For more information, see the [Cursor rules documentation](https://cursor.com/docs/rules).
 
-Rules are primarily configured through Cursor’s project rules, but other tools use their own instruction files. If another tool should follow the same guidance, explicitly reference or copy the relevant rules in a supported file, such as `AGENTS.md` or `CLAUDE.md`.
+Rules are primarily configured through Cursor’s project rules, but other tools use their own instruction files. If another tool should follow the same guidance, explicitly reference or copy the relevant rules into a supported file, such as `AGENTS.md` or `CLAUDE.md`.
 
-The suggested skills and rules are outlined as follows:
+The suggested format for a skill or rule is:
 
 ```md
-# {Title of Rules / Skills }
+# {Title of Rules / Skills}
 
 {Description, along with its priority}
 
@@ -115,27 +120,23 @@ The suggested skills and rules are outlined as follows:
 
 ## Recommendation
 
-The tools and practices discussed above can be helpful, but this page may become outdated as providers release new features.
+The tools and practices discussed above can be useful, but this page may become outdated as AI providers release new features. Treat the page as a starting point and continue checking whether the recommended tools and workflows still fit your needs.
 
-Acquiring new knowledge should be a priority, particularly in the rapidly changing AI era. New features are constantly being introduced, so you should set aside time to keep up with updates and adjust your software engineering practices.
+Continuing to learn should be a priority, particularly during this rapidly changing AI era. New features are introduced regularly, so set aside time to review updates and adjust your software engineering practices.
 
-You may lose or become rusty in some of the knowledge you acquired in the past, and you do not want to lose your programming skills. Because software engineering requires self-discipline, you should schedule when to use AI and when to work manually. Again, the main purpose of using AI is to boost productivity, not to replace you as the human orchestrator.
+You may forget some of the knowledge you acquired in the past or become rusty in important skills. To maintain your programming ability, schedule time both to use AI and to work without it. The purpose of AI is to improve your productivity, not to replace you as the human orchestrator.
 
-## Conclusion: Discipline during the AI Period
+## Conclusion: Discipline in the AI Era
 
-The key purpose of using AI-assisted coding tools is to help us produce correct and maintainable software in both the short and long term. Vibe coding has truly revolutionized the possibilities of software engineering; nevertheless, we must remain responsible for the outcomes we eventually ship.
+The main purpose of using AI-assisted coding tools is to produce software that remains correct and maintainable in both the short and long term. Vibe Coding has expanded what software engineers can accomplish, but we must remain responsible for the software we ship.
 
-Agentic Engineering is a principle to help you develop your app alongside AI—not to replace your role as the developer. When developing a feature, you should create spec-driven documentation that thoroughly evaluates the problem, scope, and potential solution. Then, you can move to plan mode, where you and your agentic tools design an implementation blueprint. A human-in-the-loop process is required to produce accurate outcomes. AI skills and rules can support you during planning and development.
+Agentic Engineering helps you develop an application alongside AI without giving up your role as the developer. When developing a feature, create spec-driven documentation that evaluates the problem, scope, and potential solution. Then use Plan Mode to work with your AI tools on an implementation blueprint. A human-in-the-loop process is essential for producing reliable outcomes. Skills and rules can support you during planning and development.
 
-Lastly, important disciplines should be maintained, such as regularly researching current updates and continuing to develop your skills. By putting all these components in place, you can use AI responsibly while honing your skills and adapting to AI-assisted development.
+Finally, maintain important disciplines: research current developments, continue building your technical skills, and review AI-generated work carefully. By following these practices, you can use AI responsibly while strengthening your skills and adapting to AI-assisted development.
 
 ## Appendix: Plan Creation
 
-Use the following process to create an implementation plan.
-
-### Step 1: Give the AI Context
-
-Before creating the plan, give the AI enough context about what you are going to build. This helps it understand the main intention and scope. The specification created in the previous stage is a useful resource for providing this context. An example prompt is:
+Before creating the plan, give the AI enough context about what you are going to build. This helps it understand the main intention and scope. The specification created in the previous stage is a useful source of context. An example prompt is:
 
 ```md
 --- Feature Spec
@@ -144,19 +145,19 @@ Before creating the plan, give the AI enough context about what you are going to
 ## Problem
 {What is your current problem, and why is it a problem? Who is the user? Which component is problematic?}
 
-{You may want to describe this as clearly and concisely as possible.}
+{Describe the problem as clearly and concisely as possible.}
 
 ## Why is this important?
-{Why do you think implementing this feature is important? You may describe the implications, along with the pros and cons.}
+{Why is implementing this feature important? Describe the implications, along with the advantages and disadvantages.}
 
 ## In-Scope
-{Which components are within the project scope? You may need to be specific; perhaps the project also involves other feature components.}
+{Which components are within the project scope? Be specific, especially if the project includes related feature components.}
 
 ## Out of Scope
-{List the components that are out of scope.}
+{List the components that are outside the project scope.}
 
 ## Optional: Potential Solution
-{List brief descriptions of potential solutions, along with their pros and cons.}
+{List brief descriptions of potential solutions, along with their advantages and disadvantages.}
 
 ---
 
@@ -164,8 +165,8 @@ Would you create an implementation plan? Please consider necessary components su
 Please list all the files you plan to change, along with the methods that will be affected. If you have questions, ask them before proceeding. Do not begin implementation until you understand and approve the plan.
 ```
 
-Review the agent’s questions and answer them until it proposes an implementation plan that fits your needs. Then evaluate the plan, paying attention to the endpoints, database attributes, and RBAC. If you find anything peculiar, ask the AI to clarify it or make your own suggestion.
+Review the agent’s questions and answer them until it proposes an implementation plan that fits your needs. Then evaluate the plan, paying attention to the endpoints, database attributes, and RBAC. If you find anything unclear or unusual, ask the AI to clarify it or make your own suggestion.
 
-Once you are satisfied with the plan, ask the agent about specific implementation details to clarify whether the plan is sufficiently detailed.
+Once you are satisfied with the plan, ask the agent about specific implementation details to confirm that the plan is sufficiently detailed.
 
-Then you can ask the agent to implement the feature. Once the feature is implemented, you should test its behaviour in the back end and front end.
+Then ask the agent to implement the feature. Once the feature is implemented, test its behavior in both the back end and front end.

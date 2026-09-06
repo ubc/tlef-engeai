@@ -4,12 +4,6 @@
 
 ```
 
-```relevant readings
-
-- [JavaScript event loop](https://nodejs.org/learn/asynchronous-work/event-loop-timers-and-nexttick)
-
-```
-
 EngE-AI is built using vanilla typeScript pattern (client-server architecture) across the frontend and backend (Typescript, HTML, CSS). As described in [Agentic Engineering](/docs/logistics/agentic-engineering), we chose this stack because current coding models are trained heavily on this techstack, and can reason about our current codebase, the problems, and plausible solutions. We also use AI-assisted coding tools along with human-in-the-loop workflow to develop faster alhtough human involvement is required. This makes the combination of a well-known stacks and well-trained AI coding assistance a best fit for the development process. 
 
 

@@ -276,6 +276,17 @@ body.docs-page .home-footer-brand .home-footer-title {
 	font-size: 0.95rem;
 }
 
+.docs-color-swatch {
+	display: inline-block;
+	width: 1em;
+	height: 1em;
+	margin-right: 0.35rem;
+	border: 1px solid #777;
+	border-radius: 2px;
+	background-color: var(--docs-color-swatch-color);
+	vertical-align: -0.1em;
+}
+
 .docs-article th,
 .docs-article td {
 	border: 1px solid var(--home-section-border);

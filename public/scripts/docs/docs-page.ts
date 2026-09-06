@@ -94,6 +94,8 @@ interface MermaidApi {
 
 const DOCS_NAV_URL = '/docs/nav.json';
 const TABLET_MIN_PX = 768;
+const DOCS_COLOR_SWATCH_PATTERN =
+	/^<span aria-hidden="true" style="display:inline-block;width:1em;height:1em;background-color:(#[0-9a-fA-F]{6});border:1px solid #777;border-radius:2px;vertical-align:-0\.1em;margin-right:0\.35rem;">$/;
 
 let docsStarted = false;
 let sidebarLinksEl: HTMLElement | null = null;
@@ -105,6 +107,20 @@ let backdropEl: HTMLElement | null = null;
 let headingObserver: IntersectionObserver | null = null;
 let mermaidConfigured = false;
 let docsNavEntries: DocsNavEntry[] = [];
+
+/** Render only the documented, six-digit-hex color swatch used by palette tables. */
+function renderDocsColorSwatch(rawHtml: string): string | null {
+	const match = rawHtml.match(DOCS_COLOR_SWATCH_PATTERN);
+	if (match) {
+		return `<span class="docs-color-swatch" style="--docs-color-swatch-color: ${match[1]}" aria-hidden="true">`;
+	}
+
+	if (rawHtml !== '</span>') {
+		return null;
+	}
+
+	return '</span>';
+}
 
 /** CHBE-aligned Mermaid palette for public docs diagrams. */
 const DOCS_MERMAID_THEME = {
@@ -412,6 +428,7 @@ async function loadCurrentPage(): Promise<void> {
 	}
 	try {
 		articleEl.innerHTML = await renderMarkdown(markdown);
+		openMarkdownLinksInNewTab(articleEl);
 		renderDocsPageNavigation();
 		try {
 			await renderDocsMermaidDiagrams(articleEl);
@@ -522,14 +539,14 @@ function resolveMarkedCtor(): (new (options?: { silent?: boolean; async?: boolea
 }
 
 const CALLOUT_LABEL: Record<
-	'solution' | 'developer-note' | 'agent-note' | 'prerequisites' | 'relevant-readings',
+	'solution' | 'developer-note' | 'agent-note' | 'prerequisites' | 'relevant-sources',
 	string
 > = {
 	solution: 'Solution',
 	'developer-note': 'Developer note',
 	'agent-note': 'Agent note',
 	prerequisites: 'Prerequisites',
-	'relevant-readings': 'Relevant readings',
+	'relevant-sources': 'Relevant sources',
 };
 
 const DOCS_CODE_ICON =
@@ -551,10 +568,23 @@ function renderCollapsibleNote(
 }
 
 /**
- * openMetaLinksInNewTab - adds target="_blank" to anchors in relevant-readings HTML.
+ * openMetaLinksInNewTab - adds target="_blank" to anchors in relevant-sources HTML.
  */
 function openMetaLinksInNewTab(innerHtml: string): string {
 	return innerHtml.replace(/<a (?![^>]*\btarget=)/gi, '<a target="_blank" rel="noopener noreferrer" ');
+}
+
+/**
+ * openMarkdownLinksInNewTab - opens links authored in documentation Markdown in a new tab.
+ *
+ * Generated table-of-contents and previous/next navigation links are added separately
+ * and intentionally remain same-page navigation controls.
+ */
+function openMarkdownLinksInNewTab(container: HTMLElement): void {
+	for (const anchor of container.querySelectorAll<HTMLAnchorElement>('a[href]')) {
+		anchor.target = '_blank';
+		anchor.rel = 'noopener noreferrer';
+	}
 }
 
 /**
@@ -576,19 +606,19 @@ function wrapMetaRow(boxes: string[]): string {
 }
 
 /**
- * renderMetaBox - prerequisites or relevant-readings block (stacked in docs-meta-row).
+ * renderMetaBox - prerequisites or relevant-sources block (stacked in docs-meta-row).
  */
-function renderMetaBox(kind: 'prerequisites' | 'relevant-readings', innerHtml: string): string {
+function renderMetaBox(kind: 'prerequisites' | 'relevant-sources', innerHtml: string): string {
 	if (isMetaBoxEmpty(innerHtml)) {
 		return '';
 	}
 	const label = CALLOUT_LABEL[kind];
-	const bodyHtml = kind === 'relevant-readings' ? openMetaLinksInNewTab(innerHtml) : innerHtml;
+	const bodyHtml = kind === 'relevant-sources' ? openMetaLinksInNewTab(innerHtml) : innerHtml;
 	return `<aside class="docs-meta-box docs-meta-box--${kind}"><p class="docs-meta-box-label">${label}</p><div class="docs-meta-box-body">${bodyHtml}</div></aside>`;
 }
 
 /**
- * buildCalloutMarkups - HTML for each extracted fence (pairs prerequisites + relevant-readings).
+ * buildCalloutMarkups - HTML for each extracted fence (pairs prerequisites + relevant-sources).
  */
 async function buildCalloutMarkups(
 	callouts: { kind: DocsCalloutKind; inner: string }[]
@@ -599,18 +629,18 @@ async function buildCalloutMarkups(
 		const { kind, inner } = callouts[i];
 		const innerHtml = await parseWithMarked(inner);
 
-		if (kind === 'prerequisites' && callouts[i + 1]?.kind === 'relevant-readings') {
+		if (kind === 'prerequisites' && callouts[i + 1]?.kind === 'relevant-sources') {
 			const readingsHtml = await parseWithMarked(callouts[i + 1].inner);
 			markups[i] = wrapMetaRow([
 				renderMetaBox('prerequisites', innerHtml),
-				renderMetaBox('relevant-readings', readingsHtml),
+				renderMetaBox('relevant-sources', readingsHtml),
 			]);
 			markups[i + 1] = '';
 			i += 2;
 			continue;
 		}
 
-		if (kind === 'prerequisites' || kind === 'relevant-readings') {
+		if (kind === 'prerequisites' || kind === 'relevant-sources') {
 			markups[i] = wrapMetaRow([renderMetaBox(kind, innerHtml)]);
 			i += 1;
 			continue;
@@ -671,8 +701,12 @@ async function parseWithMarked(src: string): Promise<string> {
 	instance.use({
 		renderer: {
 			html({ text }: MarkedHtmlToken): string {
-				return escapeHtml(text);
-			},
+			const colorSwatch = renderDocsColorSwatch(text);
+			if (colorSwatch) {
+				return colorSwatch;
+			}
+			return escapeHtml(text);
+		},
 			heading({ depth, text }: MarkedHeadingToken): string {
 				const base = slugifyHeading(text);
 				const seen = slugCounts.get(base) ?? 0;
