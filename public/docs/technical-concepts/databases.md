@@ -1,90 +1,180 @@
 # Databases
 
-Prerequisites : Agentic Engineering, MongoDB Sample app, Qdrant Sample app
-Relevant readings: ACID, BASE, Idempotenency
-Database is a crucial part in EngE-AI, where we store all the user data. We use 3 databases :
+```prerequisites
 
-- MongoDB (No-SQL database): To store users data and application metadata
-- Qdrant: Vector database to store documents chunks in a vector format
+- [Agentic Engineering](/docs/logistics/agentic-engineering)
+- [MongoDB sample app](https://github.com/ubc/tlef-mongodb-example-app)
+- [Qdrant sample app](https://github.com/ubc/tlef-qdrant-example-app)
 
-Developer notes: If you are a developer, we expect you are familiar with the UBC LTIC sample app for both MongoDB and Qdrant, as mention in the prerequisites. Furthermore, we also expect you to understand database principles, particularly on No-SQL Databases. We have installed the premeasurements on database should be operated: synthax standards, stragety, and testing. Understanding the fundamentals allows you to be criticl about the AI decision, which allows you to debug for any encountered error.
-By the end of this page, you may be familiar with:
+```
 
-1. EngE-AI’s MongoDB:
-    1. Agentic skills Testing
-    2. Collection Organization
-    3. Important properties
-        1. Changeable attributes
-        2. Soft deletion
-2. Qdrant Vector Database:
-    1. Essential Variables
-    2. How to debug
+```relevant sources
+
+- [Main Architecture](/docs/technical-concepts/main-architecture)
+- [Database Properties: ACID vs BASE](https://aws.amazon.com/compare/the-difference-between-acid-and-base-database/)
+
+```
+
+This guide explains how EngE-AI stores and organizes application metadata and courses data on MongoDB and vectorized content on Qdrant (mainly use for RAG). By the end of this chapter, you are expected to be familiar with:
+
+1. MongoDB
+    - MongoDB: Agentic Skills, Implementation, and Testing
+    - MongoDB: Collection Organization
+    - MongoDB: Essential Properties
+2. Qdrant Vector Database
+    - Qdrant: Attribute Organization
+    - Qdrant: Important Variables
+    - Qdrant: Systematic Debugging
+3. Migration
+
 
 ## MongoDB
 
-MongoDB is a No-SQL  database used in our app to store any non-vectorized data, such ass application metadata, courses and even users data, even the conversation is stored inside mongoDB. This particular chapter elaborates more on the rules and how to debug it using AI coding tools.
+MongoDB is a NoSQL database used by EngE-AI to store non-vectorized application data, including application metadata, courses, users, and conversations. This section explains how MongoDB operations are implemented, tested, and debugged with AI coding tools.
 
 ### Agentic Skills, Implementation and Testing
 
-The skills description on the code writing rules for database operation has been explicitly written in the `mongodb-master.mdc` and `mongo-data-layer` , and most of the time (using plan mode) the outcome: Coder and Automated testing is accurate, and adhering to databases principles. For any `CRUD` operation,s coding agent automatically generates modern `mongoDB` ’s function, along with BSON Schema.
-Developer Mode: BSON Schema allows queries to use MongoDB’s native syntax, enabling MongoDB to optimize query execution.
-Nonetheless, as a developer, we should critically analyze for any AI-Agent generated code, meaning we should ensure that the generated code is optimize, clean, and follow the pattern that we have inherently built.
+```agent-note
+
+AI-assisted MongoDB development should follow the repository’s existing database rules and patterns. Before implementation, define the problem, identify the affected collections and data fields, inspect the existing MongoDB delegates, and use plan mode to agree on the implementation approach.
+
+The relevant guidance is documented in `03-mongodb-master.mdc` and `MONGO_DATA_LAYER.md`. A coding agent may generate CRUD operations, schemas, and tests, but its output remains a draft. Developers must review the generated code, compare it with existing patterns, and verify the behavior with focused tests.
+
+```
+
+```developer-note 
+
+BSON Schema allows queries to use MongoDB’s native syntax, enabling MongoDB to optimize query execution. As a developer, we should critically analyze any AI-Agent generated code: ensure clean, optimization, and follow the pattern on the generated code.
+
 You may want to consider this question while having any MongoDB operation in your implementation:
 
-1. Does you MongoDB query uses BSON schema format ? If not, justify yourself the correctness of your implementation.
-2. Does your implementation follows the best practice on the runtime and space complexity ?
+1. Does the query uses BSON schema format ? If not, justify yourself the correctness of your implementation.
+2. Does the implementation follows the best practice on the runtime and space complexity ?
 3. How large is the content that is required for CRUD ? For large query, would you prefer continuous changes, or one big changes ?
 4. While querying MongoDB, have you used `try-catch` method to implementation safety ? (Imagine somehow if the mongoDB server is down )
 5. How extensive is your test case ? Does it cover the entire possible cases?
 
-The current implementation on MongoDB currently uses facade structure, where the code functionalities are modularate based on its functionalities, rather than putting everything in one big chunk of code. This is used to reduce the complexity of the code itself considering how extensive the mongoDB implementation truly is. You may see that inside `src/db` , `enge-ai-mongodb.ts` hold the linker function and it passses to its facade child inside the `src/db/mongo` , for example academic period.
-You may also want to be expilit on the attribute type on your typescript interface. If an attribute is a number, or option of a list, or a string. This will helps you later during your debugging process
+```
+
+EngE-AI uses a façade structure. MongoDB functionality is divided into modular domain components rather than being placed in one large module. This reduces complexity as the implementation grows.
+
+`src/db/enge-ai-mongodb.ts` acts as the entry point and delegates operations to modules under `src/db/mongo/`, such as the academic-period module.
+
+When planning or reviewing a MongoDB change:
+
+1. Identify the affected domain and delegate.
+2. Keep the façade responsible for linking public methods to domain logic.
+3. Keep domain functionality modular rather than placing it in one large file.
+4. Use explicit attribute types in TypeScript interfaces.
+5. Clearly distinguish whether an attribute is a string, number, list, or another type.
+6. Confirm that the data types are clear enough to support future debugging.
 
 ### Collection Organization
 
-EngE-AI’s Collection organization is configured in 2 layers: **Application metadata,** **Courses dedicated data, external connection**.
-mermaid diagram…
-**Application Metadata** is where the application’s data such as `active-course-list` and `active-course-users`, `academic-periods`  take place. they stores EngE-AI application data rather-than soring information ahout a specific course.
-**Course dedicated data** is where we stored  the information about the data on each application, this inlcudes the collection of flags, memory agent, jobs, and user’s chat on a specific course.
-**External connection** is where somemeta data is stored for third party purposes, this include `canvas-connections` and `canvas-tokens` .
-We configure each collection such that each item in the collecition has the same schema compared to ensure consistency across item. This is really useful when it come to data migration, which is discussed later in the migration chapter.
+EngE-AI organizes MongoDB into three logical groups: global application collections, course-scoped collections, and course-keyed Writing Feedback collections.
+
+```mermaid
+flowchart TB
+    subgraph Storage["MongoDB Storage Layer"]
+        subgraph Global["Global and application collections"]
+            CATALOG[("active-course-list<br/>Course catalog + embedded course configuration")]
+            USERS[("active-users<br/>Global identity registry<br/>Only PUID storage boundary")]
+            PERIODS[("academic-periods")]
+            ALLOWANCES[("instructor-period-allowances")]
+        end
+
+        subgraph Course["Course-scoped collections"]
+            COURSE_USERS[("{courseName}_users")]
+            FLAGS[("{courseName}_flags")]
+            MEMORY[("{courseName}_memory-agent")]
+            TASKS[("{courseName}_scheduled_tasks")]
+            QUESTIONS[("{courseName}_scenario_questions")]
+            PROGRESS[("{courseName}_scenario_progress")]
+            PATHWAYS[("{courseName}_pathways")]
+        end
+
+        subgraph Feedback["Writing Feedback and Canvas collections"]
+            CANVAS[("canvas-connections")]
+            ASSIGNMENTS[("writing-assignments")]
+            SUBMISSIONS[("writing-submissions")]
+            RUNS[("writing-feedback-runs")]
+            RELEASES[("writing-releases")]
+            JOBS[("writing-jobs")]
+        end
+
+        CATALOG -. "Persists course collection names" .-> COURSE_USERS
+        CATALOG -. "Resolves course namespace" .-> FLAGS
+        CATALOG -. "Resolves course namespace" .-> MEMORY
+        CATALOG -. "Resolves course namespace" .-> TASKS
+        CATALOG -. "Resolves course namespace" .-> QUESTIONS
+        CATALOG -. "Resolves course namespace" .-> PROGRESS
+        CATALOG -. "Resolves course namespace" .-> PATHWAYS
+    end
+
+    classDef global fill:#ECE5DD,stroke:#1B365D,color:#333333
+    classDef course fill:#4d7a2f,stroke:#1B365D,color:#ffffff
+    classDef feedback fill:#2F5F8F,stroke:#1B365D,color:#ffffff
+
+    class CATALOG,USERS,PERIODS,ALLOWANCES global
+    class COURSE_USERS,FLAGS,MEMORY,TASKS,QUESTIONS,PROGRESS,PATHWAYS course
+    class CANVAS,ASSIGNMENTS,SUBMISSIONS,RUNS,RELEASES,JOBS feedback
+
+    style Storage fill:transparent,stroke:#1B365D,color:#333333
+```
+
+Global collections store information shared across courses. These include the course catalog in `active-course-list`, the cross-course identity registry in `active-users`, academic periods, and instructor period allowances. The `active-users` collection is the only collection that stores PUIDs.
+
+Course-scoped collections use the `{courseName}_*` naming pattern to separate users, flags, memory-agent records, scheduled tasks, scenario questions, scenario progress, and pathways for each course. The physical collection names are stored on the course document and resolved through the collection registry. Older courses use deterministic collection-name fallbacks when required.
+
+Writing Feedback uses separate course-keyed collections for Canvas connection metadata, assignments, submissions, feedback runs, releases, and jobs. Student submissions remain in MongoDB and are not sent through the Qdrant course-material pipeline.
+
+Each collection follows a defined document structure to keep records consistent and support safe queries, testing, and migrations.
 
 ### Essential Properties
 
-While EngE-AI is developed, some of the attribute are uniquely configured to address issues, such as:
+Some MongoDB attributes require explicit handling to preserve consistency and support debugging.
 
-1. Changeable attributes
+1. **Changeable attributes**
+    
+    For editable fields such as `item title` and other content, store `createdAt` and `updatedAt` timestamps. These timestamps help track changes and distinguish application errors from infrastructure issues.
 
-Some of the attributes are changable, such as `item title` , and any other content. On this kind of situation, we might need to add a created date, and updated date on the instance. The reason is to ease the debugging processes, allows us to hypothesize the faulty reason : Code or Infrastructure reason.
+2. **Soft deletion**
+    
+    Soft deletion hides a record from user-facing views without permanently removing it from the database. This preserves data that may be needed for recovery, auditing, or historical reference.
 
-2. Soft Deletion
-
-Sometimes we want the user to have the capabilities of deleting some data, yet as the isntructor, we do not really want if the data is completely removed (some of the data can be really esssential). This is where soft deletion comes in - allows the data to be removed in the user;s interface, but not necessarily in the user itself.
-
-To do so, `isDeleted` attribute (or something similar) is utilitzed to indicate for any safe deletion, which is being used in out chat feature (see `src/db/mongo/chat-mongo.ts`)
+    Use an `isDeleted` attribute, or an equivalent field, to mark records as deleted. The chat feature uses this approach; see `src/db/mongo/chat-mongo.ts`.
 
 ## Qdrant Vector Database
 
-What if we want to use some small part context form a 1-0 page document. It would be really not effective if we sent the entire document to the LLM, as it spurs the LLM to hallucinates, and really expensive. We use a retreival aumgmented generation (RAG) to adress this issue, where it allows us to send a small part or chunk of the document to the LLM as an additional context. Retrieval Augmented Generation is a method to
-To store the vectorrized version of the document, we need a vectore database, and we use Qdrant in EngE-AI. We have attached boht the dependecies and the example app for Qdrant and RAG, see. …. and …. for more.
-Similar to mongoDB, we also have the the documentation for mongoDB in ….. inside the application, see for more
-Having RAG embedded to EngE-AI system allows the LLM to have additional course context for EngE-AI, thereby the response can be more contextually accurate to the course material. This is the illustration in (APSC 183 context)
+
+Suppose a student asks about one concept in a ten-page course document. Sending the entire document to the LLM would use unnecessary tokens, increase cost and latency, and include information that is not relevant to the question.
+
+EngE-AI addresses this problem using Retrieval-Augmented Generation (RAG), which retrieves relevant information from course materials and feed it to the LLM as additional context. During document ingestion, EngE-AI parses a course document, divides it into smaller chunks, and both the vector representation and the original text is sotred in Qdrant vector database.
+
+When a student asks a question, EngE-AI converts the question into a vector representation, and Qdrant then performs a similarity search to identify the most relevant course-material chunks. The selected chunks are added to the LLM prompt alongside the student’s question, allowing the LLM to have additional context for response.
+
+We use the UBC GenAI RAG toolkit manages document chunking, embedding generation, and communication with Qdrant (see [UBC GenAI Toolkit - RAG Module](https://www.npmjs.com/package/ubc-genai-toolkit-rag) for more).
+
 
 ### Important Variables
 
-In RAG system, three main variables that are used for RAG system: `RAG_CHUNK_SIZE`, `RAG_OVERLAP_SIZE`, and `RAG_CHUNKING_STRATEGY`. `RAG_CHUNK_SIZE` means the maximum size of a the document’s chunk, and measured in tokens. `RAG_OVERLAP_SIZE` is the size where the adjecent chunk can overlap each other. For example: set the `RAG_CHUNK_SIZE = 1200` , `RAG_CHUNK_OVERLAP = 200.`In a single retrieval, `RAG_chunk ‘A’ and chunk ‘B’, are adjacent, where chunk ‘A’, comes before ‘B’ (assume that both chunk are fully occupied). Then the last 200 tokens in `Chunk A` should have the similar roder of strings in the first 200 tokens in chunk B. The reason for that is so the LLm can acquire enough connecting context between adjacent chunk.
-Additionally `scoreThresold` is a variable that is used to determine how relevant a chunk with the inserted context in an emdedding models. The `scoreThroesold`is determined based on the strategy, for example cosine or dot Please note that any spelling mistakes is really crucial in emdedding models. For example `Cat`  is has more score
+In RAG system, we should consider these 5 variables in our RAG system:
+
+- `RAG_CHUNK_SIZE` defines the maximum length of each document chunk.
+- `RAG_OVERLAP_SIZE` defines how much text is shared between neighboring chunks.
+- `RAG_CHUNKING_STRATEGY` determines the method used to divide a document into chunks.
+- `Retrieval limit` determines the maximum number of chunks returned for a query.
+- `Score threshold` sets the minimum similarity score required for a chunk to be returned. 
+
 
 ### How to Debug
 
-The true challenge of a RAG system is the correctness of the retrieved context. Some chunks are underconfident and overconfident, and there are two variabes that you should take a look into: number of retrieved chunk and the scoreThreshold.
-It is recommendable to test any document in the UBC LTIC qdrant example app rather than the EngE-AI’s local app directly, because UBC’s LTIC qdrant are an isolated information only for determining the score and relevance for each chunk, and it may be too expansive when we directly use EngE-AI for testing. You may want to take sometimes to take a skim through the example’s app code and experiemnting around to determien the best fit for the thresold score, retreival strategy, or even the number of retreived chunk wiht correct justification.
+The main challenge in a RAG system is ensuring that the retrieved context is relevant and sufficient. Similarity scores do not represent model confidence or factual correctness. All of the variables above can affect retrieval quality, but `Retrieval limit` and `Score threshold` have the most direct effect on which chunks are returned.
+
+Use the [UBC LTIC RAG example app](https://github.com/ubc/ubc-genai-toolkit-rag/tree/main/example) to conduct controlled experiments. Because the example app isolates document chunking and similarity search, it provides a practical environment for evaluating retrieval behavior. Test representative queries, vary one parameter at a time, and justify the selected `Score threshold` and `Retrieval limit` based on retrieval relevance, context completeness, and the number of irrelevant chunks returned. Afterward, validate the configuration in EngE-AI, where course metadata and prompt assembly also affect retrieval behavior.
 
 ## Migration
 
-sometimes, we modify, remove or add something to an item’s attribute or subattibute. Migration is a way to synchromize the attributes pon the databse such that the outdated item can be adjusted with the newest structure. See the migration documentation for more.
-On out implementation, we haver implemented a defensive method: check if attribute is atvailable, if not, then please set the default value. By having so, then we avoid any missing attirbute in the future. Having a migration feature allows us to make the attirbute to be more tidier, and so easier to debug.
+As EngE-AI evolves, stored documents may become outdated, contain deprecated fields, or become disconnected from related records. Migration synchronizes existing data with the current schema through a defensive process: it checks stored attributes, removes unsupported fields, and adds required attributes with appropriate default values. This keeps the data structure consistent, organized, and easier to debug.
 
-## Conclusion
-
-Overall, we have discuss about the organization, variables, MongoDB, and Qdrant
+For operational commands and detailed migration behavior, see the src/migrate README.

@@ -11,7 +11,6 @@
 
 ```relevant sources
 
-- [Main Architecture](/docs/technical-concepts/main-architecture)
 - [Agentic Engineering](/docs/logistics/agentic-engineering)
 - [AI-Assisted Coding Tools](/docs/technical-concepts/ai-assisted-coding-tools)
 - [ISO 9241-210: Human-Centred Design](https://www.iso.org/standard/77520.html)
@@ -150,9 +149,9 @@ Before developing a new feature or changing an existing user flow, create a wire
 
 You may use the official EngE-AI [Figma](https://www.figma.com/) wireframe to brainstorm an upcoming feature. Drafting the wireframe in Figma is useful because it provides:
 
-- **You** Explore ideas and decide what the feature should do before implementation.
+- **You:** Explore ideas and decide what the feature should do before implementation.
 - **Project documentation:** Record the current design and track the feature’s progress.
-- **Supervisor** Allow your supervisor and teammates to provide feedback on the proposed user flow and interface.
+- **Supervisor:** Allow your supervisor and teammates to provide feedback on the proposed user flow and interface.
 
 Please reach out to your supervisor when you need feedback. Early review can help identify unclear requirements, improve the wireframe, and reduce personal bias in design decisions.
 
@@ -204,3 +203,4 @@ While developing the front end, please follow these steps:
 7. Adjust the responsive design and repeat step 5 as needed.
 
 By the end of this page, you should have gained exposure to how EngE-AI pages are developed. Good luck.
+
