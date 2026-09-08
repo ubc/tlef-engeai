@@ -71,6 +71,21 @@ export const CANVAS_OAUTH_SCOPES: readonly string[] = [
     'url:GET|/api/v1/progress/:id',
 ] as const;
 
+/**
+ * canvasAuthorizeScopeParams — the scopes as Canvas expects them on the authorize URL.
+ *
+ * Canvas takes `scope` as one space-separated parameter (RFC 6749 §3.3). The package appends
+ * one parameter per array entry, and Rails resolves repeated scalar params as last-one-wins —
+ * so an array arrives as a single scope, the authorization still succeeds because that scope is
+ * on the key, and every call outside it is refused with a bare 401. Collapsing to one entry
+ * sends the documented form.
+ *
+ * @returns A single element holding the space-separated scope list
+ */
+export function canvasAuthorizeScopeParams(): string[] {
+    return [CANVAS_OAUTH_SCOPES.join(' ')];
+}
+
 /** True when every named variable is set to a non-empty value. */
 export function hasEnv(names: readonly string[]): boolean {
     return names.every((name) => Boolean(process.env[name]));
@@ -138,7 +153,7 @@ export const canvasConfig = hasEnv(CANVAS_REQUIRED_ENV)
           }),
           getUserKey: resolveUserKey,
           basePath: CANVAS_BASE_PATH,
-          scopes: [...CANVAS_OAUTH_SCOPES],
+          scopes: canvasAuthorizeScopeParams(),
       })
     : null;
 

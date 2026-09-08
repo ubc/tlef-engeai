@@ -6,7 +6,7 @@
  * later edit can silently outgrow.
  */
 
-import { CANVAS_OAUTH_SCOPES } from '../canvas-config';
+import { CANVAS_OAUTH_SCOPES, canvasAuthorizeScopeParams } from '../canvas-config';
 
 describe('CANVAS_OAUTH_SCOPES', () => {
     it('requests a scope for every endpoint the app calls', () => {
@@ -35,5 +35,16 @@ describe('CANVAS_OAUTH_SCOPES', () => {
             expect(scope).toMatch(/^url:(GET|POST|PUT)\|\/api\/v1\/\S+$/);
             expect(scope.trim()).toBe(scope);
         }
+    });
+});
+
+describe('canvasAuthorizeScopeParams', () => {
+    it('sends every scope in one space-separated parameter', () => {
+        // One entry, not thirteen: the package appends a `scope` param per entry, and Canvas
+        // keeps only the last of a repeated scalar param — which authorizes successfully and
+        // then 401s on every endpoint outside that one scope.
+        const params = canvasAuthorizeScopeParams();
+        expect(params).toHaveLength(1);
+        expect(params[0].split(' ')).toEqual([...CANVAS_OAUTH_SCOPES]);
     });
 });
