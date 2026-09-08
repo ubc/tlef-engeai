@@ -16,10 +16,7 @@
         { "title": "Front End Engineering", "path": "technical-concepts/front-end-engineering" },
         { "title": "Databases", "path": "technical-concepts/databases" },
         { "title": "Prompt Engineering", "path": "technical-concepts/prompt-engineering" },
-        { "title": "Middleware", "path": "technical-concepts/middleware" },
-        { "title": "AI Agents and tool calling", "path": "technical-concepts/ai-agents-and-tool-calling" },
-        { "title": "Integrated Systems", "path": "technical-concepts/integrated-systems" },
-        { "title": "Migration", "path": "technical-concepts/migration" }
+        { "title": "Middleware", "path": "technical-concepts/middleware" }
       ]
     }
   ]
