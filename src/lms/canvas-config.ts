@@ -45,6 +45,32 @@ export const CANVAS_REQUIRED_ENV = [
     'CANVAS_REDIRECT_URI',
 ] as const;
 
+/**
+ * The Canvas OAuth scopes EngE-AI requests, one per endpoint the app calls.
+ *
+ * A Developer Key's scope list is only a ceiling. Canvas grants what the authorize URL asks
+ * for, never what the key permits. Requesting nothing against a key with Enforce Scopes on is
+ * refused with `error=invalid_scope`, which the OAuth callback reports only as a missing
+ * authorization code.
+ *
+ * Adding a Canvas call means adding its scope here. Canvas compares the strings literally.
+ */
+export const CANVAS_OAUTH_SCOPES: readonly string[] = [
+    'url:GET|/api/v1/users/:id',
+    'url:GET|/api/v1/courses',
+    'url:GET|/api/v1/courses/:course_id/sections',
+    'url:GET|/api/v1/courses/:course_id/users',
+    'url:GET|/api/v1/courses/:course_id/enrollments',
+    'url:GET|/api/v1/courses/:course_id/assignments',
+    'url:GET|/api/v1/courses/:course_id/assignments/:id',
+    'url:GET|/api/v1/courses/:course_id/assignments/:assignment_id/submissions',
+    'url:GET|/api/v1/courses/:course_id/assignments/:assignment_id/submissions/:user_id',
+    'url:POST|/api/v1/courses/:course_id/assignments/:assignment_id/submissions/:user_id/comments/files',
+    'url:PUT|/api/v1/courses/:course_id/assignments/:assignment_id/submissions/:user_id',
+    'url:POST|/api/v1/courses/:course_id/assignments/:assignment_id/submissions/update_grades',
+    'url:GET|/api/v1/progress/:id',
+] as const;
+
 /** True when every named variable is set to a non-empty value. */
 export function hasEnv(names: readonly string[]): boolean {
     return names.every((name) => Boolean(process.env[name]));
@@ -112,6 +138,7 @@ export const canvasConfig = hasEnv(CANVAS_REQUIRED_ENV)
           }),
           getUserKey: resolveUserKey,
           basePath: CANVAS_BASE_PATH,
+          scopes: [...CANVAS_OAUTH_SCOPES],
       })
     : null;
 
