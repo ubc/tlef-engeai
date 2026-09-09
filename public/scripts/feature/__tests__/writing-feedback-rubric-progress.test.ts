@@ -9,10 +9,9 @@
  * @author: @rdschrs
  */
 
-import { SFL_PROFILE_PLACEHOLDERS, buildDefaultSflContextProfile } from '../../../../src/writing-feedback/default-rubric-profile';
+import { buildDefaultSflContextProfile } from '../../../../src/writing-feedback/default-rubric-profile';
 import { requireCompleteSflProfile } from '../../../../src/writing-feedback/sfl-analysis';
 import {
-    SFL_PLACEHOLDER_MIRROR,
     describeDetails,
     describeProfile,
     describeGrid,
@@ -51,14 +50,8 @@ function filledProfile(): SflContextProfile {
     };
 }
 
-describe('placeholder mirror', () => {
-    it('matches the backend placeholders exactly, so the page cannot drift from the engine', () => {
-        expect(SFL_PLACEHOLDER_MIRROR).toEqual({ ...SFL_PROFILE_PLACEHOLDERS });
-    });
-});
-
 describe('describeProfile', () => {
-    it('refuses the seeded default, whose fields are placeholders rather than answers', () => {
+    it('refuses the seeded default, whose fields are empty for staff to answer', () => {
         const seeded = buildDefaultSflContextProfile() as unknown as SflContextProfile;
         const readiness = describeProfile(seeded, FILLED_DETAILS);
         expect(readiness.complete).toBe(false);
@@ -79,7 +72,7 @@ describe('describeProfile', () => {
         expect(describeProfile(good, FILLED_DETAILS).complete).toBe(true);
         expect(() => requireCompleteSflProfile({ ...good } as never)).not.toThrow();
 
-        const bad = { ...good, field: SFL_PROFILE_PLACEHOLDERS.field };
+        const bad = { ...good, field: '' };
         expect(describeProfile(bad, FILLED_DETAILS).complete).toBe(false);
         expect(() => requireCompleteSflProfile({ ...bad } as never)).toThrow();
     });

@@ -73,7 +73,8 @@ function dynamicAssignment(): WritingAssignment {
                 field: 'Undergraduate heat exchanger lab measurements.',
                 tenor: 'Student reporting findings to an evaluating instructor.',
                 mode: 'A written take-home report submitted after the lab session.',
-                productionConditions: 'Take-home, individually written, open resources.'
+                productionConditions: 'Take-home, individually written, open resources.',
+                taskRequirements: ['Report the observed trend with its uncertainty.']
             }
             : assignment.rubric.sflContext,
         criteria: dynamicCriteria.map((criterion) => ({ ...criterion })),

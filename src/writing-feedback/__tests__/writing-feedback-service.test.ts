@@ -53,7 +53,8 @@ function approvedAssignment(version = 1): WritingAssignment {
                     field: 'Undergraduate coursework for this assignment.',
                     tenor: 'Student reporting findings to an evaluating instructor.',
                     mode: 'A written take-home response submitted after the assignment period.',
-                    productionConditions: 'Take-home, individually written, open resources.'
+                    productionConditions: 'Take-home, individually written, open resources.',
+                    taskRequirements: ['Report the observed trend with its uncertainty.']
                 }
                 : assignment.rubric.sflContext
         },

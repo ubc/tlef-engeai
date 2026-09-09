@@ -954,27 +954,74 @@ export async function runButtonAction(
 /**
  * field - pairs a form control with a programmatic label and optional help text
  *
+ * A required field carries a red asterisk after its label text. The marker is
+ * decorative, so the requirement reaches assistive technology through
+ * `aria-required` on the control instead. Native `required` is deliberately not
+ * set: these forms are collected and validated in script, never submitted by the
+ * browser, so a native constraint would only add a second, inconsistent gate.
+ *
  * @param labelText - Visible control label
  * @param control - Input, textarea, or select to label
  * @param help - Optional staff guidance
  * @param wide - Whether the field spans the full form grid
+ * @param required - Whether to mark the field as required
  * @returns Detached labelled field wrapper
  */
 export function field(
     labelText: string,
     control: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement,
     help?: string,
-    wide = false
+    wide = false,
+    required = false
 ): HTMLDivElement {
     const wrapper = document.createElement('div');
     wrapper.className = `wf-field${wide ? ' wf-field--wide' : ''}`;
     if (!control.id) control.id = `wf-field-${crypto.randomUUID()}`;
     const label = document.createElement('label');
     label.htmlFor = control.id;
-    label.textContent = labelText;
+    if (required) {
+        // The rubric page lays labels out as `justify-content: space-between` so a
+        // line-item count can sit at the far right. A bare marker span becomes a
+        // second flex item and gets pushed there too, stranding the asterisk away
+        // from the words it qualifies, so text and marker share one wrapper.
+        label.append(labelWithRequiredMarker(labelText));
+        control.setAttribute('aria-required', 'true');
+    } else {
+        label.textContent = labelText;
+    }
     wrapper.append(label, control);
     if (help) wrapper.append(createText('small', help));
     return wrapper;
+}
+
+/**
+ * labelWithRequiredMarker - label text and its red asterisk as a single inline unit
+ *
+ * Returned as one element so that flex label rows keep the marker beside the
+ * words rather than at the opposite end of the row.
+ *
+ * @param labelText - Visible control label
+ * @returns Detached span holding the label text followed by the marker
+ */
+export function labelWithRequiredMarker(labelText: string): HTMLSpanElement {
+    const text = document.createElement('span');
+    text.className = 'wf-field-label-text';
+    text.textContent = labelText;
+    text.append(requiredMarker());
+    return text;
+}
+
+/**
+ * requiredMarker - the red asterisk that marks a required field
+ *
+ * @returns Detached decorative marker, hidden from assistive technology
+ */
+export function requiredMarker(): HTMLSpanElement {
+    const marker = document.createElement('span');
+    marker.className = 'wf-required-marker';
+    marker.textContent = '*';
+    marker.setAttribute('aria-hidden', 'true');
+    return marker;
 }
 
 /**

@@ -11,6 +11,7 @@
  */
 
 import { buildDefaultWritingRubric } from '../default-rubric-profile';
+import { buildStaffedWritingRubric } from './helpers/staffed-rubric';
 import { buildLabReportRubric } from '../lab-report-profile';
 import {
     approveRubricDraft,
@@ -24,7 +25,9 @@ import type { WritingRubricDraftInput } from '../rubric-schema';
 import type { WritingRubricDefinition } from '../contracts';
 
 function inputFromDefault(): WritingRubricDraftInput {
-    const rubric = buildDefaultWritingRubric('system', new Date('2026-01-01T00:00:00.000Z'));
+    // The seeded draft leaves the description fields empty for staff to answer, so
+    // the schema rightly rejects it; these cases are about the grid, not step 1.
+    const rubric = buildStaffedWritingRubric('system', new Date('2026-01-01T00:00:00.000Z'));
     return writingRubricDraftInputSchema.parse({
         title: rubric.title,
         task: rubric.task,

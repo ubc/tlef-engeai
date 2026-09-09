@@ -25,25 +25,6 @@ import type {
 
 type SflGenreProfileState = SflContextProfile['genreState'];
 
-/**
- * Mirror of SFL_PROFILE_PLACEHOLDERS in src/writing-feedback/default-rubric-profile.ts.
- *
- * The browser cannot import from `src/`, and the engine rejects any field still
- * equal to its placeholder, so the page must know the same strings to tell the
- * truth about readiness. A parity test compares the two objects, in the same
- * mirror-plus-parity idiom D-043 established for the onboarding stage order.
- */
-export const SFL_PLACEHOLDER_MIRROR = {
-    genreLabel: 'Instructor-confirmed assignment genre',
-    task: 'Describe what students are expected to write.',
-    purpose: 'Describe what the writing should accomplish for its reader.',
-    audience: 'Describe the intended reader or audience.',
-    field: 'Describe the disciplinary subject matter and activity.',
-    tenor: 'Describe the writer-reader relationship and expected stance.',
-    mode: 'Describe the format, length, medium, and preparation conditions.',
-    productionConditions: 'Describe whether this is timed, take-home, collaborative, or resource-supported.'
-} as const;
-
 /** The seven assignment-description values, as the details form holds them. */
 export interface DetailsValues {
     title: string;
@@ -74,16 +55,17 @@ export interface GridReadiness {
 }
 
 /**
- * answered - whether a value is a real answer rather than blank or a leftover placeholder
+ * answered - whether a field holds something a staff member actually wrote
+ *
+ * Fields once seeded with stub prose needed a second test, comparing the value
+ * against the exact text it shipped with. Drafts now seed those fields empty and
+ * carry their guidance in the input placeholder, so blankness is the whole test.
  *
  * @param value - Current field value
- * @param placeholder - The seeded placeholder for this field, when it has one
- * @returns True when the value is something a staff member actually wrote
+ * @returns True when the value is not blank
  */
-function answered(value: string | undefined, placeholder?: string): boolean {
-    const trimmed = (value ?? '').trim();
-    if (!trimmed) return false;
-    return placeholder === undefined || trimmed !== placeholder;
+function answered(value: string | undefined): boolean {
+    return (value ?? '').trim().length > 0;
 }
 
 /**
@@ -127,15 +109,15 @@ function profileEntries(
 ): Array<[string, boolean]> {
     const stages = profile?.stages ?? [];
     return [
-        ['What kind of writing is it?', answered(profile?.genreLabel, SFL_PLACEHOLDER_MIRROR.genreLabel)],
-        ['What are students asked to do?', answered(details.task, SFL_PLACEHOLDER_MIRROR.task)],
-        ['Why are they writing it?', answered(details.purpose, SFL_PLACEHOLDER_MIRROR.purpose)],
-        ['Who are they writing for?', answered(details.audience, SFL_PLACEHOLDER_MIRROR.audience)],
-        ['What is the writing about?', answered(profile?.field, SFL_PLACEHOLDER_MIRROR.field)],
-        ['How should the student sound?', answered(profile?.tenor, SFL_PLACEHOLDER_MIRROR.tenor)],
-        ['How long, and in what form?', answered(profile?.mode, SFL_PLACEHOLDER_MIRROR.mode)],
+        ['What kind of writing is it?', answered(profile?.genreLabel)],
+        ['What are students asked to do?', answered(details.task)],
+        ['Why are they writing it?', answered(details.purpose)],
+        ['Who are they writing for?', answered(details.audience)],
+        ['What is the writing about?', answered(profile?.field)],
+        ['How should the student sound?', answered(profile?.tenor)],
+        ['How long, and in what form?', answered(profile?.mode)],
         ['Who marks it?', answered(profile?.actualEvaluator)],
-        ['What were the writing conditions?', answered(profile?.productionConditions, SFL_PLACEHOLDER_MIRROR.productionConditions)],
+        ['What were the writing conditions?', answered(profile?.productionConditions)],
         [
             'What sections should it have, in order?',
             stages.length > 0 && stages.every((stage) => answered(stage.id) && answered(stage.label) && answered(stage.purpose))

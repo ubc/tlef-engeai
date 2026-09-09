@@ -671,6 +671,26 @@
     font-weight: 600;
 }
 
+/* Required-field marker. Decorative: the requirement itself is carried by
+   aria-required on the control, so screen readers never hear a bare "star".
+   The asterisk sits inside `.wf-field-label-text` so that flex label rows keep
+   it next to the words instead of pushing it to the far edge. */
+.wf-field-label-text {
+    display: inline;
+}
+
+.wf-required-marker {
+    margin-left: 4px;
+    color: var(--color-eng-red);
+    font-size: 1.35em;
+    /* Labels are 600; inheriting that at this size fills the asterisk's arms in
+       until it reads as a blob, so it is reset to normal weight. */
+    font-weight: 400;
+    /* Keeps the taller glyph from adding leading to the label row. */
+    line-height: 1;
+    vertical-align: -0.1em;
+}
+
 .wf-field small,
 .wf-help-text {
     color: var(--text-secondary);
@@ -689,6 +709,14 @@
     border-radius: 6px;
     font: inherit;
     font-size: 14px;
+}
+
+/* Placeholders now carry the only guidance a field has, so they need real
+   contrast rather than the browser default's ~54% grey. */
+.wf-field input::placeholder,
+.wf-field textarea::placeholder {
+    color: var(--text-secondary);
+    opacity: 1;
 }
 
 .wf-field input:focus,

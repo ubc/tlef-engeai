@@ -69,6 +69,7 @@ import {
     formatDate,
     inputControl,
     jsonRequest,
+    labelWithRequiredMarker,
     refreshIcons,
     request,
     setWorkspaceMessage,
@@ -330,6 +331,8 @@ interface SflFieldSpec {
     hint?: string;
     control: RubricControl;
     wide?: boolean;
+    /** Marks the field with a red asterisk; only the two genuinely blank-able fields omit it. */
+    required?: boolean;
 }
 
 /**
@@ -342,7 +345,7 @@ interface SflFieldSpec {
  * @returns Detached field wrapper
  */
 function sflField(spec: SflFieldSpec): HTMLDivElement {
-    const wrapper = field(spec.label, spec.control, undefined, spec.wide);
+    const wrapper = field(spec.label, spec.control, undefined, spec.wide, spec.required);
     if (spec.hint) wrapper.append(createText('small', spec.hint, 'wf-field-hint'));
     return wrapper;
 }
@@ -405,62 +408,41 @@ function renderSflProfileBox(
     statusSlot.append(profileStatusChip(readiness));
     const header = disclosureHeader([title, statusSlot], body, `wf-profile-box-body-${crypto.randomUUID()}`, !complete, 'wf-profile-box-header');
 
-    // Approval does not require this sub-card, but generation does. Saying so here
-    // is the disclosure that used to arrive only as a failure on the review page.
-    body.append(createText('p', 'Not needed to approve — but the assistant cannot draft feedback without it.', 'wf-help-text'));
-
     body.append(createText('p', 'The writing itself', 'wf-group-label'));
     const genreLabelControl = namedControl(inputControl(sflContext?.genreLabel ?? ''), 'sfl.genreLabel');
+    genreLabelControl.placeholder = 'e.g. A reflective essay, a lab report, a short design proposal';
     body.append(sflField({
-        label: 'What kind of writing is it?', control: genreLabelControl, wide: true,
-        hint: 'e.g. “A reflective essay”, “A lab report”, “A short design proposal”.'
+        label: 'What kind of writing is it?', control: genreLabelControl, wide: true, required: true
     }));
 
     const fieldControl = namedControl(textAreaControl(sflContext?.field ?? '', 2), 'sfl.field');
+    fieldControl.placeholder = 'The subject matter — e.g. the collapse of the Quebec Bridge';
     const tenorControl = namedControl(textAreaControl(sflContext?.tenor ?? '', 2), 'sfl.tenor');
-    body.append(sflField({
-        label: 'What is the writing about?', control: fieldControl,
-        hint: 'The subject matter — e.g. “The collapse of the Quebec Bridge.”'
-    }));
-    body.append(sflField({
-        label: 'How should the student sound?', control: tenorControl,
-        hint: 'How formal, and how close to the reader — e.g. “Personal, but still careful with claims.”'
-    }));
+    tenorControl.placeholder = 'How formal, and how close to the reader — e.g. personal, but still careful with claims';
+    body.append(sflField({ label: 'What is the writing about?', control: fieldControl, required: true }));
+    body.append(sflField({ label: 'How should the student sound?', control: tenorControl, required: true }));
 
     body.append(createText('p', 'How it is written', 'wf-group-label'));
     const modeControl = namedControl(textAreaControl(sflContext?.mode ?? '', 2), 'sfl.mode');
     const evaluatorControl = namedControl(textAreaControl(sflContext?.actualEvaluator ?? 'Instructor or teaching assistant.', 1), 'sfl.actualEvaluator');
     const productionControl = namedControl(textAreaControl(sflContext?.productionConditions ?? '', 2), 'sfl.productionConditions');
-    body.append(sflField({
-        label: 'How long, and in what form?', control: modeControl,
-        hint: 'e.g. “1,000 words, submitted as a Word file.”'
-    }));
-    body.append(sflField({ label: 'Who marks it?', control: evaluatorControl }));
-    body.append(sflField({
-        label: 'What were the writing conditions?', control: productionControl,
-        hint: 'e.g. “Take-home, over two weeks”, or “Written in class, one hour, closed book.”'
-    }));
+    modeControl.placeholder = 'e.g. 1,000 words';
+    productionControl.placeholder = 'e.g. Take-home, over two weeks, or written in class, one hour, closed book';
+    body.append(sflField({ label: 'How long, and in what form?', control: modeControl, required: true }));
+    body.append(sflField({ label: 'Who marks it?', control: evaluatorControl, required: true }));
+    body.append(sflField({ label: 'What were the writing conditions?', control: productionControl, required: true }));
 
     body.append(createText('p', 'How it is put together', 'wf-group-label'));
     body.append(renderStageRepeater(sflContext?.stages ?? [], canEdit, onInput));
     const embeddedGenres = namedControl(textAreaControl((sflContext?.embeddedGenres ?? []).join('\n'), 2), 'sfl.embeddedGenres');
-    embeddedGenres.placeholder = 'One per line';
+    embeddedGenres.placeholder = 'One per line — e.g. a data commentary inside a lab report. Leave blank if none';
     const taskRequirements = namedControl(textAreaControl((sflContext?.taskRequirements ?? []).join('\n'), 3), 'sfl.taskRequirements');
-    taskRequirements.placeholder = 'One per line';
+    taskRequirements.placeholder = 'One per line — e.g. at least three sources';
     const glossaryTerms = namedControl(textAreaControl((sflContext?.approvedGlossaryTerms ?? []).join('\n'), 2), 'sfl.approvedGlossaryTerms');
-    glossaryTerms.placeholder = 'One per line';
-    body.append(sflField({
-        label: 'Smaller pieces of writing inside it', control: embeddedGenres,
-        hint: 'e.g. a data commentary inside a lab report. Leave blank if none.'
-    }));
-    body.append(sflField({
-        label: 'What must they include?', control: taskRequirements,
-        hint: 'One per line — e.g. “At least three sources.”'
-    }));
-    body.append(sflField({
-        label: 'Words from your course glossary', control: glossaryTerms,
-        hint: 'One per line. Leave blank if none.'
-    }));
+    glossaryTerms.placeholder = 'One per line. Leave blank if none';
+    body.append(sflField({ label: 'Smaller pieces of writing inside it', control: embeddedGenres }));
+    body.append(sflField({ label: 'What must they include?', control: taskRequirements, required: true }));
+    body.append(sflField({ label: 'Words from your course glossary', control: glossaryTerms }));
 
     [genreLabelControl, fieldControl, tenorControl, modeControl, evaluatorControl, productionControl,
         embeddedGenres, taskRequirements, glossaryTerms].forEach((control) => bindTextControl(control, canEdit, onInput));
@@ -492,7 +474,7 @@ function renderStageRepeater(
     const wrapper = document.createElement('div');
     wrapper.className = 'wf-field wf-field--wide';
     const labelEl = document.createElement('label');
-    labelEl.textContent = 'What sections should it have, in order?';
+    labelEl.append(labelWithRequiredMarker('What sections should it have, in order?'));
     wrapper.append(labelEl);
 
     const list = document.createElement('div');
@@ -510,7 +492,7 @@ function renderStageRepeater(
             rowEl.className = 'wf-stage-row';
             rowEl.append(row.nameLabel, row.purpose);
             if (canEdit) {
-                const remove = createIconButton('trash-2', `Remove stage ${row.nameLabel.value || index + 1}`, 'danger', async () => {
+                const remove = createIconButton('trash-2', `Remove section ${row.nameLabel.value || index + 1}`, 'danger', async () => {
                     const at = rows.indexOf(row);
                     if (at === -1) return;
                     rows.splice(at, 1);
@@ -544,7 +526,7 @@ function renderStageRepeater(
         .forEach((stage) => addRow(stage.label, stage.purpose));
 
     if (canEdit) {
-        const addButton = createButton('Add stage', 'secondary', async () => {
+        const addButton = createButton('Add section', 'secondary', async () => {
             addRow('', '');
             onInput();
         });
@@ -888,7 +870,7 @@ function collectSflContext(
     if (required.some((value) => !value)) {
         throw new Error('Complete the genre and register profile before saving.');
     }
-    if (!profile.stages.length) throw new Error('Add at least one reviewed stage before saving.');
+    if (!profile.stages.length) throw new Error('Add at least one section before saving.');
     return profile;
 }
 
@@ -1781,42 +1763,40 @@ function renderAssignmentDetails(
     constraints.placeholder = 'One per line';
     const learningOutcomes = namedControl(textAreaControl(draft.learningOutcomes.join('\n'), 5), 'learningOutcomes');
     learningOutcomes.placeholder = 'One per line';
+    const title = namedControl(inputControl(draft.title), 'title');
+    title.placeholder = 'Assignment Rubric';
+    const task = namedControl(textAreaControl(draft.task, 3), 'task');
+    task.placeholder = '1-2 sentences describing what students are expected to do in this assignment';
+    const audience = namedControl(textAreaControl(draft.audience, 2), 'audience');
+    audience.placeholder = 'e.g. A first-year classmate who has not read the case';
+    const purpose = namedControl(textAreaControl(draft.purpose, 2), 'purpose');
+    purpose.placeholder = 'What the piece of writing is meant to achieve';
+    const gradingIntent = namedControl(textAreaControl(draft.gradingIntent, 2), 'gradingIntent');
+    gradingIntent.placeholder = 'The thing you would mention first when handing the work back';
 
+    // Guidance lives in each control's placeholder rather than in a line under the
+    // box: the two together were more reading than the question deserved. The
+    // learning-outcomes field keeps its hint because it seeds with real outcomes,
+    // so its placeholder never shows and the one-per-line rule would be lost.
     const entries: Array<{ label: string; hint?: string; control: HTMLInputElement | HTMLTextAreaElement; wide?: boolean }> = [
         {
             // This is RubricDefinition.title, not the assignment's. The page heading
             // above already carries the assignment name, so calling this one
             // "Assignment name" put two different values under the same word.
-            label: 'Rubric name',
-            hint: 'Shown to staff wherever this rubric is listed.',
-            control: namedControl(inputControl(draft.title), 'title'), wide: true
+            label: 'Rubric name', control: title, wide: true
         },
-        {
-            label: 'What are students asked to do?',
-            hint: 'One or two sentences, the way you would explain it out loud.',
-            control: namedControl(textAreaControl(draft.task, 3), 'task'), wide: true
-        },
-        {
-            label: 'Who are they writing for?',
-            hint: 'For example: a first-year classmate who has not read the case.',
-            control: namedControl(textAreaControl(draft.audience, 2), 'audience')
-        },
-        {
-            label: 'Why are they writing it?',
-            hint: 'What the piece of writing is meant to achieve.',
-            control: namedControl(textAreaControl(draft.purpose, 2), 'purpose')
-        },
-        { label: 'Rules they must follow', hint: 'One per line.', control: constraints },
+        { label: 'What are students asked to do?', control: task, wide: true },
+        { label: 'Who are they writing for?', control: audience },
+        { label: 'Why are they writing it?', control: purpose },
+        { label: 'Rules they must follow', control: constraints },
         { label: 'What they should learn from it', hint: 'One per line.', control: learningOutcomes },
-        {
-            label: 'What matters most when you mark it?',
-            hint: 'The thing you would mention first when handing the work back.',
-            control: namedControl(textAreaControl(draft.gradingIntent, 2), 'gradingIntent'), wide: true
-        }
+        { label: 'What matters most when you mark it?', control: gradingIntent, wide: true }
     ];
     entries.forEach((entry) => {
         bindTextControl(entry.control, options.canEdit, options.onInput);
-        const wrapper = field(entry.label, entry.control, entry.hint, entry.wide);
+        // Every field in the shared description is required; the two optional
+        // fields on this page both live in the genre profile below.
+        const wrapper = field(entry.label, entry.control, entry.hint, entry.wide, true);
         if (entry.control === constraints || entry.control === learningOutcomes) {
             const countSpan = createText('span', '', 'wf-field-count');
             wrapper.querySelector('label')?.append(countSpan);
@@ -1860,7 +1840,7 @@ function renderAssignmentDetails(
             labContext.focus();
         };
 
-        const handoutField = field('Lab handout', labContext);
+        const handoutField = field('Lab handout', labContext, undefined, false, true);
         handoutField.classList.add('wf-field--wide');
         if (options.canEdit) {
             const handoutActions = document.createElement('div');
