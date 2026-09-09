@@ -20,8 +20,13 @@ describe('formatStruggleTopicsUserBridge', () => {
         expect(out).toContain('preserve student ownership');
         expect(out).toContain('partial representation');
         expect(out).toContain('LaTeX, lists, diagrams');
-        // Routing still distinguishes exact matches from the Socratic default.
-        expect(out).toContain('exact or strong');
+        // Routing direction must match struggle_topics.md: match -> interpretive, else socratic.
+        expect(out).toContain(
+            'When the question is an exact or strong match to a label above, begin a focused scaffold'
+        );
+        expect(out).toContain('when it is adjacent, off-list, or unclear, use socratic conversation');
+        // Guards the inverted phrasing that routed non-matches into the interpretive scaffold.
+        expect(out).not.toMatch(/Unless the question is an exact or strong/i);
     });
 
     it('injects empty struggle_topics without reveal tags when list is empty', () => {

@@ -100,6 +100,34 @@ export class CanvasIdentityError extends Error {
     }
 }
 
+/**
+ * Raised when a student reaches a Canvas path that no longer exists for them.
+ *
+ * The student path was removed rather than repaired because it could not be made safe. Canvas grants
+ * `read_sis` through a *teacher* enrollment, so a student's token cannot read that identifier
+ * for anyone, themselves included. A browser still signed in to a classmate's Canvas therefore
+ * let one student list and join the other's courses.
+ *
+ * Students now reach Canvas-imported courses through the roster their instructor syncs
+ * (`canvas-roster-sync.ts`), where the identity comes from the instructor's credential, or
+ * through the six-character course code. Neither requires a student to hold a Canvas token.
+ *
+ * This is enforced here rather than only at the route, so hiding the button cannot be mistaken
+ * for removing the capability.
+ */
+export class CanvasStudentPathRemovedError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'CanvasStudentPathRemovedError';
+    }
+}
+
+/** What a refused student is told. Names the two paths that do work. */
+const STUDENT_PATH_REMOVED_MESSAGE =
+    'EngE-AI no longer connects Canvas for students. Courses your instructor has imported ' +
+    'appear automatically when you sign in, once they have synced their Canvas roster. If a ' +
+    'course is missing, ask your instructor for its six-character course code.';
+
 /** One row in the "Connect to Canvas" picker. */
 export interface CanvasCourseOption {
     /** Canvas's own course id, as a string. Provider-scoped — meaningless without {@link PROVIDER}. */
@@ -116,8 +144,7 @@ export interface CanvasCourseOption {
 
 /** Outcome of connecting one Canvas course, shaped for the course-selection page. */
 export interface ConnectCanvasCourseResult {
-    status: 'imported' | 'joined' | 'awaiting_instructor';
-    /** Absent only for `awaiting_instructor`, where no EngE-AI course exists yet. */
+    status: 'imported' | 'joined';
     courseId?: string;
     courseName?: string;
     /** Human-readable outcome for the picker to display. */
@@ -169,6 +196,10 @@ export async function listCanvasCourseOptions(
     globalUser: GlobalUser
 ): Promise<CanvasCourseOption[]> {
     const role = canvasRoleFor(globalUser);
+    if (role === 'student') {
+        throw new CanvasStudentPathRemovedError(STUDENT_PATH_REMOVED_MESSAGE);
+    }
+
     const canvasCourses = await listCanvasCoursesForRole(api, role);
 
     // Verify before returning anything, not just before importing. The stored Canvas token may
@@ -226,6 +257,11 @@ export async function connectCanvasCourse(
     academicPeriodId?: string
 ): Promise<ConnectCanvasCourseResult> {
     const role = canvasRoleFor(globalUser);
+    // Refused before the Canvas read, not after: a student's token must not be used to
+    // enumerate courses at all, since the token may belong to a different person entirely.
+    if (role === 'student') {
+        throw new CanvasStudentPathRemovedError(STUDENT_PATH_REMOVED_MESSAGE);
+    }
 
     // 1. Re-read the enrollment from Canvas. The id arrived from the browser, so the only thing
     //    that makes it trustworthy is finding it in the list Canvas filtered by enrollment type.
@@ -239,60 +275,15 @@ export async function connectCanvasCourse(
         );
     }
 
-    // 2. For instructors, prove the connected Canvas account is this person. Runs before any
-    //    write, and before the link lookup, so a mismatched account learns nothing about which
-    //    courses EngE-AI already has. Students are not verified this way — see the note on
-    //    `connectStudent`.
-    if (role === 'teacher') {
-        await assertInstructorIdentity(api, canvasCourseId, globalUser);
-    }
+    // 2. Prove the connected Canvas account is this person. Runs before any write, and before
+    //    the link lookup, so a mismatched account learns nothing about which courses EngE-AI
+    //    already has.
+    await assertInstructorIdentity(api, canvasCourseId, globalUser);
 
     // 3. Has an instructor already imported it?
     const existing = await mongoDB.findCourseByLmsLink(PROVIDER, canvasCourseId);
 
-    if (role === 'student') {
-        return connectStudent(mongoDB, globalUser, canvasCourse, existing);
-    }
     return connectInstructor(mongoDB, globalUser, canvasCourse, existing, academicPeriodId);
-}
-
-/**
- * Student path: join an already-imported course, or report that the instructor has not set it up.
- *
- * A student cannot create the EngE-AI course. Reporting that plainly matters — an empty result
- * here means "your instructor has not connected this course yet", which is a different problem
- * from "something went wrong", and only the instructor can fix it.
- *
- * No PUID check happens here, and none is possible: Canvas grants `read_sis` to teachers, not
- * students, so a student's token cannot read `integration_id` for anyone including themselves.
- * The exposure is bounded — joining a course this way reaches exactly what the course code
- * already grants — but it is a real gap, not an oversight. Closing it needs an identity source
- * outside Canvas.
- */
-async function connectStudent(
-    mongoDB: EngEAI_MongoDB,
-    globalUser: GlobalUser,
-    canvasCourse: LmsCourse,
-    existing: activeCourse | null
-): Promise<ConnectCanvasCourseResult> {
-    if (!existing) {
-        return {
-            status: 'awaiting_instructor',
-            message:
-                `${canvasCourse.name} is not set up on EngE-AI yet. ` +
-                'Your instructor needs to connect it from their side first.',
-        };
-    }
-
-    await mongoDB.enrollUserInCourse(globalUser, existing.id, 'student');
-    appLogger.log(`[canvas-sync] Enrolled student in ${existing.courseName} via Canvas`);
-
-    return {
-        status: 'joined',
-        courseId: existing.id,
-        courseName: existing.courseName,
-        message: `You have been added to ${existing.courseName}.`,
-    };
 }
 
 /**
@@ -347,9 +338,7 @@ async function connectInstructor(
         frameType: IMPORT_DEFAULT_FRAME_TYPE,
         tilesNumber: IMPORT_DEFAULT_TILES,
         creator: globalUser,
-        // Falls back to the catalog default when the picker did not name a period, matching how
-        // an unassigned course is grouped on the selection page.
-        academicPeriodId: academicPeriodId ?? (await mongoDB.getDefaultAcademicPeriodId()),
+        academicPeriodId: await resolveAcademicPeriodId(mongoDB, academicPeriodId),
         // Canvas supplies no course structure, so setup is still owed. This is what routes the
         // instructor into EngE-AI's setup flow when they first open the course.
         courseSetup: false,
@@ -364,6 +353,32 @@ async function connectInstructor(
         courseName: created.courseName,
         message: `${created.courseName} has been added to EngE-AI. Finish setting it up to open it to students.`,
     };
+}
+
+/**
+ * Resolves the academic period an imported course lands in.
+ *
+ * The id arrives from the browser, so it is checked against the catalog before it is written: a
+ * stale picker — a term deleted between the page load and the import — would otherwise file the
+ * course under a period nothing displays, hiding it from the course list entirely. Falling back
+ * to the catalog default keeps the import working and matches how an unassigned course is
+ * grouped on the selection page; refusing would strand an instructor mid-flow over a term they
+ * can change later.
+ */
+async function resolveAcademicPeriodId(
+    mongoDB: EngEAI_MongoDB,
+    requested?: string
+): Promise<string> {
+    if (requested) {
+        const period = await mongoDB.getAcademicPeriodById(requested);
+        if (period) {
+            return period.id;
+        }
+        appLogger.warn(
+            `[canvas-sync] Unknown academic period on Canvas import; using the default instead`
+        );
+    }
+    return mongoDB.getDefaultAcademicPeriodId();
 }
 
 /**

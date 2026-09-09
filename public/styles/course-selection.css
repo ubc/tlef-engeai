@@ -1422,7 +1422,27 @@ body:has(.admin-course-selection-wrapper) .top-branding {
     margin-bottom: 1rem;
     display: flex;
     justify-content: flex-end;
+    gap: 0.75rem;
     margin-right:10%;
+}
+
+/* Page-level actions above the period list, aligned to the 80%-wide period cards. */
+.course-selection-wrapper .course-selection-toolbar {
+    width: 80%;
+    margin: 0 auto 1rem;
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+}
+
+/*
+ * Connect to Canvas carries `.create-academic-period-btn` for its styling — it is a page-level
+ * toolbar action like that button, not one of the green in-card course buttons — and
+ * `.canvas-connect-btn` only so this rule can find it. That class sets `display: inline-flex`,
+ * which outranks the UA rule for `hidden`, so the hidden state needs restating here.
+ */
+.canvas-connect-btn[hidden] {
+    display: none;
 }
 
 .period-header-left {

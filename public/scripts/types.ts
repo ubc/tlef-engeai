@@ -359,10 +359,20 @@ export interface LlmModelDashboardCatalogEntry {
     unavailable?: boolean;
 }
 
+/** Per-feature LLM selection map, keyed by consuming feature. */
+export type FeatureLlmSettingsMap = Record<LlmFeatureKey, FeatureLlmSelection>;
+
 /** GET `/api/courses/:courseId/llm-model-catalog` response body. */
 export interface LlmModelCatalogApiResponse {
     models: LlmModelDashboardCatalogEntry[];
+    /** Generic platform default. Kept for compatibility; prefer {@link defaultSettings}. */
     defaultSelection: FeatureLlmSelection;
+    /**
+     * Per-feature platform defaults — what the server actually applies when a course has no
+     * stored row for that feature. `chat` and `memoryAgent` differ from `defaultSelection`,
+     * so seeding the UI from `defaultSelection` alone misreports what the course will use.
+     */
+    defaultSettings: FeatureLlmSettingsMap;
 }
 
 /** PATCH `/api/courses/:courseId/llm-settings` request body. */
@@ -388,6 +398,35 @@ export interface CourseLmsLink {
     linkedAt: Date;
     /** `GlobalUser.userId` of the importing instructor — never a PUID. */
     linkedBy: string;
+}
+
+/**
+ * Must match src/types/shared.ts
+ *
+ * `identifiers_withheld` means Canvas returned roster rows without SIS identifiers — a missing
+ * Canvas permission, not an empty class. The UI must not present it as "no students found".
+ */
+export type RosterSyncStatus =
+    | 'ok'
+    | 'identifiers_withheld'
+    | 'no_credential'
+    | 'failed'
+    /** LMS course not published, so it reports no students whoever is enrolled. */
+    | 'unpublished';
+
+/**
+ * Must match src/types/shared.ts
+ *
+ * Counts only. The stored roster itself is never sent to a browser — see `CourseRosterSnapshot`
+ * on the backend, which has no frontend counterpart on purpose.
+ */
+export interface CourseRosterSyncSummary {
+    courseId: string;
+    status: RosterSyncStatus;
+    syncedAt: Date;
+    rosterSize: number;
+    identifiedCount: number;
+    message: string;
 }
 
 /**

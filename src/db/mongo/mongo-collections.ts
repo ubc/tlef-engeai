@@ -13,6 +13,7 @@ import {
     ACTIVE_COURSE_LIST_COLLECTION,
     ACTIVE_USERS_COLLECTION,
     APPLICATION_MIGRATIONS_COLLECTION,
+    COURSE_LMS_ROSTERS_COLLECTION,
     GUIDED_PATHWAY_FLAGS_COLLECTION,
     INSTRUCTOR_PERIOD_ALLOWANCES_COLLECTION
 } from './mongo-constants';
@@ -82,4 +83,18 @@ export function applicationMigrationsCollection<T extends Document = Document>(d
  */
 export function guidedPathwayFlagsCollection(db: Db): Collection {
     return db.collection(GUIDED_PATHWAY_FLAGS_COLLECTION);
+}
+
+/**
+ * courseLmsRostersCollection
+ *
+ * Returns the handle for per-course LMS roster snapshots. Holds keyed one-way identifiers rather
+ * than PUIDs, so it does not join the `active-users` exception — see `src/utils/roster-identity.ts`.
+ *
+ * @param db - `Db` — connected Mongo database handle
+ *
+ * @returns `Collection` — `course-lms-rosters`
+ */
+export function courseLmsRostersCollection(db: Db): Collection {
+    return db.collection(COURSE_LMS_ROSTERS_COLLECTION);
 }

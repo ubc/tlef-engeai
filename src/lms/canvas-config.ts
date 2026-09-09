@@ -45,6 +45,47 @@ export const CANVAS_REQUIRED_ENV = [
     'CANVAS_REDIRECT_URI',
 ] as const;
 
+/**
+ * The Canvas OAuth scopes EngE-AI requests, one per endpoint the app calls.
+ *
+ * A Developer Key's scope list is only a ceiling. Canvas grants what the authorize URL asks
+ * for, never what the key permits. Requesting nothing against a key with Enforce Scopes on is
+ * refused with `error=invalid_scope`, which the OAuth callback reports only as a missing
+ * authorization code.
+ *
+ * Adding a Canvas call means adding its scope here. Canvas compares the strings literally.
+ */
+export const CANVAS_OAUTH_SCOPES: readonly string[] = [
+    'url:GET|/api/v1/users/:id',
+    'url:GET|/api/v1/courses',
+    'url:GET|/api/v1/courses/:course_id/sections',
+    'url:GET|/api/v1/courses/:course_id/users',
+    'url:GET|/api/v1/courses/:course_id/enrollments',
+    'url:GET|/api/v1/courses/:course_id/assignments',
+    'url:GET|/api/v1/courses/:course_id/assignments/:id',
+    'url:GET|/api/v1/courses/:course_id/assignments/:assignment_id/submissions',
+    'url:GET|/api/v1/courses/:course_id/assignments/:assignment_id/submissions/:user_id',
+    'url:POST|/api/v1/courses/:course_id/assignments/:assignment_id/submissions/:user_id/comments/files',
+    'url:PUT|/api/v1/courses/:course_id/assignments/:assignment_id/submissions/:user_id',
+    'url:POST|/api/v1/courses/:course_id/assignments/:assignment_id/submissions/update_grades',
+    'url:GET|/api/v1/progress/:id',
+] as const;
+
+/**
+ * canvasAuthorizeScopeParams — the scopes as Canvas expects them on the authorize URL.
+ *
+ * Canvas takes `scope` as one space-separated parameter (RFC 6749 §3.3). The package appends
+ * one parameter per array entry, and Rails resolves repeated scalar params as last-one-wins —
+ * so an array arrives as a single scope, the authorization still succeeds because that scope is
+ * on the key, and every call outside it is refused with a bare 401. Collapsing to one entry
+ * sends the documented form.
+ *
+ * @returns A single element holding the space-separated scope list
+ */
+export function canvasAuthorizeScopeParams(): string[] {
+    return [CANVAS_OAUTH_SCOPES.join(' ')];
+}
+
 /** True when every named variable is set to a non-empty value. */
 export function hasEnv(names: readonly string[]): boolean {
     return names.every((name) => Boolean(process.env[name]));
@@ -112,6 +153,7 @@ export const canvasConfig = hasEnv(CANVAS_REQUIRED_ENV)
           }),
           getUserKey: resolveUserKey,
           basePath: CANVAS_BASE_PATH,
+          scopes: canvasAuthorizeScopeParams(),
       })
     : null;
 

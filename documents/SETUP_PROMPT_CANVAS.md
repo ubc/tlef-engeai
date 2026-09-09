@@ -191,8 +191,9 @@ me the UI click path from §1.6 as the fallback.
   to run and read**, not yours. Ask me to run it and wait for me to confirm.
 - Never put a real secret in a tracked file, a doc, a commit message, or your setup notes.
 - If I paste a secret into this chat by mistake, say so and tell me to rotate it.
-- Don't invent OAuth scopes. Enforce Scopes is off and the package requests none — you can confirm
-  this by checking that the authorize URL carries no `scope` parameter.
+- Don't invent OAuth scopes. The app requests the list in `src/lms/canvas-config.ts`, and the
+  authorize URL carries one `scope` parameter per entry. With Enforce Scopes off, this local key
+  ignores them.
 - Don't paginate by hand. Canvas defaults to 10 items and reports the rest in the RFC 5988 `Link`
   header; the package already follows it.
 - Don't add LTI. This integration is OAuth-only — an LTI launch is not an API token.

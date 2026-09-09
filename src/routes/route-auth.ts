@@ -18,6 +18,7 @@ import { isAdminName, isAdminUser } from '../utils/admin';
 import { getCourseSelectionRedirectPath } from '../helpers/course-selection-redirect';
 import { sendHtmlPageWithBuildComment } from '../utils/build-info';
 import { teardownSession, clearSessionCookie } from '../helpers/session-teardown';
+import { applyRosterEnrollment } from '../helpers/apply-roster-enrollment';
 
 const router = express.Router();
 
@@ -115,6 +116,11 @@ const samlCallbackHandler = [
                 globalUser = await mongoDB.updateGlobalUser(globalUser.puid, { isAdmin: shouldBeAdmin });
             }
         }
+
+        // Grant any courses whose imported LMS roster names this user. Runs before the session is
+        // stored so `coursesEnrolled` is current on the very first page after login rather than
+        // one sign-in behind. Never throws — see applyRosterEnrollment.
+        globalUser = await applyRosterEnrollment(mongoDB, globalUser);
 
         // Store GlobalUser in session (backend only - PUID is safe here)
         // NOTE: PUID is stored in session for backend use only
@@ -241,6 +247,10 @@ router.post('/login', (req: express.Request, res: express.Response, next: expres
                             globalUser = await mongoDB.updateGlobalUser(globalUser.puid, { isAdmin: shouldBeAdmin });
                         }
                     }
+
+                    // Same roster enrollment as the SAML path — both login paths must agree, or a
+                    // dev-mode sign-in would silently behave differently from production.
+                    globalUser = await applyRosterEnrollment(mongoDB, globalUser);
 
                     // Store GlobalUser in session (backend only - PUID is safe here)
                     // NOTE: PUID is stored in session for backend use only

@@ -12,7 +12,8 @@
                     <h1 class="mobile-header-title">Dashboard</h1>
                 </div>
             </div>
-            <div class="dashboard-code-flip" id="dashboard-code-flip">
+            <div class="dashboard-topbar-aside">
+                <div class="dashboard-code-flip" id="dashboard-code-flip">
                 <span class="dashboard-code-title">Course Code</span>
                 <div class="dashboard-code-body-flip">
                     <div class="dashboard-code-body-flip-inner">
@@ -50,6 +51,23 @@
                         </div>
                     </div>
                 </div>
+            </div>
+
+            <!--
+                Canvas roster sync. Hidden unless the course was imported from Canvas — an
+                admin-created course has no roster.
+            -->
+                <button
+                    type="button"
+                    class="dashboard-roster-sync-btn"
+                    id="syncCanvasRoster"
+                    title="Sync roster with Canvas"
+                    aria-label="Sync roster with Canvas"
+                    hidden
+                >
+                    <i data-feather="refresh-cw" aria-hidden="true"></i>
+                    <span>Sync roster with Canvas</span>
+                </button>
             </div>
         </header>
 

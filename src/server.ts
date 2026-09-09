@@ -344,4 +344,13 @@ app.listen(port, async () => {
         logger.error('Failed to create LMS course-link index:', err as any);
     }
 
+    // Backs the login-time enrollment lookup, which runs on every sign-in and would otherwise
+    // scan every stored roster. Best-effort inside the helper: an index that fails to build
+    // makes logins slower, not wrong.
+    try {
+        await (await EngEAI_MongoDB.getInstance()).createCourseLmsRosterIndexes();
+    } catch (err) {
+        logger.error('Failed to create LMS roster indexes:', err as any);
+    }
+
 });
