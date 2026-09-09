@@ -1,9 +1,10 @@
 /**
  * Course Extra Feature defaults — single registry for new-course policy and labels.
  *
- * New courses default every capability to off via `buildNewCourseFeatures` /
- * `normalizeCourseFeaturesInput`. Missing keys on existing courses stay off at
- * read time (`isCourseFeatureEnabled`).
+ * New courses enable every capability via `buildNewCourseFeatures` /
+ * `normalizeCourseFeaturesInput`. Missing keys on existing courses inherit the
+ * registry default (`isCourseFeatureEnabled`), while explicit `false` still
+ * disables a capability.
  *
  * @author: EngE-AI Team
  * @date: 2026-08-06
@@ -26,22 +27,22 @@ export const COURSE_FEATURE_DEFINITIONS = [
     {
         id: 'writingFeedback',
         label: 'Writing Feedback',
-        defaultEnabledForNewCourse: false,
+        defaultEnabledForNewCourse: true,
     },
     {
         id: 'memoryAgent',
         label: 'Memory Agent',
-        defaultEnabledForNewCourse: false,
+        defaultEnabledForNewCourse: true,
     },
     {
         id: 'guidedPathway',
         label: 'Guided Pathway',
-        defaultEnabledForNewCourse: false,
+        defaultEnabledForNewCourse: true,
     },
     {
         id: 'scenarioGeneration',
         label: 'Scenario Questions',
-        defaultEnabledForNewCourse: false,
+        defaultEnabledForNewCourse: true,
     },
 ] as const satisfies readonly CourseFeatureDefinition[];
 

@@ -75,9 +75,15 @@ export const FEATURE_ONBOARDING_STAGES: ReadonlyArray<{
     { stage: 'guided-pathway-setup', feature: 'guidedPathway' }
 ];
 
-/** A capability counts as available only on an explicit true, matching `isCourseFeatureEnabled`. */
+const DEFAULT_FEATURE_ENABLED: Record<OnboardingFeatureKey, boolean> = {
+    scenarioGeneration: true,
+    writingFeedback: true,
+    guidedPathway: true
+};
+
+/** A capability counts as available unless the course explicitly disables it. */
 function isFeatureEnabled(course: OnboardingCourseProgress, feature: OnboardingFeatureKey): boolean {
-    return course.features?.[feature]?.enabled === true;
+    return course.features?.[feature]?.enabled ?? DEFAULT_FEATURE_ENABLED[feature];
 }
 
 /**

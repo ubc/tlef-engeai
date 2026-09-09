@@ -14,6 +14,8 @@
 
 import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
+import { buildPlatformPathwaySeeds } from '../../guided-pathways/pathway-seed';
+import { COURSE_FEATURE_DEFINITIONS } from '../../dashboard-setting/course-feature-defaults';
 
 const REPO_ROOT = join(__dirname, '..', '..', '..');
 const ONBOARDING_CSS = join(REPO_ROOT, 'public', 'styles', 'instructor-components', 'onboarding.css');
@@ -160,5 +162,59 @@ describe('onboarding design guard', () => {
             const source = readFileSync(join(REPO_ROOT, 'public', 'scripts', 'onboarding', file), 'utf8');
             expect(source).toContain('updateStaffOnboardingProgress');
         });
+    });
+});
+
+/**
+ * The tutorial names the pathways a new course starts with. Those come from the
+ * seed module, and the seed has already changed once: GP-001 removed Off-topic
+ * because off-topic scope moved to the teaching system prompt. The tutorial kept
+ * teaching it. Assert the two agree so the next seed change cannot silently
+ * leave the tutorial describing a pathway no course has.
+ */
+describe('guided pathway tutorial matches the platform seed', () => {
+    const html = readFileSync(join(COMPONENT_DIR, 'guided-pathway-setup.html'), 'utf8');
+    const seededTitles = buildPlatformPathwaySeeds().map(p => p.title);
+
+    it('names every seeded pathway and no others', () => {
+        const named = [...html.matchAll(/<span class="gp-setup-pathway-name">([^<]+)<\/span>/g)]
+            .map(m => m[1]!.trim());
+        expect(named.length).toBeGreaterThan(0);
+        expect([...new Set(named)].sort()).toEqual([...seededTitles].sort());
+    });
+
+    it('states the seeded pathway count in words rather than a stale number', () => {
+        // Two pathways are seeded, so "three" anywhere in this tutorial is wrong.
+        expect(html.toLowerCase()).not.toContain('three pathways');
+        expect(html.toLowerCase()).not.toContain('three recommended');
+    });
+});
+
+/**
+ * The Course Features step is where a new course's capabilities are chosen, and
+ * the tutorial's boxes must start where the server will start them. A checkbox
+ * that renders unchecked while the registry says the capability is on would send
+ * an explicit false and silently disable it.
+ */
+describe('course setup feature checkboxes match the registry default', () => {
+    const html = readFileSync(join(COMPONENT_DIR, 'course-setup.html'), 'utf8');
+    const ids: Record<string, string> = {
+        writingFeedback: 'reviewWritingFeedbackEnabled',
+        memoryAgent: 'reviewMemoryAgentEnabled',
+        guidedPathway: 'reviewGuidedPathwayEnabled',
+        scenarioGeneration: 'reviewScenarioGenerationEnabled'
+    };
+
+    it.each(Object.entries(ids))('renders %s to match its default', (feature, elementId) => {
+        const def = COURSE_FEATURE_DEFINITIONS.find(d => d.id === feature)!;
+        const tag = html.match(new RegExp(`<input[^>]*id="${elementId}"[^>]*>`))?.[0];
+        expect(tag).toBeDefined();
+        expect(/\schecked\b/.test(tag!)).toBe(def.defaultEnabledForNewCourse);
+    });
+
+    it('uses the registry label for every capability', () => {
+        for (const def of COURSE_FEATURE_DEFINITIONS) {
+            expect(html).toContain(def.label);
+        }
     });
 });

@@ -22,6 +22,7 @@ import { authService } from '../services/auth-service.js';
 import { showErrorModal } from '../ui/modal-overlay.js';
 import { showErrorToast, showSuccessToast } from '../ui/toast-notification.js';
 import { initializeModelSettings, refreshModelSettingsVisibility } from './model-setting.js';
+import { courseFeatureSnapshotFromDefaults, isBrowserCourseFeatureEnabled } from '../utils/course-features.js';
 import { wireCanvasRosterSync } from './canvas-roster-sync.js';
 
 interface DashboardCardDef {
@@ -224,7 +225,7 @@ export function renderDashboardCards(currentClass: activeCourse, canManageCourse
     const desired = CARD_DEFS.filter((card) => {
         if (card.managerOnly && !canManageCourse) return false;
         if (!card.feature) return true;
-        return currentClass.features?.[card.feature]?.enabled === true;
+        return isBrowserCourseFeatureEnabled(currentClass, card.feature);
     });
     const desiredViews = new Set(desired.map((card) => card.view));
     const existing = [...container.querySelectorAll<HTMLButtonElement>('.dashboard-card')];
@@ -456,11 +457,7 @@ function readFeatureCheckboxSnapshot(): FeatureEnabledSnapshot {
  * featureSnapshotFromCourse - enabled flags from persisted course features.
  */
 function featureSnapshotFromCourse(currentClass: activeCourse): FeatureEnabledSnapshot {
-    const snapshot = {} as FeatureEnabledSnapshot;
-    for (const key of Object.keys(FEATURE_INPUT_IDS) as FeatureKey[]) {
-        snapshot[key] = currentClass.features?.[key]?.enabled === true;
-    }
-    return snapshot;
+    return courseFeatureSnapshotFromDefaults(currentClass.features);
 }
 
 /**
@@ -524,7 +521,7 @@ async function wireFeatureToggles(currentClass: activeCourse, canManage: boolean
             for (const key of keys) {
                 const input = document.getElementById(FEATURE_INPUT_IDS[key]) as HTMLInputElement;
                 const desired = input.checked;
-                const already = currentClass.features?.[key]?.enabled === true;
+                const already = isBrowserCourseFeatureEnabled(currentClass, key);
                 if (desired === already) continue;
 
                 const response = await fetch(
@@ -558,7 +555,7 @@ async function wireFeatureToggles(currentClass: activeCourse, canManage: boolean
             currentClass.features = snapshot;
             for (const key of Object.keys(FEATURE_INPUT_IDS) as FeatureKey[]) {
                 const input = document.getElementById(FEATURE_INPUT_IDS[key]) as HTMLInputElement | null;
-                if (input) input.checked = currentClass.features?.[key]?.enabled === true;
+                if (input) input.checked = isBrowserCourseFeatureEnabled(currentClass, key);
             }
             persistedFeatures = featureSnapshotFromCourse(currentClass);
             renderDashboardCards(currentClass, canManage);

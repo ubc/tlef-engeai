@@ -1,9 +1,9 @@
 /**
  * Course feature capabilities — read, update, and normalize opt-in course functionality.
  *
- * Defaults live in `course-feature-defaults.ts`. Absent capability keys resolve to
- * disabled at read time; create/setup always persist a full map via
- * `normalizeCourseFeaturesInput`.
+ * Defaults live in `course-feature-defaults.ts`. Absent capability keys resolve
+ * to the registry default at read time; create/setup always persist a full map
+ * via `normalizeCourseFeaturesInput`.
  *
  * @author: @gatahcha
  * @date: 2026-07-12
@@ -25,22 +25,37 @@ export const COURSE_FEATURE_LABELS: Record<CourseFeatureId, string> = Object.fro
     COURSE_FEATURE_DEFINITIONS.map((def) => [def.id, def.label])
 ) as Record<CourseFeatureId, string>;
 
+const COURSE_FEATURE_DEFAULT_ENABLED: Record<CourseFeatureId, boolean> = Object.fromEntries(
+    COURSE_FEATURE_DEFINITIONS.map((def) => [def.id, def.defaultEnabledForNewCourse])
+) as Record<CourseFeatureId, boolean>;
+
+/**
+ * defaultCourseFeatureEnabled — registry default for absent capability keys.
+ *
+ * @param feature - Supported capability identifier
+ * @returns Default enabled state for new and unspecified course capability rows
+ */
+export function defaultCourseFeatureEnabled(feature: CourseFeatureId): boolean {
+    return COURSE_FEATURE_DEFAULT_ENABLED[feature];
+}
+
 /**
  * isCourseFeatureEnabled — resolves whether a course explicitly opted into a capability.
  *
- * Missing courses, feature maps, or feature entries intentionally resolve to
- * `false`, keeping legacy course records disabled by default.
+ * Missing courses still resolve to `false`. A missing feature map or feature
+ * entry on a real course inherits the registry default, while explicit `false`
+ * remains a course-level opt-out.
  *
  * @param course - Course record or feature-bearing projection to inspect
  * @param feature - Supported capability identifier
- * @returns `true` only when the capability has an explicit `enabled: true`
+ * @returns Resolved enabled state, defaulting missing feature keys from the registry
  */
 export function isCourseFeatureEnabled(
     course: Pick<activeCourse, 'features'> | null | undefined,
     feature: CourseFeatureId
 ): boolean {
-    // Require an explicit true value so absent legacy configuration never enables a feature.
-    return course?.features?.[feature]?.enabled === true;
+    if (!course) return false;
+    return course.features?.[feature]?.enabled ?? defaultCourseFeatureEnabled(feature);
 }
 
 /**
@@ -82,10 +97,10 @@ export function updateCourseCapability(
 }
 
 /**
- * buildNewCourseFeatures - full capability map for a brand-new course (all off by default).
+ * buildNewCourseFeatures - full capability map for a brand-new course (all on by default).
  *
  * Every registry key is present. `enabled` follows `defaultEnabledForNewCourse`
- * (currently false for all Extra Features).
+ * (currently true for all Extra Features).
  *
  * @returns Complete {@link CourseFeatures} map
  */
@@ -100,9 +115,9 @@ export function buildNewCourseFeatures(): CourseFeatures {
 /**
  * normalizeCourseFeaturesInput - merge create/setup body onto new-course defaults.
  *
- * Only explicit `enabled: true` in the input turns a capability on. Enabling sets
- * first-enable provenance from `actorUserId`. All registry keys are always present
- * on the returned map.
+ * An absent key inherits the registry default; an explicit `false` disables.
+ * Enabling sets first-enable provenance from `actorUserId`. All registry keys
+ * are always present on the returned map.
  *
  * @param input - Partial features from the request body (may be undefined)
  * @param actorUserId - Staff user id for first-enable provenance
@@ -116,7 +131,10 @@ export function normalizeCourseFeaturesInput(
 ): CourseFeatures {
     let features = buildNewCourseFeatures();
     for (const def of COURSE_FEATURE_DEFINITIONS) {
-        const desired = input?.[def.id]?.enabled === true;
+        // An absent key inherits the registry default; an explicit false still
+        // disables, so an instructor who unchecks a box gets it off. Reading
+        // `=== true` here made the registry default unreachable for every caller.
+        const desired = input?.[def.id]?.enabled ?? def.defaultEnabledForNewCourse;
         features = updateCourseCapability(features, def.id, desired, actorUserId, now);
     }
     return features;

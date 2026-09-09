@@ -173,7 +173,7 @@
                 <div class="content-step-inner">
                     <div class="step-header">
                         <h1>Assignment Details and the Rubric</h1>
-                        <p>The rubric page has two numbered parts, and feedback waits until you approve what they produce</p>
+                        <p>The rubric page has three numbered steps, and feedback waits until you approve the rubric they produce</p>
                     </div>
 
                     <div class="demo-explanation">
@@ -183,7 +183,7 @@
 
                     <div class="demo-explanation">
                         <h4>2 &middot; Rubric</h4>
-                        <p>A rubric is one grid. Criteria are its rows, performance levels are its shared columns, and each cell holds a point award and a descriptor saying what that level looks like for that criterion.</p>
+                        <p>A rubric is one grid. Criteria are its rows, performance levels are its shared columns, and each cell holds a point band and a descriptor saying what that level looks like for that criterion.</p>
                     </div>
 
                     <div class="wf-setup-rubric-demo">
@@ -271,7 +271,7 @@
                     </div>
 
                     <div class="completion-note">
-                        <p><strong>The technical results are read-only during review.</strong> They appear alongside the writing feedback as <em>Feedback by technical rubric criterion</em> and <em>Priority technical revision goals</em>. To change what the technical rubric assesses, edit and re-approve it on the rubric page, then generate again.</p>
+                        <p><strong>The technical results are read-only during review.</strong> Technical annotations appear first, with <em>Feedback by technical rubric criterion</em> and <em>Priority technical revision goals</em> underneath. To change what the technical rubric assesses, edit and re-approve it on the rubric page, then generate again.</p>
                     </div>
                 </div>
             </div>
@@ -323,7 +323,7 @@
                     </div>
 
                     <div class="completion-note">
-                        <p><strong>Suggested grading never leaves this page.</strong> It is derived when you ask to see it, is never stored, and never reaches the student PDF, a release payload, or Canvas. No grade is written back to Canvas by this feature.</p>
+                        <p><strong>Suggested grading never leaves this page.</strong> It is a staff-only reading aid. A numeric grade reaches the student or Canvas only when course staff save a final assessment, approve the feedback, preview the release, and release it.</p>
                     </div>
 
                     <div class="completion-note">
@@ -354,7 +354,7 @@
 
                     <div class="wf-setup-approved" id="wfSetupApprovedState" hidden>
                         <h4><i data-feather="check"></i> Approved</h4>
-                        <p>The feedback is now marked approved. In your real course the release card appears next, showing exactly what the student would receive, with a preview before anything is sent. You can also download what the student gets: a summary PDF, their text with the comments highlighted on it, or both together.</p>
+                        <p>The feedback is now marked approved. In your real course the release card appears next, showing exactly what the student would receive, with a preview before anything is sent. Canvas release sends the student-facing PDF/comment and, when you saved a staff-final numeric assessment, the grade.</p>
                         <ul class="feature-list">
                             <li>Students never see confidence scores, internal review flags, model details, or staff-only notes.</li>
                             <li>Release is blocked while a rubric has changed since generation, so a student cannot receive feedback judged against a rubric that no longer applies.</li>
@@ -388,9 +388,9 @@
                         <div class="next-steps">
                             <h4>What you can do next</h4>
                             <ul>
-                                <li><i data-feather="file-text" aria-hidden="true"></i> Create an assignment, or import one from Canvas</li>
-                                <li><i data-feather="file-text" aria-hidden="true"></i> Fill in its assignment details and approve its rubric</li>
-                                <li>Verify submissions, then generate and review feedback</li>
+                                <li><i data-feather="file-plus" aria-hidden="true"></i> Create an assignment, or import one from Canvas</li>
+                                <li><i data-feather="grid" aria-hidden="true"></i> Fill in its assignment details and approve its rubric</li>
+                                <li><i data-feather="check-circle" aria-hidden="true"></i> Verify submissions, then generate and review feedback</li>
                             </ul>
                         </div>
                     </div>
@@ -424,8 +424,8 @@
 
         <div id="help-step-2">
             <p><strong>Assignment details and the rubric</strong></p>
-            <p>The rubric page has two parts. <strong>1 &middot; Assignment details</strong> holds the task, audience, purpose, constraints, learning outcomes, and grading intent. <strong>2 &middot; Rubric</strong> is the grid itself.</p>
-            <p><strong>The grid:</strong> criteria are rows, performance levels are shared columns, and each cell holds a point award and a descriptor. Limits are 1 to 10 criteria and 2 to 8 levels, ranked contiguously from 1.</p>
+            <p>The rubric page has three steps. <strong>1 &middot; Describe the assignment</strong> holds the task, audience, purpose, constraints, learning outcomes, and grading intent. <strong>2 &middot; Build the marking grid</strong> is the rubric itself. <strong>3 &middot; Approve it</strong> separates saving a draft from approving the rubric for generation.</p>
+            <p><strong>The grid:</strong> criteria are rows, performance levels are shared columns, and each cell holds a point band and a descriptor. Limits are 1 to 10 criteria and 2 to 8 levels, ranked contiguously from 1.</p>
             <p><strong>The starting criteria</strong> are Organization, Content, and Interpersonal Positioning — the three kinds of meaning writing makes at once. They are a starting point, not a fixture: rename, reweight, add, or remove them, and an imported Canvas rubric replaces them entirely.</p>
             <p><strong>Points:</strong> give a criterion its weight and <strong>Space points evenly</strong> divides it across the levels. A weight too small to separate every level makes neighbouring columns share a value, and the grid warns you.</p>
             <p>The <strong>Fill again from instructions</strong> button proposes descriptor wording from the assignment instructions. It does not change your weights or remove rows.</p>
@@ -437,7 +437,7 @@
             <p>An assignment marked as a lab report carries two rubrics: a <strong>Writing rubric</strong> for how the report is written, and a <strong>Technical rubric</strong> for the engineering content. Both are edited and approved on the rubric page, and they share the assignment details.</p>
             <p><strong>Consistency, not agreement.</strong> The technical rubric judges whether the report's own argument holds together. It does not mark a result wrong for deviating from theory, supply correct values, or recompute the experiment.</p>
             <p><strong>Text and tables only.</strong> It cannot see figures, graphs, or images. Where a judgement would need one, it declines and records what it could not assess in the internal review flags, rather than guessing.</p>
-            <p>During review the technical results are read-only. Change the technical rubric on the rubric page and generate again.</p>
+            <p>During review the technical annotations appear first and the technical summary appears underneath; both are read-only. Change the technical rubric on the rubric page and generate again.</p>
         </div>
 
         <div id="help-step-4">
@@ -445,7 +445,7 @@
             <p>Generation is queued; the page refreshes when the draft is ready.</p>
             <p>Each comment names its criterion and quotes the exact passage it addresses. Quotations must appear verbatim in the verified submission — the assistant will not make a judgement it cannot ground in the student's own words.</p>
             <p>Comments are grouped by what the language is doing, and can point at your course glossary and your course materials. Student writing is never sent to the material search.</p>
-            <p><strong>Suggested grading</strong> is a reading aid for course staff. It is never stored and never reaches the student, a release payload, or Canvas.</p>
+            <p><strong>Suggested grading</strong> is a reading aid for course staff. A grade is released only from the staff-final assessment you save and approve.</p>
             <p>You can rewrite, delete, or add comments. Your revisions are saved to the audit history and your edited version is what the student receives.</p>
         </div>
 

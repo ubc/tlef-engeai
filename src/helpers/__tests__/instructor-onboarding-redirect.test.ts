@@ -26,6 +26,7 @@ import {
 import type { activeCourse, GlobalUser, InstructorOnboardingProgress } from '../../types/shared';
 
 const COURSE_ID = 'abcdef123456';
+const FEATURE_KEYS = ['scenarioGeneration', 'writingFeedback', 'guidedPathway'] as const;
 
 /** Progress for someone who has been taught every inherited tutorial and no feature one. */
 const LEGACY_DONE: InstructorOnboardingProgress = {
@@ -34,7 +35,14 @@ const LEGACY_DONE: InstructorOnboardingProgress = {
     monitorSetup: true
 };
 
-/** Builds a configured course with no feature enabled. */
+const FULL_DONE: InstructorOnboardingProgress = {
+    ...LEGACY_DONE,
+    scenarioGeneration: true,
+    writingFeedback: true,
+    guidedPathway: true
+};
+
+/** Builds a configured course whose missing feature map inherits registry defaults. */
 function buildCourse(overrides: Partial<activeCourse> = {}): activeCourse {
     return {
         id: COURSE_ID,
@@ -55,12 +63,22 @@ function buildUser(progress: InstructorOnboardingProgress): Pick<GlobalUser, 'in
     return { instructorOnboarding: progress };
 }
 
-function enabled(...features: Array<'scenarioGeneration' | 'writingFeedback' | 'guidedPathway'>) {
+function disabled(...features: Array<'scenarioGeneration' | 'writingFeedback' | 'guidedPathway'>) {
     return features.reduce<Record<string, { enabled: boolean }>>((map, feature) => {
-        map[feature] = { enabled: true };
+        map[feature] = { enabled: false };
         return map;
     }, {});
 }
+
+function enabled(...features: Array<'scenarioGeneration' | 'writingFeedback' | 'guidedPathway'>) {
+    const map = disabled(...FEATURE_KEYS);
+    for (const feature of features) {
+        map[feature] = { enabled: true };
+    }
+    return map;
+}
+
+const NO_FEATURES = disabled(...FEATURE_KEYS);
 
 /** Expected redirect URL for a resolved stage, or the dashboard when none remain. */
 function expectedRedirect(stage: InstructorOnboardingStage | null): string {
@@ -99,16 +117,20 @@ describe('instructor onboarding stage order', () => {
             expectStage(buildCourse(), {}, 'document-setup');
         });
 
-        it('advances to flag-setup once documents are complete and no feature is enabled', () => {
-            expectStage(buildCourse(), { contentSetup: true }, 'flag-setup');
+        it('advances to the first default-on feature once documents are complete', () => {
+            expectStage(buildCourse(), { contentSetup: true }, 'scenario-generation-setup');
+        });
+
+        it('advances to flag-setup once documents are complete and every feature is disabled', () => {
+            expectStage(buildCourse({ features: NO_FEATURES }), { contentSetup: true }, 'flag-setup');
         });
 
         it('advances to monitor-setup as the final inherited stage', () => {
-            expectStage(buildCourse(), { contentSetup: true, flagSetup: true }, 'monitor-setup');
+            expectStage(buildCourse({ features: NO_FEATURES }), { contentSetup: true, flagSetup: true }, 'monitor-setup');
         });
 
         it('resolves to the dashboard when every stage is complete', () => {
-            expectStage(buildCourse(), LEGACY_DONE, null);
+            expectStage(buildCourse(), FULL_DONE, null);
         });
     });
 
@@ -127,8 +149,8 @@ describe('instructor onboarding stage order', () => {
         });
 
         it('asks a veteran to configure a new course without repeating the tutorials', () => {
-            expectStage(buildCourse({ courseSetup: false }), LEGACY_DONE, 'course-setup');
-            expectStage(buildCourse(), LEGACY_DONE, null);
+            expectStage(buildCourse({ courseSetup: false }), FULL_DONE, 'course-setup');
+            expectStage(buildCourse(), FULL_DONE, null);
         });
 
         it('treats a missing user record as no progress rather than throwing', () => {
@@ -173,7 +195,11 @@ describe('instructor onboarding stage order', () => {
         it('treats an entirely absent feature entry as incomplete', () => {
             const progress: InstructorOnboardingProgress = { ...LEGACY_DONE };
             expect(progress.writingFeedback).toBeUndefined();
-            expectStage(buildCourse({ features: enabled('writingFeedback') }), progress, 'writing-feedback-setup');
+            expectStage(
+                buildCourse({ features: { ...NO_FEATURES, writingFeedback: { enabled: true } } }),
+                progress,
+                'writing-feedback-setup'
+            );
         });
 
         it('treats an explicit false the same as a missing value', () => {
@@ -185,19 +211,23 @@ describe('instructor onboarding stage order', () => {
         });
 
         it('skips a tutorial whose feature is disabled even when incomplete', () => {
-            expectStage(buildCourse({ features: { scenarioGeneration: { enabled: false } } }), LEGACY_DONE, null);
+            expectStage(buildCourse({ features: NO_FEATURES }), LEGACY_DONE, null);
         });
 
         it('keeps completion across a disable and re-enable cycle', () => {
             const taught: InstructorOnboardingProgress = { ...LEGACY_DONE, writingFeedback: true };
-            expectStage(buildCourse({ features: { writingFeedback: { enabled: false } } }), taught, null);
+            expectStage(buildCourse({ features: { ...NO_FEATURES, writingFeedback: { enabled: false } } }), taught, null);
             expectStage(buildCourse({ features: enabled('writingFeedback') }), taught, null);
         });
 
         it('triggers a never-completed tutorial when its feature is enabled later', () => {
             const taught: InstructorOnboardingProgress = { ...LEGACY_DONE, guidedPathway: true };
-            expectStage(buildCourse(), taught, null);
-            expectStage(buildCourse({ features: enabled('scenarioGeneration') }), taught, 'scenario-generation-setup');
+            expectStage(buildCourse({ features: NO_FEATURES }), taught, null);
+            expectStage(
+                buildCourse({ features: { ...NO_FEATURES, scenarioGeneration: { enabled: true } } }),
+                taught,
+                'scenario-generation-setup'
+            );
         });
 
         it('carries a taught feature tutorial to a second course that enables it', () => {
@@ -285,9 +315,10 @@ describe('instructor onboarding stage order', () => {
         it('treats every stage after course-setup identically for both authorities', () => {
             const cases: Array<[InstructorOnboardingProgress, InstructorOnboardingStage | null]> = [
                 [{}, 'document-setup'],
-                [{ contentSetup: true }, 'flag-setup'],
-                [{ contentSetup: true, flagSetup: true }, 'monitor-setup'],
-                [LEGACY_DONE, null]
+                [{ contentSetup: true }, 'scenario-generation-setup'],
+                [{ contentSetup: true, scenarioGeneration: true, writingFeedback: true, guidedPathway: true }, 'flag-setup'],
+                [{ contentSetup: true, scenarioGeneration: true, writingFeedback: true, guidedPathway: true, flagSetup: true }, 'monitor-setup'],
+                [FULL_DONE, null]
             ];
 
             for (const [progress, stage] of cases) {
