@@ -1208,3 +1208,103 @@ body.modal-open {
         font-size: 12px;
     }
 }
+
+/* ===========================================
+   DOCUMENT VIEWER AND GRID MODALS
+   =========================================== */
+
+/*
+ * The viewer shows a whole page of a PDF, so it wants the width its maxWidth already asks
+ * for and the height the frame inside it asks for. The shared 60vh body cap was clipping
+ * that frame into a scroll box, which is what made the preview read as narrow and tight.
+ */
+/*
+ * The viewer is the document, not a dialog about the document, so it takes the screen.
+ * `.modal-container` sets a max-width and no width: a shrink-to-fit box holding an iframe
+ * resolved that iframe's `width: 100%` against the iframe's own intrinsic 300px, so the
+ * 1500px cap was never reached. A real width, a flex column, and `min-height: 0` on the
+ * body are what make the frame fill the modal instead of being clipped by `max-height: 90vh`.
+ * `dvh` keeps the footer clear of a mobile browser's collapsing address bar; the `vh`
+ * declaration above it is the fallback for engines without `dvh`.
+ */
+.modal--viewer.modal-container {
+    width: 96vw;
+    height: 96vh;
+    height: 96dvh;
+    max-width: none;
+    max-height: none;
+    display: flex;
+    flex-direction: column;
+}
+
+.modal--viewer .modal-header {
+    padding: 0.75rem 1.25rem 0.75rem 1.5rem;
+}
+
+.modal--viewer .modal-body {
+    flex: 1;
+    /* A flex child will not shrink below its content without this, which puts the clipping back. */
+    min-height: 0;
+    max-height: none;
+    overflow: hidden;
+    padding: 0.5rem;
+    display: flex;
+    flex-direction: column;
+}
+
+/*
+ * The body's own height has to reach the frame. `showModal` wraps the content in a plain
+ * block, and a block at auto height gives an iframe asking for `height: 100%` nothing to
+ * resolve against, so the frame fell back to its intrinsic 150px inside a 718px body.
+ */
+.modal--viewer .modal-body > .modal-content {
+    flex: 1;
+    min-height: 0;
+}
+
+/*
+ * The narrow-screen override lives here rather than beside the other `max-width: 768px`
+ * rules near the top of the file: the viewer's own `96vw` rule above is later in source
+ * order and at equal specificity, so an override declared earlier never took effect. The
+ * cap it escapes is `.modal-container { max-width: calc(100vw - 2rem) }` — on a phone a
+ * PDF page at 90% width is unreadable, so this one surface reaches the edges.
+ */
+@media (max-width: 768px) {
+    .modal--viewer.modal-container {
+        width: 100vw;
+        height: 100vh;
+        height: 100dvh;
+        max-width: none;
+        max-height: none;
+        margin: 0;
+        border-radius: 0;
+    }
+}
+
+.modal--viewer .modal-content,
+.modal--grading .modal-content {
+    line-height: 1.4;
+}
+
+.modal--grading .modal-body {
+    max-height: none;
+    padding: 1rem 1.25rem;
+}
+
+/*
+ * The grading grid is read against the page it grades, so the page behind it is blurred
+ * rather than merely dimmed. The blur is scoped here on purpose: the global one on
+ * .modal-overlay was removed deliberately and stays removed.
+ */
+.modal-overlay--grading {
+    background-color: rgba(0, 0, 0, 0.42);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .modal-overlay--grading {
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+}

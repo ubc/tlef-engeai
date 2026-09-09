@@ -158,6 +158,10 @@ export class ModalOverlay {
         this.overlay.setAttribute('aria-modal', 'true');
         this.overlay.setAttribute('aria-labelledby', this.titleId);
 
+        if (config.overlayClass) {
+            this.overlay.classList.add(config.overlayClass);
+        }
+
         // Create container
         this.container = document.createElement('div');
         this.container.className = `modal-container modal-${config.type}`;
@@ -691,6 +695,76 @@ export async function showErrorModal(
         content: message,
         buttons: buttons || [
             { text: 'OK', type: 'primary', closeOnClick: true }
+        ]
+    });
+}
+
+/**
+ * showViewerModal - shows a document preview with an explicit download action
+ *
+ * Used for feedback PDFs. The route serves them `inline`, so the supplied frame renders the
+ * document in place rather than pushing a file at the reviewer, and Download stays available
+ * as a deliberate choice rather than the only option.
+ *
+ * Geometry lives in `.modal--viewer` rather than an inline `maxWidth`: an inline style
+ * outranks the class, so the two cannot both own the width.
+ *
+ * @param title - Name of the document being previewed
+ * @param frame - Prepared preview element, already pointed at the document
+ * @param downloadUrl - Href for the explicit download action
+ * @returns Modal result once the reviewer closes the preview
+ */
+export async function showViewerModal(
+    title: string,
+    frame: HTMLElement,
+    downloadUrl: string
+): Promise<ModalResult> {
+    const modal = getModal();
+    return modal.show({
+        type: 'info',
+        title,
+        content: frame,
+        customClass: 'modal--viewer',
+        buttons: [
+            {
+                text: 'Download',
+                type: 'secondary',
+                closeOnClick: false,
+                action: () => { window.open(downloadUrl, '_blank', 'noopener'); }
+            },
+            { text: 'Close', type: 'primary', closeOnClick: true }
+        ]
+    });
+}
+
+/**
+ * showGridModal - shows a wide table for reading and editing, over a blurred page
+ *
+ * Used for the Writing Feedback rubric grading grid. The supplied element is shown, not
+ * copied, so a caller may hand over a live editor and keep reading its inputs after the
+ * modal closes. The overlay blurs rather than only dimming, because the grid is read
+ * against the feedback it grades and the page behind should recede.
+ *
+ * @param title - Name of what is being shown
+ * @param content - Prepared element, shown in place
+ * @returns Modal result once the reviewer closes it
+ */
+export async function showGridModal(
+    title: string,
+    content: HTMLElement
+): Promise<ModalResult> {
+    const modal = getModal();
+    return modal.show({
+        type: 'info',
+        title,
+        content,
+        maxWidth: 'min(1400px, 96vw)',
+        customClass: 'modal--grading',
+        overlayClass: 'modal-overlay--grading',
+        // Grades are typed in here, so a stray click beside the grid must not dismiss it.
+        closeOnOverlayClick: false,
+        buttons: [
+            { text: 'Close', type: 'primary', closeOnClick: true }
         ]
     });
 }
@@ -1992,6 +2066,8 @@ export async function showInactivityWarningModal(
 export default {
     ModalOverlay,
     showErrorModal,
+    showGridModal,
+    showViewerModal,
     showWarningModal,
     showSuccessModal,
     showInfoModal,

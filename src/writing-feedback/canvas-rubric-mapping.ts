@@ -24,6 +24,8 @@
 
 import type {
     CanvasImportedRubric,
+    CanvasRubricIdMap,
+    CanvasRubricRefusal,
     CanvasRubricRating,
     CanvasRubricRow,
     WritingRubricCell,
@@ -31,6 +33,9 @@ import type {
     WritingRubricLevel
 } from './contracts';
 import type { ImportedRubricShape } from './rubric-seed';
+import { spaceBandsEvenly } from './rubric-bands';
+
+export type { CanvasRubricIdMap, CanvasRubricRefusal };
 
 /** Grid limits from `writingRubricDraftInputSchema`; a rubric outside them cannot be seeded. */
 const MIN_LEVELS = 2;
@@ -111,21 +116,84 @@ function weakestFirst(ratings: CanvasRubricRating[]): CanvasRubricRating[] {
     return [...ratings].sort((left, right) => (left.points ?? 0) - (right.points ?? 0));
 }
 
+/** A mapped grid, or the reason there is not one. */
+export interface CanvasRubricMapping {
+    shape: ImportedRubricShape | null;
+    /** Canvas's own ids for the mapped grid. Present exactly when `shape` is. */
+    ids?: CanvasRubricIdMap;
+    refusal?: CanvasRubricRefusal;
+}
+
 /**
- * canvasRubricToSeedShape — the Canvas rubric as a draft grid, or `null` if it cannot be one.
+ * mapCanvasRubric — the Canvas rubric as a draft grid, or the reason it cannot be one.
+ *
+ * The refusal exists because falling back to the built-in profile silently shows an
+ * instructor a rubric that is not theirs, with nothing saying so.
+ *
+ * @param rubric - Rubric read from Canvas, unmodified
+ * @returns The seedable grid, or a refusal naming what put it out of contract
+ */
+export function mapCanvasRubric(rubric: CanvasImportedRubric | null | undefined): CanvasRubricMapping {
+    const rows = (rubric?.rows ?? []).filter((row) => row.ratings.length > 0);
+    if (rows.length === 0) return { shape: null, refusal: 'no_rubric' };
+    if (rows.length > MAX_CRITERIA) return { shape: null, refusal: 'too_many_criteria' };
+
+    // The richest row defines the columns; anything wider than the contract cannot be seeded.
+    const widest = rows.reduce((best, row) => (row.ratings.length > best.ratings.length ? row : best), rows[0]);
+    const columnCount = widest.ratings.length;
+    if (columnCount < MIN_LEVELS) return { shape: null, refusal: 'too_few_ratings' };
+    if (columnCount > MAX_LEVELS) return { shape: null, refusal: 'too_many_levels' };
+
+    const shape = buildShape(rows, widest);
+    return { shape, ids: buildIdMap(rows, shape) };
+}
+
+/**
+ * canvasRubricToSeedShape — the Canvas rubric as a draft grid, or `null`.
+ *
+ * Kept for callers that only need the grid. {@link mapCanvasRubric} also says why.
  *
  * @param rubric - Rubric read from Canvas, unmodified
  * @returns Criteria and levels ready to seed a draft, or `null` when out of contract
  */
 export function canvasRubricToSeedShape(rubric: CanvasImportedRubric | null | undefined): ImportedRubricShape | null {
-    const rows = (rubric?.rows ?? []).filter((row) => row.ratings.length > 0);
-    if (rows.length === 0 || rows.length > MAX_CRITERIA) return null;
+    return mapCanvasRubric(rubric).shape;
+}
 
-    // The richest row defines the columns; anything wider than the contract cannot be seeded.
-    const widest = rows.reduce((best, row) => (row.ratings.length > best.ratings.length ? row : best), rows[0]);
-    const columnCount = widest.ratings.length;
-    if (columnCount < MIN_LEVELS || columnCount > MAX_LEVELS) return null;
+/**
+ * buildIdMap — Canvas's ids for a grid that has already been built.
+ *
+ * Walks the same rows in the same order `buildShape` did, so `rows[i]` and `criteria[i]`
+ * are the same criterion, and reuses `weakestFirst` so a level id and a rating id always
+ * describe the same column — the alignment {@link buildCells} depends on.
+ *
+ * @param rows - The rows the grid was built from, in their original order
+ * @param shape - The grid those rows produced
+ * @returns Canvas criterion and rating ids keyed by the derived grid ids
+ */
+function buildIdMap(rows: CanvasRubricRow[], shape: ImportedRubricShape): CanvasRubricIdMap {
+    const map: CanvasRubricIdMap = {};
+    rows.forEach((row, rowIndex) => {
+        const criterion = shape.criteria[rowIndex];
+        if (!criterion) return;
+        const ratingIds: Record<string, string> = {};
+        weakestFirst(row.ratings).forEach((rating, index) => {
+            const level = shape.levels[index];
+            if (level) ratingIds[level.id] = rating.canvasRatingId;
+        });
+        map[criterion.id] = { criterionId: row.canvasCriterionId, ratingIds };
+    });
+    return map;
+}
 
+/**
+ * buildShape — the grid a rubric already known to be in contract becomes.
+ *
+ * @param rows - Canvas rows carrying at least one rating each
+ * @param widest - The row whose ratings define the shared columns
+ * @returns Criteria and levels ready to seed a draft
+ */
+function buildShape(rows: CanvasRubricRow[], widest: CanvasRubricRow): ImportedRubricShape {
     const levelIds = new Set<string>();
     const levels: WritingRubricLevel[] = weakestFirst(widest.ratings).map((rating, index) => {
         const label = boundedText(rating.label, MAX_LEVEL_LABEL, `Level ${index + 1}`);
@@ -155,7 +223,14 @@ export function canvasRubricToSeedShape(rubric: CanvasImportedRubric | null | un
 }
 
 /**
- * Aligns one row's ratings to the shared columns, weakest to weakest.
+ * Aligns one row's ratings to the shared columns, weakest to weakest, and derives a
+ * points band per level.
+ *
+ * A Canvas rating is a cut point rather than a single awarded value (D-102), so each
+ * level's band runs from one point above the previous rating up to its own rating. The
+ * bands do not overlap, which is what lets `earnedLevelFor` name exactly one level for a
+ * staff-final score. This happens at import rather than at display time: the stored draft
+ * is what the student PDF, suggested grading, and the Canvas write-back all read.
  *
  * A row with fewer ratings than the rubric has columns leaves its strongest columns absent,
  * which the grid renders as empty cells. Canvas gives no way to know *which* distinction a
@@ -164,20 +239,54 @@ export function canvasRubricToSeedShape(rubric: CanvasImportedRubric | null | un
  */
 function buildCells(row: CanvasRubricRow, levels: WritingRubricLevel[]): Record<string, WritingRubricCell> {
     const cells: Record<string, WritingRubricCell> = {};
-    weakestFirst(row.ratings).forEach((rating, index) => {
+    const ordered = weakestFirst(row.ratings);
+    const rowPoints = pointsOrUndefined(row.points);
+
+    // Step 1: a row whose ratings carry no points at all has no cut points to read, so its
+    // weight is spread evenly across the columns it does fill, exactly as a hand-authored
+    // criterion is. With no weight either, there is nothing to band and the cells stay ordinal.
+    const unrated = ordered.every((rating) => pointsOrUndefined(rating.points) === undefined);
+    const evenly = unrated && rowPoints !== undefined
+        ? spaceBandsEvenly(rowPoints, levels.slice(0, ordered.length))
+        : undefined;
+
+    // Step 2: walk weakest to strongest, each band starting one point above the last.
+    let previousTop = -1;
+    ordered.forEach((rating, index) => {
         const level = levels[index];
         if (!level) return;
-        // A Canvas rating is a single value, not a band, so the band has no width to spread.
-        const points = pointsOrUndefined(rating.points) ?? 0;
         // Only a descriptor Canvas actually supplied. `descriptor` is optional, and the grid
         // already prompts "Enter a description" on a cell that has none — which is the honest
         // state here. Falling back to the rating name would just repeat the column header.
         const descriptor = (rating.description ?? '').trim().replace(/\s+/g, ' ').slice(0, MAX_DESCRIPTOR);
-        cells[level.id] = {
-            min: points,
-            max: points,
-            ...(descriptor ? { descriptor } : {})
-        };
+        const spread = descriptor ? { descriptor } : {};
+
+        if (evenly) {
+            const band = evenly[level.id];
+            if (band) cells[level.id] = { ...band, ...spread };
+            return;
+        }
+
+        const rated = pointsOrUndefined(rating.points) ?? 0;
+        // The strongest rating can sit below the criterion's own weight; the top band reaches
+        // the weight so the row's full points stay awardable.
+        const top = index === ordered.length - 1 && rowPoints !== undefined
+            ? Math.max(rated, rowPoints)
+            : rated;
+        // Ratings sharing a cut point cannot be told apart by a score, so the strongest of
+        // the tied group owns the band and the weaker ones are left unbanded. Banding each
+        // of them produced overlapping cells, and `earnedLevelFor` matches weakest-first,
+        // which awarded the weakest of the tie to a student who scored the top of the range.
+        // An unbanded column reads as a gap the instructor fills before approving, exactly
+        // as a short row's missing columns do.
+        const nextRated = index + 1 < ordered.length
+            ? pointsOrUndefined(ordered[index + 1]!.points) ?? 0
+            : undefined;
+        if (nextRated !== undefined && nextRated <= top) return;
+        const min = Math.min(previousTop + 1, top);
+        cells[level.id] = { min, max: top, ...spread };
+        previousTop = top;
     });
+
     return cells;
 }

@@ -404,7 +404,7 @@ async function showAddAssignment(): Promise<void> {
     instructions.placeholder = 'Paste the assignment prompt, requirements, audience, purpose, and any grading directions.';
     instructions.maxLength = 30000;
     const instructionsFile = inputControl('', 'file');
-    instructionsFile.accept = '.txt,.docx,.pdf,.html,.htm';
+    instructionsFile.accept = '.txt,.md,.markdown,.docx,.pdf,.html,.htm';
     const extractionState = createText('p', '', 'wf-help-text');
     extractionState.setAttribute('role', 'status');
     extractionState.setAttribute('aria-live', 'polite');
@@ -534,7 +534,7 @@ async function showManualImport(assignment: Assignment): Promise<void> {
     zoomRow.append(createZoomControl(text));
     textField.insertBefore(zoomRow, text);
     const file = inputControl('', 'file');
-    file.accept = '.txt,.docx,.pdf,.html,.htm';
+    file.accept = '.txt,.md,.markdown,.docx,.pdf,.html,.htm';
     const fileField = field('Student file', file, 'TXT, DOCX, text-based PDF, or HTML. Scanned handwriting remains a later verified-OCR workflow.', true);
     fileField.hidden = true;
     grid.append(textField, fileField);

@@ -96,6 +96,7 @@ function comment(overrides: Partial<AnchoredComment> = {}): AnchoredComment {
     const startOffset = verifiedText.indexOf(quote);
     return {
         id: 'comment-1',
+        lens: 'linguistic',
         quote,
         startOffset,
         endOffset: startOffset + quote.length,
@@ -188,6 +189,32 @@ describe('StudentWritingFeedbackPdfService', () => {
         expect(text).not.toContain('/Highlight');
         // The full submission body belongs to the annotated mode only.
         expect(text).not.toContain('volute casing then decelerates');
+    });
+
+    it('prints the staff-final rubric assessment and never labels model suggestions as final', async () => {
+        const criteria = assignment.rubric.criteria.map((criterion) => ({
+            criterionId: criterion.id,
+            points: 1
+        }));
+        const maxPoints = assignment.rubric.criteria.reduce((sum, criterion) => sum + (criterion.points ?? 0), 0);
+        const pdf = await service.render({
+            assignment,
+            submission: submission(),
+            feedback: feedback(),
+            finalAssessment: {
+                rubricVersion: assignment.rubric.version,
+                criteria,
+                totalPoints: criteria.length,
+                maxPoints
+            },
+            grade: criteria.length,
+            include: 'general'
+        });
+        const text = searchableText(pdf);
+        expect(text).toContain('Final rubric assessment');
+        expect(text).toContain(`Total: ${criteria.length} / ${maxPoints}`);
+        expect(text).not.toContain('Suggested grading');
+        expect(text).not.toContain('confidence');
     });
 
     it('renders the annotated PDF with highlight annotations carrying popup text and author', async () => {
@@ -415,16 +442,18 @@ describe('technical section', () => {
     const technicalRubric = technicalAssignment.rubric;
     const technicalResult = feedback(technicalRubric.criteria, 'advanced');
 
-    it('renders a technical section when technical feedback is supplied', async () => {
+    it('renders technical feedback as its own PDF artifact', async () => {
         const pdf = await service.render({
             assignment,
             submission: submission(),
             feedback: feedback(),
             technicalFeedback: technicalResult,
             technicalRubric,
-            include: 'general'
+            include: 'general',
+            lens: 'technical'
         });
         const text = searchableText(pdf);
+        expect(text).toContain('Technical Feedback');
         expect(text).toContain('Technical feedback');
         // Guards against labelling the technical section against `assignment.rubric`
         // instead of the supplied `technicalRubric` — a regression that would still
@@ -432,11 +461,13 @@ describe('technical section', () => {
         expect(text).toContain('Criterion 1');
     });
 
-    it('omits the technical section when none is supplied', async () => {
+    it('keeps technical feedback out of the writing PDF even when both runs are available', async () => {
         const pdf = await service.render({
             assignment,
             submission: submission(),
             feedback: feedback(),
+            technicalFeedback: technicalResult,
+            technicalRubric,
             include: 'general'
         });
         expect(searchableText(pdf)).not.toContain('Technical feedback');
@@ -449,10 +480,70 @@ describe('technical section', () => {
             feedback: feedback(),
             technicalFeedback: technicalResult,
             technicalRubric,
-            include: 'general'
+            include: 'general',
+            lens: 'technical'
         });
         const text = searchableText(pdf);
         expect(text).not.toContain('confidence');
         expect(text).not.toContain('needs_review');
+    });
+});
+
+describe('lab report document order', () => {
+    const labAssignment = { ...assignmentWithCriteria(2), isLabReport: true };
+    const labTechnicalRubric = labAssignment.rubric;
+    const labTechnicalResult = feedback(labTechnicalRubric.criteria, 'advanced');
+
+    it('puts technical feedback before writing feedback in one document', async () => {
+        const pdf = await service.render({
+            assignment: labAssignment,
+            submission: submission({ assignmentId: labAssignment.id }),
+            feedback: feedback(),
+            technicalFeedback: labTechnicalResult,
+            technicalRubric: labTechnicalRubric,
+            include: 'general'
+        });
+        const text = searchableText(pdf);
+
+        expect(text).toContain('Technical feedback');
+        expect(text).toContain('What you did well');
+        expect(text.indexOf('Technical feedback')).toBeLessThan(text.indexOf('What you did well'));
+    });
+
+    it('prints the grade breakdown against the rubric the grade was awarded on', async () => {
+        const pdf = await service.render({
+            assignment: labAssignment,
+            submission: submission({ assignmentId: labAssignment.id }),
+            feedback: feedback(),
+            technicalFeedback: labTechnicalResult,
+            technicalRubric: labTechnicalRubric,
+            finalAssessment: {
+                lens: 'technical',
+                rubricVersion: labTechnicalRubric.version,
+                criteria: labTechnicalRubric.criteria.map((criterion) => ({ criterionId: criterion.id, points: 4 })),
+                totalPoints: 8,
+                maxPoints: 40
+            },
+            include: 'general'
+        });
+        const text = searchableText(pdf);
+
+        expect(text).toContain('Total: 8 / 40');
+        expect(text).toContain('Criterion');
+    });
+
+    it('never prints model suggestions or staff-only metadata', async () => {
+        const pdf = await service.render({
+            assignment: labAssignment,
+            submission: submission({ assignmentId: labAssignment.id }),
+            feedback: feedback(),
+            technicalFeedback: labTechnicalResult,
+            technicalRubric: labTechnicalRubric,
+            include: 'general'
+        });
+        const text = searchableText(pdf);
+
+        expect(text).not.toContain('Suggested');
+        expect(text).not.toContain('confidence');
     });
 });

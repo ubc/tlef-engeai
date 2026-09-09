@@ -88,6 +88,11 @@ function sourceAllowed(sourceId: string): boolean {
     return SFL_SOURCE_PREFIXES.some((prefix) => sourceId === prefix || sourceId.startsWith(`${prefix}#`));
 }
 
+function isFerreiraSource(sourceId: string): boolean {
+    return sourceId === 'SRC-FERREIRA-2026-AI-FEEDBACK'
+        || sourceId.startsWith('SRC-FERREIRA-2026-AI-FEEDBACK#');
+}
+
 /**
  * Content-free description of why one evidence span failed validation.
  *
@@ -197,7 +202,12 @@ export function validateSflAnalysis(
             throw error;
         }
         if (!founded && finding.ruleIds.length > 0) {
-            throw new Error('Ferreira expectedness rules cannot be extrapolated to a custom genre');
+            finding.ruleIds = [];
+            finding.sourceIds = finding.sourceIds.filter((sourceId) => !isFerreiraSource(sourceId));
+            const flag = 'Ferreira expectedness rule ids were omitted because the approved profile is custom or composite.';
+            if (!parsed.internalFlags.includes(flag) && parsed.internalFlags.length < 12) {
+                parsed.internalFlags.push(flag);
+            }
         }
         finding.ruleIds.forEach((ruleId) => {
             if (!SFL_RULES_BY_ID.has(ruleId)) {

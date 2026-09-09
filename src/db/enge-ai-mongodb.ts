@@ -8,6 +8,8 @@
  */
 
 import type { ImportedRubricShape } from '../writing-feedback/rubric-seed';
+import type { CanvasRubricIdMap, CanvasRubricRefusal } from '../writing-feedback/contracts';
+import type { LabReportRouting } from '../writing-feedback/rubric-seed';
 import { MongoClient, Db } from 'mongodb';
 import * as dotenv from 'dotenv';
 import {
@@ -233,6 +235,8 @@ export class EngEAI_MongoDB {
      * @param instructions - Optional imported assignment directions
      * @param dueAt - Optional imported deadline
      * @param canvasRubric - Canvas rubric grid seeding the draft, when one could be mapped
+     * @param canvasRubricRefusal - Why the Canvas rubric could not seed the draft, when it could not
+     * @param canvasRubricIds - Canvas criterion and rating ids for the mapped grid, retained for release write-back
      * @returns Newly created or concurrently existing assignment
      */
     public createCanvasWritingAssignment = async (
@@ -241,7 +245,9 @@ export class EngEAI_MongoDB {
         title: string,
         instructions?: string,
         dueAt?: Date,
-        canvasRubric?: ImportedRubricShape
+        canvasRubric?: ImportedRubricShape,
+        canvasRubricRefusal?: CanvasRubricRefusal,
+        canvasRubricIds?: CanvasRubricIdMap
     ) => WritingFeedbackMongo.createCanvasWritingAssignment(
         this.ctx(),
         courseId,
@@ -249,7 +255,9 @@ export class EngEAI_MongoDB {
         title,
         instructions,
         dueAt,
-        canvasRubric
+        canvasRubric,
+        canvasRubricRefusal,
+        canvasRubricIds
     );
 
     /**
@@ -309,6 +317,22 @@ export class EngEAI_MongoDB {
         draft: WritingRubricDefinition,
         lens?: WritingFeedbackLens
     ) => WritingFeedbackMongo.saveWritingRubricDraft(this.ctx(), courseId, assignmentId, draft, lens);
+
+    /**
+     * applyLabReportRubricRouting — moves an imported Canvas grid onto the technical lens.
+     *
+     * @param courseId - Owning course id
+     * @param assignmentId - Assignment being marked as a lab report
+     * @param routing - Drafts and provenance from `routeRubricsForLabReport`
+     * @param resetWriting - Whether the writing lens returns to the metafunctions
+     * @returns Updated assignment, or `null` when the scoped assignment is absent
+     */
+    public applyLabReportRubricRouting = async (
+        courseId: string,
+        assignmentId: string,
+        routing: LabReportRouting,
+        resetWriting: boolean
+    ) => WritingFeedbackMongo.applyLabReportRubricRouting(this.ctx(), courseId, assignmentId, routing, resetWriting);
 
     /**
      * discardWritingRubricDraft — removes only the editable rubric draft.
@@ -398,8 +422,13 @@ export class EngEAI_MongoDB {
      * @param status - Target workflow status
      * @returns Updated submission or `null`
      */
-    public setWritingSubmissionStatus = async (courseId: string, submissionId: string, status: WritingSubmission['status']) =>
-        WritingFeedbackMongo.setWritingSubmissionStatus(this.ctx(), courseId, submissionId, status);
+    public setWritingSubmissionStatus = async (
+        courseId: string,
+        submissionId: string,
+        status: WritingSubmission['status'],
+        expectedStatuses?: ReadonlyArray<WritingSubmission['status']>
+    ) =>
+        WritingFeedbackMongo.setWritingSubmissionStatus(this.ctx(), courseId, submissionId, status, expectedStatuses);
 
     /**
      * createWritingFeedbackRun — appends immutable model-output provenance.
@@ -508,6 +537,20 @@ export class EngEAI_MongoDB {
     public findWritingReleaseByFingerprint = async (payloadFingerprint: string) =>
         WritingFeedbackMongo.findWritingReleaseByFingerprint(this.ctx(), payloadFingerprint);
 
+    /** Latest persisted release state for one course-scoped submission. */
+    public getLatestWritingRelease = async (courseId: string, submissionId: string) =>
+        WritingFeedbackMongo.getLatestWritingRelease(this.ctx(), courseId, submissionId);
+
+    /**
+     * listWritingReleases — every release attempt for one submission, oldest first.
+     *
+     * @param courseId - Owning course id
+     * @param submissionId - Submission whose release history is wanted
+     * @returns Release attempts in creation order
+     */
+    public listWritingReleases = async (courseId: string, submissionId: string) =>
+        WritingFeedbackMongo.listWritingReleases(this.ctx(), courseId, submissionId);
+
     /**
      * finalizeWritingRelease — records final provider state for one fingerprint.
      *
@@ -515,10 +558,32 @@ export class EngEAI_MongoDB {
      * @param update - Final status and returned Canvas identifiers
      * @returns Updated release or `null`
      */
+    /**
+     * claimWritingReleaseForQueue — takes the in-progress lock on one release, atomically.
+     *
+     * @param payloadFingerprint - Stable payload hash identifying the attempt
+     * @param claim - Staff member releasing it, and when the claim is made
+     * @returns The claimed release, or `null` when another caller already holds it
+     */
+    public claimWritingReleaseForQueue = async (
+        payloadFingerprint: string,
+        claim: { queuedByUserId: string; now?: Date }
+    ) => WritingFeedbackMongo.claimWritingReleaseForQueue(this.ctx(), payloadFingerprint, claim);
+
+    /**
+     * releaseWritingReleaseLock — hands the in-progress lock back when the worker stops.
+     *
+     * @param payloadFingerprint - Stable payload hash identifying the attempt
+     * @returns The released record, or `null` when no record carries that fingerprint
+     */
+    public releaseWritingReleaseLock = async (payloadFingerprint: string) =>
+        WritingFeedbackMongo.releaseWritingReleaseLock(this.ctx(), payloadFingerprint);
+
     public finalizeWritingRelease = async (
         payloadFingerprint: string,
-        update: Pick<WritingRelease, 'status' | 'canvasCommentId' | 'canvasSubmissionId'>
-    ) => WritingFeedbackMongo.finalizeWritingRelease(this.ctx(), payloadFingerprint, update);
+        update: Partial<Omit<WritingRelease, 'id' | 'courseId' | 'submissionId' | 'feedbackRunId' | 'rubricVersion' | 'payloadFingerprint' | 'createdAt' | 'updatedAt'>>,
+        expectedStatuses?: ReadonlyArray<WritingRelease['status']>
+    ) => WritingFeedbackMongo.finalizeWritingRelease(this.ctx(), payloadFingerprint, update, expectedStatuses);
 
     /**
      * enqueueWritingJob — appends retry-bounded background work.
@@ -539,6 +604,17 @@ export class EngEAI_MongoDB {
      */
     public findActiveWritingJob = async (courseId: string, submissionId: string, type: WritingJob['type']) =>
         WritingFeedbackMongo.findActiveWritingJob(this.ctx(), courseId, submissionId, type);
+
+    /**
+     * findLatestWritingJob — the newest job of one type for a submission, in any state.
+     *
+     * @param courseId - Owning course id
+     * @param submissionId - Submission pointer stored in the job payload
+     * @param type - Worker handler type
+     * @returns The most recently updated job, or `null` when none exists
+     */
+    public findLatestWritingJob = async (courseId: string, submissionId: string, type: WritingJob['type']) =>
+        WritingFeedbackMongo.findLatestWritingJob(this.ctx(), courseId, submissionId, type);
 
     /**
      * leaseNextWritingJob — atomically claims the oldest runnable job.

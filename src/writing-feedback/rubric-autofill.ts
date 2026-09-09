@@ -29,25 +29,34 @@ import type {
 } from './contracts';
 
 /** Where a draft's grid came from, which decides how much auto-fill may rewrite. */
-export type RubricGridSource = 'canvas' | 'apsc182' | 'metafunctions_lab' | 'metafunctions_plain';
+export type RubricGridSource = 'canvas' | 'apsc182' | 'metafunctions';
 
 /**
  * gridSourceFor - the merge-table row an assignment's grid falls under for a lens.
  *
- * The technical grid is always the department's APSC 182 form: `buildLabReportRubric`
- * is its only source, and it is never Canvas-seeded, so the lens is checked first and
- * a Canvas-sourced assignment does not leak into the technical branch. `rubricSource`
- * is assignment-wide rather than per-lens and is consulted only for the writing lens,
- * where it distinguishes an instructor's imported grid from a generated one.
+ * Provenance is per lens. The technical grid is no longer always the department's APSC 182
+ * form: an instructor's Canvas rubric for a lab report *is* the technical marking scheme, so
+ * a lab report imported from Canvas seeds its technical lens from that rubric and this reads
+ * `technicalRubricSource` rather than assuming the form.
+ *
+ * The writing lens reads `rubricSource`, which describes that lens only — and a lab report's
+ * writing lens ignores it outright. A lab handout describes an experiment, not linguistic
+ * expectations, so the three metafunctions always govern it no matter what Canvas supplied.
+ *
+ * A manually created writing assignment lands on `metafunctions` too. It and a lab report's
+ * writing lens are the same case: the three criteria are fixed and auto-fill writes only what
+ * they mean for this assignment, which keeps feedback comparable across an instructor's work.
  *
  * @param assignment - Assignment whose grid provenance is being classified
  * @param lens - Lens the draft being filled belongs to
  * @returns The grid source row that decides `autofillMergeRules`
  */
 export function gridSourceFor(assignment: WritingAssignment, lens: WritingFeedbackLens): RubricGridSource {
-    if (lens === 'technical') return 'apsc182';
-    if (assignment.rubricSource === 'canvas') return 'canvas';
-    return assignment.isLabReport ? 'metafunctions_lab' : 'metafunctions_plain';
+    if (lens === 'technical') {
+        return assignment.technicalRubricSource === 'canvas' ? 'canvas' : 'apsc182';
+    }
+    if (assignment.isLabReport) return 'metafunctions';
+    return assignment.rubricSource === 'canvas' ? 'canvas' : 'metafunctions';
 }
 
 /** What auto-fill is permitted to change in one draft. */
@@ -87,12 +96,13 @@ export function autofillMergeRules(source: RubricGridSource): AutofillMergeRules
         // The evaluation form's sections and weights belong to the department.
         case 'apsc182':
             return { mayAddRows: false, mayWriteRow: false, mayWriteCells: true };
-        // A lab handout describes an experiment, not linguistic expectations, so the
-        // metafunctions stay fixed and only their meaning for this lab is written.
-        case 'metafunctions_lab':
+        // The three metafunctions are the platform's own grid, not an instructor's, so their
+        // meaning for this assignment is written while the rows themselves stay fixed. A lab
+        // handout describes an experiment rather than linguistic expectations, and a manually
+        // created assignment has no other grid to reason from — both land here, which is what
+        // keeps feedback comparable across an instructor's assignments.
+        case 'metafunctions':
             return { mayAddRows: false, mayWriteRow: true, mayWriteCells: true };
-        case 'metafunctions_plain':
-            return { mayAddRows: true, mayWriteRow: true, mayWriteCells: true };
     }
 }
 

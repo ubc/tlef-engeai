@@ -6,7 +6,7 @@
  * textarea only while staff confirmation is pending). Right: a sticky Feedback
  * panel with Annotations (text-anchored, editable comments with function/level
  * filters) and Summary (SFL sections, strengths, revision goals with Socratic
- * guiding questions, staff editors, matrix, history, release) tabs. Approval
+ * guiding questions, staff editors, history, release) tabs. Approval
  * and release stay separate actions; nothing reaches a student without
  * explicit staff approval.
  *
@@ -16,7 +16,7 @@
  * @description: Coordinates transcript verification, review revisions, PDF downloads, approval, and release.
  */
 
-import { showConfirmModal } from '../ui/modal-overlay.js';
+import { showConfirmModal, showErrorModal, showGridModal, showViewerModal } from '../ui/modal-overlay.js';
 import { showErrorToast, showSuccessToast } from '../ui/toast-notification.js';
 import {
     AnchoredComment,
@@ -25,8 +25,10 @@ import {
     FeedbackRun,
     FUNCTION_TAG_LABELS,
     ReviewRevision,
+    RubricCriterion,
     RubricDefinition,
     SOURCE_LABELS,
+    StaffFinalAssessment,
     STATUS_LABELS,
     STATUS_TONES,
     Submission,
@@ -52,113 +54,7 @@ import {
     views
 } from './writing-feedback-shared.js';
 import { getWorkingComments, initAnchorWorkingSet, renderAnnotations } from './writing-feedback-anchors.js';
-import { formatBand, resolveBand, totalRubricPoints } from './writing-feedback-grid.js';
-
-type AcademicWritingLevelId = 'text' | 'section' | 'clause_word';
-
-interface AcademicWritingLevel {
-    id: AcademicWritingLevelId;
-    label: string;
-    scope: string;
-}
-
-interface AcademicWritingFunction {
-    id: 'content' | 'interpersonal' | 'organizational';
-    label: string;
-    description: string;
-    prompts: Record<AcademicWritingLevelId, string[]>;
-}
-
-const ACADEMIC_WRITING_LEVELS: AcademicWritingLevel[] = [
-    { id: 'text', label: 'Text level', scope: 'The whole text' },
-    { id: 'section', label: 'Section level', scope: 'Stages, sections, and paragraphs' },
-    { id: 'clause_word', label: 'Clause and word levels', scope: 'Sentences, clauses, groups, phrases, and words' }
-];
-
-const ACADEMIC_WRITING_MATRIX: AcademicWritingFunction[] = [
-    {
-        id: 'content',
-        label: 'Content function',
-        description: 'Review what is happening, who or what is involved, the circumstances, and the logical connections that build disciplinary knowledge.',
-        prompts: {
-            text: [
-                'Do the beginning, middle, and end stages build knowledge relevant to the topic and purpose?',
-                'Does the information move from general to specific?',
-                'Does the title present the key ideas and orientations advanced in the text?'
-            ],
-            section: [
-                'Does information in the paragraphs progress from general to specific?',
-                'Are new concepts clearly defined?',
-                'Are ideas within each paragraph or stage logically ordered, such as by time, cause, consequence, or comparison?',
-                'Are tables, diagrams, examples, and quotations logically integrated with the verbal text to extend, report, specify, or qualify points?'
-            ],
-            clause_word: [
-                'Are expanded noun groups, with an appropriate head noun and pre- or post-modification, used to express specific concepts and participants?',
-                'Does each noun group match the reader\'s expected knowledge at that point in the text, without becoming bottom- or top-heavy?',
-                'Do verb groups express relevant processes, such as relational verbs for defining and characterizing or material, mental, and verbal processes for actions?',
-                'Do verb forms agree grammatically with their nouns?',
-                'Where appropriate, does nominalization express logical relations as participants, processes, or circumstances rather than only through conjunctions?',
-                'Are prepositional phrases used to express relevant circumstances such as reason, purpose, time, and location?'
-            ]
-        }
-    },
-    {
-        id: 'interpersonal',
-        label: 'Interpersonal function',
-        description: 'Review how the writer positions claims, relates to the reader, and supports a fair and reliable academic stance.',
-        prompts: {
-            text: [
-                'Does the text build the writer\'s points and positions across its beginning, middle, and end stages, for example by amplifying or reinforcing them?',
-                'Does the text show a critical perspective where the task requires one, such as by making assumptions visible and challenging them?',
-                'Does the writer demonstrate familiarity with relevant disciplinary expectations?'
-            ],
-            section: [
-                'Are claims reliably and fairly evaluated, for example in relation to value, benefit, relevance, validity, or significance?',
-                'Where the genre calls for an argument, does the writer guide the argument and reader in a preferred direction?',
-                'Are authoritative sources used for support where sources are required?',
-                'Where relevant, is a range of perspectives introduced?'
-            ],
-            clause_word: [
-                'Are hedges used to evaluate claims appropriately and allow alternative points of view, given the claim and its support?',
-                'Are boosters used in an appropriately limited way to strengthen a claim?',
-                'Are attitude markers appropriately limited and used to express the writer\'s purpose and positioning?',
-                'Are verb-tense choices appropriate to the timeframe of the claim and the relationship between writer and reader?',
-                'Are projecting or reporting verbs used appropriately to position the writer in relation to cited material?',
-                'Are first- and third-person pronouns used appropriately for the genre and assignment?',
-                'Are sources referenced in the required format, such as APA, when citation is required?',
-                'Is the vocabulary appropriately formal for the audience, purpose, and genre?'
-            ]
-        }
-    },
-    {
-        id: 'organizational',
-        label: 'Organizational function',
-        description: 'Review how the message is organized for the reader, including stages, information flow, cohesion, and the movement from known to new information.',
-        prompts: {
-            text: [
-                'Does the title preview key ideas and orientations presented in the text?',
-                'Are headings and subheadings used to signal the organization of a longer text where appropriate?',
-                'Are ideas and positions previewed in the opening stage and revisited in the closing stage when the genre calls for those stages?',
-                'When sources are used, are all in-text citations represented in the reference list?'
-            ],
-            section: [
-                'Is there a logical flow of information from sentence to sentence?',
-                'Are changes in logical flow signalled with appropriate phrases?',
-                'Do Theme choices reflect the paragraph focus?',
-                'Are specific ideas easy to track through cohesive resources such as pronouns, repetition, and synonyms?',
-                'Is information expressed more abstractly in topic sentences and expanded more concretely within the paragraph where appropriate?'
-            ],
-            clause_word: [
-                'Is known information placed in Theme position where that supports the reader?',
-                'Do Theme choices create a shared point of departure between writer and reader?',
-                'Is relevant background information placed before the subject and main verb where helpful, for example “In 2011” or “With this understanding”?',
-                'Is new information placed toward the end of the sentence where that supports the intended emphasis?',
-                'Does punctuation support the information structure?',
-                'Does clause structure follow recognizable and context-appropriate patterns of English?'
-            ]
-        }
-    }
-];
+import { earnedLevelFor, formatBand, resolveBand, totalRubricPoints } from './writing-feedback-grid.js';
 
 function latestReview(submission: Submission): ReviewRevision | undefined {
     return submission.reviews?.[submission.reviews.length - 1];
@@ -249,10 +145,26 @@ function deriveSuggestedGrading(run: FeedbackRun, rubric: RubricDefinition): Sug
 }
 
 function hasSuggestedGrading(rubric: RubricDefinition | undefined): rubric is RubricDefinition {
-    return Boolean(rubric?.criteria.some((criterion) => criterion.points !== undefined || Object.keys(criterion.cells ?? {}).length));
+    return Boolean(rubric?.criteria.length
+        && rubric.criteria.every((criterion) => criterion.points !== undefined && criterion.points > 0));
 }
 
-function renderSuggestedGrading(run: FeedbackRun, rubric: RubricDefinition): HTMLElement | null {
+interface StaffAssessmentDraft {
+    rubricVersion: number;
+    criteria: Array<{ criterionId: string; points: number }>;
+}
+
+interface GradingEditor {
+    element: HTMLElement;
+    readAssessment: () => StaffAssessmentDraft | undefined;
+}
+
+function renderSuggestedGrading(
+    run: FeedbackRun,
+    rubric: RubricDefinition,
+    saved: StaffFinalAssessment | undefined,
+    markDirty: () => void
+): GradingEditor | null {
     const grading = deriveSuggestedGrading(run, rubric);
     if (!grading.criteria.length) return null;
 
@@ -261,21 +173,24 @@ function renderSuggestedGrading(run: FeedbackRun, rubric: RubricDefinition): HTM
     const header = document.createElement('div');
     header.className = 'wf-suggested-grading__header';
     header.append(
-        createText('h3', 'Suggested grading'),
-        createText('p', 'A suggestion for you, not a grade. Nothing here is sent to Canvas.', 'wf-muted-note')
+        createText('h3', 'Rubric grading'),
+        createText(
+            'p',
+            'Model suggestions are staff-only. Enter the final points you intend to save, include in the feedback PDF, and send to Canvas after approval.',
+            'wf-muted-note'
+        )
     );
 
+    // The panel lives outside the page and is handed to the modal, which shows this very
+    // element rather than a copy. Detached inputs keep their values, so a grade typed here
+    // survives closing and reopening and readAssessment below still reads it.
     const panel = document.createElement('div');
     panel.className = 'wf-suggested-grading__panel';
-    panel.hidden = true;
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'wf-button wf-button--secondary';
-    button.textContent = 'Show suggested grading';
-    button.addEventListener('click', () => {
-        panel.hidden = !panel.hidden;
-        button.textContent = panel.hidden ? 'Show suggested grading' : 'Hide suggested grading';
-    });
+    button.textContent = 'Open rubric grading';
+    button.addEventListener('click', () => { void showGridModal('Rubric grading', panel); });
     header.append(button);
 
     const scroll = document.createElement('div');
@@ -287,19 +202,47 @@ function renderSuggestedGrading(run: FeedbackRun, rubric: RubricDefinition): HTM
     const corner = createText('th', 'Criterion');
     corner.setAttribute('scope', 'col');
     headRow.append(corner);
-    rubric.levels
-        .slice()
-        .sort((left, right) => left.rank - right.rank)
-        .forEach((level) => {
-            const heading = createText('th', level.label);
-            heading.setAttribute('scope', 'col');
-            headRow.append(heading);
-        });
+    // Sorted once: the header, every row, and the earned-level mark must agree on which
+    // column is which, and rank is the only thing that decides that.
+    const ordered = rubric.levels.slice().sort((left, right) => left.rank - right.rank);
+    ordered.forEach((level) => {
+        const heading = createText('th', level.label);
+        heading.setAttribute('scope', 'col');
+        headRow.append(heading);
+    });
+    const finalHeading = createText('th', 'Final grade');
+    finalHeading.setAttribute('scope', 'col');
+    headRow.append(finalHeading);
     thead.append(headRow);
     table.append(thead);
 
     const tbody = document.createElement('tbody');
     const feedbackByCriterion = new Map(run.result.criteria.map((feedback) => [feedback.criterion, feedback]));
+    const savedByCriterion = new Map(saved?.criteria.map((entry) => [entry.criterionId, entry.points]) ?? []);
+    const gradeInputs = new Map<string, HTMLInputElement>();
+    /** Level cells of one criterion, in rank order, so the earned one can be repainted. */
+    const levelCells = new Map<string, HTMLTableCellElement[]>();
+    /** Every grade input in criterion order, which is the order Enter walks. */
+    const gradeOrder: HTMLInputElement[] = [];
+
+    /**
+     * Paints the level a typed grade falls in, and clears the rest of that row. Staff see
+     * where the number lands before they save it, and the mark matches the one the PDF
+     * draws because both answer to earnedLevelFor.
+     */
+    const paintEarned = (criterion: RubricCriterion, input: HTMLInputElement): void => {
+        const cells = levelCells.get(criterion.id) ?? [];
+        cells.forEach((cell) => cell.classList.remove('wf-suggested-grading__earned'));
+        const raw = input.value.trim();
+        if (raw === '') return;
+        const points = Number(raw);
+        if (!Number.isFinite(points)) return;
+        const earned = earnedLevelFor(criterion, ordered, points);
+        if (!earned) return;
+        const index = ordered.findIndex((level) => level.id === earned.id);
+        cells[index]?.classList.add('wf-suggested-grading__earned');
+    };
+
     rubric.criteria.forEach((criterion) => {
         const feedback = feedbackByCriterion.get(criterion.id);
         if (!feedback) return;
@@ -307,23 +250,58 @@ function renderSuggestedGrading(run: FeedbackRun, rubric: RubricDefinition): HTM
         const rowHeading = createText('th', criterion.label);
         rowHeading.setAttribute('scope', 'row');
         row.append(rowHeading);
-        rubric.levels
-            .slice()
-            .sort((left, right) => left.rank - right.rank)
-            .forEach((level) => {
-                const cell = document.createElement('td');
-                const band = resolveBand(criterion, level.id, rubric.levels);
-                if (band) cell.append(createText('strong', formatBand(band), 'wf-suggested-grading__band'));
-                if (feedback.suggestedLevel === level.id) {
-                    cell.classList.add('wf-suggested-grading__choice');
-                    cell.append(
-                        createText('span', 'Suggested', 'wf-suggested-grading__tag'),
-                        createText('p', feedback.explanation, 'wf-suggested-grading__reason')
-                    );
-                }
-                row.append(cell);
-            });
+        const cellsForRow: HTMLTableCellElement[] = [];
+        ordered.forEach((level) => {
+            const cell = document.createElement('td');
+            const band = resolveBand(criterion, level.id, rubric.levels);
+            if (band) cell.append(createText('strong', formatBand(band), 'wf-suggested-grading__band'));
+            if (feedback.suggestedLevel === level.id) {
+                cell.classList.add('wf-suggested-grading__choice');
+                cell.append(
+                    createText('span', 'Suggested', 'wf-suggested-grading__tag'),
+                    createText('p', feedback.explanation, 'wf-suggested-grading__reason')
+                );
+            }
+            cellsForRow.push(cell);
+            row.append(cell);
+        });
+        levelCells.set(criterion.id, cellsForRow);
+        const gradeCell = document.createElement('td');
+        const gradeInput = document.createElement('input');
+        gradeInput.type = 'number';
+        gradeInput.className = 'wf-input wf-final-grade-input';
+        gradeInput.min = '0';
+        gradeInput.max = String(criterion.points);
+        gradeInput.step = '0.01';
+        gradeInput.placeholder = `0–${criterion.points}`;
+        gradeInput.setAttribute('aria-label', `Final points for ${criterion.label}, out of ${criterion.points}`);
+        const savedPoints = savedByCriterion.get(criterion.id);
+        if (savedPoints !== undefined) gradeInput.value = String(savedPoints);
+        gradeInput.addEventListener('input', () => {
+            markDirty();
+            paintEarned(criterion, gradeInput);
+        });
+        gradeInput.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter') return;
+            // These inputs sit outside any form, so Enter submits nothing; it is free to
+            // mean "next criterion", which is how a marker works down a column of grades.
+            event.preventDefault();
+            const at = gradeOrder.indexOf(gradeInput);
+            const next = gradeOrder[at + (event.shiftKey ? -1 : 1)];
+            if (next) {
+                next.focus();
+                next.select();
+            } else {
+                gradeInput.blur();
+            }
+        });
+        gradeCell.append(gradeInput, createText('span', ` / ${criterion.points}`, 'wf-muted-note'));
+        gradeInputs.set(criterion.id, gradeInput);
+        gradeOrder.push(gradeInput);
+        row.append(gradeCell);
         tbody.append(row);
+        // A saved grade should already show its level when the page opens.
+        paintEarned(criterion, gradeInput);
     });
     table.append(tbody);
     scroll.append(table);
@@ -332,97 +310,40 @@ function renderSuggestedGrading(run: FeedbackRun, rubric: RubricDefinition): HTM
     const totalText = grading.totalMin === grading.totalMax
         ? `${grading.totalMax} of ${total}`
         : `${grading.totalMin} – ${grading.totalMax} of ${total}`;
-    panel.append(scroll, createText('p', totalText, 'wf-suggested-grading__total'));
-    section.append(header, panel);
-    return section;
-}
-
-/**
- * Builds the staff-only 3×3 revision guide. The prompts remain questions so
- * reviewers must interpret them against the assignment genre, context, and rubric.
- */
-function renderAcademicWritingMatrix(): HTMLDetailsElement {
-    const matrix = document.createElement('details');
-    matrix.className = 'wf-writing-matrix';
-
-    const summary = document.createElement('summary');
-    const summaryText = document.createElement('span');
-    summaryText.className = 'wf-matrix-summary-text';
-    summaryText.append(
-        createText('span', 'Staff revision guide', 'wf-matrix-kicker'),
-        createText('strong', 'Academic Writing Matrix')
+    const savedText = saved
+        ? `Saved final grade: ${saved.totalPoints} of ${saved.maxPoints}`
+        : 'No final grade has been saved yet.';
+    panel.append(
+        scroll,
+        createText('p', `Model suggestion: ${totalText}`, 'wf-suggested-grading__total'),
+        createText('p', savedText, 'wf-suggested-grading__total')
     );
-    summary.append(summaryText, createText('span', '3 functions × 3 levels', 'wf-matrix-badge'));
-
-    const body = document.createElement('div');
-    body.className = 'wf-matrix-body';
-    body.append(
-        createText(
-            'p',
-            'Review Content → Interpersonal → Organizational meaning. Within each function, move from the whole text → sections and paragraphs → clauses and words.',
-            'wf-matrix-sequence'
-        )
-    );
-
-    const caution = createText(
-        'p',
-        'Use only prompts that fit the assignment genre, stage, purpose, audience, and official rubric. The matrix supports diagnosis; it does not add requirements or determine quality by itself. Carry forward only the highest-impact issues, with no more than three revision priorities.',
-        'wf-matrix-caution'
-    );
-    caution.setAttribute('role', 'note');
-    body.append(caution);
-
-    const functions = document.createElement('div');
-    functions.className = 'wf-matrix-functions';
-    ACADEMIC_WRITING_MATRIX.forEach((writingFunction) => {
-        const article = document.createElement('article');
-        article.className = 'wf-matrix-function';
-        article.dataset.function = writingFunction.id;
-
-        const heading = createText('h4', writingFunction.label);
-        heading.id = `wf-matrix-${writingFunction.id}-heading`;
-        article.setAttribute('aria-labelledby', heading.id);
-        article.append(
-            heading,
-            createText('p', writingFunction.description, 'wf-matrix-function-description')
-        );
-
-        const levels = document.createElement('div');
-        levels.className = 'wf-matrix-levels';
-        ACADEMIC_WRITING_LEVELS.forEach((level) => {
-            const levelSection = document.createElement('section');
-            levelSection.className = 'wf-matrix-level';
-            const levelHeading = createText('h5', level.label);
-            levelHeading.id = `wf-matrix-${writingFunction.id}-${level.id}-heading`;
-            levelSection.setAttribute('aria-labelledby', levelHeading.id);
-
-            const prompts = document.createElement('ol');
-            prompts.className = 'wf-matrix-prompts';
-            writingFunction.prompts[level.id].forEach((prompt) => {
-                prompts.append(createText('li', prompt));
+    // The grid now opens in a modal, so the page itself has to keep stating where the grade
+    // stands; otherwise closing the modal loses the one number staff came here to check.
+    section.append(header, createText('p', savedText, 'wf-suggested-grading__total'));
+    return {
+        element: section,
+        readAssessment: () => {
+            const values = rubric.criteria.map((criterion) => {
+                const raw = gradeInputs.get(criterion.id)?.value.trim() ?? '';
+                return { criterion, raw, points: Number(raw) };
             });
-            levelSection.append(
-                levelHeading,
-                createText('p', level.scope, 'wf-matrix-level-scope'),
-                prompts
-            );
-            levels.append(levelSection);
-        });
-        article.append(levels);
-        functions.append(article);
-    });
-    body.append(functions);
-
-    const attribution = document.createElement('p');
-    attribution.className = 'wf-matrix-attribution';
-    attribution.append(
-        'Adapted by A. A. Ferreira from Humphrey, S., Martin, J. R., Dreyfus, S., & Mahboob, A. (2010), “The 3×3: Setting up a linguistic toolkit for teaching academic writing,” in ',
-        createText('cite', 'Appliable Linguistics'),
-        ', pp. 185–199.'
-    );
-    body.append(attribution);
-    matrix.append(summary, body);
-    return matrix;
+            if (values.every((entry) => entry.raw === '')) return undefined;
+            if (values.some((entry) => entry.raw === '')) {
+                throw new Error('Enter a final grade for every rubric criterion, or leave every final-grade field blank.');
+            }
+            const invalid = values.find((entry) => !Number.isFinite(entry.points)
+                || entry.points < 0
+                || entry.points > (entry.criterion.points ?? 0));
+            if (invalid) {
+                throw new Error(`Final grade for ${invalid.criterion.label} must be between 0 and ${invalid.criterion.points}.`);
+            }
+            return {
+                rubricVersion: rubric.version,
+                criteria: values.map((entry) => ({ criterionId: entry.criterion.id, points: entry.points }))
+            };
+        }
+    };
 }
 
 /**
@@ -489,6 +410,49 @@ async function waitForGeneration(submissionId: string): Promise<SubmissionDetail
         await delay(2000);
     }
     throw new Error('Feedback generation is taking longer than expected. It may still finish — refresh this submission in a moment to check.');
+}
+
+/** What `release-status` reports while a queued release runs. */
+interface ReleaseStatus {
+    release: SubmissionDetail['release'];
+    jobState: 'queued' | 'leased' | 'completed' | 'failed' | null;
+    jobError?: string;
+}
+
+// A live release uploads the feedback PDF, posts a Canvas comment, and waits on Canvas's own grade job.
+// Five minutes is well past the worst case observed against Canvas and matches the generation
+// ceiling above, including its reasoning about the idle-session window.
+const RELEASE_POLL_TIMEOUT_MS = 300_000;
+
+/**
+ * waitForRelease - polls a queued release until Canvas has been written to, or has refused.
+ *
+ * @param submissionId - Submission whose release job is running
+ * @returns The terminal release state
+ * @throws Error carrying the staff-facing reason the release did not complete
+ */
+async function waitForRelease(submissionId: string): Promise<ReleaseStatus> {
+    const deadline = Date.now() + RELEASE_POLL_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+        const status = await request<ReleaseStatus>(`/submissions/${encodeURIComponent(submissionId)}/release-status`);
+        const releaseStatus = status.release?.status;
+        if (releaseStatus === 'released' || releaseStatus === 'reconciled') return status;
+        if (releaseStatus === 'reconciliation_required') {
+            throw new Error('Canvas returned an uncertain result. Do not retry; reconcile the Canvas submission first.');
+        }
+        // The job is the authority on failure: a release that never reached Canvas at all leaves
+        // the release record untouched and the reason on the job.
+        if (status.jobState === 'failed') {
+            throw new Error(status.jobError || 'Canvas did not confirm the complete release.');
+        }
+        // The handler finished, yet the record is not terminal: the release did not happen and
+        // no retry will be scheduled, so say so instead of polling to the deadline.
+        if (status.jobState === 'completed') {
+            throw new Error('The release finished without confirming Canvas. Check the submission in Canvas before retrying.');
+        }
+        await delay(2000);
+    }
+    throw new Error('The Canvas release is taking longer than expected. It may still finish — reopen this submission in a moment to check.');
 }
 
 function renderReviewView(root: HTMLDivElement, detail: SubmissionDetail): void {
@@ -795,6 +759,7 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
     annotationsBody.className = 'wf-panel-body';
     annotationsBody.id = 'wf-tab-panel-annotations';
     annotationsBody.setAttribute('role', 'tabpanel');
+    annotationsBody.hidden = Boolean(detail.technicalFeedbackRun);
     const summaryBody = document.createElement('div');
     summaryBody.className = 'wf-panel-body';
     summaryBody.id = 'wf-tab-panel-summary';
@@ -804,13 +769,24 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
     technicalBody.className = 'wf-panel-body';
     technicalBody.id = 'wf-tab-panel-technical';
     technicalBody.setAttribute('role', 'tabpanel');
-    technicalBody.hidden = true;
+    // Visibility is set by selectTab against tab order, so neither panel hard-codes it.
+    technicalBody.hidden = Boolean(detail.technicalFeedbackRun) === false;
 
-    const tabs: Array<{ id: string; label: string; panel: HTMLElement }> = [
-        { id: 'annotations', label: 'Annotations', panel: annotationsBody },
-        { id: 'summary', label: 'Summary', panel: summaryBody },
-        // The technical tab only exists for a lab report whose technical lens has run.
-        ...(detail.technicalFeedbackRun ? [{ id: 'technical', label: 'Technical', panel: technicalBody }] : [])
+    // renderAnnotations replaces its list host wholesale, so each annotating tab keeps a
+    // dedicated container: the technical panel's read-only draft sits above its own.
+    const annotationsListHost = document.createElement('div');
+    const technicalListHost = document.createElement('div');
+
+    // The technical tab only exists for a lab report whose technical lens has run, and when it
+    // does it leads: the technical rubric is what a lab report is graded on, so its annotations
+    // are what a reviewer works through first.
+    const technicalTab = detail.technicalFeedbackRun
+        ? [{ id: 'technical', label: 'Technical', panel: technicalBody, lens: 'technical' as const, listHost: technicalListHost }]
+        : [];
+    const tabs: Array<{ id: string; label: string; panel: HTMLElement; lens?: WritingFeedbackLens; listHost?: HTMLElement }> = [
+        ...technicalTab,
+        { id: 'annotations', label: assignment?.isLabReport ? 'Writing' : 'Annotations', panel: annotationsBody, lens: 'linguistic' as const, listHost: annotationsListHost },
+        { id: 'summary', label: 'Summary', panel: summaryBody }
     ];
     const buttons: HTMLButtonElement[] = [];
     const selectTab = (selected: number) => {
@@ -821,6 +797,10 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
             buttons[index].setAttribute('aria-selected', String(index === selected));
             buttons[index].tabIndex = index === selected ? 0 : -1;
         });
+        // Both lenses annotate the same document pane, and rendering one replaces its
+        // children. So the pane follows the visible tab rather than being built once.
+        const { lens, listHost } = tabs[selected];
+        if (lens && listHost) renderLensAnnotations(lens, listHost);
     };
     tabs.forEach((tab, index) => {
         const button = document.createElement('button');
@@ -847,20 +827,24 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
 
     const markDirty = () => { state.reviewDirty = true; };
 
-    // Annotations tab — anchored comments over the document pane.
+    // Anchored comments over the shared document pane, for whichever lens is on screen.
     const docPaper = () => document.getElementById('wf-doc-paper');
-    // Defer annotation setup until the document and feedback hosts share the DOM;
+    const renderLensAnnotations = (lens: WritingFeedbackLens, listHost: HTMLElement) => {
+        const paper = docPaper();
+        if (!paper) return;
+        renderAnnotations({
+            docHost: paper,
+            listHost,
+            verifiedText: submission.verifiedText ?? submission.originalText,
+            lens,
+            markDirty
+        });
+    };
+    // Defer the first render until the document and feedback hosts share the DOM;
     // selection geometry and focus-linked markers depend on both being connected.
     queueMicrotask(() => {
-        const paper = docPaper();
-        if (paper) {
-            renderAnnotations({
-                docHost: paper,
-                listHost: annotationsBody,
-                verifiedText: submission.verifiedText ?? submission.originalText,
-                markDirty
-            });
-        }
+        const first = tabs[0];
+        if (first.lens && first.listHost) renderLensAnnotations(first.lens, first.listHost);
     });
 
     // Summary tab.
@@ -869,12 +853,14 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
     const studentFeedback = summaryContent.studentFeedback;
     const internalNote = summaryContent.internalNote;
 
+    annotationsBody.append(annotationsListHost);
     panel.append(annotationsBody, summaryBody);
 
-    // Technical tab — read-only technical (lab-report) draft. Approval and
-    // release remain whole-submission actions on the Summary tab.
+    // Technical tab — rubric-specific annotations first, then the read-only technical
+    // draft below them. Approval and release remain whole-submission actions on the
+    // Summary tab.
     if (detail.technicalFeedbackRun) {
-        technicalBody.append(...renderTechnicalTab(detail.technicalFeedbackRun, assignment));
+        technicalBody.append(technicalListHost, ...renderTechnicalTab(detail.technicalFeedbackRun, assignment));
         panel.append(technicalBody);
     }
 
@@ -888,7 +874,8 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
                 feedbackRunId: feedbackRun.id,
                 studentFeedback: studentFeedback.value,
                 internalNote: internalNote.value,
-                comments: getWorkingComments()
+                comments: getWorkingComments(),
+                finalAssessment: summaryContent.readFinalAssessment()
             });
             state.reviewDirty = false;
             showSuccessToast('Staff revision saved to the audit history.');
@@ -913,28 +900,56 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
     const downloadMenu = document.createElement('div');
     downloadMenu.className = 'wf-download-menu';
     const pdfBase = `${baseUrl()}/submissions/${encodeURIComponent(submission.id)}/feedback.pdf`;
-    const createDownloadLink = (label: string, title: string, href: string): HTMLAnchorElement => {
-        const link = document.createElement('a');
-        link.className = 'wf-button wf-button--quiet';
-        link.textContent = label;
-        link.title = title;
-        link.href = href;
-        return link;
+
+    /**
+     * Opens one PDF mode in a viewer rather than downloading it.
+     *
+     * The route serves `inline`, so the frame renders the document in place. A failed render
+     * returns a JSON error body, which an iframe would show as a blank page or a wall of raw
+     * JSON — so the response is fetched first and its error surfaced as a sentence.
+     */
+    const openPdf = async (label: string, query: string): Promise<void> => {
+        const url = `${pdfBase}${query}`;
+        let objectUrl: string | null = null;
+        try {
+            const response = await fetch(url, { credentials: 'same-origin' });
+            if (!response.ok) {
+                const problem = await response.json().catch(() => null);
+                await showErrorModal('Could not open the PDF',
+                    problem?.error ?? 'The feedback PDF could not be generated.');
+                return;
+            }
+            objectUrl = URL.createObjectURL(await response.blob());
+            const frame = document.createElement('iframe');
+            frame.className = 'wf-pdf-frame';
+            frame.title = `${label} preview`;
+            frame.src = objectUrl;
+            await showViewerModal(label, frame, `${url}${query ? '&' : '?'}download=1`);
+        } finally {
+            // Revoked after the modal closes; the frame has already parsed the document.
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
+        }
     };
+
+    const viewerButton = (label: string, title: string, query: string): HTMLButtonElement => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'wf-button wf-button--quiet';
+        button.textContent = label;
+        button.title = title;
+        button.addEventListener('click', () => { void openPdf(label, query); });
+        return button;
+    };
+
     // The include query is the public PDF mode contract: summary-only is the
     // default, annotated includes hover comments, and both combines the outputs.
     downloadMenu.append(
-        createDownloadLink('PDF', 'Download student PDF (summary feedback)', pdfBase),
-        createDownloadLink(
-            'Annotated PDF',
-            'Download the student text with highlighted comments (hover to read)',
-            `${pdfBase}?include=annotated`
-        ),
-        createDownloadLink(
-            'Complete PDF',
-            'Download summary feedback plus the annotated student text',
-            `${pdfBase}?include=both`
-        )
+        viewerButton('PDF', 'Open the student PDF (summary feedback)', ''),
+        viewerButton('Annotated PDF', 'Open the student text with highlighted comments', '?include=annotated'),
+        viewerButton('Complete PDF', 'Open summary feedback plus the annotated student text', '?include=both'),
+        ...(detail.technicalFeedbackRun
+            ? [viewerButton('Technical PDF', 'Open the technical lab-report feedback on its own', '?lens=technical')]
+            : [])
     );
     footer.append(downloadMenu);
     panel.append(footer);
@@ -1040,6 +1055,7 @@ interface SummaryContent {
     children: HTMLElement[];
     studentFeedback: HTMLTextAreaElement;
     internalNote: HTMLTextAreaElement;
+    readFinalAssessment: () => StaffAssessmentDraft | undefined;
 }
 
 function renderSummaryTab(
@@ -1061,10 +1077,17 @@ function renderSummaryTab(
     children.push(strengths);
 
     const rubric = rubricForRun(assignment, feedbackRun);
-    const suggestedGrading = hasSuggestedGrading(rubric)
-        ? renderSuggestedGrading(feedbackRun, rubric)
+    const revision = latestReview(submission);
+    // A lab report is graded on its technical rubric, so the grade column and the model
+    // suggestions beside it come from the technical run rather than the writing one. The
+    // criterion feedback below still reads the writing rubric, which is what it describes.
+    const gradedLens: WritingFeedbackLens = assignment?.isLabReport ? 'technical' : 'linguistic';
+    const gradedRun = gradedLens === 'technical' ? detail.technicalFeedbackRun : feedbackRun;
+    const gradedRubric = gradedRun ? rubricForRun(assignment, gradedRun, gradedLens) : undefined;
+    const gradingEditor = gradedRun && hasSuggestedGrading(gradedRubric)
+        ? renderSuggestedGrading(gradedRun, gradedRubric, revision?.finalAssessment, markDirty)
         : null;
-    if (suggestedGrading) children.push(suggestedGrading);
+    if (gradingEditor) children.push(gradingEditor.element);
     const rubricSection = document.createElement('section');
     rubricSection.className = 'wf-feedback-section';
     rubricSection.append(createText('h3', 'Feedback by rubric criterion'));
@@ -1118,24 +1141,43 @@ function renderSummaryTab(
     });
     children.push(goalsSection);
 
-    const mentions = feedbackRun.result.courseMaterialMentions ?? [];
+    // Staff see everything retrieval read, marked where a document is not published: an
+    // unpublished document can ground the writing without being nameable to the student, and
+    // a reviewer needs to know which is which. Students see the published list only.
+    const publishedMentions = feedbackRun.result.courseMaterialMentions ?? [];
+    // The run carries the citable ids because the student-facing list is capped at five:
+    // inferring publication from it marks a sixth published document "not published".
+    // Runs written before that field fall back to the student list, as they always did.
+    const publishedIds = new Set(
+        feedbackRun.citableCourseMaterialMentionIds?.length
+            ? feedbackRun.citableCourseMaterialMentionIds
+            : publishedMentions.map((mention) => mention.id)
+    );
+    const mentions = feedbackRun.staffCourseMaterialMentions?.length
+        ? feedbackRun.staffCourseMaterialMentions
+        : publishedMentions;
     if (mentions.length) {
         const materialsSection = document.createElement('section');
         materialsSection.className = 'wf-feedback-section';
-        materialsSection.append(createText('h3', 'Useful course materials to revisit'));
+        materialsSection.append(createText('h3', 'Course materials this feedback draws on'));
         const materialList = document.createElement('ul');
         materialList.className = 'wf-strength-list';
-        mentions.forEach((mention) => materialList.append(createText('li', mention.label)));
+        mentions.forEach((mention) => {
+            const item = createText('li', mention.label);
+            if (!publishedIds.has(mention.id)) {
+                item.append(createText('span', ' Not published to students', 'wf-muted-note'));
+            }
+            materialList.append(item);
+        });
         materialsSection.append(materialList);
         children.push(materialsSection);
     }
 
     const reviewSection = document.createElement('section');
     reviewSection.className = 'wf-feedback-section';
-    reviewSection.append(createText('h3', 'Student-facing feedback'), renderAcademicWritingMatrix());
+    reviewSection.append(createText('h3', 'Student-facing feedback'));
     // Start from the newest staff revision when present; otherwise derive an
     // editable draft from model goals without treating that draft as approved.
-    const revision = latestReview(submission);
     const studentFeedback = textAreaControl(
         revision?.studentFeedback
             ?? feedbackRun.result.revisionGoals.map((goal) => `${goal.goal}\n${goal.guidedQuestion}`).join('\n\n'),
@@ -1191,6 +1233,15 @@ function renderSummaryTab(
             if (item.internalNote) {
                 body.append(createText('h4', 'Internal staff note'), createText('pre', item.internalNote, 'wf-history-text'));
             }
+            if (item.finalAssessment) {
+                body.append(
+                    createText('h4', 'Final rubric assessment'),
+                    createText(
+                        'p',
+                        `${item.finalAssessment.totalPoints} of ${item.finalAssessment.maxPoints} · rubric v${item.finalAssessment.rubricVersion}`
+                    )
+                );
+            }
 
             const commentLine = (label: string, comment: AnchoredComment): HTMLElement => {
                 const line = document.createElement('p');
@@ -1231,62 +1282,114 @@ function renderSummaryTab(
 
     const releaseSection = document.createElement('section');
     releaseSection.className = 'wf-feedback-section';
-    releaseSection.append(renderReleaseCard(submission, assignment));
+    releaseSection.append(renderReleaseCard(submission, assignment, detail.release, {
+        released: detail.releaseCount ?? 0,
+        max: detail.maxReleases ?? 0
+    }));
     children.push(releaseSection);
 
-    return { children, studentFeedback, internalNote };
+    return {
+        children,
+        studentFeedback,
+        internalNote,
+        readFinalAssessment: gradingEditor?.readAssessment ?? (() => undefined)
+    };
 }
 
-function renderReleaseCard(submission: Submission, assignment: Assignment | null): HTMLElement {
+/**
+ * releaseHistoryLine - what staff are told about a submission's earlier releases.
+ *
+ * Silent on the first release, because a submission that has never been released has no history
+ * to report. After that the count is stated with the cap, since each further release adds a new
+ * Canvas comment and notifies the student again — staff decide whether a correction is worth it.
+ *
+ * @param counts - Completed releases and the per-submission limit
+ * @returns The sentence to show, or an empty string when there is nothing to say
+ */
+function releaseHistoryLine(counts: { released: number; max: number }): string {
+    if (counts.released < 1) return '';
+    const remaining = Math.max(counts.max - counts.released, 0);
+    const times = counts.released === 1 ? 'once' : `${counts.released} times`;
+    if (remaining < 1) {
+        return `This attempt’s feedback has been released ${times}, which is the limit for one attempt.`;
+    }
+    return `This attempt’s feedback has been released ${times}. A submission may be released at most`
+        + ` ${counts.max} times, and each release adds another comment to the student’s Canvas submission.`;
+}
+
+function renderReleaseCard(
+    submission: Submission,
+    assignment: Assignment | null,
+    priorRelease: SubmissionDetail['release'],
+    counts: { released: number; max: number }
+): HTMLElement {
     const card = document.createElement('section');
     card.className = 'wf-release-card';
     const workspace = state.workspace!;
 
-    // A live Canvas course reads submissions but cannot write feedback back: the release path
-    // is still the local mock, and the server refuses it outright for the `canvas` integration.
-    // The generic branch below would enable "Release to Canvas" as soon as the rubric gained a
-    // points mapping, producing a button that can only ever fail — so live renders the honest
-    // state and no action at all, pointing at the PDF that is the actual return path.
-    if (workspace.canvas.mode === 'live') {
+    const isDemo = workspace.canvas.mode === 'demo';
+    const finalAssessment = latestReview(submission)?.finalAssessment;
+    const hasFinalAssessment = Boolean(finalAssessment);
+    // A completed release is not the end of the story: staff may correct feedback and release a
+    // revision, up to the cap, so this card offers that path instead of closing the submission.
+    const capReached = counts.max > 0 && counts.released >= counts.max;
+    if (priorRelease?.status === 'released' || priorRelease?.status === 'reconciled' || submission.status === 'released') {
         card.append(
-            createText('h3', 'Return feedback to the student'),
+            createText('h3', priorRelease?.revision && priorRelease.revision > 1
+                ? `Released to Canvas · revision ${priorRelease.revision}`
+                : 'Released to Canvas'),
             createText(
                 'p',
-                'Feedback is not written back to Canvas. Download the approved feedback PDF from the review header and return it to the student yourself.'
+                priorRelease?.postManually
+                    ? 'The feedback files and grade reached Canvas and remain hidden until the assignment is posted.'
+                    : 'The feedback files and grade were confirmed in Canvas.'
             )
         );
-        const liveState = document.createElement('div');
-        liveState.className = 'wf-release-state';
-        liveState.setAttribute('role', 'status');
-        liveState.setAttribute('aria-live', 'polite');
-        liveState.textContent = submission.status === 'approved'
-            ? 'Approved. The student feedback PDF is ready to download.'
-            : 'Approve the staff-reviewed feedback to enable the student PDF.';
-        card.append(liveState);
+        const history = releaseHistoryLine(counts);
+        if (history) card.append(createText('p', history));
+        // Released feedback cannot be edited — the service refuses a review revision on a
+        // released submission — so a correction is a new attempt, not a second pass over this
+        // one. Say that, rather than offering a control the server would refuse.
+        card.append(createText(
+            'p',
+            'Released feedback cannot be edited. To send a correction, add or import a new attempt for this student and review it.'
+        ));
         return card;
     }
-
-    const isDemo = workspace.canvas.mode === 'demo';
-    const hasNumericMapping = Boolean(assignment?.gradeMapping);
+    if (priorRelease?.status === 'reconciliation_required') {
+        card.append(
+            createText('h3', 'Canvas reconciliation required'),
+            createText(
+                'p',
+                'Canvas returned an uncertain result during release. Check this student’s submission and grade in Canvas before any retry; automatic retry is disabled to prevent duplicate feedback.'
+            )
+        );
+        return card;
+    }
     // Release remains unavailable until human approval, a complete numeric
     // mapping, and a usable Canvas adapter are all simultaneously present.
-    const releaseReady = submission.status === 'approved' && hasNumericMapping && workspace.canvas.canImport;
+    const releaseReady = submission.status === 'approved' && hasFinalAssessment && workspace.canvas.canImport && !capReached;
     card.append(
         createText('h3', isDemo ? 'Canvas release simulation' : 'Release to Canvas'),
         createText(
             'p',
             isDemo
                 ? 'Local demo mode creates a release record but never contacts Canvas or a real student.'
-                : 'A dry-run preview is required before the approved PDF, rubric ratings, and grade can be sent.'
+                : 'Preview first, then send the approved feedback PDF and staff-final grade to this exact Canvas attempt.'
         )
     );
     const releaseState = document.createElement('div');
     releaseState.className = 'wf-release-state';
     releaseState.setAttribute('role', 'status');
     releaseState.setAttribute('aria-live', 'polite');
-    if (!hasNumericMapping) releaseState.textContent = 'Numeric release is blocked: the approved rubric has no complete points mapping.';
+    if (capReached) releaseState.textContent = releaseHistoryLine(counts);
+    else if (!hasFinalAssessment) releaseState.textContent = 'Release is blocked until a complete staff-final rubric grade is saved.';
     else if (!workspace.canvas.canImport) releaseState.textContent = workspace.canvas.message;
     else if (submission.status !== 'approved') releaseState.textContent = 'Approve the staff-reviewed feedback before release.';
+    else if (priorRelease?.releaseLockedAt) releaseState.textContent = 'A release is already on its way to Canvas for this submission.';
+    else if (priorRelease?.status === 'failed') releaseState.textContent = priorRelease.sanitizedError || 'The prior Canvas release failed safely and may be retried.';
+    else if (priorRelease?.status === 'feedback_attached') releaseState.textContent = 'Feedback is attached; the Canvas grade still needs confirmation.';
+    else if (priorRelease?.status === 'grade_queued') releaseState.textContent = 'Canvas accepted the grade job; check its completion before retrying.';
     else releaseState.textContent = 'Ready for a dry-run preview.';
 
     const buttons = document.createElement('div');
@@ -1295,15 +1398,17 @@ function renderReleaseCard(submission: Submission, assignment: Assignment | null
         createButton('Preview release', 'secondary', async () => {
             // Preview is a server-side dry run; the UI states explicitly that this
             // path must not create a Canvas comment, grade, rubric rating, or file.
-            const preview = await jsonRequest<{ grade?: number }>(
+            const preview = await jsonRequest<{ grade?: number; postManually?: boolean }>(
                 `/submissions/${encodeURIComponent(submission.id)}/release-preview`,
                 'POST'
             );
             releaseState.textContent = preview.grade === undefined
-                ? 'Preview created. Numeric release remains blocked until points are approved.'
-                : `Preview created with grade ${preview.grade}. No Canvas write occurred.`;
+                ? 'Preview created. Release remains blocked until a staff-final grade is saved.'
+                : `Preview created with grade ${preview.grade}. No Canvas write occurred. ${preview.postManually
+                    ? 'Canvas will keep the result hidden until the assignment is posted.'
+                    : 'Canvas will show the result to the student immediately after release.'}`;
             showSuccessToast('Release preview created. Nothing was sent to Canvas.');
-        }, !workspace.canvas.canImport),
+        }, !workspace.canvas.canImport || capReached),
         createButton(isDemo ? 'Simulate release' : 'Release to Canvas', 'primary', async () => {
             // External delivery (or its visibly synthetic demo equivalent) always
             // requires a second, submission-specific confirmation.
@@ -1315,8 +1420,30 @@ function renderReleaseCard(submission: Submission, assignment: Assignment | null
             );
             const expectedAction = isDemo ? 'simulate-release' : 'release-to-canvas';
             if (confirmation.action !== expectedAction) return;
-            await jsonRequest(`/submissions/${encodeURIComponent(submission.id)}/release`, 'POST');
-            showSuccessToast(isDemo ? 'Demo release completed without contacting Canvas.' : 'Feedback released to Canvas.');
+            // The server queues the release and returns immediately; the write itself happens in
+            // the worker, so this waits on the record rather than on one long request.
+            await jsonRequest<{ status: string; jobId: string }>(
+                `/submissions/${encodeURIComponent(submission.id)}/release`,
+                'POST'
+            );
+            releaseState.textContent = isDemo
+                ? 'Simulating the release…'
+                : 'Sending the feedback files and grade to Canvas…';
+            let released: ReleaseStatus;
+            try {
+                released = await waitForRelease(submission.id);
+            } catch (error) {
+                releaseState.textContent = error instanceof Error
+                    ? error.message
+                    : 'Canvas did not confirm the complete release.';
+                showErrorToast(releaseState.textContent);
+                return;
+            }
+            showSuccessToast(isDemo
+                ? 'Demo release completed without contacting Canvas.'
+                : released.release?.postManually
+                    ? 'Feedback and grade reached Canvas and remain hidden until the assignment is posted.'
+                    : 'Feedback and grade were released to the student in Canvas.');
             await refreshReview(submission.id);
         }, !releaseReady)
     );

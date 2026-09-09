@@ -187,7 +187,7 @@ describe('RubricWritingFeedbackEngine generic rubric contract', () => {
                 : { parsed: writerResult }
         ));
         const llm = { sendStructuredConversation } as unknown as LLMModule;
-        const retriever = { retrieve: jest.fn(async () => [{ content: 'x', score: 0.9, metadata: { id: 'material-1', topicOrWeekTitle: 'Week 4', itemTitle: 'Lecture 2', name: 'Information flow' } }]) };
+        const retriever = { retrieve: jest.fn(async () => [{ content: 'x', score: 0.9, published: true, metadata: { id: 'material-1', topicOrWeekTitle: 'Week 4', itemTitle: 'Lecture 2', name: 'Information flow' } }]) };
 
         process.env.MOCK_RESPONSE = 'false';
         try {
@@ -201,7 +201,7 @@ describe('RubricWritingFeedbackEngine generic rubric contract', () => {
             expect(generated.schemaVersion).toBe('writing-feedback-v2');
             expect(generated.courseMaterialMentions?.[0].label).toBe('Week 4 · Lecture 2 · Information flow');
             expect(generated.runTrace?.sflAnalysis?.findings[0].id).toBe('finding-1');
-            expect(generated.runTrace?.writerPromptVersion).toBe('sfl-feedback-writer-v2.0.0');
+            expect(generated.runTrace?.writerPromptVersion).toBe('sfl-feedback-writer-v2.1.0');
         } finally {
             process.env.MOCK_RESPONSE = 'true';
         }

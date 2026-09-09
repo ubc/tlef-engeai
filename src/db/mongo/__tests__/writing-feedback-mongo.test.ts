@@ -12,16 +12,21 @@
 
 import type { MongoDalContext } from '../mongo-context';
 import type {
+    CanvasRubricIdMap,
+    ImportedRubricShape,
     WritingAssignment,
     WritingRubricDefinition
 } from '../../../writing-feedback/contracts';
 import {
     approveWritingRubricDraft,
     completeWritingJob,
+    createCanvasWritingAssignment,
     createManualWritingAssignment,
     discardWritingRubricDraft,
     ensureWritingFeedbackIndexes,
+    finalizeWritingRelease,
     getLatestWritingFeedbackRun,
+    getLatestWritingRelease,
     normalizeWritingAssignment,
     saveWritingRubricDraft,
     setWritingAssignmentLabReport
@@ -486,5 +491,102 @@ describe('completeWritingJob', () => {
                 $unset: { leaseUntil: '', sanitizedError: '' }
             }
         );
+    });
+});
+
+describe('Writing Feedback release persistence', () => {
+    it('sorts latest release state by updatedAt descending for one submission', async () => {
+        const findOne = jest.fn().mockResolvedValue(null);
+        const releaseCollection = { findOne };
+        const ctx = contextWithCollections({ 'writing-releases': releaseCollection });
+
+        await getLatestWritingRelease(ctx, 'course-1', 'submission-1');
+
+        expect(findOne).toHaveBeenCalledWith(
+            { courseId: 'course-1', submissionId: 'submission-1' },
+            { sort: { updatedAt: -1 } }
+        );
+    });
+
+    it('unsets stale failure fields when a retry clears them', async () => {
+        const findOneAndUpdate = jest.fn().mockResolvedValue(null);
+        const releaseCollection = { findOneAndUpdate };
+        const ctx = contextWithCollections({ 'writing-releases': releaseCollection });
+
+        await finalizeWritingRelease(ctx, 'fingerprint-1', {
+            status: 'released',
+            failureStage: undefined,
+            sanitizedError: undefined
+        });
+
+        expect(findOneAndUpdate).toHaveBeenCalledWith(
+            { payloadFingerprint: 'fingerprint-1' },
+            {
+                $set: { status: 'released', updatedAt: expect.any(Date) },
+                $unset: { failureStage: '', sanitizedError: '' }
+            },
+            { returnDocument: 'after' }
+        );
+    });
+});
+
+describe('createCanvasWritingAssignment', () => {
+    const shape: ImportedRubricShape = {
+        criteria: [{ id: 'analysis', label: 'Analysis', description: 'Quality of analysis', points: 20, cells: {} }],
+        levels: [
+            { id: 'weak', label: 'Weak', description: 'Little analysis', rank: 1 },
+            { id: 'strong', label: 'Strong', description: 'Full analysis', rank: 2 }
+        ]
+    };
+    const ids: CanvasRubricIdMap = {
+        analysis: { criterionId: '_1234', ratingIds: { weak: 'r_lo', strong: 'r_hi' } }
+    };
+
+    function collectionCapturingInsert(inserted: WritingAssignment[]) {
+        return {
+            listIndexes: jest.fn().mockReturnValue({ toArray: jest.fn().mockResolvedValue([]) }),
+            createIndex: jest.fn().mockResolvedValue('index-name'),
+            insertOne: jest.fn(async (assignment: WritingAssignment) => {
+                inserted.push(assignment);
+                return { acknowledged: true, insertedId: assignment.id };
+            })
+        };
+    }
+
+    function contextFor(assignmentCollection: unknown): MongoDalContext {
+        return contextWithCollections({
+            'writing-assignments': assignmentCollection,
+            'writing-submissions': indexOnlyCollection(),
+            'writing-feedback-runs': indexOnlyCollection(),
+            'writing-releases': indexOnlyCollection(),
+            'writing-jobs': indexOnlyCollection(),
+            'writing-glossary-entries': indexOnlyCollection(),
+            'canvas-connections': indexOnlyCollection()
+        });
+    }
+
+    it('stores the imported canvas rubric and its ids on the assignment', async () => {
+        const inserted: WritingAssignment[] = [];
+        const created = await createCanvasWritingAssignment(
+            contextFor(collectionCapturingInsert(inserted)),
+            'course-1', 'canvas-9', 'Lab 3', 'Do the lab', undefined, shape, undefined, ids
+        );
+
+        expect(created.canvasRubricImport?.ids.analysis.criterionId).toBe('_1234');
+        expect(created.canvasRubricImport?.shape.criteria[0].id).toBe('analysis');
+        expect(created.canvasRubricImport?.importedAt).toBeInstanceOf(Date);
+        // The writing lens still seeds from it, exactly as before.
+        expect(created.rubricSource).toBe('canvas');
+        expect(inserted[0].canvasRubricImport?.ids.analysis.ratingIds.strong).toBe('r_hi');
+    });
+
+    it('stores nothing when the rubric was refused', async () => {
+        const created = await createCanvasWritingAssignment(
+            contextFor(collectionCapturingInsert([])),
+            'course-1', 'canvas-9', 'Lab 3', 'Do the lab'
+        );
+
+        expect(created.canvasRubricImport).toBeUndefined();
+        expect(created.rubricSource).toBe('internal_profile');
     });
 });

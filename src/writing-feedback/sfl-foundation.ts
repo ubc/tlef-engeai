@@ -24,10 +24,10 @@ import {
 export const SFL_ANALYZER_PROMPT_VERSION = 'sfl-analyzer-v2.0.0';
 
 /** Feedback-writer prompt contract version stamped on V2 linguistic feedback runs. */
-export const SFL_WRITER_PROMPT_VERSION = 'sfl-feedback-writer-v2.0.0';
+export const SFL_WRITER_PROMPT_VERSION = 'sfl-feedback-writer-v2.1.0';
 
 /** Course-material mention resolver contract version stamped on V2 runs. */
-export const COURSE_MATERIAL_RESOLVER_VERSION = 'course-material-mentions-v1.0.0';
+export const COURSE_MATERIAL_RESOLVER_VERSION = 'course-material-mentions-v2.0.0';
 
 /** Expectedness codes copied from the curated Ferreira rule catalog. */
 export type SflExpectednessCode = 'O' | 'E' | 'P' | 'R';

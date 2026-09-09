@@ -213,6 +213,21 @@ describe('LiveCanvasImportGateway submission previews', () => {
         expect(previews[1].attachments[0]).toMatchObject({ fileName: 'essay.docx', attachmentId: '7' });
     });
 
+    it('previews a markdown upload as importable, because markdown reads as plain text', async () => {
+        const markdownSubmission = [{
+            user_id: 905, attempt: 1, submission_type: 'online_upload',
+            submitted_at: '2026-09-21T20:40:00Z', workflow_state: 'submitted',
+            user: { id: 905, name: 'Robin Fox' },
+            attachments: [{ id: 9, display_name: 'report.md', size: 12, url: 'https://canvas.test/files/9/download' }]
+        }];
+        const { client } = fakeClient({ get: { '/assignments/101': { id: 101 } }, getAll: { '/submissions': markdownSubmission } });
+
+        const previews = await new LiveCanvasImportGateway({ client, canvasCourseId: '55' }).listSubmissionPreviews('101');
+
+        expect(previews[0]).toMatchObject({ canvasUserId: '905', contentKind: 'file_upload' });
+        expect(previews[0].attachments[0]).toMatchObject({ fileName: 'report.md', attachmentId: '9' });
+    });
+
     it('requests no SIS data, so Canvas never serializes a PUID, student number, or CWL', async () => {
         const { client, calls } = fakeClient({ get: { '/assignments/101': { id: 101 } }, getAll: { '/submissions': SUBMISSIONS } });
         await new LiveCanvasImportGateway({ client, canvasCourseId: '55' }).listSubmissionPreviews('101');
@@ -311,18 +326,23 @@ describe('LiveCanvasImportGateway rubric and assignment-detail import', () => {
 describe('SafeCanvasImportService over a live gateway', () => {
     const SUBMISSIONS = [
         { user_id: 900, attempt: 1, submission_type: 'online_text_entry', body: '<p>Heat exchanger prose.</p>', submitted_at: '2026-09-21T18:15:00Z', workflow_state: 'submitted', user: { id: 900, name: 'Jordan Lee' } },
-        { user_id: 901, attempt: 2, submission_type: 'online_upload', submitted_at: '2026-09-21T20:40:00Z', workflow_state: 'submitted', user: { id: 901, name: 'Sam Rivera' }, attachments: [{ id: 7, display_name: 'essay.txt', size: 40, url: 'https://canvas.test/files/7/download' }] },
+        { user_id: 901, attempt: 2, submission_type: 'online_upload', submitted_at: '2026-09-21T20:40:00Z', workflow_state: 'submitted', user: { id: 901, name: 'Sam Rivera' }, attachments: [{ id: 7, display_name: 'essay.txt', size: 31, url: 'https://canvas.test/files/7/download' }] },
         { user_id: 902, attempt: 1, submission_type: 'online_url', submitted_at: '2026-09-21T21:00:00Z', workflow_state: 'submitted', user: { id: 902, name: 'Ash Kim' } }
     ];
 
+    const SCOPED_SUBMISSION = {
+        user_id: 901,
+        attachments: [{ id: 7, display_name: 'essay.txt', size: 31, url: 'https://canvas.test/files/7/download' }]
+    };
+
     function liveService(store: MemoryStore, download?: () => Promise<{ data: Uint8Array; size: number }>) {
-        const { client } = fakeClient({
-            get: { '/assignments/101': { id: 101 } },
+        const { client, calls } = fakeClient({
+            get: { '/assignments/101': { id: 101 }, '/submissions/901': SCOPED_SUBMISSION },
             getAll: { '/assignments': [{ id: 101, name: 'Technical Description', submission_types: ['online_text_entry', 'online_upload'], has_submitted_submissions: true }], '/submissions': SUBMISSIONS },
             download
         });
         const gateway = new LiveCanvasImportGateway({ client, canvasCourseId: '55', extractor: passthroughExtractor });
-        return new SafeCanvasImportService(store, gateway);
+        return { service: new SafeCanvasImportService(store, gateway), calls };
     }
 
     const request = { courseId: 'course-1', targetAssignmentId: 'assignment-1', canvasAssignmentId: '101' };
@@ -330,7 +350,7 @@ describe('SafeCanvasImportService over a live gateway', () => {
 
     it('stores text entries verified and uploads awaiting verification', async () => {
         const store = new MemoryStore();
-        const result = await liveService(store, okDownload).importAssignment(request);
+        const result = await liveService(store, okDownload).service.importAssignment(request);
 
         expect(result).toMatchObject({ importedCount: 2, skippedCount: 0, unsupportedCount: 1, failedCount: 0, integration: 'canvas' });
 
@@ -344,7 +364,7 @@ describe('SafeCanvasImportService over a live gateway', () => {
 
     it('persists no institutional identifier alongside the Canvas user id', async () => {
         const store = new MemoryStore();
-        await liveService(store, okDownload).importAssignment(request);
+        await liveService(store, okDownload).service.importAssignment(request);
 
         for (const submission of store.submissions) {
             // studentId must stay a one-way hash that does not embed the Canvas id.
@@ -357,8 +377,8 @@ describe('SafeCanvasImportService over a live gateway', () => {
 
     it('re-importing creates nothing new', async () => {
         const store = new MemoryStore();
-        await liveService(store, okDownload).importAssignment(request);
-        const retry = await liveService(store, okDownload).importAssignment(request);
+        await liveService(store, okDownload).service.importAssignment(request);
+        const retry = await liveService(store, okDownload).service.importAssignment(request);
 
         expect(retry).toMatchObject({ importedCount: 0, skippedCount: 2, unsupportedCount: 1 });
         expect(store.submissions).toHaveLength(2);
@@ -367,7 +387,7 @@ describe('SafeCanvasImportService over a live gateway', () => {
     it('keeps importing when one submission fails to download', async () => {
         const store = new MemoryStore();
         const failing = async () => { throw new Error('Canvas file download returned 500'); };
-        const result = await liveService(store, failing).importAssignment(request);
+        const result = await liveService(store, failing).service.importAssignment(request);
 
         // The text entry still lands; only the upload is counted as retryable.
         expect(result).toMatchObject({ importedCount: 1, failedCount: 1, unsupportedCount: 1 });
@@ -398,9 +418,42 @@ describe('SafeCanvasImportService over a live gateway', () => {
         expect(store.submissions).toHaveLength(0);
     });
 
+    it('resolves an attachment through the course, assignment and student, not the preview url', async () => {
+        const store = new MemoryStore();
+        const { service, calls } = liveService(store, okDownload);
+        await service.importAssignment(request);
+
+        expect(calls).toContainEqual(expect.objectContaining({
+            method: 'get',
+            path: '/courses/55/assignments/101/submissions/901'
+        }));
+    });
+
+    it('refuses an attachment that is not on that student\'s submission for that assignment', async () => {
+        const store = new MemoryStore();
+        const { client } = fakeClient({
+            get: { '/assignments/101': { id: 101 }, '/submissions/901': { user_id: 901, attachments: [] } },
+            getAll: {
+                '/assignments': [{ id: 101, name: 'Technical Description', submission_types: ['online_text_entry', 'online_upload'], has_submitted_submissions: true }],
+                '/submissions': SUBMISSIONS
+            },
+            download: okDownload
+        });
+        const service = new SafeCanvasImportService(
+            store,
+            new LiveCanvasImportGateway({ client, canvasCourseId: '55', extractor: passthroughExtractor })
+        );
+
+        const result = await service.importAssignment(request);
+
+        // The text entry still lands; the upload Canvas will not vouch for is a failure.
+        expect(result).toMatchObject({ importedCount: 1, failedCount: 1, unsupportedCount: 1 });
+        expect(store.submissions.every((item) => item.sourceType === 'canvas_text')).toBe(true);
+    });
+
     it('never issues a write to Canvas during an import', async () => {
         // post/put/delete on the fake client throw; reaching one fails the import loudly.
         const store = new MemoryStore();
-        await expect(liveService(store, okDownload).importAssignment(request)).resolves.toMatchObject({ integration: 'canvas' });
+        await expect(liveService(store, okDownload).service.importAssignment(request)).resolves.toMatchObject({ integration: 'canvas' });
     });
 });

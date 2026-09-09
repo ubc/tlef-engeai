@@ -129,12 +129,18 @@ describe('validateSflAnalysis', () => {
         )).toThrow('SFL analysis evidence did not match');
     });
 
-    it('refuses to extrapolate Ferreira expectedness rules to custom genres', () => {
-        expect(() => validateSflAnalysis(
+    it('omits Ferreira expectedness rules from custom genres instead of failing the run', () => {
+        const result = validateSflAnalysis(
             analysis(),
             'The measured value increased.',
             { ...profile, genreId: 'memo', genreLabel: 'Technical memo', genreState: 'custom' }
-        )).toThrow('Ferreira expectedness rules cannot be extrapolated');
+        );
+
+        expect(result.findings[0].ruleIds).toEqual([]);
+        expect(result.findings[0].sourceIds).toEqual([]);
+        expect(result.internalFlags).toContain(
+            'Ferreira expectedness rule ids were omitted because the approved profile is custom or composite.'
+        );
     });
 
     it('deduplicates C01/O01 genre-staging findings over the same evidence', () => {

@@ -19,13 +19,16 @@ describe('writing feedback rubric page source contract', () => {
         expect(source).not.toContain("'sfl.genreId'");
     });
 
-    it('uses plain-language primary labels for the SFL profile fields', () => {
-        expect(source).toContain("label: 'Subject matter'");
-        expect(source).toContain("label: 'Reader relationship'");
-        expect(source).toContain("label: 'Format and conditions'");
-        expect(source).toContain("label: 'Who marks it'");
-        expect(source).toContain("label: 'Writing conditions'");
-        expect(source).toContain("label: 'Genres inside it'");
+    it('uses plain-language primary labels for the profile fields', () => {
+        // The v3 redesign replaced these labels with questions a first-time
+        // instructor can answer without knowing the framework behind them. The
+        // spec's wording table is normative; this pins the result.
+        expect(source).toContain("label: 'What is the writing about?'");
+        expect(source).toContain("label: 'How should the student sound?'");
+        expect(source).toContain("label: 'How long, and in what form?'");
+        expect(source).toContain("label: 'Who marks it?'");
+        expect(source).toContain("label: 'What were the writing conditions?'");
+        expect(source).toContain("label: 'Smaller pieces of writing inside it'");
     });
 
     it('carries the SFL term only as a secondary hint, never as a primary label', () => {

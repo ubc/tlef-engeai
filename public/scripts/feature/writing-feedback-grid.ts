@@ -62,16 +62,18 @@ const MAX_TEXT = 1200;
  * ------------------------------------------------------------------------- */
 
 /**
- * spaceBandsEvenly - divides a criterion's weight into one value per level.
+ * spaceBandsEvenly - divides a criterion's weight into a contiguous band per level.
  *
- * Each level earns its share of the weight rounded to a whole point, with the top level
- * earning the full weight so rounding never loses a point. A weight smaller than the
- * number of levels forces adjacent levels onto the same value — whole points cannot be
- * divided more finely than one apiece.
+ * Each level takes a slice of the weight, the slices touch so every whole point from
+ * zero to the weight falls in exactly one band, and the top level's band ends on the
+ * weight so rounding never loses a point. A weight smaller than the number of levels
+ * cannot give each level its own slice — whole points cannot be divided more finely
+ * than one apiece — so adjacent levels share a band. That is a real state, not an
+ * error, but callers that render these should warn staff it has happened.
  *
  * @param points - Maximum points the criterion contributes
  * @param levels - Levels of the rubric, in any order; rank decides the sequence
- * @returns Points per level id, or an empty map when the criterion carries no weight
+ * @returns Bands per level id, or an empty map when the criterion carries no weight
  */
 export function spaceBandsEvenly(
     points: number,
@@ -81,15 +83,20 @@ export function spaceBandsEvenly(
 
     const ordered = [...levels].sort((left, right) => left.rank - right.rank);
     const bands: Record<string, RubricCell> = {};
+    let previousTop = -1;
 
     ordered.forEach((level, index) => {
-        // Each level earns its share of the weight; the top level earns all of it, so
-        // rounding never loses a point. `min` and `max` are equal because a cell holds a
-        // single award, not a range — the pair is kept only so stored rubrics keep their shape.
-        const award = index === ordered.length - 1
+        // The top level ends on the weight exactly; the rest take their proportional
+        // share rounded down, which is what makes the slices whole points.
+        const top = index === ordered.length - 1
             ? points
             : Math.floor((points * (index + 1)) / ordered.length);
-        bands[level.id] = { min: award, max: award };
+        // Where the weight is too small to advance, the band collapses onto its
+        // neighbour's value rather than starting above where it ends -- which the
+        // draft schema rejects outright.
+        const min = Math.min(previousTop + 1, top);
+        bands[level.id] = { min, max: top };
+        previousTop = top;
     });
 
     return bands;
@@ -126,38 +133,102 @@ export function totalRubricPoints(criteria: ReadonlyArray<RubricCriterion>): num
     return criteria.reduce((total, criterion) => total + (criterion.points ?? 0), 0);
 }
 
+/**
+ * earnedLevelFor - the level a staff-final grade falls in.
+ *
+ * Resolves through {@link resolveBand}, so a criterion that authored no cells still
+ * awards a level rather than none: `cells` is sparse, and reading it directly left
+ * every unbanded criterion unmarked wherever this answer is drawn.
+ *
+ * Bands do not always cover the criterion. An imported rubric can leave gaps, a rubric
+ * stored under the superseded single-value rule has `min === max` at every level, and a
+ * grade may be fractional. In each case the points fall in no band at all, so the answer
+ * clamps: the highest-ranked level the points reach, or the lowest banded level when
+ * they reach none. No band is invented -- every band here is one the rubric page already
+ * shows staff.
+ *
+ * @param criterion - Criterion the grade was awarded against
+ * @param levels - Complete level set of the rubric
+ * @param points - Staff-final points awarded for this criterion
+ * @returns The level earned, or undefined when the criterion has no bands to compare
+ */
+export function earnedLevelFor(
+    criterion: RubricCriterion,
+    levels: ReadonlyArray<RubricLevel>,
+    points: number
+): RubricLevel | undefined {
+    if (!Number.isFinite(points)) return undefined;
+
+    const banded = [...levels]
+        .sort((left, right) => left.rank - right.rank)
+        .map((level) => ({ level, band: resolveBand(criterion, level.id, levels) }))
+        .filter((entry): entry is { level: RubricLevel; band: RubricCell } => entry.band !== undefined);
+    if (!banded.length) return undefined;
+
+    const containing = banded.find((entry) => points >= entry.band.min && points <= entry.band.max);
+    if (containing) return containing.level;
+
+    // No band contains the points, so award the highest level they reach. Below every
+    // band, that is the lowest level the criterion offers.
+    const reached = banded.filter((entry) => points >= entry.band.min);
+    return reached.length ? reached[reached.length - 1].level : banded[0].level;
+}
+
 /* ------------------------------- End mirror ------------------------------- */
+
+/** Inclusive range typed by staff: a hyphen, an en or em dash, or the word "to". */
+const BAND_RANGE = /^(\d+(?:\.\d+)?)\s*(?:-|–|—|to)\s*(\d+(?:\.\d+)?)$/i;
+
+/**
+ * withinBandLimits - whether a number is a points value the draft schema will accept
+ *
+ * @param value - Candidate points value
+ * @returns True when finite and within 0..1000 inclusive
+ */
+function withinBandLimits(value: number): boolean {
+    return Number.isFinite(value) && value >= 0 && value <= 1000;
+}
 
 /**
  * formatBand - the staff-facing text for the points one cell awards
  *
- * A cell holds a single value. A rubric authored before ranges were removed may still
- * carry `min !== max`; it shows its `max`, the most that level could earn, and saving
- * the rubric normalises it. Nothing is silently lowered.
+ * A band that collapsed onto a single value reads as that value; a real range reads
+ * as both ends, which is the number a marker actually needs -- "16-22" says what
+ * latitude the level allows in a way "22" cannot.
  *
  * @param cell - Cell to display
- * @returns The cell's points as a plain number
+ * @returns One number, or an inclusive range joined by an en dash
  */
 export function formatBand(cell: RubricCell): string {
-    return String(cell.max);
+    return cell.min === cell.max ? String(cell.max) : `${cell.min}–${cell.max}`;
 }
 
 /**
  * parseBand - reads the points typed by staff into one cell
  *
- * One number. A range typed by hand is rejected rather than guessed at, so the cell reads
- * as empty and the hint asks for points — Canvas rubrics carry a single value per rating,
- * and a rubric authored here awards one value too.
+ * Accepts one number, or a range written any of the ways staff actually write one.
+ * A range given high-end-first is normalised rather than refused; anything else is
+ * rejected rather than guessed at, so the cell reads as empty and its hint asks for
+ * points.
  *
  * @param text - Raw control value
- * @returns The cell, or undefined when the text is blank or is not a single number
+ * @returns The cell, or undefined when the text is blank or is not points
  */
 export function parseBand(text: string): RubricCell | undefined {
     const normalized = text.trim();
     if (!normalized) return undefined;
+
+    const range = BAND_RANGE.exec(normalized);
+    if (range) {
+        const first = Number(range[1]);
+        const second = Number(range[2]);
+        if (!withinBandLimits(first) || !withinBandLimits(second)) return undefined;
+        // Written either way round; the schema requires min <= max.
+        return first <= second ? { min: first, max: second } : { min: second, max: first };
+    }
+
     const points = Number(normalized);
-    if (!Number.isFinite(points) || points < 0 || points > 1000) return undefined;
-    // Stored as an equal pair: the shape stays `{ min, max }` so nothing downstream changes.
+    if (!withinBandLimits(points)) return undefined;
     return { min: points, max: points };
 }
 
@@ -273,6 +344,29 @@ function bandsDisagreeAt(criterion: RubricCriterion): number | undefined {
 }
 
 /**
+ * autoGrow - keeps a textarea tall enough to show everything in it
+ *
+ * A rubric descriptor may run to 400 characters inside a control that was two rows
+ * tall, so most descriptors stopped mid-word with no affordance but the resize
+ * handle. Staff could not read their own rubric.
+ *
+ * Height is cleared before it is measured, because scrollHeight of an element that
+ * is already tall enough reports the height it was given, not the height it needs.
+ * The first measurement is deferred: the control is not in the document when this
+ * is called, and a detached element has no scrollHeight.
+ *
+ * @param control - Textarea to keep sized to its content
+ */
+function autoGrow(control: HTMLTextAreaElement): void {
+    const fit = (): void => {
+        control.style.height = 'auto';
+        control.style.height = `${control.scrollHeight}px`;
+    };
+    control.addEventListener('input', fit);
+    requestAnimationFrame(fit);
+}
+
+/**
  * renderRubricGrid - draws one rubric as a single criteria-by-levels table
  *
  * The grid owns every control for this rubric's criteria and levels and names them
@@ -329,8 +423,8 @@ export function renderRubricGrid(
         const toolbar = document.createElement('div');
         toolbar.className = 'wf-rubric-tools';
 
-        toolbar.append(createButton(
-            'Add criterion',
+        const addCriterion = createButton(
+            'Add a criterion',
             'secondary',
             async () => {
                 syncFromForm();
@@ -345,10 +439,10 @@ export function renderRubricGrid(
                 focusRow(draft.criteria.length - 1);
             },
             draft.criteria.length >= MAX_CRITERIA
-        ));
+        );
 
-        toolbar.append(createButton(
-            'Add level',
+        const addLevel = createButton(
+            'Add a level',
             'secondary',
             async () => {
                 syncFromForm();
@@ -363,10 +457,10 @@ export function renderRubricGrid(
                 focusColumn(draft.levels.length - 1);
             },
             draft.levels.length >= MAX_LEVELS
-        ));
+        );
 
-        toolbar.append(createButton(
-            'Space points evenly',
+        const spreadEvenly = createButton(
+            'Spread points evenly',
             'secondary',
             async () => {
                 syncFromForm();
@@ -385,7 +479,7 @@ export function renderRubricGrid(
                 announce('Points spaced evenly across every level.');
             },
             !draft.criteria.some((criterion) => (criterion.points ?? 0) > 0)
-        ));
+        );
 
         const available = options.library.filter(
             (candidate) => !draft.criteria.some((criterion) => criterion.id === candidate.id)
@@ -395,7 +489,7 @@ export function renderRubricGrid(
         librarySelect.setAttribute('aria-label', 'Criterion library');
         const placeholder = document.createElement('option');
         placeholder.value = '';
-        placeholder.textContent = available.length ? 'Choose a library criterion' : 'No additional library criteria';
+        placeholder.textContent = available.length ? 'Pick one…' : 'No additional library criteria';
         librarySelect.append(placeholder);
         available.forEach((candidate) => {
             const option = document.createElement('option');
@@ -405,7 +499,7 @@ export function renderRubricGrid(
         });
         librarySelect.disabled = !available.length || draft.criteria.length >= MAX_CRITERIA;
         const addFromLibrary = createButton(
-            'Add from library',
+            'Add from the library',
             'secondary',
             async () => {
                 const candidate = available.find((entry) => entry.id === librarySelect.value);
@@ -425,8 +519,25 @@ export function renderRubricGrid(
         librarySelect.addEventListener('change', () => {
             addFromLibrary.disabled = librarySelect.disabled || !librarySelect.value;
         });
-        toolbar.append(librarySelect, addFromLibrary);
+        // The two "add" buttons are one segmented control: they do the same kind of
+        // thing to the same table, and the rest of the toolbar is pushed away from them.
+        const addGroup = document.createElement('div');
+        addGroup.className = 'wf-grid-tools__add';
+        addGroup.append(addCriterion, addLevel);
+
+        const spacer = document.createElement('span');
+        spacer.className = 'wf-grid-tools__spacer';
+
+        toolbar.append(addGroup, spacer, spreadEvenly, librarySelect, addFromLibrary);
         container.append(toolbar);
+
+        const bandHint = createText(
+            'p',
+            'Points can be one number, or a range like 16–22.',
+            'wf-grid-band-hint'
+        );
+        bandHint.id = `${gridId}-band-hint`;
+        container.append(bandHint);
     }
 
     /* Table --------------------------------------------------------------- */
@@ -516,13 +627,14 @@ export function renderRubricGrid(
         description.maxLength = MAX_TEXT;
         description.readOnly = !canEdit;
         description.className = 'wf-grid-text';
+        autoGrow(description);
         description.addEventListener('input', onChange);
 
         cell.append(bar, description);
         headRow.append(cell);
     });
 
-    const pointsHead = createText('th', 'Points', 'wf-grid-points-head');
+    const pointsHead = createText('th', 'Weight', 'wf-grid-points-head');
     pointsHead.id = `${gridId}-points`;
     pointsHead.setAttribute('scope', 'col');
     headRow.append(pointsHead);
@@ -612,6 +724,7 @@ export function renderRubricGrid(
         description.maxLength = MAX_TEXT;
         description.readOnly = !canEdit;
         description.className = 'wf-grid-text';
+        autoGrow(description);
         description.addEventListener('input', onChange);
         rowHead.append(bar, description);
 
@@ -637,6 +750,7 @@ export function renderRubricGrid(
             );
             bandInput.className = 'wf-grid-band';
             bandInput.readOnly = !canEdit;
+            bandInput.setAttribute('aria-describedby', `${gridId}-band-hint`);
 
             const descriptor = named(
                 textAreaControl(band?.descriptor ?? '', 2),
@@ -645,6 +759,7 @@ export function renderRubricGrid(
             );
             descriptor.maxLength = MAX_DESCRIPTOR;
             descriptor.className = 'wf-grid-text';
+            autoGrow(descriptor);
             descriptor.addEventListener('input', onChange);
 
             const hint = createText('p', '', 'wf-grid-cell-hint');
@@ -659,9 +774,9 @@ export function renderRubricGrid(
                 descriptor.readOnly = !canEdit || !bandFilled;
                 cell.classList.toggle('wf-grid-cell--empty', !bandFilled);
                 if (!bandFilled) {
-                    hint.textContent = 'Enter points';
+                    hint.textContent = 'Points for this level';
                 } else if (!descriptor.value.trim()) {
-                    hint.textContent = 'Enter a description';
+                    hint.textContent = 'What does this level look like?';
                 } else {
                     hint.textContent = '';
                 }
@@ -747,7 +862,7 @@ export function renderRubricGrid(
     const footRow = document.createElement('tr');
     const totalLabel = document.createElement('th');
     totalLabel.className = 'wf-grid-total-label';
-    totalLabel.textContent = 'Total';
+    totalLabel.textContent = 'Total across every criterion';
     totalLabel.scope = 'row';
     totalLabel.colSpan = draft.levels.length + 1;
     footRow.append(totalLabel, totalCell);

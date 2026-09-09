@@ -11,8 +11,9 @@
  * @description: Regression coverage for Canvas-rubric-to-grid mapping.
  */
 
-import { CANVAS_IMPORT_PLACEHOLDERS, canvasRubricToSeedShape } from '../canvas-rubric-mapping';
+import { CANVAS_IMPORT_PLACEHOLDERS, canvasRubricToSeedShape, mapCanvasRubric } from '../canvas-rubric-mapping';
 import { writingRubricDraftInputSchema } from '../rubric-schema';
+import { earnedLevelFor } from '../rubric-bands';
 import { buildDefaultWritingRubric } from '../default-rubric-profile';
 import { seedRubricForLens } from '../rubric-seed';
 import type { CanvasImportedRubric, CanvasRubricRow } from '../contracts';
@@ -77,11 +78,13 @@ describe('canvasRubricToSeedShape', () => {
         expect(shape.levels).toHaveLength(4);
     });
 
-    it('carries the rating points into a single-value band', () => {
+    it('reads each rating as the top of a band', () => {
         const shape = canvasRubricToSeedShape(rubric([row('Thesis', FULL_SCALE)]))!;
         const cells = shape.criteria[0].cells!;
-        // A Canvas rating is one value, not a range, so the band has no width.
-        expect(cells.poor).toMatchObject({ min: 1, max: 1 });
+        // A Canvas rating is a cut point (D-100): the weakest band reaches down to zero and
+        // each one above it starts a point above the rating below. Adjacent ratings one point
+        // apart leave bands one point wide, which is the honest reading of a 1-4 scale.
+        expect(cells.poor).toMatchObject({ min: 0, max: 1 });
         expect(cells.excellent).toMatchObject({ min: 4, max: 4, descriptor: 'Excellent descriptor' });
     });
 
@@ -175,5 +178,199 @@ describe('seeding a draft from a Canvas rubric', () => {
         const seeded = seedRubricForLens({ lens: 'linguistic', actorUserId: 'user-1', canvasRubric: shape });
         expect(seeded.status).toBe('draft');
         expect(seeded.approvedAt).toBeUndefined();
+    });
+});
+
+/** A rubric of the given shape: `rows` criteria, each carrying `cols` ratings. */
+function rubricWith(rows: number, cols: number): CanvasImportedRubric {
+    const ratings: Array<[string, number]> = Array.from(
+        { length: cols },
+        (_, index) => [`Rating ${index + 1}`, index + 1] as [string, number]
+    );
+    return rubric(Array.from({ length: rows }, (_, index) => row(`Criterion ${index + 1}`, ratings, 10)));
+}
+
+describe('mapCanvasRubric reports why it refused', () => {
+    it('names a rubric whose criteria offer only one rating', () => {
+        const result = mapCanvasRubric(rubricWith(2, 1));
+        expect(result.shape).toBeNull();
+        expect(result.refusal).toBe('too_few_ratings');
+    });
+
+    it('names a rubric with more criteria than the grid allows', () => {
+        const result = mapCanvasRubric(rubricWith(11, 4));
+        expect(result.shape).toBeNull();
+        expect(result.refusal).toBe('too_many_criteria');
+    });
+
+    it('names a rubric with more ratings than the grid allows', () => {
+        const result = mapCanvasRubric(rubricWith(2, 9));
+        expect(result.shape).toBeNull();
+        expect(result.refusal).toBe('too_many_levels');
+    });
+
+    it('names an absent rubric', () => {
+        expect(mapCanvasRubric(undefined).refusal).toBe('no_rubric');
+    });
+
+    it('reports no refusal when the rubric maps', () => {
+        const result = mapCanvasRubric(rubricWith(3, 4));
+        expect(result.shape).not.toBeNull();
+        expect(result.refusal).toBeUndefined();
+    });
+
+    it('leaves canvasRubricToSeedShape behaving exactly as before', () => {
+        expect(canvasRubricToSeedShape(rubricWith(2, 1))).toBeNull();
+        expect(canvasRubricToSeedShape(rubricWith(3, 4))).not.toBeNull();
+    });
+});
+
+describe('canvas rubric id map', () => {
+    it('maps our criterion and level ids back to Canvas ids', () => {
+        const mapped = mapCanvasRubric(rubric([row('Thesis', FULL_SCALE, 10)]));
+
+        expect(mapped.shape).not.toBeNull();
+        const criterionId = mapped.shape!.criteria[0].id;
+        const levelIds = mapped.shape!.levels.map((level) => level.id);
+
+        expect(mapped.ids![criterionId].criterionId).toBe('_thesis');
+        // Levels are ordered weakest-first, matching buildCells.
+        expect(mapped.ids![criterionId].ratingIds[levelIds[0]]).toBe('r_Poor');
+        expect(mapped.ids![criterionId].ratingIds[levelIds[3]]).toBe('r_Excellent');
+    });
+
+    it('maps every criterion, not only the first', () => {
+        const mapped = mapCanvasRubric(rubric([
+            row('Thesis', FULL_SCALE, 10),
+            row('Evidence', FULL_SCALE, 8)
+        ]));
+
+        expect(Object.keys(mapped.ids!)).toEqual(['thesis', 'evidence']);
+        expect(mapped.ids!.evidence.criterionId).toBe('_evidence');
+    });
+
+    it('leaves a ragged row without ids for the columns it does not reach', () => {
+        const mapped = mapCanvasRubric(rubric([
+            row('Thesis', FULL_SCALE, 10),
+            row('Evidence', [['Good', 3], ['Poor', 1]], 8)
+        ]));
+
+        const levelIds = mapped.shape!.levels.map((level) => level.id);
+        expect(Object.keys(mapped.ids!.evidence.ratingIds)).toHaveLength(2);
+        expect(mapped.ids!.evidence.ratingIds[levelIds[0]]).toBe('r_Poor');
+        expect(mapped.ids!.evidence.ratingIds[levelIds[3]]).toBeUndefined();
+    });
+
+    it('returns no id map when the rubric is refused', () => {
+        expect(mapCanvasRubric(null).ids).toBeUndefined();
+        expect(mapCanvasRubric(rubric([row('Thesis', [['Only', 1]], 10)])).ids).toBeUndefined();
+    });
+});
+
+describe('a Canvas rating is read as the top of a band', () => {
+    it('derives contiguous non-overlapping bands from the rating cut points', () => {
+        const mapped = mapCanvasRubric(rubric([
+            row('Clarity', [['Exemplary', 15], ['Proficient', 12], ['Developing', 8], ['Weak', 5]], 15)
+        ]));
+        const shape = mapped.shape!;
+        const cells = shape.criteria[0]!.cells!;
+        expect(shape.levels.map((level) => cells[level.id])).toEqual([
+            { min: 0, max: 5, descriptor: 'Weak descriptor' },
+            { min: 6, max: 8, descriptor: 'Developing descriptor' },
+            { min: 9, max: 12, descriptor: 'Proficient descriptor' },
+            { min: 13, max: 15, descriptor: 'Exemplary descriptor' }
+        ]);
+    });
+
+    it('reaches the criterion weight when the strongest rating sits below it', () => {
+        const mapped = mapCanvasRubric(rubric([row('Clarity', [['Strong', 8], ['Weak', 4]], 10)]));
+        const shape = mapped.shape!;
+        const cells = shape.criteria[0]!.cells!;
+        expect(shape.levels.map((level) => cells[level.id]!.max)).toEqual([4, 10]);
+    });
+
+    it('collapses duplicate rating points instead of inverting a band', () => {
+        const mapped = mapCanvasRubric(rubric([row('Clarity', [['Best', 3], ['Same', 3], ['Also', 3]], 3)]));
+        const shape = mapped.shape!;
+        const cells = shape.criteria[0]!.cells!;
+        // Tied ratings leave columns unbanded rather than inverted or overlapping; whatever
+        // band survives still reads floor-then-ceiling.
+        Object.values(cells).forEach((cell) => {
+            expect(cell.min).toBeLessThanOrEqual(cell.max);
+        });
+        expect(writingRubricDraftInputSchema.safeParse({
+            ...buildDefaultWritingRubric('user-1'),
+            ...shape
+        }).success).toBe(true);
+    });
+
+    it('gives a shared cut point to the strongest level that holds it, not to overlapping bands', () => {
+        // Ratings at the same points cannot be told apart by score. Banding each of them
+        // made overlapping cells, and `earnedLevelFor` matches weakest-first, so a student
+        // scoring the top of the range was awarded the weakest of the tied levels.
+        const mapped = mapCanvasRubric(rubric([row('Clarity', [['Best', 3], ['Same', 3], ['Also', 3]], 3)]));
+        const shape = mapped.shape!;
+        const criterion = shape.criteria[0]!;
+        const ordered = [...shape.levels].sort((left, right) => left.rank - right.rank);
+        const bands = ordered.map((level) => criterion.cells![level.id]).filter(Boolean) as Array<{ min: number; max: number }>;
+
+        expect(bands).toHaveLength(1);
+        expect(earnedLevelFor(criterion as never, shape.levels as never, 3)).toBe(ordered[ordered.length - 1]);
+    });
+
+    it('keeps a repeated weakest rating from swallowing the band above it', () => {
+        const mapped = mapCanvasRubric(rubric([row('Clarity', [['Missing', 0], ['Poor', 0], ['Strong', 4]], 4)]));
+        const criterion = mapped.shape!.criteria[0]!;
+        const ordered = [...mapped.shape!.levels].sort((left, right) => left.rank - right.rank);
+        const bands = ordered.map((level) => criterion.cells![level.id]).filter(Boolean) as Array<{ min: number; max: number }>;
+
+        // Contiguous and non-overlapping: every band starts above the one before it.
+        bands.forEach((band, index) => {
+            expect(band.min).toBeLessThanOrEqual(band.max);
+            if (index > 0) expect(band.min).toBeGreaterThan(bands[index - 1]!.max);
+        });
+        expect(earnedLevelFor(criterion as never, mapped.shape!.levels as never, 4)).toBe(ordered[ordered.length - 1]);
+    });
+
+    it('falls back to even spacing when no rating carries points', () => {
+        const withoutPoints = rubric([row('Clarity', [['Weak', 0], ['Strong', 0]], 10)]);
+        withoutPoints.rows[0]!.ratings.forEach((rating) => { delete (rating as { points?: number }).points; });
+        const mapped = mapCanvasRubric(withoutPoints);
+        const shape = mapped.shape!;
+        const cells = shape.criteria[0]!.cells!;
+        expect(shape.levels.map((level) => cells[level.id])).toEqual([
+            { min: 0, max: 5, descriptor: 'Weak descriptor' },
+            { min: 6, max: 10, descriptor: 'Strong descriptor' }
+        ]);
+    });
+
+    it('bands only the columns a short row actually has, leaving aligned gaps as gaps', () => {
+        const mapped = mapCanvasRubric(rubric([
+            row('Full', [['Exemplary', 15], ['Proficient', 12], ['Developing', 8], ['Weak', 5]], 15),
+            row('Short', [['Ok', 6], ['No', 2]], 6)
+        ]));
+        const shape = mapped.shape!;
+        const short = shape.criteria[1]!.cells!;
+        expect(Object.keys(short)).toHaveLength(2);
+        expect(short[shape.levels[0]!.id]).toEqual({ min: 0, max: 2, descriptor: 'No descriptor' });
+        expect(short[shape.levels[1]!.id]).toEqual({ min: 3, max: 6, descriptor: 'Ok descriptor' });
+    });
+
+    it('produces a draft the rubric schema still accepts', () => {
+        const shape = mapCanvasRubric(rubric([
+            row('Clarity', [['Exemplary', 15], ['Proficient', 12], ['Developing', 8], ['Weak', 5]], 15)
+        ])).shape!;
+        const parsed = writingRubricDraftInputSchema.safeParse({
+            title: 'Essay',
+            task: 'Write an essay about a process you observed.',
+            audience: 'First-year peers',
+            purpose: 'Explain a process',
+            gradingIntent: 'Grade on clarity',
+            constraints: ['800 words'],
+            learningOutcomes: ['Explain a process clearly'],
+            criteria: shape.criteria,
+            levels: shape.levels
+        });
+        expect(parsed.success).toBe(true);
     });
 });

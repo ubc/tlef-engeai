@@ -984,6 +984,15 @@
     cursor: pointer;
 }
 
+.wf-rubric-section__subtitle {
+    display: block;
+    margin-top: 2px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 1.4;
+}
+
 .wf-rubric-section__title {
     flex: 1 1 auto;
     margin: 0;
@@ -1032,48 +1041,256 @@
     min-height: 44px;
 }
 
-.wf-rubric-step {
+/* Guided steps -- the same card language as .wf-assignment on the landing page,
+   so the two pages read as one product. No left-accent bar: an equally weighted
+   green rule down every header is what made the old page read as a flat stack. */
+
+.wf-step {
     margin: 0 0 20px;
     background: var(--chat-bg);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: 10px;
     overflow: hidden;
 }
 
-.wf-rubric-step-header {
+.wf-step-header {
     display: flex;
     align-items: center;
-    gap: 12px;
-    min-height: 52px;
-    padding: 16px 20px;
+    gap: 14px;
+    min-height: 56px;
+    padding: 14px 20px;
+    background: var(--background-2);
     cursor: pointer;
-    border-left: 4px solid var(--color-chbe-green);
+    transition: background-color 0.2s ease;
 }
 
-.wf-rubric-step-header .wf-section-title {
+.wf-step-header:hover {
+    background: var(--hover-bg);
+}
+
+.wf-step-header--static {
+    cursor: default;
+}
+
+.wf-step-header--static:hover {
+    background: var(--background-2);
+}
+
+.wf-step-title {
     flex: 1 1 auto;
     margin: 0;
+    color: var(--text-primary);
+    font-size: 18px;
+    font-weight: 600;
+    line-height: 1.3;
 }
 
-.wf-rubric-step-meta {
+.wf-step-meta {
     color: var(--text-secondary);
     font-size: 13px;
     white-space: nowrap;
 }
 
-.wf-rubric-step-body {
-    padding: 0 20px 20px;
+.wf-step-body {
+    padding: 20px;
 }
 
-.wf-rubric-step-body > .wf-rubric-step {
+/* Every control inside a step is a touch target at every width. The grid tools
+   already carried this; the description form's own actions did not, so
+   'Fill these in for me', 'Start over from the standard rubric' and the stage
+   repeater's Add measured 36px on a phone. */
+
+.wf-step-body .wf-button,
+.wf-approve-row .wf-button {
+    min-height: 44px;
+}
+
+.wf-step-body > .wf-step {
     margin: 0 0 15px;
 }
 
-.wf-rubric-step-body > .wf-rubric-step:last-child {
+.wf-step-body > .wf-step:last-child {
     margin-bottom: 0;
 }
 
-.wf-sfl-box {
+.wf-step-token {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: var(--color-chbe-green);
+    color: white;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.wf-step-token svg,
+.wf-step-token .feather {
+    width: 15px;
+    height: 15px;
+    stroke-width: 3;
+}
+
+/* A step's own headings drop .wf-section-title's green underline: a 1.5rem green
+   rule under every heading is a large part of why the page read as repetition. */
+
+.wf-step-body .wf-section-title,
+.wf-step-body .wf-subsection-title {
+    padding-bottom: 0;
+    border-bottom: 0;
+    color: var(--text-primary);
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0;
+}
+
+/* Progress strip -- three derived cells that always say where the user is */
+
+.wf-steps {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0;
+    margin: 0 0 28px;
+    padding: 0;
+    list-style: none;
+    background: var(--chat-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.wf-steps__item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 20px;
+    border-right: 1px solid var(--border-color);
+}
+
+.wf-steps__item:last-child {
+    border-right: 0;
+}
+
+.wf-steps__item[data-state="current"] {
+    background: var(--gingham-color);
+}
+
+.wf-steps__token {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--color-chbe-green);
+    color: white;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.wf-steps__item[data-state="pending"] .wf-steps__token {
+    background: var(--chat-bg);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+}
+
+.wf-steps__token svg,
+.wf-steps__token .feather {
+    width: 16px;
+    height: 16px;
+    stroke-width: 3;
+}
+
+.wf-steps__text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.wf-steps__label {
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.wf-steps__item[data-state="pending"] .wf-steps__label {
+    color: var(--text-secondary);
+}
+
+.wf-steps__detail {
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+/* Page heading -- the assignment's own name, matching .page-header h1 */
+
+.wf-rubric-header {
+    margin: 0 0 20px;
+}
+
+.wf-rubric-title {
+    margin: 0;
+    color: var(--color-chbe-green);
+    font-size: 2rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+/* Step 3 -- approve, plus what is still owed before feedback */
+
+.wf-approve-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    flex-wrap: wrap;
+}
+
+.wf-approve-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.wf-approve-copy p {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 14px;
+    line-height: 1.55;
+}
+
+.wf-owed {
+    margin-top: 16px;
+    padding: 12px 16px;
+    background: rgba(230, 126, 34, 0.1);
+    border: 1px solid color-mix(in srgb, var(--color-eng-red) 60%, var(--color-chbe-green));
+    border-radius: 8px;
+    color: color-mix(in srgb, var(--color-eng-red) 65%, var(--text-primary));
+}
+
+.wf-owed[hidden] {
+    display: none;
+}
+
+.wf-owed p {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.wf-owed__title {
+    font-weight: 600;
+}
+
+/* "What kind of writing is this?" -- the one sub-card inside step 1 */
+
+.wf-profile-box {
     margin: 16px 0 0;
     background: var(--background-2);
     border: 1px solid var(--border-color);
@@ -1081,7 +1298,7 @@
     overflow: hidden;
 }
 
-.wf-sfl-box-header {
+.wf-profile-box-header {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -1090,18 +1307,18 @@
     cursor: pointer;
 }
 
-.wf-sfl-box-header .wf-section-title {
+.wf-profile-box-header .wf-subsection-title {
     flex: 1 1 auto;
     margin: 0;
     font-size: 15px;
 }
 
-.wf-sfl-box-body {
+.wf-profile-box-body {
     padding: 4px 16px 16px;
 }
 
-.wf-sfl-group-label {
-    margin: 14px 0 6px;
+.wf-group-label {
+    margin: 16px 0 8px;
     color: var(--text-secondary);
     font-size: 12px;
     font-weight: 700;
@@ -1109,11 +1326,11 @@
     letter-spacing: 0.04em;
 }
 
-.wf-sfl-group-label:first-child {
+.wf-group-label:first-of-type {
     margin-top: 0;
 }
 
-.wf-sfl-hint {
+.wf-field-hint {
     display: block;
     margin-top: 4px;
     color: var(--text-secondary);
@@ -1122,7 +1339,8 @@
 }
 
 .wf-rubric-library-select {
-    min-height: 40px;
+    /* The grid toolbar's one non-button control; 44px so it matches the buttons beside it. */
+    min-height: 44px;
     min-width: min(100%, 16rem);
     padding: 8px 12px;
     background: white;
@@ -1151,12 +1369,23 @@
 
 /* Rubric grid — criteria as rows, performance levels as columns */
 
+.wf-grid-band-hint {
+    margin: 0 0 10px;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
 .wf-grid-scroll {
     /* Eight levels will not fit a narrow viewport; the table scrolls, the page does not. */
     overflow-x: auto;
     padding-bottom: 4px;
     scrollbar-gutter: stable;
     scrollbar-color: rgba(0, 0, 0, 0.22) transparent;
+    /* The frame belongs to the scroll container, not the table: border-collapse hands a
+       sticky cell's outer border to the table, where it does not paint, so the first and
+       last columns read as open edges. A border here holds at every scroll offset. */
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
 }
 
 .wf-grid-scroll::-webkit-scrollbar,
@@ -1180,14 +1409,16 @@
 
 .wf-grid th,
 .wf-grid td {
-    padding: 10px 12px;
+    padding: 12px 14px;
     text-align: left;
     vertical-align: top;
     border: 1px solid var(--border-color);
 }
 
+/* The band the step headers and the assignment cards use. The old green tint
+   appeared nowhere else on the page. */
 .wf-grid thead th {
-    background: color-mix(in srgb, var(--color-chbe-green) 12%, var(--chat-bg));
+    background: var(--background-2);
 }
 
 .wf-grid-corner,
@@ -1230,28 +1461,52 @@
 .wf-grid-label-input {
     flex: 1 1 auto;
     min-width: 0;
-    padding: 6px 8px;
-    background: white;
+    padding: 4px 6px;
+    background: transparent;
     color: var(--text-primary);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
+    border: 0;
+    border-radius: 4px;
     font: inherit;
     font-size: 14px;
     font-weight: 600;
 }
 
+.wf-grid-label-input:hover:not([readonly]) {
+    background: var(--hover-bg);
+}
+
+.wf-grid-label-input:focus-visible {
+    background: white;
+    outline: 2px solid var(--color-chbe-green);
+    outline-offset: 1px;
+}
+
 .wf-grid-text {
     display: block;
     width: 100%;
-    padding: 6px 8px;
-    background: white;
+    /* Two rows is the floor, not the ceiling: autoGrow sets an explicit height from
+       the content, and overflow must stay hidden or the box scrolls instead of grows. */
+    min-height: 3.4em;
+    padding: 4px 0;
+    background: transparent;
     color: var(--text-primary);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
+    border: 0;
+    border-radius: 4px;
     font: inherit;
     font-size: 13px;
-    line-height: 1.4;
-    resize: vertical;
+    line-height: 1.45;
+    overflow: hidden;
+    resize: none;
+}
+
+.wf-grid-text:hover:not([readonly]) {
+    background: var(--hover-bg);
+}
+
+.wf-grid-text:focus-visible {
+    background: white;
+    outline: 2px solid var(--color-chbe-green);
+    outline-offset: 1px;
 }
 
 .wf-grid-focus {
@@ -1261,17 +1516,31 @@
     font-style: italic;
 }
 
+/* Points read as a band, not as a field: the chip carries the range above the
+   descriptor it belongs to. */
 .wf-grid-band {
     width: 100%;
-    margin-bottom: 6px;
-    padding: 6px 8px;
-    background: white;
-    color: var(--text-primary);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
+    margin-bottom: 8px;
+    padding: 2px 8px;
+    background: var(--gingham-color);
+    color: var(--color-chbe-green);
+    border: 1px solid transparent;
+    border-radius: 4px;
     font: inherit;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.wf-grid-band:hover:not([readonly]),
+.wf-grid-band:focus-visible {
+    border-color: var(--color-chbe-green);
+}
+
+.wf-grid-band:focus-visible {
+    background: white;
+    outline: 2px solid var(--color-chbe-green);
+    outline-offset: 1px;
 }
 
 .wf-grid-cell .wf-grid-band {
@@ -1289,14 +1558,96 @@
 
 .wf-grid-weight-input {
     width: 100%;
-    padding: 6px 8px;
-    background: white;
+    padding: 4px 6px;
+    background: transparent;
     color: var(--text-primary);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
+    border: 0;
+    border-radius: 4px;
     font: inherit;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.wf-grid-weight-input:hover:not([readonly]) {
+    background: var(--hover-bg);
+}
+
+.wf-grid-weight-input:focus-visible {
+    background: white;
+    outline: 2px solid var(--color-chbe-green);
+    outline-offset: 1px;
+}
+
+/* The criterion and its weight stay put while the levels scroll, so the row you are
+   reading and the total it contributes to are never both off-screen. */
+.wf-grid-corner,
+.wf-grid-row-head {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: var(--chat-bg);
+    box-shadow: 1px 0 0 var(--border-color);
+}
+
+.wf-grid-corner {
+    background: var(--background-2);
+}
+
+.wf-grid-points-head,
+.wf-grid-weight {
+    position: sticky;
+    right: 0;
+    z-index: 2;
+    background: var(--chat-bg);
+    box-shadow: -1px 0 0 var(--border-color);
+}
+
+.wf-grid-points-head {
+    background: var(--background-2);
+}
+
+/* A sticky cell paints over its neighbour, so the focus ring inside one has to
+   outrank the cell beside it. */
+.wf-grid-row-head:focus-within,
+.wf-grid-weight:focus-within {
+    z-index: 3;
+}
+
+/* The grid owns its remove controls: quiet until reached for, red only on intent.
+   The danger variant paints its border red as well, so the border is quietened with
+   the colour -- otherwise every row still reads as a delete button at rest. */
+.wf-grid .wf-icon-button {
+    color: var(--text-secondary);
+    border-color: var(--border-color);
+}
+
+.wf-grid .wf-icon-button:hover,
+.wf-grid .wf-icon-button:focus-visible {
+    color: var(--color-eng-red);
+    border-color: var(--color-eng-red);
+}
+
+.wf-grid-tools__add {
+    display: inline-flex;
+}
+
+.wf-grid-tools__add .wf-button {
+    border-radius: 0;
+    margin-left: -1px;
+}
+
+.wf-grid-tools__add .wf-button:first-child {
+    border-radius: 6px 0 0 6px;
+    margin-left: 0;
+}
+
+.wf-grid-tools__add .wf-button:last-child {
+    border-radius: 0 6px 6px 0;
+}
+
+.wf-grid-tools__spacer {
+    flex: 1 1 auto;
 }
 
 .wf-grid-warnings:not(:empty) {
@@ -1899,6 +2250,9 @@ mark.wf-anchor.is-filtered-out,
     overflow-x: auto;
     scrollbar-gutter: stable;
     scrollbar-color: rgba(0, 0, 0, 0.22) transparent;
+    /* Framed for the same reason as .wf-grid-scroll: the table is wider than its box. */
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
 }
 
 .wf-suggested-grading__scroll::-webkit-scrollbar,
@@ -1942,6 +2296,30 @@ mark.wf-anchor.is-filtered-out,
     box-shadow: inset 3px 0 0 var(--color-chbe-green);
 }
 
+/*
+ * The level the staff-final grade falls in. Distinct from __choice, which marks what the
+ * model suggested: a filled green cell is where the grade landed, the inset bar is what was
+ * proposed, and the two read separately when they fall on the same cell.
+ */
+.wf-suggested-grading__earned {
+    background: var(--gingham-color);
+    box-shadow: inset 0 0 0 2px var(--color-chbe-green);
+}
+
+.wf-suggested-grading__choice.wf-suggested-grading__earned {
+    box-shadow: inset 0 0 0 2px var(--color-chbe-green), inset 3px 0 0 var(--color-chbe-green);
+}
+
+/* Inside the modal the grid is the whole content, so it gets the room the page could not give it. */
+.modal--grading .wf-suggested-grading__panel {
+    min-width: min(1200px, 88vw);
+}
+
+.modal--grading .wf-suggested-grading__scroll {
+    max-height: 68vh;
+    overflow-y: auto;
+}
+
 .wf-suggested-grading__tag {
     display: inline-block;
     margin-top: 4px;
@@ -1962,6 +2340,12 @@ mark.wf-anchor.is-filtered-out,
     color: var(--text-primary);
     font-size: 13px;
     font-weight: 700;
+}
+
+.wf-final-grade-input {
+    width: 78px;
+    min-width: 68px;
+    padding: 6px 8px;
 }
 
 .wf-strength-list {
@@ -2124,172 +2508,6 @@ mark.wf-anchor.is-filtered-out,
     line-height: 1.5;
 }
 
-/* Academic Writing Matrix — neutral collapsible */
-
-.wf-writing-matrix {
-    container-type: inline-size;
-    margin: 8px 0 12px;
-    background: white;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    overflow: hidden;
-}
-
-.wf-writing-matrix > summary {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 10px 14px;
-    background: var(--background-2);
-    color: var(--text-primary);
-    font-size: 13px;
-    cursor: pointer;
-    list-style: none;
-}
-
-.wf-writing-matrix > summary::-webkit-details-marker {
-    display: none;
-}
-
-.wf-matrix-summary-text {
-    display: grid;
-    gap: 2px;
-    min-width: 0;
-}
-
-.wf-matrix-summary-text strong {
-    font-size: 13px;
-    font-weight: 600;
-}
-
-.wf-matrix-kicker {
-    color: var(--text-secondary);
-    font-size: 11px;
-}
-
-.wf-matrix-badge {
-    padding: 2px 8px;
-    background: white;
-    border: 1px solid var(--border-color);
-    border-radius: 9999px;
-    color: var(--text-secondary);
-    font-size: 11px;
-    font-weight: 600;
-    white-space: nowrap;
-}
-
-.wf-matrix-body {
-    display: grid;
-    gap: 10px;
-    padding: 14px;
-}
-
-.wf-matrix-sequence {
-    margin: 0;
-    color: var(--text-primary);
-    font-size: 12px;
-    font-weight: 600;
-}
-
-.wf-matrix-caution {
-    margin: 0;
-    padding: 8px 12px;
-    background: rgba(230, 126, 34, 0.08);
-    border: 1px solid color-mix(in srgb, var(--color-eng-red) 60%, var(--color-chbe-green));
-    border-radius: 6px;
-    color: color-mix(in srgb, var(--color-eng-red) 65%, var(--text-primary));
-    font-size: 12px;
-    line-height: 1.5;
-}
-
-.wf-matrix-functions {
-    display: grid;
-    gap: 10px;
-}
-
-.wf-matrix-function {
-    padding: 10px 12px;
-    background: var(--chat-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-}
-
-.wf-matrix-function h4 {
-    margin: 0;
-    color: var(--color-chbe-green);
-    font-size: 13px;
-    font-weight: 600;
-}
-
-.wf-matrix-function[data-function='interpersonal'] h4 {
-    color: var(--color-ubc-blue);
-}
-
-.wf-matrix-function[data-function='content'] h4 {
-    color: var(--color-ubc-blue);
-}
-
-.wf-matrix-function-description {
-    margin: 4px 0 0 !important;
-    color: var(--text-secondary) !important;
-    font-size: 12px !important;
-}
-
-.wf-matrix-levels {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 8px;
-    margin-top: 10px;
-}
-
-.wf-matrix-level {
-    min-width: 0;
-    padding: 8px 10px;
-    background: white;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-}
-
-.wf-matrix-level h5 {
-    margin: 0;
-    color: var(--text-primary);
-    font-size: 12px;
-    font-weight: 600;
-}
-
-.wf-matrix-level-scope {
-    margin: 2px 0 0 !important;
-    color: var(--text-secondary) !important;
-    font-size: 11px !important;
-    font-style: italic;
-}
-
-.wf-matrix-prompts {
-    margin: 6px 0 0;
-    padding-left: 16px;
-    color: var(--text-primary);
-    font-size: 11px;
-    line-height: 1.5;
-}
-
-.wf-matrix-prompts li + li {
-    margin-top: 4px;
-}
-
-.wf-matrix-attribution {
-    margin: 0;
-    color: var(--text-secondary);
-    font-size: 10px;
-    line-height: 1.5;
-}
-
-@container (max-width: 36rem) {
-    .wf-matrix-levels {
-        grid-template-columns: 1fr;
-    }
-}
-
 /* Focus visibility */
 
 .wf-page button:focus-visible,
@@ -2362,7 +2580,17 @@ mark.wf-anchor.is-filtered-out,
 
     .wf-grid-corner {
         z-index: 3;
-        background: color-mix(in srgb, var(--color-chbe-green) 12%, var(--chat-bg));
+        background: var(--background-2);
+    }
+
+    /* Both columns cannot stay put on a narrow screen: a 12rem criterion column plus a
+       sticky weight column leaves no channel between them for the levels to scroll
+       through, so the level columns become unreachable. The criterion is the one worth
+       keeping, since it is what every cell in the row is about. */
+    .wf-grid-points-head,
+    .wf-grid-weight {
+        position: static;
+        box-shadow: none;
     }
 
     .wf-doc-paper {
@@ -2373,6 +2601,38 @@ mark.wf-anchor.is-filtered-out,
 @media (max-width: 768px) {
     .wf-header {
         flex-wrap: wrap;
+    }
+
+    /* The three-cell strip becomes three rows; the grid keeps its own
+       overflow-x, so the page itself still never scrolls sideways. */
+    .wf-steps {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .wf-steps__item {
+        border-right: 0;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .wf-steps__item:last-child {
+        border-bottom: 0;
+    }
+
+    .wf-rubric-title {
+        font-size: 1.5rem;
+    }
+
+    .wf-step-header {
+        flex-wrap: wrap;
+    }
+
+    .wf-approve-row {
+        align-items: stretch;
+    }
+
+    .wf-approve-row .wf-button {
+        width: 100%;
+        min-height: 44px;
     }
 
     .wf-header-actions {
@@ -2517,3 +2777,47 @@ mark.wf-anchor.is-filtered-out,
     }
 
     }
+
+/*
+ * Lens badge on an annotation card. A lab report is annotated against two rubrics over one
+ * document, so a card says which rubric it answers to rather than relying on which tab the
+ * reviewer believes they are in.
+ */
+.wf-annotation-lens {
+    font-size: 0.75rem;
+    padding: 0.125rem 0.5rem;
+    border-radius: 999px;
+    background: var(--background-2);
+    color: var(--text-2);
+}
+
+/*
+ * Feedback PDF preview. The route serves the document inline, so the frame renders it in
+ * place; the height is viewport-relative because a rubric grid on a landscape page is what
+ * a reviewer most needs to see whole.
+ */
+.wf-pdf-frame {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 1px solid var(--border-1, #c9d4c9);
+    border-radius: 6px;
+    background: var(--background-2);
+}
+
+/*
+ * Autosave reports itself beside Save rather than through a toast: it happens without
+ * being asked, so it should be readable and easy to ignore. The alert variant is the one
+ * state a person must act on — an expired session — so it is the only one that takes colour.
+ */
+.wf-autosave-status {
+    margin: 0;
+    align-self: center;
+    font-size: 0.85rem;
+    color: var(--text-2, #5b6b5b);
+    min-height: 1.2em;
+}
+
+.wf-autosave-status--alert {
+    color: var(--danger-1, #a3352c);
+}

@@ -44,10 +44,10 @@ export type WritingCriterionId = string;
 /** Instructor-authored performance-level slug, frozen after its first approval. */
 export type WritingLevelId = string;
 
-/** Academic Writing Matrix axis shared by rubric criteria and anchored comments. */
+/** SFL communicative function shared by rubric criteria and anchored comments. */
 export type WritingFunctionTag = 'content' | 'interpersonal' | 'organizational';
 
-/** Language scale used by the Academic Writing Matrix and the SFL analyzer. */
+/** Language scale used by the SFL analyzer and staff annotation filters. */
 export type WritingLanguageLevel = 'text' | 'section' | 'clause_word';
 
 /** Known Ferreira genre profile ids; custom staff profiles are represented as free text. */
@@ -126,7 +126,7 @@ export interface WritingRubricLevel {
     label: string; // human-readable level shown in review and PDF output
     description: string; // instructor-authored performance descriptor
     rank: number; // explicit worst-to-best position, contiguous from one
-    /** Optional instructor-authored points. Every level is required for numeric release. */
+    /** Optional instructor-authored points retained for rubric bands/legacy mappings. */
     points?: number;
 }
 
@@ -162,7 +162,7 @@ export interface WritingAssignment {
     rubricSource: 'internal_profile' | 'canvas'; // import provenance, not synchronization state
     /** Raw instructor-approved assignment directions used as rubric-editor context. */
     instructions?: string;
-    /** Complete approved level-to-points mapping. Omit when feedback is ordinal only. */
+    /** Legacy complete level-to-points mapping derived at approval when levels carry points. */
     gradeMapping?: Record<WritingLevelId, number>;
     /** Current rubric. New assignments hold a draft here until their first approval. */
     rubric: WritingRubricDefinition;
@@ -179,6 +179,35 @@ export interface WritingAssignment {
     /** Immutable previously approved technical rubrics retained for audit. */
     technicalRubricHistory?: WritingRubricDefinition[];
     canvasAssignmentId?: string; // optional source reference for approved integration work
+    /**
+     * Set when this assignment was imported from Canvas but its Canvas rubric could
+     * not be represented as a grid, so the built-in profile seeded the draft instead.
+     */
+    canvasRubricRefusal?: CanvasRubricRefusal;
+    /**
+     * The Canvas rubric exactly as imported, held independently of which lens uses it.
+     *
+     * Kept whole because lens routing cannot happen at import time: `isLabReport` is set by a
+     * later PATCH, so the import does not yet know whether this rubric belongs to the technical
+     * lens. Written at creation only and never re-stamped — the rule `canvasRubricRefusal`
+     * follows, and for the same reason: re-stamping onto a grid staff have since edited would
+     * be wrong.
+     *
+     * `ids` is what makes a Canvas rubric writable. Our criterion ids are derived from criterion
+     * names, so nothing else can address Canvas's own `_1234`-style ids on release.
+     */
+    canvasRubricImport?: {
+        shape: ImportedRubricShape;
+        ids: CanvasRubricIdMap;
+        importedAt: Date;
+    };
+    /**
+     * Where the technical grid came from. `rubricSource` describes the writing lens only.
+     *
+     * Split per lens so a Canvas-seeded technical rubric does not make the writing lens report
+     * `canvas` and lose the metafunctions auto-fill that a lab report's writing lens needs.
+     */
+    technicalRubricSource?: 'canvas' | 'builtin';
     /** Assignment description and metadata imported from Canvas; reference material only. */
     canvasDetails?: CanvasAssignmentDetails;
     /** Submission deadline shown to staff; sourced from Canvas or manual entry. */
@@ -278,6 +307,45 @@ export interface CanvasRubricRow {
  * `seedRubricForLens` makes the result an assignment's starting draft. There is no second
  * stored rubric to keep in step, and no editor for one.
  */
+/** Why a Canvas rubric could not become a grid. Staff-facing text lives in the page. */
+export type CanvasRubricRefusal =
+    | 'no_rubric'
+    | 'too_few_ratings'
+    | 'too_many_criteria'
+    | 'too_many_levels';
+
+/**
+ * Rubric structure lifted from an imported LMS assignment, before it becomes a draft.
+ *
+ * Defined here rather than beside `seedRubricForLens` because {@link WritingAssignment}
+ * stores one, and this module deliberately imports nothing from the Writing Feedback
+ * modules that import it. `rubric-seed.ts` re-exports it, so every existing import resolves.
+ */
+export interface ImportedRubricShape {
+    criteria: WritingRubricCriterion[];
+    levels: WritingRubricLevel[];
+}
+
+/**
+ * Canvas's own ids for one imported rubric, keyed by the ids the mapper derived.
+ *
+ * The mapper builds our ids from each criterion's visible name, because a Canvas id such as
+ * `_1234` cannot satisfy the grid schema's id pattern. Writing a staff assessment back into
+ * the Canvas rubric needs the id that would otherwise be discarded, so it is kept beside the
+ * grid rather than adopted as ours — every stored feedback run, evidence record and PDF
+ * references our criterion id, and changing its format would mean migrating all of them.
+ *
+ * Lives here for the same reason {@link CanvasRubricRefusal} does: `canvas-rubric-mapping.ts`
+ * imports this module, so the type it needs on {@link WritingAssignment} cannot live there.
+ * That module re-exports it.
+ */
+export interface CanvasRubricIdMap {
+    [ourCriterionId: string]: {
+        criterionId: string; // Canvas criterion id, e.g. "_1234"
+        ratingIds: Record<string, string>; // our level id -> Canvas rating id
+    };
+}
+
 export interface CanvasImportedRubric {
     /** Canvas rubric id when `rubric_settings` reports one. */
     canvasRubricId?: string;
@@ -395,6 +463,20 @@ export interface CourseMaterialMention {
     version?: string; // material/source version when metadata supplies one
 }
 
+/**
+ * Staff- and model-only course text.
+ *
+ * Deliberately separate from {@link CourseMaterialMention}: a mention is a student-facing
+ * label, and this is the document text behind it. It must never reach an AnchoredComment,
+ * a mention, a generated student PDF, or a release payload.
+ */
+export interface CourseMaterialExcerpt {
+    /** Present only for published material, which is the only material the writer may cite. */
+    mentionId?: string;
+    /** Truncated course-document text. Never student writing. */
+    text: string;
+}
+
 /** Versioned course glossary entry staff can reuse in annotations. */
 export interface WritingGlossaryEntry {
     id: string; // internal glossary id
@@ -425,6 +507,9 @@ export interface WritingFeedbackRunTrace {
     writerPromptVersion?: string; // writer prompt contract version
     sflAnalysis?: SflAnalysis; // validated analyzer trace, staff-only
     courseMaterialMentions?: CourseMaterialMention[]; // allowlisted retrieved sources used by writer
+    courseMaterialExcerpts?: CourseMaterialExcerpt[]; // course text shown to the writer, staff-only
+    staffCourseMaterialMentions?: CourseMaterialMention[]; // retrieved material including unpublished, staff-only
+    citableCourseMaterialMentionIds?: string[]; // ids staff may cite; the rest are unpublished, staff-only
     courseSourceVersion?: string; // retrieval/metadata resolver contract version
     glossaryEntryVersions?: WritingGlossarySnapshot[]; // glossary definitions referenced by the draft
 }
@@ -451,6 +536,12 @@ export interface WritingFeedbackRun {
     writerPromptVersion?: string;
     sflAnalysis?: SflAnalysis;
     courseMaterialMentions?: CourseMaterialMention[];
+    /** Citable mention ids, including published material beyond the student-facing display cap. */
+    citableCourseMaterialMentionIds?: string[];
+    /** Staff-only retrieved material labels, including unpublished sources. */
+    staffCourseMaterialMentions?: CourseMaterialMention[];
+    /** Staff/model-only course text excerpts shown to the writer. */
+    courseMaterialExcerpts?: CourseMaterialExcerpt[];
     courseSourceVersion?: string;
     glossaryEntryVersions?: WritingGlossarySnapshot[];
 }
@@ -458,10 +549,16 @@ export interface WritingFeedbackRun {
 /** Staff/model comment anchored to an exact UTF-16 span of verified submission text. */
 export interface AnchoredComment {
     id: string; // stable client/revision identity
-    // Optional rubric association for filtering. Carries no lens marker today —
-    // only linguistic comments and model seeds exist, and the Technical tab is
-    // read-only. Technical annotations will need an explicit lens field before
-    // anchored comments can distinguish linguistic vs. technical criteria.
+    /**
+     * Which rubric this comment is about.
+     *
+     * Absent on every comment stored before lab-report annotation existed, which are all
+     * linguistic; the validator supplies that default, so no migration runs. `criterion`
+     * is read against this lens's rubric, which is what lets the two lenses use criterion
+     * ids independently.
+     */
+    lens: WritingFeedbackLens;
+    /** Optional rubric association for filtering, resolved against this comment's lens. */
     criterion?: WritingCriterionId;
     /** Exact substring of the verified text; validation checksum for the offsets. */
     quote: string;
@@ -485,8 +582,8 @@ export interface AnchoredComment {
      */
     authorName?: string;
     /**
-     * Staff-facing triage metadata mirroring the Academic Writing Matrix
-     * taxonomy. Never printed in the student PDF.
+     * Staff-facing triage metadata from SFL trace evidence or staff review.
+     * Never printed in the student PDF.
      */
     functionTag?: WritingFunctionTag;
     levelTag?: 'text' | 'section' | 'clause_word';
@@ -503,19 +600,81 @@ export interface StaffReviewRevision {
     internalNote?: string; // staff-only note excluded from student output
     /** Full working set of anchored comments snapshotted with this revision. */
     comments?: AnchoredComment[];
+    /** Human-authored rubric result. Model suggestions remain separate and staff-only. */
+    finalAssessment?: StaffFinalAssessment;
     createdAt: Date; // append-only revision timestamp
 }
 
+/** One criterion score explicitly entered by course staff. */
+export interface StaffCriterionAssessment {
+    criterionId: WritingCriterionId; // joins to the immutable rubric version
+    points: number; // awarded points, bounded by the criterion weight
+}
+
+/** Complete, staff-authored numeric assessment saved with a review revision. */
+export interface StaffFinalAssessment {
+    /**
+     * Which rubric this grade was awarded against. A lab report is graded on its technical
+     * rubric, so a reader cannot assume the writing one. Absent on assessments stored before
+     * two-lens grading, which are all linguistic.
+     */
+    lens?: WritingFeedbackLens;
+    rubricVersion: number; // rubric version whose criteria and weights were graded
+    criteria: StaffCriterionAssessment[]; // exactly one score per weighted criterion
+    totalPoints: number; // server-computed sum of awarded points
+    maxPoints: number; // server-computed rubric total
+}
+
 /** Persisted preview or completed Canvas release keyed by a payload fingerprint. */
+/** How long a release lock is honoured before a worker is assumed to have died. */
+export const RELEASE_LOCK_TTL_MS = 30 * 60 * 1000;
+
 export interface WritingRelease {
     id: string; // internal release identity
     courseId: string; // authorization and audit boundary
     submissionId: string; // released submission attempt
     feedbackRunId: string; // immutable draft provenance
     rubricVersion?: number; // approved rubric used for the payload
+    /** Whether per-criterion points reached the instructor's Canvas rubric. */
+    rubricAssessmentWritten?: boolean;
+    /**
+     * Which release of this submission this record is, 1 to 5.
+     *
+     * Assigned at preview from the count of releases that already reached the student, so the
+     * review page can say a submission has been revised without reading its whole history.
+     */
+    revision?: number;
+    /**
+     * `GlobalUser.userId` of the staff member who queued this release.
+     *
+     * A queued release runs after that person has closed the page, and it writes to Canvas with
+     * their stored OAuth credential — never a shared or service account — so the record names
+     * whose authority the write carried. Never a PUID.
+     */
+    queuedByUserId?: string;
     payloadFingerprint: string; // idempotency key across preview and retry
-    status: 'previewed' | 'released' | 'reconciled'; // external-write lifecycle
-    grade?: number; // present only with complete instructor-authored mapping
+    /** External-write lifecycle. */
+    status: 'previewed' | 'feedback_attached' | 'grade_queued' | 'released' | 'reconciliation_required' | 'failed' | 'reconciled';
+    /**
+     * When a queued job took the in-progress lock on this release.
+     *
+     * The lock is a field rather than a status because the status is what tells a resumed
+     * release how far the last attempt got — a comment already attached must not be attached
+     * again. Taking the lock is a single atomic update, so of two staff members pressing
+     * Release at the same moment exactly one wins. It is cleared when the worker stops, and
+     * a lock older than {@link RELEASE_LOCK_TTL_MS} is treated as abandoned so a worker that
+     * died cannot freeze a submission for good.
+     */
+    releaseLockedAt?: Date;
+    /** The queue job holding the lock; audit trail once the job has stopped. */
+    releaseJobId?: string;
+    grade?: number; // staff-final total sent to Canvas
+    integration?: 'mock_canvas' | 'canvas';
+    postManually?: boolean; // Canvas posting policy observed at preflight
+    canvasFileIds?: string[]; // uploaded feedback files retained for reconciliation
+    canvasProgressId?: string; // asynchronous grade-write job id
+    failureStage?: 'preflight' | 'feedback' | 'grade' | 'progress';
+    sanitizedError?: string; // content-free operational result
     canvasCommentId?: string; // remote identifier retained for reconciliation
     canvasSubmissionId?: string; // remote submission identifier retained for reconciliation
     createdAt: Date; // preview creation timestamp
@@ -552,12 +711,18 @@ export interface WritingReleasePayload {
     studentFeedback?: string; // staff-approved narrative a re-approval can change
     /** Technical model draft provenance for a lab report; absent for single-lens releases. */
     technicalFeedbackRunId?: string;
+    finalAssessment?: StaffFinalAssessment;
 }
 
 /** Canvas release adapter boundary invoked only after release policy checks succeed. */
 export interface CanvasGateway {
     /** Performs one idempotency-keyed external release and returns reconciliation identifiers. */
-    release(input: { submissionId: string; pdf: Buffer; grade: number; payloadFingerprint: string }): Promise<{ canvasCommentId: string; canvasSubmissionId: string }>;
+    release(input: {
+        submissionId: string;
+        artifacts: CanvasReleaseInput['artifacts'];
+        grade: number;
+        payloadFingerprint: string;
+    }): Promise<{ canvasCommentId: string; canvasSubmissionId: string }>;
 }
 
 /** Digital-document parser boundary that does not upload submissions to course RAG. */
@@ -585,6 +750,9 @@ export interface WritingFeedbackEngine {
 /** Student PDF section selector used by staff download endpoints. */
 export type FeedbackPdfInclude = 'general' | 'annotated' | 'both';
 
+/** Feedback artifact selected for PDF rendering. Technical output is never mixed into writing output. */
+export type FeedbackPdfLens = 'writing' | 'technical';
+
 /** Student-safe PDF renderer boundary for general and exact-span annotated output. */
 export interface WritingFeedbackPdfService {
     /** Renders the selected PDF sections while excluding internal flags and model metadata. */
@@ -596,6 +764,8 @@ export interface WritingFeedbackPdfService {
         staffFeedback?: string;
         comments?: AnchoredComment[];
         include?: FeedbackPdfInclude;
+        lens?: FeedbackPdfLens;
+        finalAssessment?: StaffFinalAssessment;
         /** Shown as the highlight-popup author (`/T`); defaults to "Teaching Team". */
         annotationAuthor?: string;
         /** Technical lens draft rendered as its own section for a lab report. */
@@ -616,12 +786,28 @@ export interface CanvasReleaseInput {
     submission: WritingSubmission;
     assignment: WritingAssignment;
     feedbackRun: WritingFeedbackRun;
-    /** Student-safe bytes handed to the adapter; never part of the idempotency key. */
-    pdf: Buffer;
+    /** Student-safe, separately named artifacts handed to the adapter. */
+    artifacts: Array<{ kind: 'writing' | 'technical'; filename: string; data: Buffer }>;
+    /** Complete staff-authored grade saved in the latest review revision. */
+    finalAssessment?: StaffFinalAssessment;
+    /**
+     * The rubric the grade was awarded against — the technical one for a lab report.
+     *
+     * Resolved by the service, where the lens is already known, so the release adapter never
+     * re-derives which of an assignment's two rubrics carries its marks.
+     */
+    gradedRubric: WritingRubricDefinition;
     /** Latest staff-approved narrative, so an edited re-approval releases as new content. */
     studentFeedback?: string;
     /** Technical model draft released alongside the linguistic one, when the assignment has one. */
     technicalFeedbackRun?: WritingFeedbackRun;
+    /**
+     * Which release of this submission this would be, 1 to `MAX_SUBMISSION_RELEASES`.
+     *
+     * The service counts the submission's release history and applies the cap; the coordinator
+     * only records the number it is given, so neither adapter has to query that history itself.
+     */
+    revision?: number;
 }
 
 /** Release coordinator boundary separating preview persistence from external mutation. */

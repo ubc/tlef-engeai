@@ -7,8 +7,8 @@
  *                 `/Highlight` annotations and viewer-controlled comment popups.
  * - `both`      — general pages first, then the annotated text.
  *
- * Student-safe invariants: no confidence values, internal flags, origin, or matrix
- * function/level/priority tags ever reach this document.
+ * Student-safe invariants: no confidence values, internal flags, origin, or
+ * function/level/priority filter tags ever reach this document.
  *
  * Annotation strategy follows a real Canvas SpeedGrader export: the yellow highlight is
  * painted directly into the page content stream, and the `/Highlight` annotation itself
@@ -31,11 +31,14 @@
 
 import { randomUUID } from 'crypto';
 import PDFDocument from 'pdfkit';
+import { renderRubricGrid } from './rubric-grid-renderer';
 import type {
     WritingFeedbackPdfService,
     WritingFeedbackResult,
     AnchoredComment,
     FeedbackPdfInclude,
+    FeedbackPdfLens,
+    StaffFinalAssessment,
     WritingAssignment,
     WritingRubricDefinition,
     WritingSubmission
@@ -82,11 +85,17 @@ export class StudentWritingFeedbackPdfService implements WritingFeedbackPdfServi
         staffFeedback?: string;
         comments?: AnchoredComment[];
         include?: FeedbackPdfInclude;
+        lens?: FeedbackPdfLens;
+        finalAssessment?: StaffFinalAssessment;
         annotationAuthor?: string;
         technicalFeedback?: WritingFeedbackResult;
         technicalRubric?: WritingRubricDefinition;
     }): Promise<Buffer> {
         const include = input.include ?? 'general';
+        const lens = input.lens ?? 'writing';
+        if (lens === 'technical' && include !== 'general') {
+            throw new Error('Technical feedback PDF supports the general document only');
+        }
         return new Promise((resolve, reject) => {
             // Buffer pages so annotations and total-page footers can target finalized geometry.
             const doc = new PDFDocument({
@@ -101,17 +110,33 @@ export class StudentWritingFeedbackPdfService implements WritingFeedbackPdfServi
             doc.on('error', reject);
             try {
                 // Compose only the sections explicitly selected by the download request.
-                renderHeader(doc, input.assignment, input.grade);
-                if (include === 'general' || include === 'both') {
-                    renderGeneralSections(doc, input.assignment, input.feedback, input.staffFeedback);
-                    if (input.technicalFeedback && input.technicalRubric) {
-                        doc.addPage();
-                        renderTechnicalSections(doc, input.technicalRubric, input.technicalFeedback);
+                renderHeader(doc, input.assignment, input.grade, lens);
+                if (lens === 'technical') {
+                    if (!input.technicalFeedback || !input.technicalRubric) {
+                        throw new Error('Generate technical feedback before creating a technical PDF');
                     }
-                }
-                if (include === 'annotated' || include === 'both') {
-                    if (include === 'both') doc.addPage();
-                    renderAnnotatedText(doc, input.submission, input.comments ?? [], input.annotationAuthor);
+                    renderTechnicalSections(doc, input.technicalRubric, input.technicalFeedback);
+                } else {
+                    if (include === 'general' || include === 'both') {
+                        // A lab report is one document, and it leads with the technical
+                        // feedback: that is the rubric it is graded on, so it is what the
+                        // student came to read. Its writing feedback follows, ungraded.
+                        if (input.assignment.isLabReport && input.technicalFeedback && input.technicalRubric) {
+                            renderTechnicalSections(doc, input.technicalRubric, input.technicalFeedback);
+                        }
+                        renderGeneralSections(
+                            doc,
+                            input.assignment,
+                            input.feedback,
+                            input.staffFeedback,
+                            input.finalAssessment,
+                            input.technicalRubric
+                        );
+                    }
+                    if (include === 'annotated' || include === 'both') {
+                        if (include === 'both') doc.addPage();
+                        renderAnnotatedText(doc, input.submission, input.comments ?? [], input.annotationAuthor);
+                    }
                 }
                 // Stamp footers after all optional annotated pages have been created.
                 renderPageFooters(doc);
@@ -124,8 +149,14 @@ export class StudentWritingFeedbackPdfService implements WritingFeedbackPdfServi
 }
 
 /** Title block shared by every mode: document title, assignment, optional approved grade. */
-function renderHeader(doc: PDFKit.PDFDocument, assignment: WritingAssignment, grade?: number): void {
-    doc.fillColor(TEXT_COLOR).font(BOLD_FONT).fontSize(20).text('Writing Feedback');
+function renderHeader(
+    doc: PDFKit.PDFDocument,
+    assignment: WritingAssignment,
+    grade?: number,
+    lens: FeedbackPdfLens = 'writing'
+): void {
+    doc.fillColor(TEXT_COLOR).font(BOLD_FONT).fontSize(20)
+        .text(lens === 'technical' ? 'Technical Feedback' : 'Writing Feedback');
     doc.moveDown(0.2).font(BODY_FONT).fontSize(12).fillColor(MUTED_COLOR).text(assignment.title);
     if (grade !== undefined) {
         doc.moveDown(0.3).font(BOLD_FONT).fontSize(11).fillColor(TEXT_COLOR).text(`Approved grade: ${grade}`);
@@ -160,20 +191,59 @@ function renderGeneralSections(
     doc: PDFKit.PDFDocument,
     assignment: WritingAssignment,
     feedback: WritingFeedbackResult,
-    staffFeedback?: string
+    staffFeedback?: string,
+    finalAssessment?: StaffFinalAssessment,
+    technicalRubric?: WritingRubricDefinition
 ): void {
     sectionHeading(doc, 'What you did well');
     feedback.strengths.forEach((strength) => bullet(doc, strength));
 
     renderCriteriaAndGoals(doc, assignment.rubric, feedback);
 
+    // The grade belongs to whichever rubric it was awarded against — the technical one for a
+    // lab report — so the grid a student reads is the grid they were marked on.
+    if (finalAssessment) {
+        const gradedRubric = finalAssessment.lens === 'technical'
+            ? technicalRubric ?? assignment.technicalRubric
+            : assignment.rubric;
+        if (gradedRubric) renderFinalAssessment(doc, gradedRubric, finalAssessment);
+    }
+
     if (staffFeedback?.trim()) {
         sectionHeading(doc, 'Feedback from your teaching team');
         body(doc).text(staffFeedback.trim(), { lineGap: 3 });
     }
 
+    renderCourseMaterialSources(doc, feedback);
+
     sectionHeading(doc, 'Carry forward');
     body(doc).text('Use these goals when you plan and revise your next writing assignment.', { lineGap: 3 });
+}
+
+/**
+ * Course materials the feedback drew on, by label.
+ *
+ * Labels only: no excerpt text, no retrieval score, no material identifier. The list a
+ * student reads is the published subset the writer was allowed to cite, which is what
+ * `result.courseMaterialMentions` holds.
+ */
+function renderCourseMaterialSources(doc: PDFKit.PDFDocument, feedback: WritingFeedbackResult): void {
+    const mentions = feedback.courseMaterialMentions ?? [];
+    if (!mentions.length) return;
+    sectionHeading(doc, 'Course materials this feedback draws on');
+    mentions.forEach((mention) => bullet(doc, mention.label));
+}
+
+/** Staff-final rubric scores. Model suggestions are deliberately absent. */
+function renderFinalAssessment(
+    doc: PDFKit.PDFDocument,
+    rubric: WritingRubricDefinition,
+    assessment: StaffFinalAssessment
+): void {
+    sectionHeading(doc, 'Final rubric assessment');
+    // The full grid, not a list of numbers: a student asking where a grade came from needs the
+    // descriptor of the level they earned, beside the ones they did not.
+    renderRubricGrid(doc, rubric, assessment);
 }
 
 /**

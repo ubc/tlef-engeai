@@ -16,7 +16,7 @@ import { randomUUID } from 'crypto';
 import { z } from 'zod';
 import type { AnchoredComment, WritingFeedbackRun, WritingRubricDefinition } from './contracts';
 
-/** Rubric criterion → matrix function; task constraints have no matrix function. */
+/** Built-in rubric criterion to SFL function fallback for legacy/no-trace runs. */
 const CRITERION_FUNCTION_TAG: Partial<Record<string, AnchoredComment['functionTag']>> = {
     organization: 'organizational',
     content: 'content',
@@ -56,6 +56,9 @@ const glossarySnapshotSchema = z.object({
  */
 export const anchoredCommentInputSchema = z.object({
     id: z.string().trim().min(1).max(64),
+    // Stored comments predate lab-report annotation and carry no lens; they are all
+    // linguistic, so the default backfills them at read time rather than by migration.
+    lens: z.enum(['linguistic', 'technical']).default('linguistic'),
     criterion: z.string().trim().min(1).max(64).regex(/^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/).optional(),
     // This checksum may represent a deliberate staff span; generated seeds are capped upstream.
     quote: z.string().min(1).max(4000),
@@ -113,6 +116,7 @@ export function seedCommentsFromRun(
     const seeds: AnchoredComment[] = [];
     const searchFrom = new Map<string, number>();
     const functionTags = new Map(rubric?.criteria.map((criterion) => [criterion.id, criterion.functionTag]) ?? []);
+    const findingsById = new Map((run.sflAnalysis?.findings ?? []).map((finding) => [finding.id, finding]));
     for (const criterion of run.result.criteria) {
         for (const evidence of criterion.evidence) {
             const from = searchFrom.get(evidence.quote) ?? 0;
@@ -120,9 +124,20 @@ export function seedCommentsFromRun(
             if (start === -1) continue;
             // Advance per quote so repeated evidence maps to successive occurrences.
             searchFrom.set(evidence.quote, start + evidence.quote.length);
-            // Level and priority stay unset: they are staff decisions, never model-asserted.
+            // Function and language level come from the validated analyzer trace linked by
+            // the writer's evidence ids. They are descriptive provenance, not a staff grade.
+            const linkedFinding = (evidence.sflFindingIds ?? [])
+                .map((findingId) => findingsById.get(findingId))
+                .find((finding) => Boolean(finding));
+            const functionTag = linkedFinding?.primaryFunction
+                ?? functionTags.get(criterion.criterion)
+                ?? CRITERION_FUNCTION_TAG[criterion.criterion];
             seeds.push({
                 id: randomUUID(),
+                // A seed belongs to the lens that produced the run it came from. Runs written
+                // before two-lens generation carry no lens and are linguistic, matching the
+                // default the stored-comment validator applies.
+                lens: run.lens ?? 'linguistic',
                 criterion: criterion.criterion,
                 quote: evidence.quote,
                 startOffset: start,
@@ -133,9 +148,8 @@ export function seedCommentsFromRun(
                 ...(evidence.courseMaterialMention ? { courseMaterialMention: evidence.courseMaterialMention } : {}),
                 ...(evidence.glossaryEntryId ? { glossaryEntryId: evidence.glossaryEntryId } : {}),
                 ...(evidence.glossarySnapshot ? { glossarySnapshot: evidence.glossarySnapshot } : {}),
-                ...((functionTags.get(criterion.criterion) ?? CRITERION_FUNCTION_TAG[criterion.criterion])
-                    ? { functionTag: functionTags.get(criterion.criterion) ?? CRITERION_FUNCTION_TAG[criterion.criterion] }
-                    : {})
+                ...(functionTag ? { functionTag } : {}),
+                ...(linkedFinding ? { levelTag: linkedFinding.languageLevel } : {})
             });
             if (seeds.length >= 50) return seeds;
         }

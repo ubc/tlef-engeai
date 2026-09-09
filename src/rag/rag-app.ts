@@ -32,6 +32,25 @@ export interface RetrieveForChatOptions {
     topicOrWeekId?: string;
 }
 
+/**
+ * Writing-Feedback-only retrieval scope.
+ *
+ * Chat retrieval must stay published-only: publishing a topic/week item is what makes its
+ * material visible to students. Writing Feedback grounds the feedback writer on everything
+ * staff have uploaded — an instructor who loads a Week 5 lecture in advance should not have
+ * it ignored — and restricts citation instead, which the caller does by building its
+ * allowlist from the published subset alone.
+ */
+export interface WritingFeedbackRetrieveOptions extends RetrieveForChatOptions {
+    /** Search unpublished topic/week items as well, marking their chunks accordingly. */
+    includeUnpublished?: boolean;
+}
+
+/** A retrieved chunk plus whether the item it came from is visible to students. */
+export interface PublishedTaggedChunk extends RetrievedChunk {
+    published: boolean;
+}
+
 const DEFAULT_RETRIEVE_LIMIT = 5;
 const DEFAULT_RETRIEVE_SCORE_THRESHOLD = 0.4;
 
@@ -234,13 +253,14 @@ export class RAGApp {
      * @param query - Student-text-free search query
      * @param courseId - Stable active-course id
      * @param options - Retrieval limit/threshold and optional topic filter
-     * @returns Published retrieved chunks, or an empty list when retrieval is unavailable
+     * @returns Retrieved chunks tagged with publication state, or an empty list when
+     *          retrieval is unavailable
      */
     public async retrieveForWritingFeedback(
         query: string,
         courseId: string,
-        options: RetrieveForChatOptions = {}
-    ): Promise<RetrievedChunk[]> {
+        options: WritingFeedbackRetrieveOptions = {}
+    ): Promise<PublishedTaggedChunk[]> {
         const limit = options.limit ?? DEFAULT_RETRIEVE_LIMIT;
         const scoreThreshold = options.scoreThreshold ?? DEFAULT_RETRIEVE_SCORE_THRESHOLD;
 
@@ -258,33 +278,43 @@ export class RAGApp {
             const course = await mongoDB.getActiveCourse(courseId);
             if (!course) return [];
 
-            const publishedItems: Array<{ topicId: string; topicTitle: string; itemId: string; itemTitle: string }> = [];
+            // Step 1: collect the searchable items, remembering which are published. The
+            // published set is what the caller may cite; the whole set is what it may read.
+            const publishedTitles = new Set<string>();
+            const searchTitles = new Set<string>();
             (course.topicOrWeekInstances ?? [])
-                .filter((instanceTopicOrWeek: TopicOrWeekInstance) => instanceTopicOrWeek.published === true)
                 .filter((instanceTopicOrWeek: TopicOrWeekInstance) => !options.topicOrWeekId || instanceTopicOrWeek.id === options.topicOrWeekId)
                 .forEach((instanceTopicOrWeek: TopicOrWeekInstance) => {
+                    const published = instanceTopicOrWeek.published === true;
+                    if (!published && !options.includeUnpublished) return;
                     (instanceTopicOrWeek.items ?? []).forEach((item: TopicOrWeekItem) => {
                         const itemTitle = item.itemTitle || (item as { title?: string }).title || '';
                         if (!itemTitle) return;
-                        publishedItems.push({
-                            topicId: instanceTopicOrWeek.id,
-                            topicTitle: instanceTopicOrWeek.title,
-                            itemId: item.id,
-                            itemTitle
-                        });
+                        searchTitles.add(itemTitle);
+                        if (published) publishedTitles.add(itemTitle);
                     });
                 });
 
-            if (publishedItems.length === 0) return [];
+            if (searchTitles.size === 0) return [];
 
             const filter: Record<string, unknown> = {
                 must: [
                     { key: 'courseName', match: { value: course.courseName } },
-                    { key: 'itemTitle', match: { any: publishedItems.map((item) => item.itemTitle) } },
+                    { key: 'itemTitle', match: { any: [...searchTitles] } },
                 ],
             };
 
-            return await this.rag.retrieveContext(` ${query}`, { limit, scoreThreshold, filter });
+            // Step 2: tag each chunk so the caller can ground on all of it and cite only the
+            // published part. Chunk content is deliberately never logged here.
+            const chunks = await this.rag.retrieveContext(` ${query}`, { limit, scoreThreshold, filter });
+            return chunks.map((chunk: RetrievedChunk): PublishedTaggedChunk => {
+                const raw = chunk.metadata;
+                const metadata: Record<string, unknown> = typeof raw === 'string'
+                    ? (() => { try { return JSON.parse(raw) as Record<string, unknown>; } catch { return {}; } })()
+                    : (raw ?? {});
+                const itemTitle = typeof metadata.itemTitle === 'string' ? metadata.itemTitle : '';
+                return { ...chunk, published: publishedTitles.has(itemTitle) };
+            });
         } catch (error) {
             appLogger.warn('Writing Feedback course-material retrieval failed', { error: error as Error });
             return [];

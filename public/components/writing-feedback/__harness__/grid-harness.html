@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<!--
+  grid-harness.html — the marking grid alone, on synthetic data.
+
+  Renders `renderRubricGrid` against a fixed draft so the grid's own behaviour
+  (auto-growing descriptors, sticky criterion and weight columns, the band chip,
+  the segmented toolbar) can be driven at any width without a database, a login,
+  or a Canvas import. Not served by the app and not part of any build; it exists
+  so the browser pass for a grid change is repeatable.
+
+  @author: @rdschrs
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rubric grid harness</title>
+<link rel="stylesheet" href="../../../styles/style.css">
+<link rel="stylesheet" href="../../../styles/instructor-components/writing-feedback.css">
+</head>
+<body>
+<!-- The app mounts the grid inside .wf-page .page-frame > .wf-main-content, which is
+     where --chat-bg and the rest of the palette are declared. Rendering it on a bare
+     body borrows the site background and makes every screenshot lie. -->
+<div class="wf-page page-frame">
+  <main class="wf-main-content page-shell page-shell--wide" style="background:var(--chat-bg);padding:24px;">
+    <div id="grid"></div>
+  </main>
+</div>
+<script src="../../../vendor/feather/feather.min.js"></script>
+<script type="module">
+import { renderRubricGrid } from '../../../dist/public/scripts/feature/writing-feedback-grid.js';
+
+const LONG = 'The report states its purpose in the opening paragraph and each section afterwards follows from the one before it, so a reader who stops halfway still knows what the argument was and where it was going next. Transitions name the relationship rather than only marking a break.';
+
+const draft = {
+    criteria: [
+        { id: 'organization', label: 'Organization', description: 'How the report is put together, section by section.', points: 30,
+          cells: {
+            weak: { min: 0, max: 7, descriptor: 'Sections appear in no order a reader can follow.' },
+            developing: { min: 8, max: 15, descriptor: 'An order exists but the reader has to reconstruct it.' },
+            proficient: { min: 16, max: 22, descriptor: LONG },
+            exemplary: { min: 23, max: 30, descriptor: 'Every section earns its place and says why it follows the last.' }
+          } },
+        { id: 'content', label: 'Content', description: 'What the report actually claims and what backs the claims up.', points: 45, cells: {} },
+        { id: 'interpersonal_positioning', label: 'Interpersonal Positioning', description: 'How the writing addresses the person reading it.', points: 25, cells: {} }
+    ],
+    levels: [
+        { id: 'weak', label: 'Weak', description: 'Not yet meeting the criterion.', rank: 1 },
+        { id: 'developing', label: 'Developing', description: 'Partly meeting the criterion.', rank: 2 },
+        { id: 'proficient', label: 'Proficient', description: 'Meeting the criterion.', rank: 3 },
+        { id: 'exemplary', label: 'Exemplary', description: 'Exceeding the criterion.', rank: 4 }
+    ]
+};
+
+renderRubricGrid(document.getElementById('grid'), draft, {
+    canEdit: true,
+    nextVersion: 1,
+    library: [{ id: 'evidence', label: 'Use of evidence', description: 'How sources are chosen and used.' }],
+    reservedIds: [],
+    syncFromForm: () => {},
+    onChange: () => {},
+    announce: () => {}
+});
+if (window.feather) window.feather.replace();
+window.__gridReady = true;
+</script>
+</body>
+</html>
