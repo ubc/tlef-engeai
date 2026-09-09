@@ -400,7 +400,7 @@ function renderSflProfileBox(
     const body = document.createElement('div');
     body.className = 'wf-profile-box-body';
 
-    const title = createText('h3', 'What kind of writing is this?', 'wf-subsection-title');
+    const title = createText('h3', 'Describe the writing', 'wf-subsection-title');
     // Recomputed in place by renderRubricPage's progress refresh; the count here
     // is only the value at first paint.
     const statusSlot = document.createElement('span');
@@ -408,7 +408,7 @@ function renderSflProfileBox(
     statusSlot.append(profileStatusChip(readiness));
     const header = disclosureHeader([title, statusSlot], body, `wf-profile-box-body-${crypto.randomUUID()}`, !complete, 'wf-profile-box-header');
 
-    body.append(createText('p', 'The writing itself', 'wf-group-label'));
+    body.append(createText('p', 'What it is', 'wf-group-label'));
     const genreLabelControl = namedControl(inputControl(sflContext?.genreLabel ?? ''), 'sfl.genreLabel');
     genreLabelControl.placeholder = 'e.g. A reflective essay, a lab report, a short design proposal';
     body.append(sflField({
@@ -1561,7 +1561,7 @@ function renderRubricPage(
 
         const outstanding: string[] = [];
         if (!profileNow.complete) {
-            outstanding.push(`“What kind of writing is this?” is ${profileNow.done} of ${profileNow.total} answered`);
+            outstanding.push(`“Describe the writing” is ${profileNow.done} of ${profileNow.total} answered`);
         }
         if (gridNow.emptyCells > 0) {
             outstanding.push(`${gridNow.emptyCells} ${gridNow.emptyCells === 1 ? 'box' : 'boxes'} in the grid ${gridNow.emptyCells === 1 ? 'is' : 'are'} still empty`);

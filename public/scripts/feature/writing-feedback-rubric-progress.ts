@@ -144,7 +144,7 @@ function summarize(entries: Array<[string, boolean]>): StepReadiness {
 }
 
 /**
- * describeProfile - readiness of "What kind of writing is this?"
+ * describeProfile - readiness of the "Describe the writing" sub-card
  *
  * Answers to requireCompleteSflProfile, not to the looser non-empty test the
  * page used before, which reported a seeded placeholder profile as ready.

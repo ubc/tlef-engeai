@@ -682,7 +682,7 @@
 .wf-required-marker {
     margin-left: 4px;
     color: var(--color-eng-red);
-    font-size: 1.35em;
+    font-size: 1.2em;
     /* Labels are 600; inheriting that at this size fills the asterisk's arms in
        until it reads as a blob, so it is reset to normal weight. */
     font-weight: 400;
@@ -957,15 +957,20 @@
     border-top: 0;
 }
 
+/*
+ * The question a field asks should read as the loudest thing in the row. These
+ * labels were secondary-grey and 13px against 14px input text, so each title sat
+ * quieter and smaller than the placeholder answering it.
+ */
 .wf-rubric-details .wf-field label {
     display: flex;
     align-items: baseline;
     justify-content: space-between;
     gap: 8px;
     padding: 0 0 4px;
-    color: var(--text-secondary);
+    color: var(--text-primary);
     font-weight: 600;
-    font-size: 13px;
+    font-size: 15px;
 }
 
 .wf-rubric-details .wf-field label .wf-field-count {
@@ -1316,7 +1321,7 @@
     font-weight: 600;
 }
 
-/* "What kind of writing is this?" -- the one sub-card inside step 1 */
+/* "Describe the writing" -- the one sub-card inside step 1 */
 
 .wf-profile-box {
     margin: 16px 0 0;
@@ -1338,7 +1343,7 @@
 .wf-profile-box-header .wf-subsection-title {
     flex: 1 1 auto;
     margin: 0;
-    font-size: 15px;
+    font-size: 17px;
 }
 
 .wf-profile-box-body {
@@ -1346,9 +1351,9 @@
 }
 
 .wf-group-label {
-    margin: 16px 0 8px;
-    color: var(--text-secondary);
-    font-size: 12px;
+    margin: 20px 0 8px;
+    color: var(--text-primary);
+    font-size: 14px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.04em;
