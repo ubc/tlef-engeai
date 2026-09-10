@@ -1,20 +1,16 @@
 # Main Architecture
 
-```prerequisites
-
-```
-
-EngE-AI is built using vanilla typeScript pattern (client-server architecture) across the frontend and backend (Typescript, HTML, CSS). As described in [Agentic Engineering](/docs/logistics/agentic-engineering), we chose this stack because current coding models are trained heavily on this techstack, and can reason about our current codebase, the problems, and plausible solutions. We also use AI-assisted coding tools along with human-in-the-loop workflow to develop faster alhtough human involvement is required. This makes the combination of a well-known stacks and well-trained AI coding assistance a best fit for the development process. 
+EngE-AI uses a client-server architecture with a vanilla TypeScript frontend and a TypeScript backend. The frontend uses HTML and CSS, while the application is supported by services such as MongoDB, Qdrant, Passport.js, and the UBC LTIC LLM toolkit. As described in [Agentic Engineering](/docs/logistics/agentic-engineering), we selected this stack because its technologies are widely used and well supported by AI-assisted coding tools. These tools can help developers understand the codebase, identify problems, and explore plausible solutions. We use them within a human-in-the-loop workflow: AI assists with implementation, while developers remain responsible for design decisions, code review, testing, and maintenance.
 
 
-By the end of this section you should be able to:
+By the end of this section, you should be able to:
 
-1. List the tech stack we currently use
-2. Describe how the major layers connect
+1. Describe the technology stack.
+2. Explain the connections between layers.
 
-## List of Tech Stacks
+## Technology Stack
 
-The technologies we are currently using:
+The technologies we currently use are:
 
 1. TypeScript (frontend and backend)
 2. HTML
@@ -26,7 +22,7 @@ The technologies we are currently using:
 
 ## Architecture Overview
 
-The overall architecture is summarized below.
+The overall architecture is illustrated as follows:
 
 ```mermaid
 flowchart TB
@@ -43,7 +39,7 @@ flowchart TB
     %% =========================
     subgraph Backend["Backend Application"]
         API["Controller"]
-        AUTH["Auth Middleware<br/>(PassportJS)"]
+        AUTH["Auth Middleware<br/>(Passport.js)"]
         CORE["Core Business Service"]
     end
 
@@ -55,7 +51,7 @@ flowchart TB
     %% =========================
     %% AI / LLM (EXTERNAL TO BACKEND BOX)
     %% =========================
-    subgraph AI["AI / LLM Layer</br> e.g. OpenAI</br></br>"]
+    subgraph AI["AI / LLM Layer<br/>e.g., OpenAI<br/><br/>"]
         EMBEDDING["Embedding Service"]
         LLM["LLM Provider"]
     end
@@ -83,7 +79,7 @@ flowchart TB
 
     %% LLM CALLS
     %% =========================
-    CORE <--> |"Embedding</br>Inference Call"| AI
+    CORE <--> |"Embedding<br/>Inference Call"| AI
  
 
     
@@ -94,6 +90,8 @@ flowchart TB
     AUTH <--> |"REST API"| UI
 ```
 
-By the end of this module you should understand how these layers fit together—enough to follow feature-specific documentation and implementation work.
+EngE-AI follows a client-server architecture with two main parts: a frontend web application and a backend application.
 
-## References
+The frontend is built with vanilla TypeScript, HTML, and CSS, and communicates with the backend through REST API requests. When a user logs in, Passport.js authentication middleware communicates with UBC CWL, which provides single sign-on (SSO). After authentication, the backend controller receives the request and passes it to the core business service, where the application’s main logic is processed.
+
+The core business service stores application metadata in MongoDB, stores chunks and embeddings in Qdrant, and communicates with external AI and LLM providers.

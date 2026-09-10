@@ -39,7 +39,7 @@ In an inference call, prompt layers can be divided into three message roles:
 
 ## Conversation Modes
 
-EngE-AI currently uses two chat conversation modes, which each mode has its own prompt modules and RAG bridge.
+EngE-AI currently uses two conversation modes, each with its own prompt modules and RAG bridge.
 
 | Mode | Main purpose | Typical behavior |
 |---|---|---|
@@ -61,7 +61,7 @@ EngE-AI’s system prompt is a collection of self-contained modules wrapped in X
 </system_prompt>
 ```
 
-The XML wrapper makes the module boundaries explicit. Meanwhile, Markdown is used inside each module because it is readable for developers and remains available to the model as literal prompt text. Both Markdown and XML wrapper is used as LLM models are heavily trained on both synthax.
+The XML wrapper makes the module boundaries explicit. Meanwhile, Markdown is used inside each module because it is readable for developers and remains available to the model as literal prompt text. Both Markdown and XML wrappers are used because LLMs are trained on both syntaxes.
 
 Each module follows this general format:
 
@@ -94,15 +94,15 @@ When writing a module:
 
 ## Prompt-Writing Principles
 
-### Be clear, concise and precise without removing necessary context
+### Be clear, concise, and precise without removing necessary context
 
-Use direct verbs, precise adjective or adverb to describe the expected behavior, output, and limits. Define technical term when they could be interpreted in more than one way. For example:
+Use direct verbs and precise adjectives or adverbs to describe the expected behavior, output, and limits. Define technical terms when they could be interpreted in more than one way. For example:
 
 > "Ask one Socratic question at a time and wait for the student’s response before asking the next question."
 
 This is more precise than saying “Use the Socratic method.”
 
-Please remove repetition, but do not remove information that the model needs to make a correct decision. The shortest instruction is not always the clearest instruction. For example, “Answer concisely” is brief but may be ambiguous. A longer instruction may be preferable when it defines the intended limit precisely.
+Remove repetition, but do not remove information that the model needs to make a correct decision. The shortest instruction is not always the clearest instruction. For example, “Answer concisely” is brief but may be ambiguous. A longer instruction may be preferable when it defines the intended limit precisely.
 
 Prefer:
 
@@ -135,10 +135,10 @@ Prompt modules should not give conflicting instructions. If a requirement must t
 
 ## RAG Context and Prompt Bridges
 
-Retrieval-Augmented Generation (RAG) retrieves relevant course-material chunks before the LLM responds. EngE-AI places the retrieved material inside a `<course_materials>` context block and labels the boundaries of each document. The prompt bridge is located in the `user` message role, meaning the retreival works when the user sends the prompt. 
+Retrieval-Augmented Generation (RAG) retrieves relevant course-material chunks before the LLM responds. EngE-AI places the retrieved material inside a `<course_materials>` context block and labels the boundaries of each document. The prompt bridge is located in the `user` message role, meaning that retrieval occurs when the user sends a message.
 
-When no RAG material is retreived, the assistant should state that limitation clearly before relying on general engineering knowledge. It should not invent chapter numbers, sections, quotations, or citations. 
+When no RAG material is retrieved, the assistant should state that limitation clearly before relying on general engineering knowledge. It should not invent chapter numbers, sections, quotations, or citations.
 
 ## Conclusion
 
-In EngE-AI, the main two responsibilities in prompt engineering are designing and organizing clear instructions. The system prompt, RAG context, conversation mode, and message history each contribute to the final response. Understanding how these components interact makes it easier to write prompts that are clear, maintainable, and aligned with EngE-AI’s learning goals.
+In EngE-AI, the two main responsibilities in prompt engineering are designing and organizing clear instructions. The system prompt, RAG context, conversation mode, and message history each contribute to the final response. Understanding how these components interact makes it easier to write prompts that are clear, maintainable, and aligned with EngE-AI’s learning goals.

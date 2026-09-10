@@ -15,7 +15,7 @@
 
 ```
 
-This guide explains how EngE-AI stores and organizes application metadata and courses data on MongoDB and vectorized content on Qdrant (mainly use for RAG). By the end of this chapter, you are expected to be familiar with:
+This guide explains how EngE-AI stores and organizes application metadata and course data in MongoDB and vectorized content in Qdrant (mainly used for RAG). By the end of this chapter, you are expected to be familiar with:
 
 1. MongoDB
     - MongoDB: Agentic Skills, Implementation, and Testing
@@ -44,15 +44,15 @@ The relevant guidance is documented in `03-mongodb-master.mdc` and `MONGO_DATA_L
 
 ```developer-note 
 
-BSON Schema allows queries to use MongoDB’s native syntax, enabling MongoDB to optimize query execution. As a developer, we should critically analyze any AI-Agent generated code: ensure clean, optimization, and follow the pattern on the generated code.
+BSON schemas allow queries to use MongoDB’s native syntax, enabling MongoDB to optimize query execution. As developers, we should critically analyze any AI-agent-generated code to ensure that it is clean, optimized, and follows existing patterns.
 
-You may want to consider this question while having any MongoDB operation in your implementation:
+You may want to consider these questions when implementing MongoDB operations:
 
-1. Does the query uses BSON schema format ? If not, justify yourself the correctness of your implementation.
-2. Does the implementation follows the best practice on the runtime and space complexity ?
-3. How large is the content that is required for CRUD ? For large query, would you prefer continuous changes, or one big changes ?
-4. While querying MongoDB, have you used `try-catch` method to implementation safety ? (Imagine somehow if the mongoDB server is down )
-5. How extensive is your test case ? Does it cover the entire possible cases?
+1. Does the query use a BSON schema format? If not, justify the correctness of your implementation.
+2. Does the implementation follow best practices for time and space complexity?
+3. How large is the content required for CRUD? For large queries, would you prefer incremental changes or one large change?
+4. While querying MongoDB, have you used a `try-catch` block to ensure safety? Consider what happens if the MongoDB server is down.
+5. How extensive is your test suite? Does it cover all possible cases?
 
 ```
 
@@ -149,16 +149,16 @@ Some MongoDB attributes require explicit handling to preserve consistency and su
 
 Suppose a student asks about one concept in a ten-page course document. Sending the entire document to the LLM would use unnecessary tokens, increase cost and latency, and include information that is not relevant to the question.
 
-EngE-AI addresses this problem using Retrieval-Augmented Generation (RAG), which retrieves relevant information from course materials and feed it to the LLM as additional context. During document ingestion, EngE-AI parses a course document, divides it into smaller chunks, and both the vector representation and the original text is sotred in Qdrant vector database.
+EngE-AI addresses this problem using Retrieval-Augmented Generation (RAG), which retrieves relevant information from course materials and feeds it to the LLM as additional context. During document ingestion, EngE-AI parses a course document, divides it into smaller chunks, and stores both the vector representation and the original text in the Qdrant vector database.
 
-When a student asks a question, EngE-AI converts the question into a vector representation, and Qdrant then performs a similarity search to identify the most relevant course-material chunks. The selected chunks are added to the LLM prompt alongside the student’s question, allowing the LLM to have additional context for response.
+When a student asks a question, EngE-AI converts the question into a vector representation, and Qdrant then performs a similarity search to identify the most relevant course-material chunks. The selected chunks are added to the LLM prompt alongside the student’s question, allowing the LLM to use additional context when responding.
 
-We use the UBC GenAI RAG toolkit manages document chunking, embedding generation, and communication with Qdrant (see [UBC GenAI Toolkit - RAG Module](https://www.npmjs.com/package/ubc-genai-toolkit-rag) for more).
+We use the UBC GenAI RAG toolkit, which manages document chunking, embedding generation, and communication with Qdrant. See [UBC GenAI Toolkit - RAG Module](https://www.npmjs.com/package/ubc-genai-toolkit-rag) for details.
 
 
 ### Important Variables
 
-In RAG system, we should consider these 5 variables in our RAG system:
+In a RAG system, consider these five variables:
 
 - `RAG_CHUNK_SIZE` defines the maximum length of each document chunk.
 - `RAG_OVERLAP_SIZE` defines how much text is shared between neighboring chunks.

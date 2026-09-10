@@ -108,7 +108,7 @@ Keep facts, assumptions, and unanswered questions separate. If a design decision
 
 ## Styling Fundamentals
 
-Styling fundamentals in EngE-AI refer to the visual and interaction principles that make a page clear, consistent, and easy to use. Styling includes more than colors and decoration; it also covers typography, spacing, layout, visual hierarchy, buttons, forms, navigation, feedback messages, and the way components respond to user actions. Here are EngE-AI's main color pallete:
+Styling fundamentals in EngE-AI refer to the visual and interaction principles that make a page clear, consistent, and easy to use. Styling includes more than colors and decoration; it also covers typography, spacing, layout, visual hierarchy, buttons, forms, navigation, feedback messages, and the way components respond to user actions. Here is EngE-AI’s main color palette:
 
 | Color Name (Color Palette Color Code) | Description |
 | --- | --- |
@@ -166,7 +166,7 @@ For more information, see [Figma’s Guide to the Figma MCP Server](https://help
 
 ## Responsive Design
 
-EngE-AI uses a mobile-first approach so that users can access the application on phones, tablets, laptops, and desktop monitors. Responsive behavior is implemented mainly through CSS media queries, which adjust the layout when the available viewport width changes. Please consider there four responsive modes:
+EngE-AI uses a mobile-first approach so that users can access the application on phones, tablets, laptops, and desktop monitors. Responsive behavior is implemented mainly through CSS media queries, which adjust the layout when the available viewport width changes. Please consider these four responsive modes:
 
 | Mode | Width | Typical behavior | Example Devices |
 |---|---:|---|---|
@@ -190,17 +190,16 @@ While developing your front end, you may want to visit these resources to search
 
 ## Conclusion and Recommendation
 
-Overall, Front end development is a crucial part while developing EngE-AI, this component directly interact with the user. To ensure the fluency, we adhere to user centered design (UCD) framework where the main development objecttive is merely for user. Additionally, we also discuss about wireframe, EngE-AI Styling, responsive design, and other inspirational resources
+Overall, frontend development is a crucial part of EngE-AI because it directly interacts with users. To ensure usability, we follow a user-centered design (UCD) framework in which the main development objective is to meet user needs. This guide also discusses wireframes, EngE-AI styling, responsive design, and inspirational resources.
 
 While developing the front end, please follow these steps:
 
 1. Clearly define your problem as part of the agentic development process.
 2. Determine the intended users and their corresponding behaviors. Create user personas, either mentally or in writing.
 3. Create a wireframe for the newly implemented feature.
-4. Integrate your wireframe into your coding agent, preferably by using plan mode.
-5. Evaluate the outcome produced by your coding agent. For small changes, make the modifications manually. Otherwise, you may communicate directly with the coding agent or use plan mode.
+4. Integrate your wireframe into your coding agent, preferably by using Plan Mode.
+5. Evaluate the outcome produced by your coding agent. For small changes, make the modifications manually. Otherwise, you may communicate directly with the coding agent or use Plan Mode.
 6. While refining the styling, you may refer to free styling resources according to your preferences.
 7. Adjust the responsive design and repeat step 5 as needed.
 
-By the end of this page, you should have gained exposure to how EngE-AI pages are developed. Good luck.
-
+By the end of this page, you should have gained an understanding of how EngE-AI pages are developed. Good luck.

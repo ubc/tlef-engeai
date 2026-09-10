@@ -14,26 +14,27 @@
 ```relevant sources
 
 - [RBAC](https://www.ibm.com/think/topics/rbac)
-- [How to Use Middleware in Javascript](https://expressjs.com/en/5x/guide/using-middleware/)
+- [How to Use Middleware in JavaScript](https://expressjs.com/en/5x/guide/using-middleware/)
 
 ```
 
 
-**Middleware** is a software layer that help EngE-AI manages the request before they reach the main application. It checks whetheer a user is logged in, or whether they have the permissionto access the feature. 
+**Middleware** is a software layer that helps EngE-AI manage requests before they reach the main application. It checks whether a user is logged in and whether they have permission to access a feature.
 
-This page discusses how EngE-AI uses middleware for 
-1. UBC CWL Authentication
-2. Role-Based Access Control (RBAC)
-3. Jobs (scheduled task), and 
-4. troubleshooting
+This page discusses how EngE-AI uses middleware for:
 
-along with its design system and its justification. This topic is essential because middleware handles sensitive authentication data and helps protect users’ privacy.
+1. UBC CWL authentication
+2. Role-based access control (RBAC)
+3. Jobs (scheduled tasks); and
+4. Troubleshooting
+
+It also explains the middleware design and its rationale. This topic is essential because middleware handles sensitive authentication data and helps protect users’ privacy.
 
 ## CWL Authentication
 
-UBC Campus-Wide Login (CWL) is the primary authentication service, used almost every UBC's application inclusing EngE-AI by. It allows the user to authenticate through UBC's identity provider before accessing protected application features.
+UBC Campus-Wide Login (CWL) is UBC’s primary authentication service and is used by most UBC applications, including EngE-AI. It allows users to authenticate through UBC’s identity provider before accessing protected application features.
 
-EngE-AI integrate `Passport.js` to manage authentication wihtin the application. For CWL authentication, EngE-AI uses passport-ubcshib strategy, which implements `UBC Shibboleth/SAML` authentication. The strategy processes the identity information returned by UBC, and allows the authenticated user available to EngE-AI.
+EngE-AI integrates `Passport.js` to manage authentication within the application. For CWL authentication, EngE-AI uses the `passport-ubcshib` strategy, which implements UBC Shibboleth/SAML authentication. The strategy processes identity information returned by UBC and makes authenticated user information available to EngE-AI.
 
 For more information, review `src/middleware` and [passport-ubcshib](https://www.npmjs.com/package/passport-ubcshib).
 
@@ -104,27 +105,27 @@ Review the [sample app](https://github.com/ubc/passport-ubcshib-docker-simple-sa
 
 ## RBAC
 
-RBAC, or role-based access control, manages access and privileges based on assigned roles. RBAC is an essential part of EngE-AI, as the app’s business logic heavily relies on roles; that is, actions are intended based on the user’s role.
+RBAC, or role-based access control, manages access and privileges based on assigned roles. RBAC is an essential part of EngE-AI because the application’s business logic heavily relies on roles; that is, actions are available based on the user’s role.
 
-We set the roles to have privileges vertically, meaning admin > instructor > TA > student. This implies that the admin can do anything that all roles beneath them can do, and the instructor can do anything that the lower roles are supposed to do, but not the admin’s, and so forth. This system is designed for maintainability purposes.
+The roles use a privilege hierarchy: admin > instructor > TA > student. This means that administrators can perform all actions available to lower roles. Instructors can perform actions available to TAs and students, but not administrator-only actions. This system supports maintainability.
 
 | Role | Function | Privileges |
 | --- | --- | --- |
 | Admin | Maintains EngE-AI, develops features, and resolves application bugs. | {{list:All instructor, TA, and student privileges.; Supervise every course.; Review escalation logs.; Maintain the application.}} |
 | Instructor | Supervises and configures a course. | {{list:All TA and student privileges.; Supervise and escalate student flags.; Monitor student app engagement statistics.; Escalate students to TAs or vice versa.}} |
 | Teaching Assistant | Assists the instructor in supervising the application for a course. | {{list:All student privileges.; Set course materials and scenario generation.; Set additional system prompts or initial assistant prompts.}} |
-| Student | Uses the application as its primary learner audience. | {{list:Have conversations.; Take self-quizzes using the scenario generation feature.}} |
+| Student | Uses the application as a primary learning tool. | {{list:Have conversations.; Take self-quizzes using the scenario generation feature.}} |
 | Staff | Uses the application as a student; intended for individuals with a `staff` affiliation. | {{list:Same privileges as a student.}} |
 
-RBAC is enforced through middleware. When a REST API request is sent to the server, the server checks whether the request is eligible for the user through a callback function. For example, students cannot upload or modify course materials through protected RAG routes; these actions require authorized course staff or an administrator.
+RBAC is enforced through middleware. When a REST API request is sent to the server, the server checks whether the user is authorized to make the request through a callback function. For example, students cannot upload or modify course materials through protected RAG routes; these actions require authorized course staff or an administrator.
 
 ## Jobs
 
-**Jobs** are a method for assigning scheduled tasks in EngE-AI; mainly used to schedule material uploads.
+**Jobs** are scheduled tasks in EngE-AI and are mainly used to schedule material uploads.
 
-Scheduling a task using NodeJS timer is not preferrable because large number of concurrent timer could increase the app memory usage.
+Scheduling a task using Node.js timers is not preferable because a large number of concurrent timers can increase application memory usage.
 
-The jobs are designed where each course owns its dedicated mongo collection listing the scheduled task. The job checker, triggered by an eligible user request, runs inside the middleware and consistently checks for a to-be-released jobs. As a simplification, consider this illustration:
+The jobs are designed so that each course owns a dedicated MongoDB collection listing scheduled tasks. The job checker, triggered by an eligible user request, runs inside the middleware and consistently checks for jobs that are due to be released. As a simplification, consider this illustration:
 
 1. An instructor schedules an activity; the activity is then recorded in the course jobs collection.
 2. When an eligible authenticated request reaches the application, the job checker scans for due scheduled jobs.
@@ -132,12 +133,12 @@ The jobs are designed where each course owns its dedicated mongo collection list
 
 ## Security, Privacy, and Troubleshooting
 
-Middleware is crucial because it involves user sensitive data and interactio with third party service, such as UBC CWL server. The following practices can support secure development and effective troubleshooting:
+Middleware is crucial because it involves sensitive user data and interaction with third-party services, such as the UBC CWL server. The following practices can support secure development and effective troubleshooting:
 
 1. Do not expose sensitive data, such as email addresses and PUIDs, to the front end unless the feature explicitly requires it.
 2. For every new or updated feature, test all relevant roles, including users with multiple roles and users accessing different courses.
-3. When using an AI coding agent, use plan mode and ask the agent to identify the RBAC requirement, intended users, course scope, adn verification approach. Request for coding agent for behavior that the agent could not cover.
-4. Use  `curl`, browser developer tools, or similar tools to verify that protected API routes reject unauthenticated requests, and roles.
+3. When using an AI coding agent, use Plan Mode and ask the agent to identify the RBAC requirements, intended users, course scope, and verification approach. Request clarification for any behavior that the agent cannot cover.
+4. Use `curl`, browser developer tools, or similar tools to verify that protected API routes reject unauthenticated requests and requests from unauthorized roles.
 5. Remove any stub values or development-only values, such as fake users, test passwords, and mock configuration, before moving to the staging environment.
 6. Please consult your supervisor if you encounter any difficulties during the process.
 
@@ -146,4 +147,3 @@ Middleware is crucial because it involves user sensitive data and interactio wit
 When creating or updating an API endpoint, identify the required role, course scope, and authorization rule before implementation. Explain the RBAC decision in the implementation plan and include manual tests for cases that automated tests cannot cover.
 
 ```
-

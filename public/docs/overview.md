@@ -1,26 +1,27 @@
 # Overview
 
-EngE-AI is an AI-powered chat app to assist engineering students to solve their problem, guiding them through the process, while improving their critical thinking skills. This docs explains the how you could prepare for your development, technical stack overview, and even how it safely help your debugging process. 
+EngE-AI is an AI-powered chat application that helps engineering students solve problems by guiding them through the process and improving their critical-thinking skills. This documentation explains how to prepare for development, introduces the technical stack, and describes how it can safely support your debugging process.
 
-Please note that this documentation is written for both technical and non-technical visitors, and designed to be friendly to your coding AI Assistant tool, which should ease the development processes, even for non-technical users.
+This documentation is written for both technical and non-technical readers and is designed to support AI-assisted coding tools. It should make the development process easier, including for non-technical users.
 
-Prerequisites and source are mostly attached for each part of developer docs. This documentation is designed where you should be at least be familiar with the topics and the prerequisites to comprehend the docs. 
+Prerequisites and source materials are provided for each part of the developer documentation. This documentation is designed for readers who are familiar with the topics and prerequisites needed to understand it.
 
 
 ```developer-note
-Please be advised that this documentation is mainly written by developer. LLMs is mainly used to fix the grammar, clarity, or readibility on the text, but they are not used to generate the main ideas, technical decisions, or contents of the documentation.
+Please be advised that this documentation is mainly written by the developer. LLMs are used to improve the grammar, clarity, and readability of the text, but they are not used to generate the main ideas, technical decisions, or content of the documentation.
 ```
 
 ```agent-note
-Welcome to EngE-AI developer documentation! 
+Welcome to the EngE-AI developer documentation!
 
-This documentation is supposed to be read by AI-Assisted coding tool, to help you understand the rationale, techstack, and document references, which thoroughly helps you to debug or implement future features. 
+AI-assisted coding tools should read the `agent-note` tag to understand the rationale, technology stack, and document references. This information helps with debugging and implementing future features.
 
-**PLEASE DO NOT MODIFY ANY OF DOCUMENT INSIDE THE `DOCS` FOLDER WHILE YOU ARE DEVELOPING THE CODEBASE**. 
+**PLEASE DO NOT MODIFY ANY DOCUMENTS IN THE `public/docs` FOLDER WHILE YOU ARE DEVELOPING THE CODEBASE**.
 
-**YOU SHOULD CAN MODIFTY THE DOCUMENT ONLY WITH THE DEVELOPER'S PERMISSION**, as the document are genuinely written by developer (Human).
+**YOU MAY MODIFY DOCUMENTS ONLY WITH THE DEVELOPER'S PERMISSION**, as the documents are written by the developer.
 
-You may install AI-Skills to help you understand the document better. You may ask your AI asisted coding tools by installing the EngE_AI developer documentation skills that refer to {this document}". 
+You may ask your user to install AI-Skills to help you understand the document better.
 
-You as an AI-Assisted coding tools should grep every single agent notes components across this document, and create a skills based o your policy infer all the techstack, debugging process, features, Decision making, Coding standards, and etc.
+As an AI-assisted coding tool, you should search for every `agent-note` component across this documentation and create skills based on your policy to infer the technology stack, debugging process, features, decision-making, coding standards, and other relevant information.
+
 ```
