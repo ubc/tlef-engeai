@@ -154,6 +154,49 @@ export function extractDocsCallouts(markdown: string): {
 }
 
 /**
+ * extractDocsInlineLists - extracts safe semicolon-delimited lists from documentation tables.
+ *
+ * Authors write `{{list:First item; Second item}}` in a table cell. The list is
+ * replaced with a placeholder so the page renderer can create escaped list markup
+ * after Marked has finished parsing the surrounding table.
+ *
+ * @param markdown - Markdown source with callout fences already removed
+ * @returns Markdown body with placeholders and the list items for each placeholder
+ */
+export function extractDocsInlineLists(markdown: string): {
+	body: string;
+	lists: string[][];
+} {
+	const lists: string[][] = [];
+	let insideCodeFence = false;
+	const body = markdown.split('\n').map((line) => {
+		// Preserve code examples exactly as written, including list-like marker text.
+		if (/^\s*(```|~~~)/.test(line)) {
+			insideCodeFence = !insideCodeFence;
+			return line;
+		}
+		if (insideCodeFence || !line.includes('|')) {
+			return line;
+		}
+
+		// Replace markers only in table rows so ordinary documentation prose stays unchanged.
+		return line.replace(/\{\{list:([^{}]+)\}\}/g, (match, rawItems: string) => {
+			const items = rawItems
+				.split(';')
+				.map((item) => item.trim())
+				.filter(Boolean);
+			if (items.length === 0) {
+				return match;
+			}
+			const index = lists.length;
+			lists.push(items);
+			return `DOCS_INLINE_LIST_PLACEHOLDER_${index}`;
+		});
+	}).join('\n');
+	return { body, lists };
+}
+
+/**
  * escapeHtml - encodes text for safe insertion into HTML.
  *
  * @param text - raw string

@@ -300,6 +300,15 @@ body.docs-page .home-footer-brand .home-footer-title {
 	font-weight: 700;
 }
 
+.docs-article .docs-inline-list {
+	margin: 0;
+	padding-left: 1.2rem;
+}
+
+.docs-article .docs-inline-list li + li {
+	margin-top: 0.35rem;
+}
+
 .docs-article pre {
 	margin: 0 0 1.25rem;
 	padding: 0.9rem 1rem;

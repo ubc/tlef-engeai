@@ -16,6 +16,7 @@ import {
 	currentDocSlug,
 	docsHrefForPath,
 	docsCalloutKind,
+	extractDocsInlineLists,
 	type DocsCalloutKind,
 	escapeHtml,
 	extractDocsCallouts,
@@ -664,6 +665,14 @@ async function buildCalloutMarkups(
 	return markups;
 }
 
+/** Builds escaped semantic list markup for documentation-table list placeholders. */
+function buildDocsInlineListMarkups(lists: string[][]): string[] {
+	return lists.map((items) => {
+		const entries = items.map((item) => `<li>${escapeHtml(item)}</li>`).join('');
+		return `<ul class="docs-inline-list">${entries}</ul>`;
+	});
+}
+
 /**
  * renderMarkdown - marked parse with heading ids, escaped HTML, and callouts.
  *
@@ -673,7 +682,8 @@ async function buildCalloutMarkups(
  * @param markdown - raw page source
  */
 async function renderMarkdown(markdown: string): Promise<string> {
-	const { body, callouts } = extractDocsCallouts(markdown);
+	const { body: bodyWithoutCallouts, callouts } = extractDocsCallouts(markdown);
+	const { body, lists } = extractDocsInlineLists(bodyWithoutCallouts);
 	let html = await parseWithMarked(body);
 	html = html.replace(/<p>DOCS_CALLOUT_PLACEHOLDER_(\d+)<\/p>/g, (_match, index: string) => {
 		return `DOCS_CALLOUT_PLACEHOLDER_${index}`;
@@ -681,6 +691,10 @@ async function renderMarkdown(markdown: string): Promise<string> {
 	const markups = await buildCalloutMarkups(callouts);
 	for (let i = 0; i < markups.length; i++) {
 		html = html.replace(`DOCS_CALLOUT_PLACEHOLDER_${i}`, markups[i]);
+	}
+	const listMarkups = buildDocsInlineListMarkups(lists);
+	for (let i = 0; i < listMarkups.length; i++) {
+		html = html.replace(`DOCS_INLINE_LIST_PLACEHOLDER_${i}`, listMarkups[i]);
 	}
 	return html;
 }
