@@ -42,7 +42,6 @@ describe('default writing rubric profile', () => {
         expect(rubric.task).toBe('');
         expect(rubric.audience).toBe('');
         expect(rubric.purpose).toBe('');
-        expect(rubric.gradingIntent).toBe('');
         expect(rubric.constraints).toEqual([]);
 
         const profile = buildDefaultSflContextProfile();
@@ -57,6 +56,7 @@ describe('default writing rubric profile', () => {
     it('keeps the defaults that are usable as written', () => {
         const rubric = buildDefaultWritingRubric();
         expect(rubric.learningOutcomes.length).toBe(3);
+        expect(rubric.gradingIntent).toContain('formative, evidence-based feedback');
 
         const profile = buildDefaultSflContextProfile();
         expect(profile.actualEvaluator).toBe('Instructor or teaching assistant.');

@@ -169,7 +169,7 @@ export function buildDefaultWritingRubric(
             'Represent the assignment subject accurately and completely.',
             'Position language appropriately for the stated audience and purpose.'
         ],
-        gradingIntent: '',
+        gradingIntent: 'Provide formative, evidence-based feedback using ordinal levels. Numeric grading requires instructor-authored points.',
         sflContext: buildDefaultSflContextProfile(),
         criteria: DEFAULT_WRITING_CRITERIA.map((criterion) => ({
             ...criterion,

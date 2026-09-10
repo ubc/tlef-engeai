@@ -355,14 +355,28 @@ function bandsDisagreeAt(criterion: RubricCriterion): number | undefined {
  * The first measurement is deferred: the control is not in the document when this
  * is called, and a detached element has no scrollHeight.
  *
+ * A grid rendered inside a collapsed step has no layout at all, and an unlaid-out
+ * control reports a scrollHeight of 0. Measuring it there would pin every descriptor
+ * to the two-row floor for the life of the page, clipping the rest of the text with
+ * no way to reach it, so the measurement is skipped until the control is on screen
+ * and repeated then.
+ *
  * @param control - Textarea to keep sized to its content
  */
 function autoGrow(control: HTMLTextAreaElement): void {
     const fit = (): void => {
+        // offsetParent is null exactly when the control (or an ancestor) is display:none
+        // or hidden — the collapsed-step case, where there is nothing to measure.
+        if (!control.isConnected || control.offsetParent === null) return;
         control.style.height = 'auto';
         control.style.height = `${control.scrollHeight}px`;
     };
     control.addEventListener('input', fit);
+    // Fires when the step is expanded and again when the cell scrolls into view, which
+    // is the first moment the control has a height worth reading.
+    new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) fit();
+    }).observe(control);
     requestAnimationFrame(fit);
 }
 
@@ -634,7 +648,7 @@ export function renderRubricGrid(
         headRow.append(cell);
     });
 
-    const pointsHead = createText('th', 'Weight', 'wf-grid-points-head');
+    const pointsHead = createText('th', 'Points', 'wf-grid-points-head');
     pointsHead.id = `${gridId}-points`;
     pointsHead.setAttribute('scope', 'col');
     headRow.append(pointsHead);
@@ -862,9 +876,13 @@ export function renderRubricGrid(
     const footRow = document.createElement('tr');
     const totalLabel = document.createElement('th');
     totalLabel.className = 'wf-grid-total-label';
-    totalLabel.textContent = 'Total across every criterion';
     totalLabel.scope = 'row';
     totalLabel.colSpan = draft.levels.length + 1;
+    // The label spans every column left of the points, so the cell itself is wider than
+    // the scrollport and pinning it would do nothing. Its text is carried in a span that
+    // is pinned instead, which keeps the label beside the total it names at every scroll
+    // offset rather than only at the far right of a wide rubric.
+    totalLabel.append(createText('span', 'Total Points', 'wf-grid-total-label__text'));
     footRow.append(totalLabel, totalCell);
     foot.append(footRow);
     table.append(foot);

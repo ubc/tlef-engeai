@@ -362,8 +362,8 @@ function sflField(spec: SflFieldSpec): HTMLDivElement {
  */
 function profileStatusChip(readiness: StepReadiness): HTMLElement {
     return readiness.complete
-        ? chip('Every question answered', 'green')
-        : chip(`${readiness.done} of ${readiness.total} answered`, 'amber');
+        ? chip('All fields completed', 'green')
+        : chip(`${readiness.done} of ${readiness.total} fields completed`, 'amber');
 }
 
 /**
@@ -529,7 +529,7 @@ function renderStageRepeater(
         const addButton = createButton('Add section', 'secondary', async () => {
             addRow('', '');
             onInput();
-        });
+        }, false, 'plus');
         wrapper.append(addButton);
     }
 
@@ -1109,7 +1109,7 @@ export async function openRubricPage(assignmentId: string): Promise<void> {
 interface StepState {
     ordinal: number;
     label: string;
-    /** The short line under the label, e.g. "Every question answered". */
+    /** The short line under the label, e.g. "All fields completed". */
     detail: string;
     state: 'done' | 'current' | 'pending';
 }
@@ -1269,20 +1269,6 @@ function renderRubricPage(
     );
     header.append(heading, meta);
     root.append(header);
-
-    const instructions = document.createElement('details');
-    instructions.className = 'wf-assignment-instructions';
-    const instructionsSummary = document.createElement('summary');
-    instructionsSummary.textContent = 'What students were told to do';
-    instructions.append(
-        instructionsSummary,
-        createText(
-            'div',
-            assignment.instructions || 'Nothing was imported for this assignment. Describe the task in step 1 instead.',
-            assignment.instructions ? 'wf-assignment-instructions__text' : 'wf-muted-note'
-        )
-    );
-    root.append(instructions);
 
     // The progress strip is inserted here but filled by refreshProgress once the
     // steps below exist; everything it shows is derived, nothing is stored.
@@ -1539,9 +1525,9 @@ function renderRubricPage(
                 ordinal: 1, label: 'Describe the assignment', state: describedDone ? 'done' : 'current',
                 detail: detailsNow.complete
                     ? (profileNow.complete
-                        ? 'Every question answered'
-                        : `Writing profile: ${profileNow.done} of ${profileNow.total} answered`)
-                    : `${detailsNow.done} of ${detailsNow.total} questions answered`
+                        ? 'All fields completed'
+                        : `Writing profile: ${profileNow.done} of ${profileNow.total} fields completed`)
+                    : `${detailsNow.done} of ${detailsNow.total} fields completed`
             },
             {
                 ordinal: 2, label: isLabReport ? 'Build the marking grids' : 'Build the marking grid',
@@ -1561,7 +1547,7 @@ function renderRubricPage(
 
         const outstanding: string[] = [];
         if (!profileNow.complete) {
-            outstanding.push(`“Describe the writing” is ${profileNow.done} of ${profileNow.total} answered`);
+            outstanding.push(`“Describe the writing” has ${profileNow.done} of ${profileNow.total} fields completed`);
         }
         if (gridNow.emptyCells > 0) {
             outstanding.push(`${gridNow.emptyCells} ${gridNow.emptyCells === 1 ? 'box' : 'boxes'} in the grid ${gridNow.emptyCells === 1 ? 'is' : 'are'} still empty`);
@@ -1575,8 +1561,8 @@ function renderRubricPage(
         );
 
         step1Meta.textContent = describedDone
-            ? 'Every question answered'
-            : `${detailsNow.done} of ${detailsNow.total} questions answered`;
+            ? 'All fields completed'
+            : `${detailsNow.done} of ${detailsNow.total} fields completed`;
         step2Meta.textContent = gridNow.complete
             ? `${gridNow.criteria} criteria · ${gridNow.levels} levels · ${gridNow.totalPoints} points`
             : `${gridNow.emptyCells} ${gridNow.emptyCells === 1 ? 'box' : 'boxes'} still empty`;
@@ -1772,12 +1758,9 @@ function renderAssignmentDetails(
     const purpose = namedControl(textAreaControl(draft.purpose, 2), 'purpose');
     purpose.placeholder = 'What the piece of writing is meant to achieve';
     const gradingIntent = namedControl(textAreaControl(draft.gradingIntent, 2), 'gradingIntent');
-    gradingIntent.placeholder = 'The thing you would mention first when handing the work back';
 
     // Guidance lives in each control's placeholder rather than in a line under the
-    // box: the two together were more reading than the question deserved. The
-    // learning-outcomes field keeps its hint because it seeds with real outcomes,
-    // so its placeholder never shows and the one-per-line rule would be lost.
+    // box: the two together were more reading than the question deserved.
     const entries: Array<{ label: string; hint?: string; control: HTMLInputElement | HTMLTextAreaElement; wide?: boolean }> = [
         {
             // This is RubricDefinition.title, not the assignment's. The page heading
@@ -1789,7 +1772,9 @@ function renderAssignmentDetails(
         { label: 'Who are they writing for?', control: audience },
         { label: 'Why are they writing it?', control: purpose },
         { label: 'Rules they must follow', control: constraints },
-        { label: 'What they should learn from it', hint: 'One per line.', control: learningOutcomes },
+        // Seeded with real outcomes, so this box's placeholder never shows; the
+        // one-per-line rule rides in the label to survive having content.
+        { label: 'What they should learn from it (one per line)', control: learningOutcomes },
         { label: 'What matters most when you mark it?', control: gradingIntent, wide: true }
     ];
     entries.forEach((entry) => {

@@ -928,7 +928,9 @@ export async function runButtonAction(
     action: (button: HTMLButtonElement) => Promise<void>
 ): Promise<void> {
     if (button.disabled) return;
-    const label = button.textContent ?? '';
+    // Restoring from textContent would flatten an icon button into a bare text
+    // node, so the glyph survived only until its first click. Keep the nodes.
+    const label = Array.from(button.childNodes);
     button.disabled = true;
     button.setAttribute('aria-busy', 'true');
     button.textContent = 'Working…';
@@ -946,7 +948,7 @@ export async function runButtonAction(
         if (button.isConnected) {
             button.disabled = false;
             button.removeAttribute('aria-busy');
-            button.textContent = label;
+            button.replaceChildren(...label);
         }
     }
 }

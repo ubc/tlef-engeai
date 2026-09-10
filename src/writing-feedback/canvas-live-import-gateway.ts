@@ -199,6 +199,19 @@ function text(value: string | null | undefined): string {
     return typeof value === 'string' ? value.trim() : '';
 }
 
+/**
+ * Decodes one rubric field the way Canvas actually sends it.
+ *
+ * Canvas HTML-encodes rubric criterion and rating text even where the field carries no markup,
+ * so an ampersand arrives as `&amp;`. Nothing downstream decodes it — the grid writes these
+ * strings into textarea values, which never parse entities — so a raw field reaches the
+ * instructor as literal `&amp;`. Labels stay on one line; the grid renders them as headings.
+ */
+function rubricText(value: string | null | undefined, singleLine = false): string {
+    const decoded = htmlToText(text(value));
+    return singleLine ? decoded.replace(/\s*\n+\s*/g, ' ').trim() : decoded;
+}
+
 function numberOrUndefined(value: number | null | undefined): number | undefined {
     return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
@@ -215,14 +228,14 @@ function numberOrUndefined(value: number | null | undefined): number | undefined
 function toRubricRow(payload: CanvasRubricCriterionPayload, index: number): CanvasRubricRow {
     const ratings: CanvasRubricRating[] = (payload.ratings ?? []).map((rating, ratingIndex) => ({
         canvasRatingId: String(rating?.id ?? `rating-${index}-${ratingIndex}`),
-        label: text(rating?.description),
-        description: text(rating?.long_description),
+        label: rubricText(rating?.description, true),
+        description: rubricText(rating?.long_description),
         points: numberOrUndefined(rating?.points)
     }));
     return {
         canvasCriterionId: String(payload.id ?? `criterion-${index}`),
-        label: text(payload.description) || `Criterion ${index + 1}`,
-        description: text(payload.long_description),
+        label: rubricText(payload.description, true) || `Criterion ${index + 1}`,
+        description: rubricText(payload.long_description),
         points: numberOrUndefined(payload.points),
         ratings
     };
