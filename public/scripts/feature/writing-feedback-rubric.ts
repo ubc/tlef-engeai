@@ -283,13 +283,6 @@ interface RubricSectionHandle {
     form: HTMLFormElement;
     working: RubricDefinition;
     canEdit: boolean;
-    /**
-     * Save and Approve moved to step 3, where there is one of each for the whole
-     * assignment. These let that single pair drive a rubric that no longer owns
-     * its own buttons: a failure still surfaces in the grid it belongs to.
-     */
-    showValidationError: (message: string) => void;
-    clearValidationError: () => void;
     /** Version this rubric would become on approval, used in the confirmation copy. */
     nextVersion: number;
     /** Whether an approved version already exists, which changes that copy. */
@@ -309,6 +302,12 @@ interface RubricPageContext {
      * than drop the text.
      */
     technicalMissing: boolean;
+    /**
+     * Recomputes the progress strip and step summaries. The page owns the strip but
+     * the grids are built by renderRubricSection, so an edit inside a grid has to
+     * reach back here or the counts stand still while staff type.
+     */
+    refreshProgress: () => void;
 }
 
 function rubricTextValue(form: HTMLFormElement, name: string): string {
@@ -1210,14 +1209,25 @@ function linkAccordion(headers: HTMLElement[]): void {
  * describeAllGrids - readiness across every grid the assignment owns
  *
  * A lab report has two, and a staff member thinks of "the grid" as finished only
- * when both are. Reads each editor's live working copy, so the strip moves as the
- * grid is edited rather than reporting the version the page loaded with.
+ * when both are.
  *
  * @param sections - Registered rubric editors
  * @returns Summed counts across every grid
  */
 function describeAllGrids(sections: RubricSectionHandle[]): GridReadiness {
-    const parts = sections.map((section) => describeGrid(section.working.criteria, section.working.levels));
+    const parts = sections.map((section) => {
+        // Read the form rather than the working copy. The working copy is only brought
+        // up to date when the page saves, so counting it left the strip reporting the
+        // grid as staff found it rather than as they have just edited it.
+        //
+        // The read goes into a detached snapshot because the grid's own structural
+        // actions -- "Spread points evenly" especially -- mutate the working copy
+        // directly and then redraw from it. Syncing the real copy from a DOM that has
+        // not been redrawn yet would undo them.
+        const snapshot = detachedRubric(section.working);
+        syncStructuredValues(section.form, snapshot);
+        return describeGrid(snapshot.criteria, snapshot.levels);
+    });
     if (!parts.length) return { criteria: 0, levels: 0, totalPoints: 0, emptyCells: 0, complete: false };
     return {
         criteria: parts.reduce((sum, part) => sum + part.criteria, 0),
@@ -1291,10 +1301,6 @@ function renderRubricPage(
     if (!writingSource) throw new Error('This assignment does not have a rubric draft or approved rubric.');
     const technicalSource = technicalData?.draft ?? technicalData?.approved;
 
-    const clearValidation = (): void => {
-        root.querySelectorAll<HTMLElement>('.wf-validation-summary').forEach((node) => { node.hidden = true; });
-    };
-
     let context: RubricPageContext | undefined;
 
     const step1Body = document.createElement('div');
@@ -1308,7 +1314,6 @@ function renderRubricPage(
         onInput: () => {
             if (linguisticData.permissions.canEdit) state.panelDirty = true;
             if (linguisticData.permissions.canEdit) rubricAutosave?.markDirty();
-            clearValidation();
             refreshProgress();
         },
         onFillFromInstructions: async (status) => {
@@ -1367,7 +1372,10 @@ function renderRubricPage(
         detailsForm,
         sections: [],
         isLabReport,
-        technicalMissing: Boolean(technicalData) && !technicalData?.draft && !technicalData?.approved
+        technicalMissing: Boolean(technicalData) && !technicalData?.draft && !technicalData?.approved,
+        // Assigned further down, so the call is deferred through the closure rather
+        // than captured now.
+        refreshProgress: () => refreshProgress()
     };
     context = pageContext;
 
@@ -1470,11 +1478,19 @@ function renderRubricPage(
         );
         // A quiet marker beside Save, not a toast: this reports something that happens on
         // its own, and it must not compete with the explicit Save's success message.
+        //
+        // Under the buttons rather than in among them. Inside the button row its text
+        // counted toward that row's width, so the row grew the moment autosave said
+        // anything and wrapped to the next line -- the buttons jumping from the right
+        // of the step to its bottom left and back as staff typed. A column of its own
+        // keeps the buttons a fixed size whatever the status happens to say.
         const autosaveStatus = document.createElement('p');
         autosaveStatus.className = 'wf-autosave-status';
         autosaveStatus.setAttribute('role', 'status');
         autosaveStatus.setAttribute('aria-live', 'polite');
-        actions.append(autosaveStatus);
+        const actionsColumn = document.createElement('div');
+        actionsColumn.className = 'wf-approve-actions';
+        actionsColumn.append(actions, autosaveStatus);
 
         const savedClock = (at?: number): string =>
             at === undefined ? '' : new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -1500,28 +1516,24 @@ function renderRubricPage(
 
         registerAutosaveFlushListeners();
 
-        approveRow.append(actions);
+        approveRow.append(actionsColumn);
     }
 
-    // What is still owed before feedback can be drafted. This is disclosure, not a
-    // gate: requireCompleteSflProfile enforces it at generation, and staff used to
-    // meet it only as a failure on the review page. It sits above the approve copy
-    // so the reader meets the outstanding work before the invitation to approve.
-    const owed = document.createElement('div');
-    owed.className = 'wf-owed';
-    owed.hidden = true;
-    step3Body.append(owed, approveRow);
+    // What is still outstanding is the progress strip's job, once, at the top of the
+    // page. Step 3 used to restate it in a notice of its own, which said the same
+    // counts a second time and named no work the strip had not already named.
+    step3Body.append(approveRow);
 
     step3.append(step3Header, step3Body);
     root.append(step3);
 
     /**
-     * refreshProgress - recomputes the strip, the step summaries, the profile chip,
-     * and the owed notice from the live working copies
+     * refreshProgress - recomputes the strip, the step summaries, and the profile
+     * chip from what the forms currently hold
      *
      * Called on every input. Everything it renders is derived; nothing is stored.
-     * It reads the details form and each editor's working copy rather than the
-     * rubric the page loaded with, so the numbers move as staff type.
+     * It reads the details form and each grid's form rather than the rubric the page
+     * loaded with, so the numbers move as staff type.
      */
     refreshProgress = (): void => {
         const details = readDetailsNow();
@@ -1555,21 +1567,6 @@ function renderRubricPage(
             }
         ]));
 
-        const outstanding: string[] = [];
-        if (!profileNow.complete) {
-            outstanding.push('“Describe the writing” is not finished');
-        }
-        if (gridNow.emptyCells > 0) {
-            outstanding.push(`${gridNow.emptyCells} ${gridNow.emptyCells === 1 ? 'box' : 'boxes'} in the grid ${gridNow.emptyCells === 1 ? 'is' : 'are'} still empty`);
-        }
-        owed.hidden = outstanding.length === 0;
-        owed.replaceChildren(
-            createText('p', outstanding.length === 1
-                ? 'One more thing before any feedback can be drafted'
-                : 'Two more things before any feedback can be drafted', 'wf-owed__title'),
-            createText('p', `${outstanding.join(', and ')}.`)
-        );
-
         // The same chip the profile sub-card uses: the two lines make the same claim
         // about the same step, so they should not read as different kinds of thing.
         step1Meta.replaceChildren(describedDone
@@ -1591,22 +1588,51 @@ function renderRubricPage(
 /**
  * saveEveryRubric - the page's one Save, writing every rubric the assignment owns
  *
- * A validation failure is surfaced in the grid it belongs to, the way the
- * per-section Save used to, so the message still appears next to the field that
- * caused it rather than beside a button two steps away.
+ * A validation failure is reported in the modal the caller raises, and only
+ * there. It used to be copied into a red banner above the grid as well, which
+ * said the same sentence a second time and then stayed on the page after the
+ * modal it came from was gone.
  *
  * @param context - Page context holding the details form and registered editors
  * @throws Error carrying the first staff-facing validation or transport failure
  */
 async function saveEveryRubric(context: RubricPageContext): Promise<void> {
-    try {
-        await saveAssignmentRubrics(context);
-        context.sections.forEach((section) => section.clearValidationError());
-    } catch (error) {
-        const message = error instanceof Error ? error.message : 'Review the rubric fields.';
-        context.sections.find((section) => section.canEdit)?.showValidationError(message);
-        throw error;
+    await saveAssignmentRubrics(context);
+}
+
+/**
+ * findApprovalBlocker - the server's approval gate, asked before the confirmation
+ *
+ * `requireCompleteRubricCells` still owns this rule and still enforces it; this
+ * only moves the answer in front of the dialog. Asking a staff member to confirm
+ * an approval and then refusing what they just confirmed reads as the
+ * confirmation itself having failed, and leaves them looking for what they did
+ * wrong in the dialog rather than in the grid.
+ *
+ * The messages match the server's word for word, and are checked in the same
+ * order, so the two can never name different problems for one grid.
+ *
+ * @param sections - Editable rubric editors, already synced from their forms by the save
+ * @returns Staff-facing reason approval would be refused, or null when it would be accepted
+ */
+function findApprovalBlocker(sections: RubricSectionHandle[]): string | null {
+    for (const section of sections) {
+        const prefix = section.errorLabel ? `${section.errorLabel}: ` : '';
+        const unweighted = section.working.criteria.filter(
+            (criterion) => criterion.points === undefined || criterion.points <= 0
+        );
+        if (unweighted.length > 0) {
+            const named = unweighted.map((criterion) => `"${criterion.label}"`).join(', ');
+            return `${prefix}Give every criterion its points before approving: ${named} ${unweighted.length === 1 ? 'has' : 'have'} none.`;
+        }
+        // Every criterion carries points by this line, so the only boxes describeGrid
+        // can still be counting are the descriptors -- the same cells the server counts.
+        const { emptyCells } = describeGrid(section.working.criteria, section.working.levels);
+        if (emptyCells > 0) {
+            return `${prefix}Complete the rubric grid before approving: ${emptyCells} cell${emptyCells === 1 ? '' : 's'} still need${emptyCells === 1 ? 's' : ''} a points range or a description.`;
+        }
     }
+    return null;
 }
 
 /**
@@ -1626,6 +1652,14 @@ async function approveEveryRubric(context: RubricPageContext): Promise<void> {
 
     const editable = context.sections.filter((section) => section.canEdit);
     if (!editable.length) return;
+
+    // Before the confirmation, not after it: there is no sense in asking a staff
+    // member to confirm an approval that will be refused. The modal this throw
+    // raises is the whole report -- the message names the criterion, and on a lab
+    // report its prefix names which of the two grids.
+    const blocker = findApprovalBlocker(editable);
+    if (blocker) throw new Error(blocker);
+
     const versions = editable.map((section) => `v${section.nextVersion}`).join(' and ');
     const alreadyApproved = editable.some((section) => section.hasApproved);
     const noun = editable.length > 1 ? 'Rubrics' : 'Rubric';
@@ -2116,27 +2150,34 @@ function renderRubricSection(
     editor.className = 'wf-rubric-editor';
 
     const form = document.createElement('form');
-    const validation = document.createElement('div');
-    validation.className = 'wf-validation-summary';
-    validation.hidden = true;
-    validation.setAttribute('role', 'alert');
-    validation.tabIndex = -1;
     const announcer = createText('div', '', 'wf-visually-hidden');
     announcer.setAttribute('role', 'status');
     announcer.setAttribute('aria-live', 'polite');
     announcer.setAttribute('aria-atomic', 'true');
-    form.append(validation, announcer);
+    form.append(announcer);
 
     const announce = (message: string): void => {
         announcer.textContent = '';
         window.requestAnimationFrame(() => { announcer.textContent = message; });
     };
     const updateSummary = (): void => { summaryMeta.textContent = rubricSizeSummary(working); };
+    // Coalesced, and deferred by a frame on purpose. A structural grid action mutates
+    // the working copy, calls this, and only then redraws; reading the form in between
+    // would count the grid as it was drawn a moment ago. One frame later the redraw has
+    // happened, and a burst of keystrokes costs a single recount.
+    let progressFrame = 0;
+    const refreshProgressSoon = (): void => {
+        if (progressFrame) return;
+        progressFrame = window.requestAnimationFrame(() => {
+            progressFrame = 0;
+            context.refreshProgress();
+        });
+    };
     const markDirty = (): void => {
         if (canEdit) state.panelDirty = true;
         if (canEdit) rubricAutosave?.markDirty();
-        validation.hidden = true;
         updateSummary();
+        refreshProgressSoon();
     };
 
     // The rubric is one table: criteria are rows, performance levels are columns,
@@ -2178,12 +2219,6 @@ function renderRubricSection(
         form,
         working,
         canEdit,
-        showValidationError: (message: string) => {
-            validation.textContent = message;
-            validation.hidden = false;
-            validation.focus();
-        },
-        clearValidationError: () => { validation.hidden = true; },
         nextVersion: data.draft?.version ?? (data.approved?.version ?? 0) + 1,
         hasApproved: Boolean(data.approved)
     });

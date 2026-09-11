@@ -834,21 +834,6 @@
     font-size: 15px;
 }
 
-.wf-validation-summary {
-    margin: 0 0 15px;
-    padding: 10px 16px;
-    background: rgba(139, 0, 0, 0.08);
-    border: 1px solid var(--color-eng-red);
-    border-radius: 8px;
-    color: var(--color-eng-red);
-    font-size: 13px;
-    line-height: 1.5;
-}
-
-.wf-validation-summary[hidden] {
-    display: none;
-}
-
 /* Canvas import list */
 
 .wf-canvas-list {
@@ -1311,6 +1296,20 @@
     flex-wrap: wrap;
 }
 
+/* The buttons and the autosave line below them, as one block the approve row can place.
+   The buttons keep the width they have at rest: the status text sits under them rather
+   than beside them, so nothing autosave says can widen the block into a wrap. */
+.wf-approve-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+}
+
+.wf-approve-actions .wf-autosave-status {
+    text-align: right;
+}
+
 .wf-approve-copy {
     display: flex;
     flex-direction: column;
@@ -1527,6 +1526,13 @@
        description, a band and its descriptor all start on the same vertical line
        instead of each sitting at whatever padding its own control happened to carry. */
     --wf-cell-inset: 8px;
+    /* The cell's own padding, on top of the inset every control already carries. It is
+       the smaller of the two deliberately: the controls hold the text off the seams, so
+       the cell only has to keep the controls themselves off them. The footer's pinned
+       label reads the horizontal value too, since it has to land where a cell's
+       right-aligned text already sits. */
+    --wf-cell-pad-x: 6px;
+    --wf-cell-pad-y: 8px;
     /* The icon buttons set the height of a level heading's bar, and the plain headings
        match that bar, so both read the size from here -- including the touch override
        at the foot of this section, which changes it once for all of them. */
@@ -1571,7 +1577,7 @@
    outer edges are the scroll container's frame, so no cell draws a bottom border. */
 .wf-grid th,
 .wf-grid td {
-    padding: 12px 14px;
+    padding: var(--wf-cell-pad-y) var(--wf-cell-pad-x);
     text-align: left;
     vertical-align: top;
     border: 0;
@@ -1714,7 +1720,7 @@
    descriptor it belongs to. */
 .wf-grid-band {
     width: 100%;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
     padding: 2px var(--wf-cell-inset);
     background: var(--gingham-color);
     color: var(--color-chbe-green);
@@ -1901,9 +1907,9 @@
     /* The points column, plus the cell's own right padding. Both terms matter: the
        column width puts the label against the total rather than under it, and the
        padding makes the pinned position the same one the right-aligned text already
-       holds at rest -- without it the label steps 14px sideways at the end of a
-       scroll. Sticky needs a block box; the span is inline by default. */
-    right: calc(var(--wf-points-col) + 14px);
+       holds at rest -- without it the label steps sideways at the end of a scroll.
+       Sticky needs a block box; the span is inline by default. */
+    right: calc(var(--wf-points-col) + var(--wf-cell-pad-x));
     display: inline-block;
 }
 
@@ -2900,6 +2906,17 @@ mark.wf-anchor.is-filtered-out,
     .wf-approve-row .wf-button {
         width: 100%;
         min-height: 44px;
+    }
+
+    /* Full width at this breakpoint, so the buttons inside it still have a row to
+       stretch across and the status reads from the same edge as the copy above. */
+    .wf-approve-actions {
+        width: 100%;
+        align-items: stretch;
+    }
+
+    .wf-approve-actions .wf-autosave-status {
+        text-align: left;
     }
 
     .wf-header-actions {
