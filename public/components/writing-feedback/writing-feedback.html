@@ -33,9 +33,12 @@
             </div>
         </header>
 
-        <!-- Durable live status for capability, Canvas mode, and action results -->
-        <div id="wf-workspace-message" class="wf-workspace-message" role="status" aria-live="polite" data-tone="info">
-            Loading the staff workspace…
+        <!-- Dismissible live status for the result of the staff action just taken -->
+        <div id="wf-workspace-message" class="wf-workspace-message" role="status" aria-live="polite" data-tone="info" hidden>
+            <span id="wf-workspace-message-text"></span>
+            <button id="wf-workspace-message-dismiss" class="wf-workspace-message-dismiss" type="button" aria-label="Dismiss this message">
+                <i data-feather="x" aria-hidden="true"></i>
+            </button>
         </div>
 
         <!-- Assignment queue and inline setup/import panel -->

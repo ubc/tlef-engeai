@@ -351,11 +351,19 @@ function sflField(spec: SflFieldSpec): HTMLDivElement {
 }
 
 /**
- * profileStatusChip - the profile's readiness, said as a count rather than a state
+ * profileStatusChip - whether the profile is finished, without a count
  *
- * "Needs your input" told staff nothing about how much was left, and "Ready" was
- * a claim the engine did not honour. A count is checkable against the questions
- * on screen.
+ * The count this used to print could not be checked against the card it sat on.
+ * {@link describeProfile} answers to `requireCompleteSflProfile`, the server-side gate
+ * on approval and generation, so four of its twelve checks read fields that live in
+ * the assignment description above rather than in this card, and two optional fields
+ * on the card are not checked at all. Staff counted the questions in front of them and
+ * got a different number, every time.
+ *
+ * The readiness it reports is unchanged -- still the full twelve, so the chip never
+ * turns green on a profile the server would refuse. Only the number is gone. What is
+ * actually outstanding is named in the step summary, which is the more useful answer
+ * to "what is left" than a count ever was.
  *
  * @param readiness - Current profile readiness
  * @returns Detached chip
@@ -363,7 +371,7 @@ function sflField(spec: SflFieldSpec): HTMLDivElement {
 function profileStatusChip(readiness: StepReadiness): HTMLElement {
     return readiness.complete
         ? chip('All fields completed', 'green')
-        : chip(`${readiness.done} of ${readiness.total} fields completed`, 'amber');
+        : chip('Incomplete', 'amber');
 }
 
 /**
@@ -1039,7 +1047,6 @@ async function fillRubricsFromInstructions(context: RubricPageContext, status: H
     }
 
     announceDetailsStatus(status, 'Reading the instructions…');
-    setWorkspaceMessage('Reading the instructions…', 'info');
     try {
         const orderedTargets = [...targets].sort((left, right) => {
             if (left === right) return 0;
@@ -1050,14 +1057,16 @@ async function fillRubricsFromInstructions(context: RubricPageContext, status: H
         }
         state.panelDirty = false;
         state.assignments = await request<Assignment[]>('/assignments');
-        pendingRubricNotice = { message: 'Filled from the instructions. Review before approving.', tone: 'success' };
-        setWorkspaceMessage('Filled from the instructions. Review before approving.', 'success');
+        // The toast is the whole report for an explicit fill. No pending notice:
+        // the reopened page would raise the same sentence as a banner beside it.
         showSuccessToast('Filled from the instructions. Review before approving.');
         await openRubricPage(context.assignment.id);
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Could not read the instructions. Fill the rubric in by hand.';
+        // The status line sits beside the control that failed, and the caller
+        // reports the same error in a modal; a third copy in the banner persists
+        // after both are gone.
         announceDetailsStatus(status, message, 'error');
-        setWorkspaceMessage(message, 'error');
         throw error;
     }
 }
@@ -1258,14 +1267,16 @@ function renderRubricPage(
     meta.className = 'wf-assignment-meta';
     const canEditAny = linguisticData.permissions.canEdit;
     meta.append(
+        createText('span', assignmentOriginText(assignment)),
         // The writing rubric's approval state belongs beside the assignment title;
         // a lab report's second rubric carries its own state in its section header.
         approvalStateChip(linguisticData),
-        createText('span', assignmentOriginText(assignment)),
         // Shown only when the assignment carries a deadline; "No deadline" spends a segment
         // on the absence of something optional.
         ...(assignment.dueAt ? [createText('span', `Deadline ${formatDate(assignment.dueAt, true)}`)] : []),
-        chip(canEditAny ? 'Editable' : 'Read-only', canEditAny ? 'green' : 'neutral')
+        // Edit rights are the norm for staff who can open this page, so only the
+        // restricted case is worth a chip.
+        ...(canEditAny ? [] : [chip('Read-only', 'neutral')])
     );
     header.append(heading, meta);
     root.append(header);
@@ -1492,15 +1503,14 @@ function renderRubricPage(
         approveRow.append(actions);
     }
 
-    step3Body.append(approveRow);
-
     // What is still owed before feedback can be drafted. This is disclosure, not a
     // gate: requireCompleteSflProfile enforces it at generation, and staff used to
-    // meet it only as a failure on the review page.
+    // meet it only as a failure on the review page. It sits above the approve copy
+    // so the reader meets the outstanding work before the invitation to approve.
     const owed = document.createElement('div');
     owed.className = 'wf-owed';
     owed.hidden = true;
-    step3Body.append(owed);
+    step3Body.append(owed, approveRow);
 
     step3.append(step3Header, step3Body);
     root.append(step3);
@@ -1523,11 +1533,11 @@ function renderRubricPage(
         stripMount.replaceChildren(renderProgressStrip([
             {
                 ordinal: 1, label: 'Describe the assignment', state: describedDone ? 'done' : 'current',
-                detail: detailsNow.complete
-                    ? (profileNow.complete
-                        ? 'All fields completed'
-                        : `Writing profile: ${profileNow.done} of ${profileNow.total} fields completed`)
-                    : `${detailsNow.done} of ${detailsNow.total} fields completed`
+                // Named when the description itself is done, because the remaining work is
+                // then in a card the reader has to open to see.
+                detail: describedDone
+                    ? 'All fields completed'
+                    : (detailsNow.complete ? 'Writing profile: incomplete' : 'Incomplete')
             },
             {
                 ordinal: 2, label: isLabReport ? 'Build the marking grids' : 'Build the marking grid',
@@ -1547,7 +1557,7 @@ function renderRubricPage(
 
         const outstanding: string[] = [];
         if (!profileNow.complete) {
-            outstanding.push(`“Describe the writing” has ${profileNow.done} of ${profileNow.total} fields completed`);
+            outstanding.push('“Describe the writing” is not finished');
         }
         if (gridNow.emptyCells > 0) {
             outstanding.push(`${gridNow.emptyCells} ${gridNow.emptyCells === 1 ? 'box' : 'boxes'} in the grid ${gridNow.emptyCells === 1 ? 'is' : 'are'} still empty`);
@@ -1560,9 +1570,11 @@ function renderRubricPage(
             createText('p', `${outstanding.join(', and ')}.`)
         );
 
-        step1Meta.textContent = describedDone
-            ? 'All fields completed'
-            : `${detailsNow.done} of ${detailsNow.total} fields completed`;
+        // The same chip the profile sub-card uses: the two lines make the same claim
+        // about the same step, so they should not read as different kinds of thing.
+        step1Meta.replaceChildren(describedDone
+            ? chip('All fields completed', 'green')
+            : chip('Incomplete', 'amber'));
         step2Meta.textContent = gridNow.complete
             ? `${gridNow.criteria} criteria · ${gridNow.levels} levels · ${gridNow.totalPoints} points`
             : `${gridNow.emptyCells} ${gridNow.emptyCells === 1 ? 'box' : 'boxes'} still empty`;

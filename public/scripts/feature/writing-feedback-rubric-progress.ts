@@ -185,16 +185,23 @@ export function deriveGenreState(
 /**
  * describeGrid - size, weight, and whether every box in the grid says something
  *
- * A cell counts as filled only when its descriptor has text. Points are read
- * from the criterion when present, which is what a weighted rubric means.
+ * A level cell counts as filled only when its descriptor has text. The points
+ * cell counts as a box of its own: `requireCompleteRubricCells` refuses to
+ * approve a criterion carrying no points, so a grid reported as finished with an
+ * empty points cell would be a promise the server then breaks.
+ *
+ * "Boxes" is meant literally -- every empty box a staff member can see in the
+ * grid, points cells included -- so the count can be checked against the rows in
+ * front of them.
  *
  * @param criteria - Working criteria, in row order
  * @param levels - Working levels, in column order
- * @returns Counts plus the number of cells still empty
+ * @returns Counts plus the number of boxes still empty
  */
 export function describeGrid(criteria: RubricCriterion[], levels: RubricLevel[]): GridReadiness {
     let emptyCells = 0;
     for (const criterion of criteria) {
+        if (criterion.points === undefined || criterion.points <= 0) emptyCells += 1;
         for (const level of levels) {
             if (!answered(criterion.cells?.[level.id]?.descriptor)) emptyCells += 1;
         }

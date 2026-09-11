@@ -444,9 +444,35 @@ describe('requireCompleteRubricCells', () => {
         }))).not.toThrow();
     });
 
-    it('ignores a criterion with no weight', () => {
+    it('rejects a criterion with an empty points cell', () => {
+        // Leaving the points blank was once a silent way past this gate, and with it
+        // a wholly empty criterion could reach a student.
         const draft = draftWith(undefined);
         draft.criteria[0]!.points = undefined;
-        expect(() => requireCompleteRubricCells(draft)).not.toThrow();
+        expect(() => requireCompleteRubricCells(draft)).toThrow(/"Criterion" has none/);
+    });
+
+    it('rejects a criterion weighted at zero, which awards nothing', () => {
+        const draft = draftWith(undefined);
+        draft.criteria[0]!.points = 0;
+        expect(() => requireCompleteRubricCells(draft)).toThrow(/Give every criterion its points/);
+    });
+
+    it('rejects an unweighted criterion even when it authored every band itself', () => {
+        // A staff-final grade is points per criterion; authored bands do not supply the
+        // weight those bands are read against.
+        const draft = draftWith({
+            weak: { min: 0, max: 5, descriptor: 'd1' },
+            strong: { min: 6, max: 10, descriptor: 'd2' }
+        });
+        draft.criteria[0]!.points = undefined;
+        expect(() => requireCompleteRubricCells(draft)).toThrow(/Give every criterion its points/);
+    });
+
+    it('names every criterion missing its points, not only the first', () => {
+        const draft = draftWith(undefined);
+        draft.criteria[0]!.points = undefined;
+        draft.criteria.push({ id: 'second', label: 'Second', description: 'd', points: 0, cells: undefined });
+        expect(() => requireCompleteRubricCells(draft)).toThrow(/"Criterion", "Second" have none/);
     });
 });

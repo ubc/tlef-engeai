@@ -613,6 +613,9 @@ export function element<T extends HTMLElement>(id: string): T {
  * @param view - Child view to expose
  */
 export function setView(view: WfViewName): void {
+    // A notice describes the action that produced it, so it must not follow the
+    // instructor into the next view.
+    clearWorkspaceMessage();
     element('wf-view-landing').hidden = view !== 'landing';
     element('wf-view-rubric').hidden = view !== 'rubric';
     element('wf-view-review').hidden = view !== 'review';
@@ -693,15 +696,30 @@ export function jsonRequest<T>(path: string, method: 'POST' | 'PUT' | 'PATCH' | 
 }
 
 /**
- * setWorkspaceMessage - updates the persistent, live-region workspace notice
+ * setWorkspaceMessage - shows the live-region notice for the action just taken
+ *
+ * The notice reports the outcome of a staff action, so it is scoped to the view
+ * that produced it: `setView` clears it on navigation and the dismiss control
+ * removes it on demand. Standing context about the workspace belongs in the view
+ * it applies to, not here.
  *
  * @param message - Staff-safe status text
  * @param tone - Semantic status used by the notice styling
  */
 export function setWorkspaceMessage(message: string, tone: 'info' | 'success' | 'warning' | 'error' = 'info'): void {
     const region = element<HTMLDivElement>('wf-workspace-message');
-    region.textContent = message;
+    element<HTMLSpanElement>('wf-workspace-message-text').textContent = message;
     region.dataset.tone = tone;
+    region.hidden = false;
+}
+
+/**
+ * clearWorkspaceMessage - removes the workspace notice and hides its banner
+ */
+export function clearWorkspaceMessage(): void {
+    const region = element<HTMLDivElement>('wf-workspace-message');
+    element<HTMLSpanElement>('wf-workspace-message-text').textContent = '';
+    region.hidden = true;
 }
 
 /**
@@ -937,7 +955,9 @@ export async function runButtonAction(
     try {
         await action(button);
     } catch (error) {
-        setWorkspaceMessage(error instanceof Error ? error.message : 'The action could not be completed.', 'error');
+        // The modal is the whole report. Mirroring it into the workspace banner
+        // left the instructor reading the same sentence twice, the second copy
+        // outliving the dialog it came from.
         await showErrorModal(
             'Writing Feedback action failed',
             error instanceof Error ? error.message : 'Please try again.'
@@ -1080,7 +1100,6 @@ export async function confirmDiscardDirty(kind: 'review' | 'setup'): Promise<boo
  */
 export async function handleActionError(error: unknown): Promise<void> {
     const message = error instanceof Error ? error.message : 'The action could not be completed.';
-    setWorkspaceMessage(message, 'error');
     await showErrorModal('Writing Feedback action failed', message);
 }
 

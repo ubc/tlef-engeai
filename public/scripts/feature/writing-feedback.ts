@@ -14,7 +14,7 @@
  */
 
 import type { activeCourse } from '../types.js';
-import { showSuccessToast } from '../ui/toast-notification.js';
+import { showSuccessToast, showToast } from '../ui/toast-notification.js';
 import { showDeleteConfirmationModal, showConfirmModal } from '../ui/modal-overlay.js';
 import {
     Assignment,
@@ -49,6 +49,7 @@ import {
     setQueryState,
     setView,
     setWorkspaceMessage,
+    clearWorkspaceMessage,
     state,
     textAreaControl,
     views
@@ -763,18 +764,20 @@ async function showCanvasImport(): Promise<void> {
             state.expandedAssignmentId = result.targetAssignment.id;
             await loadLanding();
 
-            const notes = [`${result.importedCount} submissions imported`, `${result.skippedCount} unchanged attempts skipped`];
+            // One report of the outcome, in the toast the instructor is already
+            // watching for. The counts ride along with it rather than in a second
+            // banner that would outlive the action that produced it.
+            const notes = [
+                `${result.importedCount} submissions imported${isDemo ? ' from the Canvas demo' : ''}`,
+                `${result.skippedCount} unchanged attempts skipped`
+            ];
             if (result.unsupportedCount > 0) notes.push(`${result.unsupportedCount} had no readable text or exceeded the 30,000-character review limit`);
             if (result.failedCount > 0) notes.push(`${result.failedCount} could not be read and can be retried by importing again`);
-            setWorkspaceMessage(
-                `${notes.join('; ')}. No feedback was generated automatically.`,
-                result.failedCount > 0 ? 'warning' : 'success'
-            );
-            showSuccessToast(
-                isDemo
-                    ? `Imported ${result.importedCount} submissions from the Canvas demo.`
-                    : `Imported ${result.importedCount} submissions from Canvas.`
-            );
+            const summary = `${notes.join('; ')}. No feedback was generated automatically.`;
+            // Longer than the 3s default: the count list takes longer to read, and
+            // a partial failure is the case the instructor most needs to catch.
+            if (result.failedCount > 0) showToast(summary, 8000, 'top-right', 'error');
+            else showSuccessToast(summary, 6000);
         })
     );
     content.append(previewState, actions);
@@ -788,6 +791,7 @@ function bindStaticActions(): void {
     element<HTMLButtonElement>('wf-import-canvas').addEventListener('click', () => void showCanvasImport().catch(handleActionError));
     element<HTMLButtonElement>('wf-add-assignment').addEventListener('click', () => void showAddAssignment().catch(handleActionError));
     element<HTMLButtonElement>('wf-action-panel-close').addEventListener('click', () => void closeActionPanel());
+    element<HTMLButtonElement>('wf-workspace-message-dismiss').addEventListener('click', clearWorkspaceMessage);
 }
 
 /**
@@ -823,12 +827,9 @@ export async function initializeWritingFeedback(currentClass: activeCourse): Pro
         // deep link is restored, preventing actions from rendering optimistically.
         state.workspace = await request<WorkspaceContext>('/workspace-context');
         element<HTMLButtonElement>('wf-add-assignment').hidden = !state.workspace.permissions.canManageRubric;
-        setWorkspaceMessage(
-            state.workspace.canvas.mode === 'demo'
-                ? 'Local demo mode is active: Canvas import and release use synthetic data only. Every student-facing result still requires staff approval.'
-                : `${state.workspace.canvas.message} Manual intake, review, approval, and PDF download remain available.`,
-            state.workspace.canvas.mode === 'demo' ? 'warning' : 'info'
-        );
+        // Canvas mode and its data-handling terms are stated where they apply —
+        // the import dialog and the release control — so the workspace opens
+        // without a standing banner repeating them on every view.
         // Restore exactly one URL-addressed view; each opener reloads its own
         // server-authoritative data rather than trusting stale browser state.
         const requestedSubmission = queryState('wfSubmission');

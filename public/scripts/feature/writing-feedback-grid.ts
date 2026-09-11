@@ -563,7 +563,12 @@ export function renderRubricGrid(
 
     const head = document.createElement('thead');
     const headRow = document.createElement('tr');
-    const criterionHead = createText('th', 'Criterion', 'wf-grid-corner');
+    // The text sits in a span, not straight in the cell: the level headings beside it
+    // are inputs centred in a bar as tall as its icon buttons, so a bare heading starts
+    // several pixels higher than they do. The span reproduces that box.
+    const criterionHead = document.createElement('th');
+    criterionHead.className = 'wf-grid-corner';
+    criterionHead.append(createText('span', 'Criterion', 'wf-grid-head-title'));
     criterionHead.id = `${gridId}-criterion`;
     criterionHead.setAttribute('scope', 'col');
     headRow.append(criterionHead);
@@ -648,7 +653,9 @@ export function renderRubricGrid(
         headRow.append(cell);
     });
 
-    const pointsHead = createText('th', 'Points', 'wf-grid-points-head');
+    const pointsHead = document.createElement('th');
+    pointsHead.className = 'wf-grid-points-head';
+    pointsHead.append(createText('span', 'Points', 'wf-grid-head-title'));
     pointsHead.id = `${gridId}-points`;
     pointsHead.setAttribute('scope', 'col');
     headRow.append(pointsHead);
@@ -671,7 +678,7 @@ export function renderRubricGrid(
         });
         // An ordinal rubric carries no weights at all; it gets no total rather than a zero.
         const weighted = live.some((criterion) => criterion.points !== undefined);
-        totalCell.textContent = weighted ? `${Number(totalRubricPoints(live).toFixed(2))} points` : '';
+        totalCell.textContent = weighted ? String(Number(totalRubricPoints(live).toFixed(2))) : '';
     };
 
     draft.criteria.forEach((criterion, rowIndex) => {
@@ -764,6 +771,7 @@ export function renderRubricGrid(
             );
             bandInput.className = 'wf-grid-band';
             bandInput.readOnly = !canEdit;
+            bandInput.placeholder = 'Enter points';
             bandInput.setAttribute('aria-describedby', `${gridId}-band-hint`);
 
             const descriptor = named(
@@ -776,24 +784,27 @@ export function renderRubricGrid(
             autoGrow(descriptor);
             descriptor.addEventListener('input', onChange);
 
-            const hint = createText('p', '', 'wf-grid-cell-hint');
-
             // A descriptor is stored inside its band, so a cell with no range has
             // nowhere to keep one. The control stays visible and reads as unavailable
-            // rather than accepting text that could not be saved. The hint tells staff
-            // exactly what is missing; approval (not draft save) is what actually blocks
-            // on this, enforced separately by requireCompleteRubricCells on the server.
+            // rather than accepting text that could not be saved; approval (not draft
+            // save) is what actually blocks on this, enforced separately by
+            // requireCompleteRubricCells on the server.
+            //
+            // What each control wants is said in the control, as a placeholder. A line
+            // of hint text underneath said the same two things a second time, in the
+            // same cell, and a rubric this wide cannot afford to say anything twice.
             const syncCellState = (): void => {
                 const bandFilled = Boolean(parseBand(bandInput.value));
                 descriptor.readOnly = !canEdit || !bandFilled;
+                // A cell locked for want of a range names the prerequisite rather than
+                // inviting text it cannot take; saying nothing at all was worse than
+                // either, since the field then reads as absent until someone happens to
+                // click it. A reader who cannot edit is told neither: both lines ask for
+                // an edit, and only staff with permission can make one.
+                descriptor.placeholder = !canEdit
+                    ? ''
+                    : (bandFilled ? 'Enter a description' : 'Add points first');
                 cell.classList.toggle('wf-grid-cell--empty', !bandFilled);
-                if (!bandFilled) {
-                    hint.textContent = 'Points for this level';
-                } else if (!descriptor.value.trim()) {
-                    hint.textContent = 'What does this level look like?';
-                } else {
-                    hint.textContent = '';
-                }
             };
 
             let lastValid = bandInput.value;
@@ -812,7 +823,7 @@ export function renderRubricGrid(
             syncCellState();
             descriptor.addEventListener('input', syncCellState);
 
-            cell.append(bandInput, descriptor, hint);
+            cell.append(bandInput, descriptor);
             row.append(cell);
         });
 
@@ -824,6 +835,9 @@ export function renderRubricGrid(
             `criterion.${rowIndex}.points`,
             `Points for criterion ${rowIndex + 1}`
         );
+        // No placeholder: 6rem clips anything longer than a couple of words, and the
+        // column heading already says what the number is. What an empty cell needed was
+        // not wording but a visible box, which .wf-grid-weight-input now draws.
         weight.min = '0';
         weight.max = '1000';
         weight.step = '1';

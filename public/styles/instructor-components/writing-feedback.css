@@ -93,6 +93,9 @@
 /* Workspace message — tinted banner */
 
 .wf-workspace-message {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
     margin-bottom: 20px;
     padding: 10px 16px;
     border-radius: 8px;
@@ -101,6 +104,44 @@
     background: rgba(47, 95, 143, 0.1);
     border: 1px solid var(--color-ubc-blue);
     color: var(--color-ubc-blue);
+}
+
+/* `display: flex` above would otherwise defeat the hidden attribute. */
+.wf-workspace-message[hidden] {
+    display: none;
+}
+
+.wf-workspace-message > span:first-child {
+    flex: 1;
+}
+
+.wf-workspace-message-dismiss {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    opacity: 0.7;
+}
+
+.wf-workspace-message-dismiss:hover {
+    opacity: 1;
+}
+
+.wf-workspace-message-dismiss:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+}
+
+.wf-workspace-message-dismiss svg,
+.wf-workspace-message-dismiss .feather {
+    width: 14px;
+    height: 14px;
 }
 
 .wf-workspace-message[data-tone="success"] {
@@ -1285,7 +1326,7 @@
 }
 
 .wf-owed {
-    margin-top: 16px;
+    margin-bottom: 16px;
     padding: 12px 16px;
     background: rgba(230, 126, 34, 0.1);
     border: 1px solid color-mix(in srgb, var(--color-eng-red) 60%, var(--color-chbe-green));
@@ -1482,6 +1523,14 @@
     /* Auto layout, not fixed: the per-column min-widths below are what push a wide
        rubric past the viewport and hand the overflow to .wf-grid-scroll. */
     --wf-points-col: 6rem;
+    /* One horizontal inset for every control in the grid, so a criterion's name, its
+       description, a band and its descriptor all start on the same vertical line
+       instead of each sitting at whatever padding its own control happened to carry. */
+    --wf-cell-inset: 8px;
+    /* The icon buttons set the height of a level heading's bar, and the plain headings
+       match that bar, so both read the size from here -- including the touch override
+       at the foot of this section, which changes it once for all of them. */
+    --wf-grid-affordance: 32px;
     width: 100%;
     /* Separate, not collapse. A collapsed border belongs to the table and paints
        centred on the row and column grid lines, which a pinned cell cannot carry with
@@ -1556,11 +1605,26 @@
     min-width: 11rem;
 }
 
+/* 14px, the size the criterion and level names carry in .wf-grid-label-input. These
+   two are headings of the same rank as those, and at 13px they read as a caption over
+   the columns they name rather than as their titles. */
 .wf-grid-corner,
 .wf-grid-points-head {
     color: var(--text-primary);
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
+}
+
+/* Stands in for the head bar the level columns carry, so "Criterion" and "Points" sit
+   on the line their neighbours' names do. A level name is an input centred in a bar as
+   tall as the icon buttons beside it; a heading with neither started higher and further
+   left. Same box, same inset, same centre -- and because both centre within it, they
+   stay aligned when the buttons grow on touch or the type size changes. */
+.wf-grid-head-title {
+    display: flex;
+    align-items: center;
+    min-height: var(--wf-grid-affordance);
+    padding: 4px var(--wf-cell-inset);
 }
 
 /* One source of truth for the points column's width. The footer label is pinned an
@@ -1591,7 +1655,7 @@
 .wf-grid-label-input {
     flex: 1 1 auto;
     min-width: 0;
-    padding: 4px 6px;
+    padding: 4px var(--wf-cell-inset);
     background: transparent;
     color: var(--text-primary);
     border: 0;
@@ -1617,7 +1681,7 @@
     /* Two rows is the floor, not the ceiling: autoGrow sets an explicit height from
        the content, and overflow must stay hidden or the box scrolls instead of grows. */
     min-height: 3.4em;
-    padding: 4px 0;
+    padding: 4px var(--wf-cell-inset);
     background: transparent;
     color: var(--text-primary);
     border: 0;
@@ -1651,7 +1715,7 @@
 .wf-grid-band {
     width: 100%;
     margin-bottom: 8px;
-    padding: 2px 8px;
+    padding: 2px var(--wf-cell-inset);
     background: var(--gingham-color);
     color: var(--color-chbe-green);
     border: 1px solid transparent;
@@ -1686,12 +1750,17 @@
     background: color-mix(in srgb, var(--chat-bg) 80%, var(--hover-bg));
 }
 
+/* Filled at rest, like the band chip in every cell. Transparent and borderless, an
+   empty points field was invisible: nothing marked the spot, so a criterion could be
+   left unweighted without anything on screen suggesting a value was missing. The box
+   is the prompt -- which is why it needs no placeholder text, in a column too narrow
+   to hold any. */
 .wf-grid-weight-input {
     width: 100%;
-    padding: 4px 6px;
-    background: transparent;
+    padding: 4px var(--wf-cell-inset);
+    background: var(--gingham-color);
     color: var(--text-primary);
-    border: 0;
+    border: 1px solid transparent;
     border-radius: 4px;
     font: inherit;
     font-size: 13px;
@@ -1699,8 +1768,11 @@
     font-variant-numeric: tabular-nums;
 }
 
-.wf-grid-weight-input:hover:not([readonly]) {
-    background: var(--hover-bg);
+/* The band's states, so the two number fields behave alike: the border answers the
+   pointer, and focus clears the fill behind the value being typed. */
+.wf-grid-weight-input:hover:not([readonly]),
+.wf-grid-weight-input:focus-visible {
+    border-color: var(--color-chbe-green);
 }
 
 .wf-grid-weight-input:focus-visible {
@@ -1811,13 +1883,6 @@
     line-height: 1.35;
 }
 
-.wf-grid-cell-hint {
-    margin: 4px 0 0;
-    color: var(--text-secondary);
-    font-size: 11px;
-    font-style: italic;
-}
-
 /* The footer reads as one phrase at every scroll offset: "Total Points" immediately left
    of the number it names, both held against the right of the scrollport. The label's cell
    spans every column left of the points, so the cell is wider than the scrollport and
@@ -1825,7 +1890,8 @@
    background scrolls with it and is uniform, so the pinned text needs none of its own. */
 .wf-grid-total-label {
     color: var(--text-primary);
-    font-size: 13px;
+    /* Matches the column headings, and the total it names, which is already 14px. */
+    font-size: 14px;
     font-weight: 600;
     background: var(--hover-bg);
 }
@@ -1871,8 +1937,8 @@
  */
 
 .wf-grid-affordance {
-    width: 32px;
-    height: 32px;
+    width: var(--wf-grid-affordance);
+    height: var(--wf-grid-affordance);
     opacity: 0.55;
     transition: opacity 120ms ease;
 }
@@ -1887,9 +1953,12 @@
 }
 
 @media (hover: none) {
+    /* One value, so the plain headings grow with the bar rather than drifting off it. */
+    .wf-grid {
+        --wf-grid-affordance: 44px;
+    }
+
     .wf-grid-affordance {
-        width: 44px;
-        height: 44px;
         opacity: 1;
     }
 }
