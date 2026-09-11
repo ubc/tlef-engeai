@@ -6,13 +6,15 @@
  * later edit can silently outgrow.
  */
 
-import { CANVAS_OAUTH_SCOPES, canvasAuthorizeScopeParams } from '../canvas-config';
+import { canvas } from '@ubc/ubc-genai-toolkit-lms-integration';
+
+import { CANVAS_OAUTH_SCOPES } from '../canvas-config';
 
 describe('CANVAS_OAUTH_SCOPES', () => {
     it('requests a scope for every endpoint the app calls', () => {
         // A missing entry is not a local failure: Canvas fixes the granted set when the token is
         // minted, so the gap surfaces as a 401 on whichever call was left out.
-        expect(CANVAS_OAUTH_SCOPES).toHaveLength(13);
+        expect(CANVAS_OAUTH_SCOPES).toHaveLength(14);
         expect(new Set(CANVAS_OAUTH_SCOPES).size).toBe(CANVAS_OAUTH_SCOPES.length);
     });
 
@@ -38,13 +40,18 @@ describe('CANVAS_OAUTH_SCOPES', () => {
     });
 });
 
-describe('canvasAuthorizeScopeParams', () => {
-    it('sends every scope in one space-separated parameter', () => {
-        // One entry, not thirteen: the package appends a `scope` param per entry, and Canvas
-        // keeps only the last of a repeated scalar param — which authorizes successfully and
-        // then 401s on every endpoint outside that one scope.
-        const params = canvasAuthorizeScopeParams();
-        expect(params).toHaveLength(1);
-        expect(params[0].split(' ')).toEqual([...CANVAS_OAUTH_SCOPES]);
+describe('the authorize URL the package builds from these scopes', () => {
+    it('carries one space-separated `scope` parameter, not one per scope', () => {
+        // Canvas reads `scope` as a single space-delimited parameter, and Rails keeps only the
+        // last of a repeated one. A package that appends per scope therefore authorizes
+        // successfully carrying just the final scope, then 401s on every other endpoint —
+        // which is why this is pinned here rather than left to the dependency.
+        const url = new URL(canvas.buildAuthorizeUrl(
+            { canvasDomain: 'https://canvas.test', clientId: '1', redirectUri: 'https://app.test/cb' },
+            { state: 'state', scopes: [...CANVAS_OAUTH_SCOPES] }
+        ));
+
+        expect(url.searchParams.getAll('scope')).toHaveLength(1);
+        expect(url.searchParams.get('scope')).toBe(CANVAS_OAUTH_SCOPES.join(' '));
     });
 });

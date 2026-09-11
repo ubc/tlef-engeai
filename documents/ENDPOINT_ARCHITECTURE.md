@@ -893,7 +893,7 @@ provided by `@ubc/ubc-genai-toolkit-lms-integration`. Implemented in
 - `CANVAS_REDIRECT_URI` must match the Canvas Developer Key byte-for-byte,
   including port, and its path is this router's `/canvas/auth/callback`.
 - The OAuth authorize URL always requests scopes, from `CANVAS_OAUTH_SCOPES` in
-  `src/lms/canvas-config.ts` — 13 entries, one per endpoint the app calls: reads for the
+  `src/lms/canvas-config.ts` — 14 entries, one per endpoint the app calls: reads for the
   course picker, roster, and submission intake, plus three submission-scoped writes and
   the grade-post progress poll. There is no environment variable; adding a Canvas call
   means adding its scope there. A Developer Key's scope list is a ceiling, not a grant —
