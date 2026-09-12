@@ -883,6 +883,74 @@
     line-height: 1.4;
 }
 
+/* Placeholder cards shown while the assignment list is in flight. They reuse the real
+   card's box so the grid keeps its shape and does not jump when the assignments land. */
+.wf-canvas-assignment--skeleton {
+    /* A real card is sized by its label text, which a skeleton has none of. Hold the box
+       open to the three-line card these always render as. */
+    min-height: 92px;
+}
+
+/* Stands in for the radio the real card positions at the same offset. */
+.wf-canvas-assignment--skeleton::before {
+    content: '';
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--border-color);
+}
+
+.wf-skeleton-lines {
+    display: grid;
+    gap: 8px;
+    padding-left: 26px;
+}
+
+.wf-skeleton-line {
+    height: 10px;
+    border-radius: 5px;
+    background-color: var(--border-color);
+    background-image: linear-gradient(
+        90deg,
+        var(--border-color) 0%,
+        var(--hover-bg) 50%,
+        var(--border-color) 100%
+    );
+    background-size: 200% 100%;
+    animation: wf-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+/* Uneven widths so the block reads as text rather than as a loading bar. */
+.wf-skeleton-lines > :nth-child(1) {
+    width: 65%;
+    height: 13px;
+}
+
+.wf-skeleton-lines > :nth-child(2) {
+    width: 90%;
+}
+
+.wf-skeleton-lines > :nth-child(3) {
+    width: 45%;
+}
+
+@keyframes wf-skeleton-shimmer {
+    from { background-position: 200% 0; }
+    to { background-position: -200% 0; }
+}
+
+/* The page-wide reduced-motion rule only shortens durations, which would leave the
+   gradient parked at an arbitrary offset. Drop to a flat tint instead. */
+@media (prefers-reduced-motion: reduce) {
+    .wf-skeleton-line {
+        background-image: none;
+        animation: none;
+    }
+}
+
 .wf-release-state {
     min-height: 20px;
     margin: 10px 0;
@@ -1296,18 +1364,17 @@
     flex-wrap: wrap;
 }
 
-/* The buttons and the autosave line below them, as one block the approve row can place.
-   The buttons keep the width they have at rest: the status text sits under them rather
-   than beside them, so nothing autosave says can widen the block into a wrap. */
-.wf-approve-actions {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 6px;
-}
-
-.wf-approve-actions .wf-autosave-status {
-    text-align: right;
+/*
+ * Autosave says nothing at all until the session expires, which is a condition rather
+ * than an event: nothing further is being stored, and it stays true until the staff
+ * member signs in again. It sits below the approve row, full width, so its sentence
+ * cannot widen the button row into a wrap.
+ */
+.wf-autosave-status {
+    margin: 12px 0 0;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: var(--color-eng-red);
 }
 
 .wf-approve-copy {
@@ -1325,6 +1392,9 @@
 }
 
 .wf-owed {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
     margin-bottom: 16px;
     padding: 12px 16px;
     background: rgba(230, 126, 34, 0.1);
@@ -1345,6 +1415,20 @@
 
 .wf-owed__title {
     font-weight: 600;
+}
+
+/* Nudged down so the icon centres on the first line of text, not on the box. */
+.wf-owed__icon,
+.wf-owed__icon svg {
+    width: 16px;
+    height: 16px;
+    margin-top: 2px;
+    flex-shrink: 0;
+}
+
+.wf-owed__body {
+    flex: 1;
+    min-width: 0;
 }
 
 /* "Describe the writing" -- the one sub-card inside step 1 */
@@ -2908,17 +2992,6 @@ mark.wf-anchor.is-filtered-out,
         min-height: 44px;
     }
 
-    /* Full width at this breakpoint, so the buttons inside it still have a row to
-       stretch across and the status reads from the same edge as the copy above. */
-    .wf-approve-actions {
-        width: 100%;
-        align-items: stretch;
-    }
-
-    .wf-approve-actions .wf-autosave-status {
-        text-align: left;
-    }
-
     .wf-header-actions {
         width: 100%;
         gap: 10px;
@@ -3087,21 +3160,4 @@ mark.wf-anchor.is-filtered-out,
     border: 1px solid var(--border-1, #c9d4c9);
     border-radius: 6px;
     background: var(--background-2);
-}
-
-/*
- * Autosave reports itself beside Save rather than through a toast: it happens without
- * being asked, so it should be readable and easy to ignore. The alert variant is the one
- * state a person must act on — an expired session — so it is the only one that takes colour.
- */
-.wf-autosave-status {
-    margin: 0;
-    align-self: center;
-    font-size: 0.85rem;
-    color: var(--text-2, #5b6b5b);
-    min-height: 1.2em;
-}
-
-.wf-autosave-status--alert {
-    color: var(--danger-1, #a3352c);
 }

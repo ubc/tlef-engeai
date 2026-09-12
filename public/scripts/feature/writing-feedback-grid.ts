@@ -307,6 +307,11 @@ export interface RubricGridOptions {
     onChange: () => void;
     /** Announces structural changes through the section's live region. */
     announce: (message: string) => void;
+    /**
+     * Builds a callout shown directly above the grid toolbar. A factory, not a node:
+     * every structural change redraws this container from scratch.
+     */
+    notice?: () => HTMLElement;
 }
 
 function named<T extends HTMLInputElement | HTMLTextAreaElement>(control: T, name: string, label: string): T {
@@ -431,6 +436,10 @@ export function renderRubricGrid(
 
     container.replaceChildren();
 
+    // Sits with the toolbar rather than at the top of the page so staff read it where
+    // they would act on it.
+    if (options.notice) container.append(options.notice());
+
     /* Toolbar ------------------------------------------------------------- */
 
     if (canEdit) {
@@ -547,7 +556,7 @@ export function renderRubricGrid(
 
         const bandHint = createText(
             'p',
-            'Points can be one number, or a range like 16–22.',
+            'Points can be a single numeric value, or a range of values (e.g., 16–22).',
             'wf-grid-band-hint'
         );
         bandHint.id = `${gridId}-band-hint`;

@@ -24,7 +24,7 @@
 import { showConfirmModal } from '../ui/modal-overlay.js';
 import { showSuccessToast } from '../ui/toast-notification.js';
 import { AutosaveSignedOutError, createAutosave } from './writing-feedback-autosave.js';
-import type { Autosave, AutosaveState } from './writing-feedback-autosave.js';
+import type { Autosave } from './writing-feedback-autosave.js';
 import {
     deriveGenreState,
     describeDetails,
@@ -1325,8 +1325,8 @@ function renderRubricPage(
             const confirmation = await showConfirmModal(
                 'Start over from the standard rubric?',
                 isLabReport
-                    ? 'Both grids will be replaced with their starting templates. Nothing is saved until you choose Save for now or Approve rubric in step 3.'
-                    : 'The grid will be replaced with its starting template. Nothing is saved until you choose Save for now or Approve rubric in step 3.',
+                    ? 'Both grids will be replaced with their starting templates. Nothing is saved until you choose Save as draft or Approve rubric in step 3.'
+                    : 'The grid will be replaced with its starting template. Nothing is saved until you choose Save as draft or Approve rubric in step 3.',
                 'Reset rubric',
                 'Cancel',
                 'danger'
@@ -1383,20 +1383,42 @@ function renderRubricPage(
     step2Body.className = 'wf-step-body';
 
     // An imported assignment whose Canvas rubric was out of contract was seeded from
-    // the built-in profile instead. Staff met that silently until now.
-    if (assignment.canvasRubricRefusal && !linguisticData.approved) {
-        const dropped = document.createElement('div');
-        dropped.className = 'wf-owed';
-        dropped.append(
-            createText('p', "This assignment's Canvas rubric could not be imported", 'wf-owed__title'),
-            createText('p', `${canvasRefusalReason(assignment.canvasRubricRefusal)} The starting grid below is EngE-AI's default — replace it with your own before approving.`)
-        );
-        step2Body.append(dropped);
-    }
+    // the built-in profile instead. Staff met that silently until now. The callout is
+    // built per redraw inside the grid, immediately above the buttons that edit it.
+    const refusal = assignment.canvasRubricRefusal;
+    const canvasRefusalNotice = refusal && !linguisticData.approved
+        ? (): HTMLElement => {
+            const dropped = document.createElement('div');
+            dropped.className = 'wf-owed';
+            // Decorative: the sentence beside it already says everything, so the icon is
+            // hidden from assistive technology rather than read out as "info".
+            const icon = document.createElement('i');
+            icon.dataset.feather = 'info';
+            icon.className = 'wf-owed__icon';
+            icon.setAttribute('aria-hidden', 'true');
+            const body = document.createElement('div');
+            body.className = 'wf-owed__body';
+            if (refusal === 'no_rubric') {
+                // Nothing failed here — Canvas simply had no rubric — so this reads as a
+                // note about the default grid rather than an import error.
+                body.append(
+                    createText('p', "Since this assignment does not have a rubric in Canvas, the rubric below is EngE-AI's default rubric. Please review it before approving.")
+                );
+            } else {
+                body.append(
+                    createText('p', "This assignment's Canvas rubric could not be imported", 'wf-owed__title'),
+                    createText('p', `${canvasRefusalReason(refusal)} The starting grid below is EngE-AI's default — replace it with your own before approving.`)
+                );
+            }
+            dropped.append(icon, body);
+            return dropped;
+        }
+        : undefined;
 
     // The heading names the rubric (D-066) and the plain-English line explains it. A lab
     // report shows two grids at once, so the name is what tells them apart.
     step2Body.append(renderRubricSection(pageContext, linguisticData, 'linguistic', {
+        notice: canvasRefusalNotice,
         heading: isLabReport ? 'Writing rubric' : 'Rubric',
         subtitle: isLabReport
             ? 'How they wrote it — structure, clarity, and how the writing speaks to its reader'
@@ -1464,10 +1486,18 @@ function renderRubricPage(
     approveRow.append(approveCopy);
 
     if (canEditAny) {
+        // Created here, filled only if the session expires. role="alert" rather than a
+        // polite status: it appears once, and only to say that work has stopped being
+        // saved.
+        const autosaveStatus = document.createElement('p');
+        autosaveStatus.className = 'wf-autosave-status';
+        autosaveStatus.setAttribute('role', 'alert');
+        autosaveStatus.hidden = true;
+
         const actions = document.createElement('div');
         actions.className = 'wf-button-row';
         actions.append(
-            createButton('Save for now', 'secondary', async () => {
+            createButton('Save as draft', 'secondary', async () => {
                 await saveEveryRubric(pageContext);
                 state.panelDirty = false;
                 state.assignments = await request<Assignment[]>('/assignments');
@@ -1476,47 +1506,44 @@ function renderRubricPage(
             }),
             createButton('Approve rubric', 'primary', async () => approveEveryRubric(pageContext))
         );
-        // A quiet marker beside Save, not a toast: this reports something that happens on
-        // its own, and it must not compete with the explicit Save's success message.
+        // Autosave narrates one state and no other. "Saving…" and "Saved 14:32" were
+        // reassurance nobody asked for, and beside a button reading "Save as draft" they
+        // made the reader work out which save either one meant.
         //
-        // Under the buttons rather than in among them. Inside the button row its text
-        // counted toward that row's width, so the row grew the moment autosave said
-        // anything and wrapped to the next line -- the buttons jumping from the right
-        // of the step to its bottom left and back as staff typed. A column of its own
-        // keeps the buttons a fixed size whatever the status happens to say.
-        const autosaveStatus = document.createElement('p');
-        autosaveStatus.className = 'wf-autosave-status';
-        autosaveStatus.setAttribute('role', 'status');
-        autosaveStatus.setAttribute('aria-live', 'polite');
-        const actionsColumn = document.createElement('div');
-        actionsColumn.className = 'wf-approve-actions';
-        actionsColumn.append(actions, autosaveStatus);
-
-        const savedClock = (at?: number): string =>
-            at === undefined ? '' : new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-        const renderAutosave = (autosaveState: AutosaveState): void => {
-            if (autosaveState.status === 'saved') state.panelDirty = false;
-            const stamp = savedClock(autosaveState.savedAt);
-            autosaveStatus.textContent =
-                autosaveState.status === 'saving' ? 'Saving…'
-                : autosaveState.status === 'saved' ? `Saved ${stamp}`
-                : autosaveState.status === 'stopped'
-                    ? `You've been signed out — your last saved draft is from ${stamp || 'before this session'}. Sign in again to keep editing.`
-                : autosaveState.status === 'error' ? `Not saved — ${autosaveState.message ?? 'try Save for now'}`
-                : '';
-            autosaveStatus.classList.toggle('wf-autosave-status--alert',
-                autosaveState.status === 'error' || autosaveState.status === 'stopped');
-        };
-
+        // An expired session is the exception, and the reason this line exists at all: the
+        // loop is stopped for good, nothing further is being stored, and the page gives no
+        // other sign of it. A toast would be wrong here -- this is not news about a moment
+        // that passes, it is a condition that holds for as long as the page is open, so it
+        // stays on the page until something is done about it.
         rubricAutosave = createAutosave({
             write: () => autosaveAssignmentRubrics(pageContext),
-            onStatus: renderAutosave
+            onStatus: (autosaveState) => {
+                // A background write that succeeds means the page is no longer holding
+                // unsaved work; leaving it dirty would have navigation ask about changes
+                // that are already stored.
+                if (autosaveState.status === 'saved') state.panelDirty = false;
+                if (autosaveState.status !== 'stopped') return;
+                const stamp = autosaveState.savedAt
+                    ? new Date(autosaveState.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                    : '';
+                // Not "sign in again", which means leaving this page, and everything typed
+                // since the stamp lives only in this tab. Signing in elsewhere restores the
+                // same-origin session cookie, after which Save as draft works from here and
+                // the work survives. Autosave itself stays stopped either way.
+                autosaveStatus.textContent = stamp
+                    ? `You've been signed out, and nothing has been saved since ${stamp}. Don't reload this page — sign in again in another tab, then come back and press Save as draft.`
+                    : "You've been signed out, and nothing you have typed here has been saved. Don't reload this page — sign in again in another tab, then come back and press Save as draft.";
+                autosaveStatus.hidden = false;
+            }
         });
 
         registerAutosaveFlushListeners();
 
-        approveRow.append(actionsColumn);
+        approveRow.append(actions);
+        // Below the approve row, not inside it: a sentence this long sitting beside the
+        // buttons is what used to widen their row until it wrapped, moving them from the
+        // right of the step to its bottom left.
+        step3Body.append(autosaveStatus);
     }
 
     // What is still outstanding is the progress strip's job, once, at the top of the
@@ -1695,6 +1722,8 @@ interface RubricSectionOptions {
     errorLabel: string;
     /** Whether this section header shows its own approval state. */
     showState: boolean;
+    /** Callout rendered above this grid's toolbar, rebuilt on every grid redraw. */
+    notice?: () => HTMLElement;
 }
 
 /** Configuration for the single shared assignment-details section. */
@@ -2210,7 +2239,8 @@ function renderRubricSection(
         reservedIds,
         syncFromForm: () => syncStructuredValues(form, working),
         onChange: markDirty,
-        announce
+        announce,
+        notice: options.notice
     });
 
     context.sections.push({
