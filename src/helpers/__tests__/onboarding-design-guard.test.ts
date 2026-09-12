@@ -136,9 +136,9 @@ describe('onboarding design guard', () => {
             'utf8'
         );
         expect(markup).toContain('id="wfSetupImportCanvasBtn"');
-        expect(markup).toContain('Import from Canvas');
+        expect(markup).toContain('Import assignment from Canvas');
         expect(markup).toContain('id="wfSetupAddAssignmentBtn"');
-        expect(markup).toContain('Add assignment');
+        expect(markup).toContain('Add assignment manually');
         expect(markup).toContain('do not import, create, or save anything');
         expect(controller).not.toMatch(/\bfetch\s*\(/);
     });

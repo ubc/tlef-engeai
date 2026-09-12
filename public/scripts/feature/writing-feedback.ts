@@ -22,7 +22,6 @@ import {
     CanvasAssignment,
     CanvasAuthRequiredError,
     CanvasImportResult,
-    CanvasPreview,
     CanvasStatus,
     STATUS_LABELS,
     STATUS_TONES,
@@ -46,6 +45,7 @@ import {
     queryState,
     refreshIcons,
     request,
+    runButtonAction,
     setQueryState,
     setView,
     setWorkspaceMessage,
@@ -90,9 +90,9 @@ function renderLanding(): void {
         ));
         const actions = document.createElement('div');
         actions.className = 'wf-button-row';
-        actions.append(createButton('Import from Canvas', 'primary', async () => showCanvasImport()));
+        actions.append(createButton('Import assignment from Canvas', 'primary', async () => showCanvasImport()));
         if (canCreate) {
-            actions.append(createButton('Add assignment (manually)', 'secondary', async () => showAddAssignment()));
+            actions.append(createButton('Add assignment manually', 'secondary', async () => showAddAssignment()));
         }
         empty.append(actions);
         list.append(empty);
@@ -364,7 +364,10 @@ function openActionPanel(title: string): HTMLElement {
     const content = element<HTMLElement>('wf-action-panel-content');
     content.replaceChildren();
     panel.hidden = false;
-    panel.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+    // 'nearest' so the panel is only scrolled to when it is actually off-screen. Revealing
+    // it already pushes the assignment list down; aligning its top to the viewport on top of
+    // that moved the page under the reviewer even when the panel was fully visible.
+    panel.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'nearest' });
     return content;
 }
 
@@ -603,6 +606,38 @@ async function showManualImport(assignment: Assignment): Promise<void> {
 }
 
 /**
+ * createAssignmentListPlaceholder - builds the loading state for the Canvas assignment list
+ *
+ * Skeleton cards sit in the same grid as the real assignment cards so the panel does not
+ * reflow when the list arrives. They are decorative, so the announcement is carried by a
+ * visually hidden live region rather than by the shapes themselves.
+ *
+ * @returns Detached container the caller appends while the fetch is in flight and removes after
+ */
+function createAssignmentListPlaceholder(): HTMLElement {
+    const placeholder = document.createElement('div');
+    placeholder.className = 'wf-canvas-list';
+    placeholder.setAttribute('role', 'status');
+    placeholder.setAttribute('aria-busy', 'true');
+    placeholder.append(createText('p', 'Loading assignments from Canvas…', 'wf-visually-hidden'));
+
+    // Three cards: enough to read as a list without implying a count the fetch may not match.
+    for (let cardIndex = 0; cardIndex < 3; cardIndex += 1) {
+        const card = document.createElement('div');
+        card.className = 'wf-canvas-assignment wf-canvas-assignment--skeleton';
+        card.setAttribute('aria-hidden', 'true');
+        const lines = document.createElement('div');
+        lines.className = 'wf-skeleton-lines';
+        for (let lineIndex = 0; lineIndex < 3; lineIndex += 1) {
+            lines.append(createText('span', '', 'wf-skeleton-line'));
+        }
+        card.append(lines);
+        placeholder.append(card);
+    }
+    return placeholder;
+}
+
+/**
  * showCanvasImport - opens the assignment chooser for the active Canvas adapter
  *
  * The same panel serves three states, and the copy must not blur them: a live Canvas course
@@ -616,7 +651,7 @@ async function showCanvasImport(): Promise<void> {
     state.panelDirty = false;
     const workspace = state.workspace!;
     const content = openActionPanel(
-        workspace.canvas.mode === 'demo' ? 'Try the Canvas import workflow' : 'Import assignments from Canvas'
+        workspace.canvas.mode === 'demo' ? 'Try the Canvas import workflow' : 'Select assignment to import from Canvas'
     );
     content.append(createText('p', 'Checking Canvas availability…', 'wf-muted-note'));
 
@@ -629,14 +664,14 @@ async function showCanvasImport(): Promise<void> {
     const isDemo = status.mode === 'demo';
     const isLive = status.mode === 'live';
 
-    const callout = document.createElement('div');
-    callout.className = `wf-callout${status.canImport ? ' wf-callout--success' : ' wf-callout--warning'}`;
-    callout.append(createText('strong', status.label), createText('span', status.message));
-    content.append(callout);
-
     if (!status.canImport) {
         // Capability/connection failure is a durable inline state, not an attempt to call
-        // Canvas or a misleading disabled demo.
+        // Canvas or a misleading disabled demo. Only this path reports the integration's
+        // own status text, because only here does the reason for it drive what to do next.
+        const blocked = document.createElement('div');
+        blocked.className = 'wf-callout wf-callout--warning';
+        blocked.append(createText('strong', status.label), createText('span', status.message));
+        content.append(blocked);
         content.append(createText('p', status.nextStep || 'Canvas connection setup is required.', 'wf-panel-intro'));
         if (status.connectUrl) {
             // Authorization is the only blocker, and it is one this staff member can clear.
@@ -659,6 +694,25 @@ async function showCanvasImport(): Promise<void> {
         return;
     }
 
+    // Once importing is possible, the connection is not the reviewer's problem. The callout
+    // spends itself on what import does and on why the list may be shorter than Canvas.
+    // Phrased as "only ... appear below" on purpose: the gateway also hides assignments that
+    // take no text or file entry and ones graded anonymously, so a sentence claiming the
+    // submission count is what hides them would send staff looking for the wrong cause.
+    const callout = document.createElement('div');
+    callout.className = 'wf-callout wf-callout--success';
+    callout.append(createText(
+        'span',
+        "This will import all of the assignment's submissions. Only assignments with at least one submission appear below."
+    ));
+    content.append(callout);
+
+    // Listing assignments is the slower of the two Canvas calls, and the status check's
+    // own placeholder was cleared above. Without one here the panel looks finished and
+    // empty for a second or two, which reads as "this course has no assignments".
+    const loading = createAssignmentListPlaceholder();
+    content.append(loading);
+
     let canvasAssignments: CanvasAssignment[];
     try {
         canvasAssignments = await request<CanvasAssignment[]>('/canvas/assignments');
@@ -676,15 +730,9 @@ async function showCanvasImport(): Promise<void> {
             return;
         }
         throw error;
+    } finally {
+        loading.remove();
     }
-
-    content.append(createText(
-        'p',
-        isLive
-            ? 'Choose an assignment. Importing copies its submissions, assignment directions, and Canvas rubric into this workspace. The rubric arrives as an editable draft that guides feedback only once you approve it, and nothing is written back to Canvas.'
-            : 'Choose an assignment. Importing adds a local rubric draft and carries available assignment directions into this workspace. The draft guides feedback only once you approve it.',
-        'wf-panel-intro'
-    ));
 
     if (canvasAssignments.length === 0) {
         content.append(createText(
@@ -711,12 +759,13 @@ async function showCanvasImport(): Promise<void> {
         const label = document.createElement('label');
         label.htmlFor = radio.id;
         // Canvas cannot report a submitted count without a request per assignment, so the
-        // number is promised at preview rather than guessed at here.
-        const count = assignment.submissionCount === undefined
-            ? 'Submissions counted at preview'
-            : `${assignment.submissionCount} submissions`;
-        // A due date is shown only when Canvas holds one; its absence is not worth a segment.
-        const summary = [count, `${assignment.pointsPossible ?? '—'} points`];
+        // segment appears only when the list call happened to carry one. A due date is
+        // likewise shown only when Canvas holds one; neither absence is worth a placeholder.
+        const summary: string[] = [];
+        if (assignment.submissionCount !== undefined) {
+            summary.push(`${assignment.submissionCount} submissions`);
+        }
+        summary.push(`${assignment.pointsPossible ?? '—'} points`);
         if (assignment.dueAt) summary.push(formatDate(assignment.dueAt));
         label.append(
             createText('strong', assignment.title),
@@ -728,30 +777,9 @@ async function showCanvasImport(): Promise<void> {
     });
     content.append(list);
 
-    const previewState = document.createElement('div');
-    previewState.className = 'wf-release-state';
-    previewState.setAttribute('role', 'status');
     const actions = document.createElement('div');
     actions.className = 'wf-button-row';
     actions.append(
-        createButton('Preview import', 'secondary', async () => {
-            const selected = content.querySelector<HTMLInputElement>('input[name="wf-canvas-assignment"]:checked');
-            if (!selected) throw new Error('Choose an assignment first');
-            const preview = await request<CanvasPreview>(
-                `/canvas/assignments/${encodeURIComponent(selected.value)}/preview`
-            );
-            // Report the breakdown, not just a total: uploads land needing verification and
-            // unsupported submissions are skipped, and both change what happens next.
-            const eligible = preview.submissions.filter((entry) => entry.contentKind !== 'unsupported');
-            const uploads = eligible.filter((entry) => entry.contentKind === 'file_upload').length;
-            const unsupported = preview.submissions.length - eligible.length;
-            const parts = [
-                `${eligible.length} ${isDemo ? 'synthetic ' : ''}submission${eligible.length === 1 ? '' : 's'} eligible`
-            ];
-            if (uploads > 0) parts.push(`${uploads} file upload${uploads === 1 ? '' : 's'} will need transcript verification`);
-            if (unsupported > 0) parts.push(`${unsupported} skipped with no readable text`);
-            previewState.textContent = `${parts.join('; ')}. Import does not generate or release feedback.`;
-        }),
         createButton('Import selected assignment', 'primary', async () => {
             const selected = content.querySelector<HTMLInputElement>('input[name="wf-canvas-assignment"]:checked');
             if (!selected) throw new Error('Choose an assignment first');
@@ -780,7 +808,7 @@ async function showCanvasImport(): Promise<void> {
             else showSuccessToast(summary, 6000);
         })
     );
-    content.append(previewState, actions);
+    content.append(actions);
 }
 
 // ---------------------------------------------------------------------------
@@ -788,7 +816,10 @@ async function showCanvasImport(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 function bindStaticActions(): void {
-    element<HTMLButtonElement>('wf-import-canvas').addEventListener('click', () => void showCanvasImport().catch(handleActionError));
+    // Routed through runButtonAction rather than a bare listener so the header control
+    // reports the same busy state as its empty-state twin while Canvas is being reached.
+    const importCanvas = element<HTMLButtonElement>('wf-import-canvas');
+    importCanvas.addEventListener('click', () => void runButtonAction(importCanvas, showCanvasImport));
     element<HTMLButtonElement>('wf-add-assignment').addEventListener('click', () => void showAddAssignment().catch(handleActionError));
     element<HTMLButtonElement>('wf-action-panel-close').addEventListener('click', () => void closeActionPanel());
     element<HTMLButtonElement>('wf-workspace-message-dismiss').addEventListener('click', clearWorkspaceMessage);
