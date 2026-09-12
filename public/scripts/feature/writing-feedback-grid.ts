@@ -448,7 +448,7 @@ export function renderRubricGrid(
 
         const addCriterion = createButton(
             'Add a criterion',
-            'secondary',
+            'outline',
             async () => {
                 syncFromForm();
                 const label = 'New criterion';
@@ -466,7 +466,7 @@ export function renderRubricGrid(
 
         const addLevel = createButton(
             'Add a level',
-            'secondary',
+            'outline',
             async () => {
                 syncFromForm();
                 const label = 'New level';
@@ -484,7 +484,7 @@ export function renderRubricGrid(
 
         const spreadEvenly = createButton(
             'Spread points evenly',
-            'secondary',
+            'outline',
             async () => {
                 syncFromForm();
                 draft.criteria.forEach((criterion) => {
@@ -523,7 +523,7 @@ export function renderRubricGrid(
         librarySelect.disabled = !available.length || draft.criteria.length >= MAX_CRITERIA;
         const addFromLibrary = createButton(
             'Add from the library',
-            'secondary',
+            'outline',
             async () => {
                 const candidate = available.find((entry) => entry.id === librarySelect.value);
                 if (!candidate) {

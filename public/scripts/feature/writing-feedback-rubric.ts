@@ -65,6 +65,7 @@ import {
     createText,
     disclosureHeader,
     element,
+    expandDisclosure,
     field,
     formatDate,
     inputControl,
@@ -447,9 +448,9 @@ function renderSflProfileBox(
     taskRequirements.placeholder = 'One per line — e.g. at least three sources';
     const glossaryTerms = namedControl(textAreaControl((sflContext?.approvedGlossaryTerms ?? []).join('\n'), 2), 'sfl.approvedGlossaryTerms');
     glossaryTerms.placeholder = 'One per line. Leave blank if none';
-    body.append(sflField({ label: 'Smaller pieces of writing inside it', control: embeddedGenres }));
+    body.append(sflField({ label: 'Smaller pieces of writing inside it (optional)', control: embeddedGenres }));
     body.append(sflField({ label: 'What must they include?', control: taskRequirements, required: true }));
-    body.append(sflField({ label: 'Words from your course glossary', control: glossaryTerms }));
+    body.append(sflField({ label: 'Words from your course glossary (optional)', control: glossaryTerms }));
 
     [genreLabelControl, fieldControl, tenorControl, modeControl, evaluatorControl, productionControl,
         embeddedGenres, taskRequirements, glossaryTerms].forEach((control) => bindTextControl(control, canEdit, onInput));
@@ -533,7 +534,7 @@ function renderStageRepeater(
         .forEach((stage) => addRow(stage.label, stage.purpose));
 
     if (canEdit) {
-        const addButton = createButton('Add section', 'secondary', async () => {
+        const addButton = createButton('Add section', 'outline', async () => {
             addRow('', '');
             onInput();
         }, false, 'plus');
@@ -769,6 +770,162 @@ function detailsFromDraft(draft: RubricDefinition): DetailsValues {
 }
 
 /**
+ * MissingFieldsError - a validation failure that knows which controls are empty
+ *
+ * The collectors used to throw a hand-written sentence listing the fields in
+ * prose ("Fill in the title, task, audience, purpose, and how to grade."). That
+ * prose named nothing on the page: the labels above those boxes are questions
+ * ("Who are they writing for?"), so staff were told to fill in words they could
+ * not find. Carrying the control names instead lets the page mark the boxes
+ * themselves and read their real labels back out of the DOM, which cannot drift
+ * from what is rendered the way a second copy of the wording always did.
+ *
+ * The collectors stay pure. Marking happens only where a staff member pressed a
+ * button — {@link reportMissingFields} — because autosave runs these same
+ * collectors on a timer and must never paint a half-typed form red.
+ */
+class MissingFieldsError extends Error {
+    /** Control names, in the order the form asks for them. */
+    readonly controlNames: string[];
+
+    constructor(controlNames: string[]) {
+        super(`${controlNames.length} required field${controlNames.length === 1 ? '' : 's'} still empty.`);
+        this.name = 'MissingFieldsError';
+        this.controlNames = controlNames;
+    }
+}
+
+/**
+ * fieldLabelFor - the visible label of the field a control sits in
+ *
+ * Read from the DOM rather than from a table beside the validator, so the words
+ * quoted back at staff are by construction the words above the box.
+ *
+ * @param control - Control to describe
+ * @returns Label text without its required marker or item count, or '' when unlabelled
+ */
+function fieldLabelFor(control: RubricControl): string {
+    const label = control.closest('.wf-field')?.querySelector('label');
+    if (!label) return '';
+    // The asterisk and the "3 items" count are appended as element children, so the
+    // direct text nodes of the label (or of its text wrapper) are the label itself.
+    const source = label.querySelector('.wf-field-label-text') ?? label;
+    return Array.from(source.childNodes)
+        .filter((node) => node.nodeType === Node.TEXT_NODE)
+        .map((node) => node.textContent ?? '')
+        .join('')
+        .trim();
+}
+
+/**
+ * revealControl - opens any collapsed disclosure between a control and the page
+ *
+ * The genre profile is a collapsible box, so a control inside it can be both
+ * empty and invisible. Scrolling to a hidden box would land on nothing.
+ *
+ * Resolves only once every panel has finished opening. {@link expandDisclosure}
+ * animates `max-height` from zero, so a scroll issued before it settles measures
+ * a box that is still flat and lands on the section header instead of the field.
+ * Clicking the header would start that animation without handing back anything to
+ * wait on, so the panels are expanded directly and their headers told what
+ * happened, keeping `aria-expanded` in step with what the next click must undo.
+ *
+ * @param control - Control that must become visible
+ */
+async function revealControl(control: RubricControl): Promise<void> {
+    const collapsed: HTMLElement[] = [];
+    for (let node = control.parentElement; node; node = node.parentElement) {
+        if (node.classList.contains('wf-disclosure-body') && node.hidden) collapsed.push(node);
+    }
+    // Outermost first: a nested panel measures its own height as zero while an
+    // ancestor is still `hidden`, and would animate open to nothing.
+    for (const panel of collapsed.reverse()) {
+        document
+            .querySelector<HTMLElement>(`[aria-controls="${CSS.escape(panel.id)}"]`)
+            ?.setAttribute('aria-expanded', 'true');
+        await expandDisclosure(panel);
+    }
+}
+
+/**
+ * clearFieldErrors - returns every marked control to its normal state
+ *
+ * @param form - The assignment-details form rendered once per page
+ * @param note - The line under step 3 that carries the summary
+ */
+function clearFieldErrors(form: HTMLFormElement, note: HTMLElement): void {
+    form.querySelectorAll<RubricControl>('.wf-field-invalid').forEach((control) => {
+        control.classList.remove('wf-field-invalid', 'wf-field-shake');
+        control.removeAttribute('aria-invalid');
+    });
+    note.textContent = '';
+    note.hidden = true;
+}
+
+/**
+ * reportMissingFields - marks the empty fields and sends the staff member to the first
+ *
+ * Replaces the modal for this one class of failure. A modal is the right shape
+ * for a failure with nothing to point at; an empty required box is the opposite,
+ * and a dialog covering the form while describing it was the whole problem.
+ *
+ * Focus, not the animation, is what carries this to a screen reader: moving the
+ * caret into the first empty box announces its label, and `aria-invalid` marks
+ * the rest for anyone who navigates the form afterwards.
+ *
+ * @param form - The assignment-details form rendered once per page
+ * @param note - The line under step 3 that carries the summary
+ * @param controlNames - Names of the empty controls, in form order
+ */
+async function reportMissingFields(form: HTMLFormElement, note: HTMLElement, controlNames: string[]): Promise<void> {
+    clearFieldErrors(form, note);
+
+    const controls = controlNames
+        .map((name) => form.elements.namedItem(name) as RubricControl | null)
+        .filter((control): control is RubricControl => Boolean(control));
+    if (!controls.length) {
+        // Nothing on this page to point at, so the sentence has to carry the whole
+        // report. Reachable only if a control is renamed without its validator.
+        note.textContent = 'Some required fields are empty. Check steps 1 and 2.';
+        note.hidden = false;
+        return;
+    }
+
+    controls.forEach((control) => {
+        control.classList.add('wf-field-invalid', 'wf-field-shake');
+        control.setAttribute('aria-invalid', 'true');
+        control.addEventListener('animationend', () => control.classList.remove('wf-field-shake'), { once: true });
+        // Clears as soon as the box stops being empty, so the red does not outlive
+        // the problem and wait for another press to be told it is fixed.
+        const clearWhenFilled = (): void => {
+            if (!control.value.trim()) return;
+            control.classList.remove('wf-field-invalid', 'wf-field-shake');
+            control.removeAttribute('aria-invalid');
+            control.removeEventListener('input', clearWhenFilled);
+            if (!form.querySelector('.wf-field-invalid')) {
+                note.textContent = '';
+                note.hidden = true;
+            }
+        };
+        control.addEventListener('input', clearWhenFilled);
+    });
+
+    const first = controls[0];
+    const firstLabel = fieldLabelFor(first);
+    const others = controls.length - 1;
+    note.textContent = firstLabel
+        ? (others === 0
+            ? `Answer \u201C${firstLabel}\u201D to continue.`
+            : `Answer \u201C${firstLabel}\u201D and ${others} other${others === 1 ? '' : 's'} to continue. They are highlighted above.`)
+        : `${controls.length} required field${controls.length === 1 ? ' is' : 's are'} empty. They are highlighted above.`;
+    note.hidden = false;
+
+    await revealControl(first);
+    first.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    first.focus({ preventScroll: true });
+}
+
+/**
  * readAssignmentDetails - reads the shared assignment description without judging it
  *
  * The progress strip and the profile chip recompute on every keystroke, when the
@@ -791,22 +948,24 @@ function readAssignmentDetails(form: HTMLFormElement): AssignmentDetailsInput {
     };
 }
 
+/** Control names in the shared description that must carry a value before a rubric is written. */
+const REQUIRED_DETAIL_CONTROLS = ['title', 'task', 'audience', 'purpose', 'gradingIntent'];
+
 /**
  * collectAssignmentDetails - validates the one shared assignment description
  *
  * @param form - The assignment-details form rendered once per page
  * @returns Description values written into every rubric this assignment owns
- * @throws Error carrying a message written for staff, shown in the validation summary
+ * @throws MissingFieldsError naming every empty control, for {@link reportMissingFields} to mark
  */
 function collectAssignmentDetails(form: HTMLFormElement): AssignmentDetailsInput {
-    const required = ['title', 'task', 'audience', 'purpose', 'gradingIntent'];
-    if (required.some((name) => !rubricTextValue(form, name))) {
-        throw new Error('Fill in the title, task, audience, purpose, and how to grade.');
-    }
     const details = readAssignmentDetails(form);
-    if (!details.constraints.length || !details.learningOutcomes.length) {
-        throw new Error('Add at least one requirement and one learning outcome.');
-    }
+    const missing = REQUIRED_DETAIL_CONTROLS.filter((name) => !rubricTextValue(form, name));
+    // The two list fields are reported in the same pass rather than behind a second
+    // throw, so one press names everything outstanding instead of one round per rule.
+    if (!details.constraints.length) missing.push('constraints');
+    if (!details.learningOutcomes.length) missing.push('learningOutcomes');
+    if (missing.length) throw new MissingFieldsError(missing);
     return details;
 }
 
@@ -862,7 +1021,7 @@ function readSflContext(
  * @param details - Description values written into the profile on save
  * @param previousGenreId - Genre id carried forward from the stored profile
  * @returns The profile persisted with this rubric draft
- * @throws Error carrying a message written for staff, shown in the validation summary
+ * @throws MissingFieldsError naming every empty control, for {@link reportMissingFields} to mark
  */
 function collectSflContext(
     form: HTMLFormElement,
@@ -870,14 +1029,20 @@ function collectSflContext(
     previousGenreId: string | undefined
 ): SflContextProfile {
     const profile = readSflContext(form, details, previousGenreId);
-    const required = [
-        profile.genreLabel, profile.field, profile.tenor,
-        profile.mode, profile.actualEvaluator, profile.productionConditions
+    const required: Array<[string, string]> = [
+        ['sfl.genreLabel', profile.genreLabel],
+        ['sfl.field', profile.field],
+        ['sfl.tenor', profile.tenor],
+        ['sfl.mode', profile.mode],
+        ['sfl.actualEvaluator', profile.actualEvaluator],
+        ['sfl.productionConditions', profile.productionConditions]
     ];
-    if (required.some((value) => !value)) {
-        throw new Error('Complete the genre and register profile before saving.');
-    }
-    if (!profile.stages.length) throw new Error('Add at least one section before saving.');
+    const missing = required.filter(([, value]) => !value).map(([name]) => name);
+    // The repeater is seeded with one row and readStageRepeaterRows drops rows whose
+    // label is blank, so an empty stage list means that first row's name box is empty.
+    // Naming the box is what lets the page point at it; the list itself has no control.
+    if (!profile.stages.length) missing.push('sfl.stage.0.label');
+    if (missing.length) throw new MissingFieldsError(missing);
     return profile;
 }
 
@@ -1480,7 +1645,7 @@ function renderRubricPage(
     const approveCopy = document.createElement('div');
     approveCopy.className = 'wf-approve-copy';
     approveCopy.append(
-        createText('p', 'You can approve now. Approving fixes the version that student work is marked against.'),
+        createText('p', 'Once approved, this rubric will be the version that student submissions are marked against.'),
         createText('p', 'You can still change the rubric afterwards — feedback already drafted keeps the version it was marked against.', 'wf-help-text')
     );
     approveRow.append(approveCopy);
@@ -1494,17 +1659,29 @@ function renderRubricPage(
         autosaveStatus.setAttribute('role', 'alert');
         autosaveStatus.hidden = true;
 
+        // Empty required fields are reported on the fields themselves, not in a modal,
+        // so this line is the summary that goes with the marks. role="alert": it appears
+        // in response to a press, and the focus move that accompanies it lands elsewhere.
+        const validationNote = document.createElement('p');
+        validationNote.className = 'wf-validation-note';
+        validationNote.setAttribute('role', 'alert');
+        validationNote.hidden = true;
+
         const actions = document.createElement('div');
         actions.className = 'wf-button-row';
         actions.append(
             createButton('Save as draft', 'secondary', async () => {
-                await saveEveryRubric(pageContext);
-                state.panelDirty = false;
-                state.assignments = await request<Assignment[]>('/assignments');
-                showSuccessToast('Rubric draft saved. The approved rubric is unchanged.');
-                await openRubricPage(assignment.id);
+                await withFieldErrorReporting(pageContext, validationNote, async () => {
+                    await saveEveryRubric(pageContext);
+                    state.panelDirty = false;
+                    state.assignments = await request<Assignment[]>('/assignments');
+                    showSuccessToast('Rubric draft saved. The approved rubric is unchanged.');
+                    await openRubricPage(assignment.id);
+                });
             }),
-            createButton('Approve rubric', 'primary', async () => approveEveryRubric(pageContext))
+            createButton('Approve rubric', 'primary', async () => {
+                await withFieldErrorReporting(pageContext, validationNote, async () => approveEveryRubric(pageContext));
+            })
         );
         // Autosave narrates one state and no other. "Saving…" and "Saved 14:32" were
         // reassurance nobody asked for, and beside a button reading "Save as draft" they
@@ -1543,7 +1720,7 @@ function renderRubricPage(
         // Below the approve row, not inside it: a sentence this long sitting beside the
         // buttons is what used to widen their row until it wrapped, moving them from the
         // right of the step to its bottom left.
-        step3Body.append(autosaveStatus);
+        step3Body.append(autosaveStatus, validationNote);
     }
 
     // What is still outstanding is the progress strip's job, once, at the top of the
@@ -1610,6 +1787,34 @@ function renderRubricPage(
 
     if (notice) setWorkspaceMessage(notice.message, notice.tone);
     refreshIcons();
+}
+
+/**
+ * withFieldErrorReporting - runs a write, reporting empty required fields on the page
+ *
+ * {@link runButtonAction} raises a modal for anything a button action throws, which
+ * is right for a transport failure and wrong for an empty box: the dialog covers
+ * the form it is describing. So a {@link MissingFieldsError} is swallowed here,
+ * after the fields it names have been marked — the marks and the line under step 3
+ * are the whole report. Every other failure is rethrown and still gets its modal.
+ *
+ * @param context - Page context holding the details form
+ * @param note - The line under step 3 that carries the summary
+ * @param write - The save or approve to attempt
+ * @throws Error for any failure that is not an empty required field
+ */
+async function withFieldErrorReporting(
+    context: RubricPageContext,
+    note: HTMLElement,
+    write: () => Promise<void>
+): Promise<void> {
+    clearFieldErrors(context.detailsForm, note);
+    try {
+        await write();
+    } catch (error) {
+        if (!(error instanceof MissingFieldsError)) throw error;
+        await reportMissingFields(context.detailsForm, note, error.controlNames);
+    }
 }
 
 /**
@@ -1793,9 +1998,6 @@ function renderAssignmentDetails(
 
     const headingRow = document.createElement('div');
     headingRow.className = 'wf-rubric-heading-row';
-    if (options.isLabReport) {
-        headingRow.append(createText('span', 'used by both rubrics', 'wf-quiet-note'));
-    }
     const fillStatus = createText('p', options.notice?.message ?? '', 'wf-rubric-details-status');
     fillStatus.setAttribute('role', 'status');
     fillStatus.setAttribute('aria-live', 'polite');
@@ -1804,14 +2006,14 @@ function renderAssignmentDetails(
     if (options.canEdit) {
         const fillButton = createButton(
             'Fill these in for me',
-            'secondary',
+            'outline',
             async () => options.onFillFromInstructions(fillStatus),
             !options.hasInstructions
         );
         if (!options.hasInstructions) fillButton.title = 'Add the assignment instructions first';
         headingRow.append(fillButton);
 
-        const resetButton = createButton('Start over from the standard rubric', 'secondary', async () => options.onResetToDefault());
+        const resetButton = createButton('Start over from the standard rubric', 'outline', async () => options.onResetToDefault());
         headingRow.append(resetButton);
     }
 
@@ -1877,37 +2079,69 @@ function renderAssignmentDetails(
     if (options.isLabReport) {
         const labContext = namedControl(textAreaControl(options.labContext, 10), 'labContext');
         labContext.maxLength = MAX_LAB_CONTEXT;
-        labContext.placeholder = 'Paste the lab handout: what students were asked to do, the steps, and any expected observations.';
+        // The handout normally arrives as a file, so the placeholder describes the
+        // upload path first and leaves pasting as the fallback it actually is.
+        labContext.placeholder = options.canEdit
+            ? 'Extract the handout from a file above, or type it here: what students were asked to do, the steps, and any expected observations.'
+            : 'No lab handout saved.';
         bindTextControl(labContext, options.canEdit, options.onInput);
 
-        const handoutFile = inputControl('', 'file');
-        handoutFile.accept = '.txt,.md,.markdown,.docx,.pdf,.html,.htm';
-        handoutFile.setAttribute('aria-label', 'Lab handout file');
-        const extractionState = createText('p', '', 'wf-help-text');
-        extractionState.setAttribute('role', 'status');
-        extractionState.setAttribute('aria-live', 'polite');
+        const handoutField = field(
+            'Lab handout (optional)',
+            labContext,
+            undefined,
+            true
+        );
 
-        const extractHandout = async (): Promise<void> => {
-            const selectedFile = handoutFile.files?.[0];
-            if (!selectedFile) throw new Error('Choose a lab handout file first.');
-            const payload = new FormData();
-            payload.append('file', selectedFile);
-            // Reuses the existing local extractor; nothing here enters the RAG pipeline.
-            const extracted = await request<{ text: string }>('/instructions/extract', { method: 'POST', body: payload });
-            labContext.value = extracted.text.slice(0, MAX_LAB_CONTEXT);
-            options.onInput();
-            extractionState.textContent = `Extracted ${selectedFile.name}. Review and trim the text before saving.`;
-            labContext.focus();
-        };
-
-        const handoutField = field('Lab handout', labContext, undefined, false, true);
-        handoutField.classList.add('wf-field--wide');
         if (options.canEdit) {
+            const handoutFile = inputControl('', 'file');
+            handoutFile.accept = '.txt,.md,.markdown,.docx,.pdf,.html,.htm';
+            const extractionState = createText('p', '', 'wf-help-text');
+            extractionState.setAttribute('role', 'status');
+            extractionState.setAttribute('aria-live', 'polite');
+
+            const extractHandout = async (): Promise<void> => {
+                const selectedFile = handoutFile.files?.[0];
+                if (!selectedFile) throw new Error('Choose a lab handout file first.');
+                const payload = new FormData();
+                payload.append('file', selectedFile);
+                // Reuses the existing local extractor; nothing here enters the RAG pipeline.
+                const extracted = await request<{ text: string }>('/instructions/extract', { method: 'POST', body: payload });
+                labContext.value = extracted.text.slice(0, MAX_LAB_CONTEXT);
+                options.onInput();
+                // A handout longer than the field allows is cut silently otherwise, and
+                // staff would only find the missing tail by rereading the whole box.
+                extractionState.textContent = extracted.text.length > MAX_LAB_CONTEXT
+                    ? `Extracted ${selectedFile.name}, trimmed to the first ${MAX_LAB_CONTEXT.toLocaleString()} characters. Review the text below.`
+                    : `Extracted ${selectedFile.name}. Review and edit the text below before saving.`;
+                labContext.focus();
+            };
+
+            const extractButton = createButton('Extract text', 'outline', extractHandout, true, undefined);
+            handoutFile.addEventListener('change', () => {
+                const selectedName = handoutFile.files?.[0]?.name;
+                extractButton.disabled = !selectedName;
+                extractionState.textContent = selectedName
+                    ? `${selectedName} selected. Choose "Extract text" to pull its text into the box below.`
+                    : '';
+            });
+
             const handoutActions = document.createElement('div');
             handoutActions.className = 'wf-inline-field-actions';
-            handoutActions.append(handoutFile, createButton('Extract from file', 'secondary', extractHandout));
-            handoutField.append(handoutActions, extractionState);
+            handoutActions.append(extractButton);
+
+            // The upload sits in its own field above the text box so the controls run
+            // in the order staff use them: choose a file, extract, then edit.
+            const handoutFileField = field(
+                'Lab handout file (optional)',
+                handoutFile,
+                'TXT, DOCX, text-based PDF, or HTML. Extracting replaces whatever is in the handout box below.',
+                true
+            );
+            handoutFileField.append(handoutActions, extractionState);
+            grid.append(handoutFileField);
         }
+
         grid.append(handoutField);
     }
 

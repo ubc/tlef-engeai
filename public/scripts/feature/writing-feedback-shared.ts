@@ -804,7 +804,7 @@ export function createText(tag: keyof HTMLElementTagNameMap, text: string, class
  */
 export function createButton(
     label: string,
-    variant: 'primary' | 'secondary' | 'quiet' | 'danger' | 'chip',
+    variant: 'primary' | 'secondary' | 'outline' | 'quiet' | 'danger' | 'chip',
     action: (button: HTMLButtonElement) => Promise<void>,
     disabled = false,
     iconName?: string
