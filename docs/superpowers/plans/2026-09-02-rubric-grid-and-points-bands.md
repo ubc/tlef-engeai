@@ -715,7 +715,7 @@ The band control now accepts two shapes, so it must say so — once per grid, no
 ```typescript
     const bandHint = createText(
         'p',
-        'Points can be one number, or a range like 16–22.',
+        'Points can be a single numeric value, or a range of values (e.g., 16–22).',
         'wf-grid-band-hint'
     );
     bandHint.id = `${gridId}-band-hint`;

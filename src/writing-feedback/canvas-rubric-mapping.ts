@@ -55,7 +55,7 @@ const MAX_POINTS = 1000;
  * Canvas's `long_description` is optional and routinely empty, while the grid schema requires a
  * non-empty description on every criterion and level — an empty one blocks the draft from being
  * saved at all. Repeating the name instead would print the same words twice in the editor and
- * read as a bug, so these follow the house style of {@link SFL_PROFILE_PLACEHOLDERS}: a plain
+ * read as a bug, so these stay in the house style for seeded staff-facing text: a plain
  * imperative that is obviously staff's to replace.
  *
  * Exported so an approval gate can reject them verbatim, as the SFL profile's placeholders are.

@@ -15,6 +15,7 @@ import { CANVAS_IMPORT_PLACEHOLDERS, canvasRubricToSeedShape, mapCanvasRubric } 
 import { writingRubricDraftInputSchema } from '../rubric-schema';
 import { earnedLevelFor } from '../rubric-bands';
 import { buildDefaultWritingRubric } from '../default-rubric-profile';
+import { buildStaffedWritingRubric } from './helpers/staffed-rubric';
 import { seedRubricForLens } from '../rubric-seed';
 import type { CanvasImportedRubric, CanvasRubricRow } from '../contracts';
 
@@ -61,7 +62,7 @@ describe('canvasRubricToSeedShape', () => {
     it('produces a rubric the draft schema accepts', () => {
         // The mapper's output is fed straight into a draft, so it has to validate as one.
         const shape = canvasRubricToSeedShape(rubric([row('Thesis', FULL_SCALE, 10)]))!;
-        const draft = { ...buildDefaultWritingRubric('user-1'), ...shape };
+        const draft = { ...buildStaffedWritingRubric('user-1'), ...shape };
         const parsed = writingRubricDraftInputSchema.safeParse(draft);
         expect(parsed.success).toBe(true);
     });
@@ -167,9 +168,12 @@ describe('seeding a draft from a Canvas rubric', () => {
         const base = buildDefaultWritingRubric('user-1');
 
         expect(seeded.criteria.map((c) => c.id)).toEqual(['thesis']);
-        // Task, audience, and purpose have no Canvas equivalent and come from the profile.
+        // Task, audience, and purpose have no Canvas equivalent, so they come from the
+        // built-in profile — which leaves them empty for staff to answer. The point of
+        // the comparison is that the import invents nothing to fill them with.
         expect(seeded.task).toBe(base.task);
         expect(seeded.audience).toBe(base.audience);
+        expect(seeded.task).toBe('');
     });
 
     it('never arrives approved', () => {
@@ -299,7 +303,7 @@ describe('a Canvas rating is read as the top of a band', () => {
             expect(cell.min).toBeLessThanOrEqual(cell.max);
         });
         expect(writingRubricDraftInputSchema.safeParse({
-            ...buildDefaultWritingRubric('user-1'),
+            ...buildStaffedWritingRubric('user-1'),
             ...shape
         }).success).toBe(true);
     });

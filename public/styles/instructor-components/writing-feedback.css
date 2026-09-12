@@ -93,6 +93,9 @@
 /* Workspace message — tinted banner */
 
 .wf-workspace-message {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
     margin-bottom: 20px;
     padding: 10px 16px;
     border-radius: 8px;
@@ -101,6 +104,44 @@
     background: rgba(47, 95, 143, 0.1);
     border: 1px solid var(--color-ubc-blue);
     color: var(--color-ubc-blue);
+}
+
+/* `display: flex` above would otherwise defeat the hidden attribute. */
+.wf-workspace-message[hidden] {
+    display: none;
+}
+
+.wf-workspace-message > span:first-child {
+    flex: 1;
+}
+
+.wf-workspace-message-dismiss {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    opacity: 0.7;
+}
+
+.wf-workspace-message-dismiss:hover {
+    opacity: 1;
+}
+
+.wf-workspace-message-dismiss:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+}
+
+.wf-workspace-message-dismiss svg,
+.wf-workspace-message-dismiss .feather {
+    width: 14px;
+    height: 14px;
 }
 
 .wf-workspace-message[data-tone="success"] {
@@ -209,12 +250,21 @@
     box-shadow: 0 2px 4px rgba(76, 86, 175, 0.3);
 }
 
+/* Feather renders at 24px by default, which dwarfs a 14px button label. */
+.wf-button .feather,
+.wf-button svg {
+    width: 15px;
+    height: 15px;
+    flex-shrink: 0;
+}
+
 .wf-button--chip .feather,
 .wf-button--chip svg {
     width: 14px;
     height: 14px;
     flex-shrink: 0;
 }
+
 
 .wf-button:disabled {
     cursor: not-allowed;
@@ -671,6 +721,26 @@
     font-weight: 600;
 }
 
+/* Required-field marker. Decorative: the requirement itself is carried by
+   aria-required on the control, so screen readers never hear a bare "star".
+   The asterisk sits inside `.wf-field-label-text` so that flex label rows keep
+   it next to the words instead of pushing it to the far edge. */
+.wf-field-label-text {
+    display: inline;
+}
+
+.wf-required-marker {
+    margin-left: 4px;
+    color: var(--color-eng-red);
+    font-size: 1.2em;
+    /* Labels are 600; inheriting that at this size fills the asterisk's arms in
+       until it reads as a blob, so it is reset to normal weight. */
+    font-weight: 400;
+    /* Keeps the taller glyph from adding leading to the label row. */
+    line-height: 1;
+    vertical-align: -0.1em;
+}
+
 .wf-field small,
 .wf-help-text {
     color: var(--text-secondary);
@@ -689,6 +759,14 @@
     border-radius: 6px;
     font: inherit;
     font-size: 14px;
+}
+
+/* Placeholders now carry the only guidance a field has, so they need real
+   contrast rather than the browser default's ~54% grey. */
+.wf-field input::placeholder,
+.wf-field textarea::placeholder {
+    color: var(--text-secondary);
+    opacity: 1;
 }
 
 .wf-field input:focus,
@@ -756,21 +834,6 @@
     font-size: 15px;
 }
 
-.wf-validation-summary {
-    margin: 0 0 15px;
-    padding: 10px 16px;
-    background: rgba(139, 0, 0, 0.08);
-    border: 1px solid var(--color-eng-red);
-    border-radius: 8px;
-    color: var(--color-eng-red);
-    font-size: 13px;
-    line-height: 1.5;
-}
-
-.wf-validation-summary[hidden] {
-    display: none;
-}
-
 /* Canvas import list */
 
 .wf-canvas-list {
@@ -820,6 +883,74 @@
     line-height: 1.4;
 }
 
+/* Placeholder cards shown while the assignment list is in flight. They reuse the real
+   card's box so the grid keeps its shape and does not jump when the assignments land. */
+.wf-canvas-assignment--skeleton {
+    /* A real card is sized by its label text, which a skeleton has none of. Hold the box
+       open to the three-line card these always render as. */
+    min-height: 92px;
+}
+
+/* Stands in for the radio the real card positions at the same offset. */
+.wf-canvas-assignment--skeleton::before {
+    content: '';
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--border-color);
+}
+
+.wf-skeleton-lines {
+    display: grid;
+    gap: 8px;
+    padding-left: 26px;
+}
+
+.wf-skeleton-line {
+    height: 10px;
+    border-radius: 5px;
+    background-color: var(--border-color);
+    background-image: linear-gradient(
+        90deg,
+        var(--border-color) 0%,
+        var(--hover-bg) 50%,
+        var(--border-color) 100%
+    );
+    background-size: 200% 100%;
+    animation: wf-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+/* Uneven widths so the block reads as text rather than as a loading bar. */
+.wf-skeleton-lines > :nth-child(1) {
+    width: 65%;
+    height: 13px;
+}
+
+.wf-skeleton-lines > :nth-child(2) {
+    width: 90%;
+}
+
+.wf-skeleton-lines > :nth-child(3) {
+    width: 45%;
+}
+
+@keyframes wf-skeleton-shimmer {
+    from { background-position: 200% 0; }
+    to { background-position: -200% 0; }
+}
+
+/* The page-wide reduced-motion rule only shortens durations, which would leave the
+   gradient parked at an arbitrary offset. Drop to a flat tint instead. */
+@media (prefers-reduced-motion: reduce) {
+    .wf-skeleton-line {
+        background-image: none;
+        animation: none;
+    }
+}
+
 .wf-release-state {
     min-height: 20px;
     margin: 10px 0;
@@ -842,38 +973,12 @@
     border: 0;
 }
 
-.wf-assignment-instructions {
-    margin: 15px 0 20px;
-    background: var(--chat-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 10px;
-}
-
-.wf-assignment-instructions summary {
-    min-height: 44px;
-    padding: 12px 20px;
-    color: var(--text-primary);
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-}
-
-.wf-assignment-instructions__text,
-.wf-assignment-instructions > .wf-muted-note {
-    margin: 0;
-    padding: 0 20px 16px;
-    color: var(--text-secondary);
-    font-size: 13px;
-    line-height: 1.55;
-    white-space: pre-wrap;
-}
-
 .wf-rubric-heading-row {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
     gap: 8px 12px;
-    padding: 16px 20px 0;
+    padding: 0 0 12px;
 }
 
 .wf-rubric-heading-row .wf-section-title {
@@ -887,16 +992,14 @@
     font-style: italic;
 }
 
+/* No card of its own: this section is the only child of a step body, which already
+   supplies the card's border, background, and gutter. */
 .wf-rubric-details {
-    margin: 0 0 20px;
-    background: var(--chat-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    overflow: hidden;
+    margin: 0;
 }
 
 .wf-rubric-details-status {
-    margin: 6px 20px 0;
+    margin: 0 0 6px;
     min-height: 18px;
     color: var(--text-secondary);
     font-size: 12px;
@@ -912,7 +1015,7 @@
 }
 
 .wf-rubric-details .wf-rubric-details-form {
-    padding: 8px 20px 18px;
+    padding: 0;
 }
 
 .wf-rubric-details .wf-form-grid {
@@ -929,15 +1032,20 @@
     border-top: 0;
 }
 
+/*
+ * The question a field asks should read as the loudest thing in the row. These
+ * labels were secondary-grey and 13px against 14px input text, so each title sat
+ * quieter and smaller than the placeholder answering it.
+ */
 .wf-rubric-details .wf-field label {
     display: flex;
     align-items: baseline;
     justify-content: space-between;
     gap: 8px;
     padding: 0 0 4px;
-    color: var(--text-secondary);
+    color: var(--text-primary);
     font-weight: 600;
-    font-size: 13px;
+    font-size: 15px;
 }
 
 .wf-rubric-details .wf-field label .wf-field-count {
@@ -963,12 +1071,17 @@
     }
 }
 
+/* No card of its own: the step body around it already supplies the border,
+   background, and gutter. A lab report stacks two of these, so the rule between
+   siblings is what keeps its two grids apart. */
 .wf-rubric-section {
-    margin: 0 0 20px;
-    background: var(--chat-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    overflow: hidden;
+    margin: 0;
+}
+
+.wf-rubric-section + .wf-rubric-section {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border-color);
 }
 
 .wf-rubric-section__summary {
@@ -977,7 +1090,7 @@
     flex-wrap: wrap;
     gap: 6px 12px;
     min-height: 44px;
-    padding: 12px 20px;
+    padding: 0 0 12px;
     color: var(--text-primary);
     font-size: 16px;
     font-weight: 600;
@@ -1011,7 +1124,7 @@
 }
 
 .wf-rubric-section > .wf-rubric-layout {
-    padding: 0 20px 20px;
+    padding: 0;
 }
 
 .wf-rubric-grid-mount {
@@ -1251,6 +1364,19 @@
     flex-wrap: wrap;
 }
 
+/*
+ * Autosave says nothing at all until the session expires, which is a condition rather
+ * than an event: nothing further is being stored, and it stays true until the staff
+ * member signs in again. It sits below the approve row, full width, so its sentence
+ * cannot widen the button row into a wrap.
+ */
+.wf-autosave-status {
+    margin: 12px 0 0;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: var(--color-eng-red);
+}
+
 .wf-approve-copy {
     display: flex;
     flex-direction: column;
@@ -1266,7 +1392,10 @@
 }
 
 .wf-owed {
-    margin-top: 16px;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 16px;
     padding: 12px 16px;
     background: rgba(230, 126, 34, 0.1);
     border: 1px solid color-mix(in srgb, var(--color-eng-red) 60%, var(--color-chbe-green));
@@ -1288,7 +1417,21 @@
     font-weight: 600;
 }
 
-/* "What kind of writing is this?" -- the one sub-card inside step 1 */
+/* Nudged down so the icon centres on the first line of text, not on the box. */
+.wf-owed__icon,
+.wf-owed__icon svg {
+    width: 16px;
+    height: 16px;
+    margin-top: 2px;
+    flex-shrink: 0;
+}
+
+.wf-owed__body {
+    flex: 1;
+    min-width: 0;
+}
+
+/* "Describe the writing" -- the one sub-card inside step 1 */
 
 .wf-profile-box {
     margin: 16px 0 0;
@@ -1310,7 +1453,7 @@
 .wf-profile-box-header .wf-subsection-title {
     flex: 1 1 auto;
     margin: 0;
-    font-size: 15px;
+    font-size: 17px;
 }
 
 .wf-profile-box-body {
@@ -1318,9 +1461,9 @@
 }
 
 .wf-group-label {
-    margin: 16px 0 8px;
-    color: var(--text-secondary);
-    font-size: 12px;
+    margin: 20px 0 8px;
+    color: var(--text-primary);
+    font-size: 14px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -1328,6 +1471,66 @@
 
 .wf-group-label:first-of-type {
     margin-top: 0;
+}
+
+/*
+ * Section repeater. Each row is one section, laid out as name / what it is for /
+ * remove, so the delete control sits on the line it deletes. The three elements
+ * had no styles at all, so they stacked full-width and the trash button read as
+ * belonging to the whole question rather than to one section.
+ */
+.wf-stage-repeater {
+    display: grid;
+    gap: 8px;
+}
+
+.wf-stage-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.75fr) auto;
+    /* Stretch, not start: an input and a one-row textarea do not resolve to the
+       same natural height, so side by side they sat on mismatched baselines. */
+    align-items: stretch;
+    gap: 8px;
+}
+
+/* 36px is the icon button's height, so all three controls share one row height. */
+.wf-stage-row input,
+.wf-stage-row textarea {
+    min-height: 36px;
+}
+
+.wf-stage-row textarea {
+    resize: vertical;
+}
+
+/*
+ * "Add section". The secondary variant is the same white-on-border-radius-6px
+ * recipe as a text input, so among the section controls it read as one more
+ * empty box. Brand outline instead: unmistakably an action, and it pairs with
+ * the red-outlined delete beside it rather than competing with the fields.
+ */
+.wf-stage-repeater + .wf-button {
+    margin-top: 10px;
+    margin-bottom: 20px;
+    background: transparent;
+    color: var(--color-chbe-green);
+    border: 1px solid var(--color-chbe-green);
+    font-weight: 600;
+}
+
+.wf-stage-repeater + .wf-button:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--color-chbe-green) 10%, transparent);
+}
+
+@media (max-width: 900px) {
+    /* Side by side stops being readable once each control is a few words wide. */
+    .wf-stage-row {
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .wf-stage-row textarea {
+        grid-column: 1 / -1;
+    }
 }
 
 .wf-field-hint {
@@ -1378,8 +1581,9 @@
 .wf-grid-scroll {
     /* Eight levels will not fit a narrow viewport; the table scrolls, the page does not. */
     overflow-x: auto;
-    padding-bottom: 4px;
-    scrollbar-gutter: stable;
+    /* No padding and no reserved scrollbar gutter: either one shows as a strip of the
+       container between the frame and the table's own edge. The overlay scrollbar sits
+       over the last row instead, and only while the grid is being scrolled. */
     scrollbar-color: rgba(0, 0, 0, 0.22) transparent;
     /* The frame belongs to the scroll container, not the table: border-collapse hands a
        sticky cell's outer border to the table, where it does not paint, so the first and
@@ -1401,18 +1605,73 @@
 .wf-grid {
     /* Auto layout, not fixed: the per-column min-widths below are what push a wide
        rubric past the viewport and hand the overflow to .wf-grid-scroll. */
+    --wf-points-col: 6rem;
+    /* One horizontal inset for every control in the grid, so a criterion's name, its
+       description, a band and its descriptor all start on the same vertical line
+       instead of each sitting at whatever padding its own control happened to carry. */
+    --wf-cell-inset: 8px;
+    /* The cell's own padding, on top of the inset every control already carries. It is
+       the smaller of the two deliberately: the controls hold the text off the seams, so
+       the cell only has to keep the controls themselves off them. The footer's pinned
+       label reads the horizontal value too, since it has to land where a cell's
+       right-aligned text already sits. */
+    --wf-cell-pad-x: 6px;
+    --wf-cell-pad-y: 8px;
+    /* The icon buttons set the height of a level heading's bar, and the plain headings
+       match that bar, so both read the size from here -- including the touch override
+       at the foot of this section, which changes it once for all of them. */
+    --wf-grid-affordance: 32px;
     width: 100%;
-    border-collapse: collapse;
+    /* Separate, not collapse. A collapsed border belongs to the table and paints
+       centred on the row and column grid lines, which a pinned cell cannot carry with
+       it through a scroll. Separated borders belong to the cells, so each one travels
+       with the cell that owns it -- pinned or not. Spacing is zero, so the cells still
+       meet edge to edge and each seam still has exactly one owner. */
+    border-collapse: separate;
+    border-spacing: 0;
     color: var(--text-primary);
     font-size: 13px;
 }
 
+/* Every cell draws the seams on its top and left edges. The outermost top and left of
+   the grid are the scroll container's frame, and its right and bottom edges are that
+   frame too, so no cell ever needs a right or bottom border of its own.
+
+   The two axes are owned differently, because they fail differently.
+
+   A row seam is drawn by the cell BELOW it, as a top border. Cells paint in document
+   order, so the cell below paints last, and an opaque background is the last thing it
+   lays down before its own borders. The criterion and points columns are the two that
+   carry a background -- they have to, or the levels would scroll visibly beneath them
+   -- so they were the two whose seams a neighbour could cover, by however much
+   fractional row heights had the composited layers overlap. Level cells are
+   transparent and covered nothing, which is why lines went missing in those two
+   columns and nowhere else. Owned by the later painter, a seam is drawn over its own
+   background and cannot be painted out.
+
+   A column seam is drawn by the cell to its LEFT, as a right border, so that a pinned
+   column carries its own edge. Handing it to the neighbour would park the seam on a
+   cell that scrolls away underneath, and the pinned column would read as an open edge
+   at most scroll offsets. The points column is the mirror image and the one exception
+   below: pinned to the right, it owns the seam on its left.
+
+   Real borders, not the inset box-shadows this once used: a shadow is a painted effect
+   with no place in layout, so it could also round away inside a sticky cell's own
+   composited layer. A border is part of the box and snaps with it. The grid's four
+   outer edges are the scroll container's frame, so no cell draws a bottom border. */
 .wf-grid th,
 .wf-grid td {
-    padding: 12px 14px;
+    padding: var(--wf-cell-pad-y) var(--wf-cell-pad-x);
     text-align: left;
     vertical-align: top;
-    border: 1px solid var(--border-color);
+    border: 0;
+    border-top: 1px solid var(--border-color);
+    border-right: 1px solid var(--border-color);
+}
+
+/* The frame draws the grid's top edge, so a header cell's own would double it. */
+.wf-grid thead th {
+    border-top: 0;
 }
 
 /* The band the step headers and the assignment cards use. The old green tint
@@ -1421,9 +1680,14 @@
     background: var(--background-2);
 }
 
+/* The criterion column is the one that takes up the slack. Under auto layout a
+   width of 100% here is a strong claim on whatever space the levels and points do
+   not need, which settles them at their own min-widths instead of letting a
+   three-level rubric stretch each descriptor column across half the page. It also
+   goes to the column with the longest text: the criterion name and its description. */
 .wf-grid-corner,
 .wf-grid-row-head {
-    width: 18rem;
+    width: 100%;
     min-width: 14rem;
 }
 
@@ -1431,17 +1695,37 @@
     min-width: 11rem;
 }
 
+/* 14px, the size the criterion and level names carry in .wf-grid-label-input. These
+   two are headings of the same rank as those, and at 13px they read as a caption over
+   the columns they name rather than as their titles. */
 .wf-grid-corner,
 .wf-grid-points-head {
     color: var(--text-primary);
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 600;
 }
 
+/* Stands in for the head bar the level columns carry, so "Criterion" and "Points" sit
+   on the line their neighbours' names do. A level name is an input centred in a bar as
+   tall as the icon buttons beside it; a heading with neither started higher and further
+   left. Same box, same inset, same centre -- and because both centre within it, they
+   stay aligned when the buttons grow on touch or the type size changes. */
+.wf-grid-head-title {
+    display: flex;
+    align-items: center;
+    min-height: var(--wf-grid-affordance);
+    padding: 4px var(--wf-cell-inset);
+}
+
+/* One source of truth for the points column's width. The footer label is pinned an
+   exact column-width from the right edge so it lands against the total, which only
+   works if the column cannot resolve to something other than what that offset assumes
+   -- so the width is fixed rather than a 6rem preference the table may shrink to a
+   5rem minimum when the rubric overflows. */
 .wf-grid-points-head,
 .wf-grid-weight {
-    width: 9rem;
-    min-width: 8rem;
+    width: var(--wf-points-col);
+    min-width: var(--wf-points-col);
     background: var(--hover-bg);
 }
 
@@ -1461,7 +1745,7 @@
 .wf-grid-label-input {
     flex: 1 1 auto;
     min-width: 0;
-    padding: 4px 6px;
+    padding: 4px var(--wf-cell-inset);
     background: transparent;
     color: var(--text-primary);
     border: 0;
@@ -1487,7 +1771,7 @@
     /* Two rows is the floor, not the ceiling: autoGrow sets an explicit height from
        the content, and overflow must stay hidden or the box scrolls instead of grows. */
     min-height: 3.4em;
-    padding: 4px 0;
+    padding: 4px var(--wf-cell-inset);
     background: transparent;
     color: var(--text-primary);
     border: 0;
@@ -1520,8 +1804,8 @@
    descriptor it belongs to. */
 .wf-grid-band {
     width: 100%;
-    margin-bottom: 8px;
-    padding: 2px 8px;
+    margin-bottom: 6px;
+    padding: 2px var(--wf-cell-inset);
     background: var(--gingham-color);
     color: var(--color-chbe-green);
     border: 1px solid transparent;
@@ -1556,12 +1840,17 @@
     background: color-mix(in srgb, var(--chat-bg) 80%, var(--hover-bg));
 }
 
+/* Filled at rest, like the band chip in every cell. Transparent and borderless, an
+   empty points field was invisible: nothing marked the spot, so a criterion could be
+   left unweighted without anything on screen suggesting a value was missing. The box
+   is the prompt -- which is why it needs no placeholder text, in a column too narrow
+   to hold any. */
 .wf-grid-weight-input {
     width: 100%;
-    padding: 4px 6px;
-    background: transparent;
+    padding: 4px var(--wf-cell-inset);
+    background: var(--gingham-color);
     color: var(--text-primary);
-    border: 0;
+    border: 1px solid transparent;
     border-radius: 4px;
     font: inherit;
     font-size: 13px;
@@ -1569,8 +1858,11 @@
     font-variant-numeric: tabular-nums;
 }
 
-.wf-grid-weight-input:hover:not([readonly]) {
-    background: var(--hover-bg);
+/* The band's states, so the two number fields behave alike: the border answers the
+   pointer, and focus clears the fill behind the value being typed. */
+.wf-grid-weight-input:hover:not([readonly]),
+.wf-grid-weight-input:focus-visible {
+    border-color: var(--color-chbe-green);
 }
 
 .wf-grid-weight-input:focus-visible {
@@ -1580,31 +1872,51 @@
 }
 
 /* The criterion and its weight stay put while the levels scroll, so the row you are
-   reading and the total it contributes to are never both off-screen. */
+   reading and the total it contributes to are never both off-screen. Each pinned
+   column redraws the one edge it shares with the scrolling levels, because
+   border-collapse gives that border to the table, which paints it where the cell
+   started rather than where the cell now sits.
+
+   The criterion column keeps the seams every cell draws -- right and bottom are the
+   two it needs. The weight column is the exception: its right edge is the frame, and
+   the seam on its left has to belong to it rather than to the level cell beside it,
+   which scrolls away underneath. */
 .wf-grid-corner,
 .wf-grid-row-head {
     position: sticky;
     left: 0;
     z-index: 2;
     background: var(--chat-bg);
-    box-shadow: 1px 0 0 var(--border-color);
 }
 
 .wf-grid-corner {
     background: var(--background-2);
 }
 
-.wf-grid-points-head,
-.wf-grid-weight {
+/* Pinned to the right, so it owns the seam on its left -- the side the levels scroll
+   past. Its right edge is the frame. */
+.wf-grid .wf-grid-points-head,
+.wf-grid .wf-grid-weight {
     position: sticky;
     right: 0;
     z-index: 2;
     background: var(--chat-bg);
-    box-shadow: -1px 0 0 var(--border-color);
+    border-right: 0;
+    border-left: 1px solid var(--border-color);
 }
 
-.wf-grid-points-head {
+/* Qualified to match the sticky rule above, which would otherwise outrank this one
+   and leave the header white. */
+.wf-grid .wf-grid-points-head {
     background: var(--background-2);
+}
+
+/* The boundary against the points column has one owner: the points cell. The level
+   cell beside it gives up its right seam, which would otherwise sit a pixel to the
+   left of the points cell's own and read as a double line at rest. */
+.wf-grid .wf-grid-col-head:has(+ .wf-grid-points-head),
+.wf-grid .wf-grid-cell:has(+ .wf-grid-weight) {
+    border-right: 0;
 }
 
 /* A sticky cell paints over its neighbour, so the focus ring inside one has to
@@ -1661,26 +1973,51 @@
     line-height: 1.35;
 }
 
-.wf-grid-cell-hint {
-    margin: 4px 0 0;
-    color: var(--text-secondary);
-    font-size: 11px;
-    font-style: italic;
-}
-
+/* The footer reads as one phrase at every scroll offset: "Total Points" immediately left
+   of the number it names, both held against the right of the scrollport. The label's cell
+   spans every column left of the points, so the cell is wider than the scrollport and
+   would never come unstuck -- it is the text inside it that is pinned. The row's own
+   background scrolls with it and is uniform, so the pinned text needs none of its own. */
 .wf-grid-total-label {
-    text-align: right;
     color: var(--text-primary);
-    font-size: 13px;
+    /* Matches the column headings, and the total it names, which is already 14px. */
+    font-size: 14px;
     font-weight: 600;
     background: var(--hover-bg);
 }
 
-.wf-grid-total {
+.wf-grid-total-label__text {
+    position: sticky;
+    /* The points column, plus the cell's own right padding. Both terms matter: the
+       column width puts the label against the total rather than under it, and the
+       padding makes the pinned position the same one the right-aligned text already
+       holds at rest -- without it the label steps sideways at the end of a scroll.
+       Sticky needs a block box; the span is inline by default. */
+    right: calc(var(--wf-points-col) + var(--wf-cell-pad-x));
+    display: inline-block;
+}
+
+/* Right-aligned, and qualified so it outranks the left alignment every cell gets. This
+   is what makes the pin work at all: sticky only ever pulls a box back toward the
+   scrollport, never past where it would sit unpinned, so a label sitting at the far
+   left of a rubric-wide cell is already inside its own constraint and never moves. Sent
+   to the cell's right edge it starts out against the total and stays there. */
+.wf-grid .wf-grid-total-label {
+    text-align: right;
+    /* The total owns the seam between them, exactly as the points column does above. */
+    border-right: 0;
+}
+
+.wf-grid .wf-grid-total {
+    position: sticky;
+    right: 0;
+    z-index: 2;
     color: var(--text-primary);
     font-size: 14px;
     font-weight: 600;
     background: var(--hover-bg);
+    border-right: 0;
+    border-left: 1px solid var(--border-color);
 }
 
 /*
@@ -1690,8 +2027,8 @@
  */
 
 .wf-grid-affordance {
-    width: 32px;
-    height: 32px;
+    width: var(--wf-grid-affordance);
+    height: var(--wf-grid-affordance);
     opacity: 0.55;
     transition: opacity 120ms ease;
 }
@@ -1706,9 +2043,12 @@
 }
 
 @media (hover: none) {
+    /* One value, so the plain headings grow with the bar rather than drifting off it. */
+    .wf-grid {
+        --wf-grid-affordance: 44px;
+    }
+
     .wf-grid-affordance {
-        width: 44px;
-        height: 44px;
         opacity: 1;
     }
 }
@@ -2567,6 +2907,9 @@ mark.wf-anchor.is-filtered-out,
         min-width: 760px;
     }
 
+    /* 12rem, not the 14rem a wide screen gives it: the pin is only worth keeping here
+       while it still leaves a usable channel for the levels. Below 768px it does not,
+       and the 768px block unpins it. */
     .wf-grid-corner,
     .wf-grid-row-head {
         position: sticky;
@@ -2575,22 +2918,11 @@ mark.wf-anchor.is-filtered-out,
         width: 12rem;
         min-width: 12rem;
         background: var(--chat-bg);
-        box-shadow: 1px 0 0 var(--border-color);
     }
 
     .wf-grid-corner {
         z-index: 3;
         background: var(--background-2);
-    }
-
-    /* Both columns cannot stay put on a narrow screen: a 12rem criterion column plus a
-       sticky weight column leaves no channel between them for the levels to scroll
-       through, so the level columns become unreachable. The criterion is the one worth
-       keeping, since it is what every cell in the row is about. */
-    .wf-grid-points-head,
-    .wf-grid-weight {
-        position: static;
-        box-shadow: none;
     }
 
     .wf-doc-paper {
@@ -2599,6 +2931,31 @@ mark.wf-anchor.is-filtered-out,
 }
 
 @media (max-width: 768px) {
+    /*
+     * Nothing in the body of the grid stays put on a phone. A pinned column costs the
+     * same width whether or not it is the one being read: 12rem of criterion, or 6rem
+     * of points, against a 375px viewport that has to fit an 11rem level column in what
+     * is left. Both give their pin up here and the rows scroll whole, which is the one
+     * arrangement where every column can be reached. The wider-screen rules above keep
+     * both pins, where the channel can afford them.
+     *
+     * The footer is the exception, and it is an exception the grid can actually afford:
+     * sticky applies per cell, not per column, so the total and its label hold their
+     * place at the right of the scrollport while the points column above them scrolls
+     * away. One row of the table stays put rather than a column of every row, and it is
+     * the row a person scrolling a rubric wants in view throughout.
+     */
+    .wf-grid-corner,
+    .wf-grid-row-head {
+        position: static;
+        z-index: auto;
+    }
+
+    .wf-grid .wf-grid-points-head,
+    .wf-grid .wf-grid-weight {
+        position: static;
+    }
+
     .wf-header {
         flex-wrap: wrap;
     }
@@ -2803,21 +3160,4 @@ mark.wf-anchor.is-filtered-out,
     border: 1px solid var(--border-1, #c9d4c9);
     border-radius: 6px;
     background: var(--background-2);
-}
-
-/*
- * Autosave reports itself beside Save rather than through a toast: it happens without
- * being asked, so it should be readable and easy to ignore. The alert variant is the one
- * state a person must act on — an expired session — so it is the only one that takes colour.
- */
-.wf-autosave-status {
-    margin: 0;
-    align-self: center;
-    font-size: 0.85rem;
-    color: var(--text-2, #5b6b5b);
-    min-height: 1.2em;
-}
-
-.wf-autosave-status--alert {
-    color: var(--danger-1, #a3352c);
 }

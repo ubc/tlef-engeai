@@ -312,6 +312,46 @@ describe('LiveCanvasImportGateway rubric and assignment-detail import', () => {
         expect(details.pointsPossible).toBe(20);
     });
 
+    it('decodes the HTML entities Canvas encodes rubric text with', async () => {
+        // Canvas encodes these fields even when they carry no markup, and the grid renders
+        // them into textarea values, which never parse entities.
+        const encoded = {
+            id: 103,
+            name: 'Report',
+            rubric_settings: { id: 56, title: 'Report Rubric' },
+            rubric: [{
+                id: '_9', description: 'Stance, Tone &amp; Citations',
+                long_description: '<p>Hedging &amp; modality for the reader.</p>',
+                points: 10,
+                ratings: [{ id: 'r9', description: 'Clear &amp; precise', long_description: 'Tone &lt; register.', points: 10 }]
+            }]
+        };
+        const { client } = fakeClient({ get: { '/assignments/103': encoded } });
+        const { rubric } = await new LiveCanvasImportGateway({ client, canvasCourseId: '55' })
+            .loadAssignmentContext('103');
+
+        expect(rubric?.rows[0].label).toBe('Stance, Tone & Citations');
+        expect(rubric?.rows[0].description).toBe('Hedging & modality for the reader.');
+        expect(rubric?.rows[0].ratings[0].label).toBe('Clear & precise');
+        expect(rubric?.rows[0].ratings[0].description).toBe('Tone < register.');
+    });
+
+    it('keeps a label on one line even when Canvas wrapped it in block markup', async () => {
+        const wrapped = {
+            id: 104,
+            name: 'Report',
+            rubric_settings: { id: 57, title: 'Report Rubric' },
+            rubric: [{
+                id: '_10', description: '<p>Stance</p><p>and Tone</p>', long_description: '', points: 5, ratings: []
+            }]
+        };
+        const { client } = fakeClient({ get: { '/assignments/104': wrapped } });
+        const { rubric } = await new LiveCanvasImportGateway({ client, canvasCourseId: '55' })
+            .loadAssignmentContext('104');
+
+        expect(rubric?.rows[0].label).toBe('Stance and Tone');
+    });
+
     it('reports no rubric rather than failing when Canvas has none', async () => {
         const { client } = fakeClient({ get: { '/assignments/102': { id: 102, name: 'No Rubric', description: '' } } });
         const context = await new LiveCanvasImportGateway({ client, canvasCourseId: '55' })

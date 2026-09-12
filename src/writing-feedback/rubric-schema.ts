@@ -191,20 +191,45 @@ export function assertRetiredIdsNotReused(
 }
 
 /**
- * requireCompleteRubricCells - approval gate ensuring every weighted criterion
- * carries a points range and a descriptor at every performance level.
+ * requireCompleteRubricCells - approval gate ensuring every criterion carries a
+ * points range and a descriptor at every performance level.
  *
  * Draft saves are never blocked by this — staff may save a partially filled
  * grid at any time. Only approval, which is what lets a rubric reach the
  * feedback engine, requires the grid to be complete.
  *
+ * Two things are required of every criterion, and the points come first because
+ * the grid cannot be read without them: a criterion carrying no points
+ * contributes nothing to the mark, so an empty points cell is either an
+ * oversight or a criterion that should have been deleted.
+ *
+ * Both checks once had holes. The cell check skipped any criterion whose points
+ * were undefined or zero, which made leaving the points blank a silent way to
+ * carry a wholly empty criterion past approval and in front of students; and
+ * nothing checked the points cell itself, so a criterion could be approved with
+ * every descriptor written and no weight to award them against.
+ *
+ * This does mean a purely ordinal rubric -- levels with no points anywhere --
+ * cannot be approved. That is deliberate: a staff-final grade is points per
+ * criterion, and there is nothing for the engine to award without them.
+ *
  * @param draft - Candidate rubric draft about to be approved
- * @throws Error naming how many cells are missing a range or a description
+ * @throws Error naming the criteria with no points, or how many cells are
+ *         missing a range or a description
  */
 export function requireCompleteRubricCells(draft: WritingRubricDefinition): void {
+    const unweighted = draft.criteria.filter(
+        (criterion) => criterion.points === undefined || criterion.points <= 0
+    );
+    if (unweighted.length > 0) {
+        const named = unweighted.map((criterion) => `"${criterion.label}"`).join(', ');
+        throw new Error(
+            `Give every criterion its points before approving: ${named} ${unweighted.length === 1 ? 'has' : 'have'} none.`
+        );
+    }
+
     let missing = 0;
     draft.criteria.forEach((criterion) => {
-        if (criterion.points === undefined || criterion.points <= 0) return;
         draft.levels.forEach((level) => {
             const band = resolveBand(criterion, level.id, draft.levels);
             if (!band || !band.descriptor?.trim()) missing += 1;

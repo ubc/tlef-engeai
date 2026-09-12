@@ -24,18 +24,21 @@
             <div id="wf-header-actions" class="wf-header-actions" aria-label="Writing feedback actions">
                 <button id="wf-import-canvas" class="wf-header-btn" type="button">
                     <i data-feather="download-cloud" aria-hidden="true"></i>
-                    <span>Import from Canvas</span>
+                    <span>Import assignment from Canvas</span>
                 </button>
                 <button id="wf-add-assignment" class="wf-header-btn" type="button" hidden>
                     <i data-feather="plus" aria-hidden="true"></i>
-                    <span>Add assignment</span>
+                    <span>Add assignment manually</span>
                 </button>
             </div>
         </header>
 
-        <!-- Durable live status for capability, Canvas mode, and action results -->
-        <div id="wf-workspace-message" class="wf-workspace-message" role="status" aria-live="polite" data-tone="info">
-            Loading the staff workspace…
+        <!-- Dismissible live status for the result of the staff action just taken -->
+        <div id="wf-workspace-message" class="wf-workspace-message" role="status" aria-live="polite" data-tone="info" hidden>
+            <span id="wf-workspace-message-text"></span>
+            <button id="wf-workspace-message-dismiss" class="wf-workspace-message-dismiss" type="button" aria-label="Dismiss this message">
+                <i data-feather="x" aria-hidden="true"></i>
+            </button>
         </div>
 
         <!-- Assignment queue and inline setup/import panel -->

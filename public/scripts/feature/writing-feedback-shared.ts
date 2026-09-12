@@ -613,6 +613,9 @@ export function element<T extends HTMLElement>(id: string): T {
  * @param view - Child view to expose
  */
 export function setView(view: WfViewName): void {
+    // A notice describes the action that produced it, so it must not follow the
+    // instructor into the next view.
+    clearWorkspaceMessage();
     element('wf-view-landing').hidden = view !== 'landing';
     element('wf-view-rubric').hidden = view !== 'rubric';
     element('wf-view-review').hidden = view !== 'review';
@@ -693,15 +696,30 @@ export function jsonRequest<T>(path: string, method: 'POST' | 'PUT' | 'PATCH' | 
 }
 
 /**
- * setWorkspaceMessage - updates the persistent, live-region workspace notice
+ * setWorkspaceMessage - shows the live-region notice for the action just taken
+ *
+ * The notice reports the outcome of a staff action, so it is scoped to the view
+ * that produced it: `setView` clears it on navigation and the dismiss control
+ * removes it on demand. Standing context about the workspace belongs in the view
+ * it applies to, not here.
  *
  * @param message - Staff-safe status text
  * @param tone - Semantic status used by the notice styling
  */
 export function setWorkspaceMessage(message: string, tone: 'info' | 'success' | 'warning' | 'error' = 'info'): void {
     const region = element<HTMLDivElement>('wf-workspace-message');
-    region.textContent = message;
+    element<HTMLSpanElement>('wf-workspace-message-text').textContent = message;
     region.dataset.tone = tone;
+    region.hidden = false;
+}
+
+/**
+ * clearWorkspaceMessage - removes the workspace notice and hides its banner
+ */
+export function clearWorkspaceMessage(): void {
+    const region = element<HTMLDivElement>('wf-workspace-message');
+    element<HTMLSpanElement>('wf-workspace-message-text').textContent = '';
+    region.hidden = true;
 }
 
 /**
@@ -928,14 +946,18 @@ export async function runButtonAction(
     action: (button: HTMLButtonElement) => Promise<void>
 ): Promise<void> {
     if (button.disabled) return;
-    const label = button.textContent ?? '';
+    // Restoring from textContent would flatten an icon button into a bare text
+    // node, so the glyph survived only until its first click. Keep the nodes.
+    const label = Array.from(button.childNodes);
     button.disabled = true;
     button.setAttribute('aria-busy', 'true');
     button.textContent = 'Working…';
     try {
         await action(button);
     } catch (error) {
-        setWorkspaceMessage(error instanceof Error ? error.message : 'The action could not be completed.', 'error');
+        // The modal is the whole report. Mirroring it into the workspace banner
+        // left the instructor reading the same sentence twice, the second copy
+        // outliving the dialog it came from.
         await showErrorModal(
             'Writing Feedback action failed',
             error instanceof Error ? error.message : 'Please try again.'
@@ -946,7 +968,7 @@ export async function runButtonAction(
         if (button.isConnected) {
             button.disabled = false;
             button.removeAttribute('aria-busy');
-            button.textContent = label;
+            button.replaceChildren(...label);
         }
     }
 }
@@ -954,27 +976,74 @@ export async function runButtonAction(
 /**
  * field - pairs a form control with a programmatic label and optional help text
  *
+ * A required field carries a red asterisk after its label text. The marker is
+ * decorative, so the requirement reaches assistive technology through
+ * `aria-required` on the control instead. Native `required` is deliberately not
+ * set: these forms are collected and validated in script, never submitted by the
+ * browser, so a native constraint would only add a second, inconsistent gate.
+ *
  * @param labelText - Visible control label
  * @param control - Input, textarea, or select to label
  * @param help - Optional staff guidance
  * @param wide - Whether the field spans the full form grid
+ * @param required - Whether to mark the field as required
  * @returns Detached labelled field wrapper
  */
 export function field(
     labelText: string,
     control: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement,
     help?: string,
-    wide = false
+    wide = false,
+    required = false
 ): HTMLDivElement {
     const wrapper = document.createElement('div');
     wrapper.className = `wf-field${wide ? ' wf-field--wide' : ''}`;
     if (!control.id) control.id = `wf-field-${crypto.randomUUID()}`;
     const label = document.createElement('label');
     label.htmlFor = control.id;
-    label.textContent = labelText;
+    if (required) {
+        // The rubric page lays labels out as `justify-content: space-between` so a
+        // line-item count can sit at the far right. A bare marker span becomes a
+        // second flex item and gets pushed there too, stranding the asterisk away
+        // from the words it qualifies, so text and marker share one wrapper.
+        label.append(labelWithRequiredMarker(labelText));
+        control.setAttribute('aria-required', 'true');
+    } else {
+        label.textContent = labelText;
+    }
     wrapper.append(label, control);
     if (help) wrapper.append(createText('small', help));
     return wrapper;
+}
+
+/**
+ * labelWithRequiredMarker - label text and its red asterisk as a single inline unit
+ *
+ * Returned as one element so that flex label rows keep the marker beside the
+ * words rather than at the opposite end of the row.
+ *
+ * @param labelText - Visible control label
+ * @returns Detached span holding the label text followed by the marker
+ */
+export function labelWithRequiredMarker(labelText: string): HTMLSpanElement {
+    const text = document.createElement('span');
+    text.className = 'wf-field-label-text';
+    text.textContent = labelText;
+    text.append(requiredMarker());
+    return text;
+}
+
+/**
+ * requiredMarker - the red asterisk that marks a required field
+ *
+ * @returns Detached decorative marker, hidden from assistive technology
+ */
+export function requiredMarker(): HTMLSpanElement {
+    const marker = document.createElement('span');
+    marker.className = 'wf-required-marker';
+    marker.textContent = '*';
+    marker.setAttribute('aria-hidden', 'true');
+    return marker;
 }
 
 /**
@@ -1031,7 +1100,6 @@ export async function confirmDiscardDirty(kind: 'review' | 'setup'): Promise<boo
  */
 export async function handleActionError(error: unknown): Promise<void> {
     const message = error instanceof Error ? error.message : 'The action could not be completed.';
-    setWorkspaceMessage(message, 'error');
     await showErrorModal('Writing Feedback action failed', message);
 }
 

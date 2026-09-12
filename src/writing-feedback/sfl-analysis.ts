@@ -22,7 +22,6 @@ import {
     type WritingSflContextProfile
 } from './contracts';
 import { SFL_RULES_BY_ID, SFL_SOURCE_PREFIXES } from './sfl-foundation';
-import { SFL_PROFILE_PLACEHOLDERS } from './default-rubric-profile';
 import { createQuoteRelocator, MAX_EVIDENCE_QUOTE_LENGTH } from './feedback-schema';
 import { stripNulls } from './strip-nulls';
 
@@ -272,21 +271,8 @@ export function requireCompleteSflProfile(profile: WritingSflContextProfile | un
     if (profile.genreState === 'needs_staff_input') {
         throw new Error('Confirm the genre and register profile before approving the writing rubric');
     }
-    const placeholders: Array<[string, string]> = [
-        [profile.genreLabel, SFL_PROFILE_PLACEHOLDERS.genreLabel],
-        [profile.task, SFL_PROFILE_PLACEHOLDERS.task],
-        [profile.purpose, SFL_PROFILE_PLACEHOLDERS.purpose],
-        [profile.audience, SFL_PROFILE_PLACEHOLDERS.audience],
-        [profile.field, SFL_PROFILE_PLACEHOLDERS.field],
-        [profile.tenor, SFL_PROFILE_PLACEHOLDERS.tenor],
-        [profile.mode, SFL_PROFILE_PLACEHOLDERS.mode],
-        [profile.productionConditions, SFL_PROFILE_PLACEHOLDERS.productionConditions]
-    ];
-    if (placeholders.some(([value, placeholder]) => value.trim() === placeholder)) {
-        throw new Error('Complete the genre and register profile before approving the writing rubric — some fields still show their starting placeholder text');
-    }
     if (!profile.stages.length || profile.stages.some((stage) => !stage.id.trim() || !stage.label.trim() || !stage.purpose.trim())) {
-        throw new Error('Add at least one reviewed stage before approving the writing rubric');
+        throw new Error('Add at least one section before approving the writing rubric');
     }
     if (!profile.taskRequirements.length || !profile.learningOutcomes.length) {
         throw new Error('Add task requirements and learning outcomes to the genre and register profile before approving the writing rubric');

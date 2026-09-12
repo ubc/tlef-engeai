@@ -10,6 +10,35 @@
 
 import fs from 'fs';
 import path from 'path';
+import { requireCompleteRubricCells } from '../../writing-feedback/rubric-schema';
+import type { WritingRubricDefinition } from '../../writing-feedback/contracts';
+
+/** A one-criterion draft missing exactly one of the two things the gate requires. */
+function draftMissing(what: 'points' | 'descriptor'): WritingRubricDefinition {
+    return {
+        version: 1,
+        status: 'draft',
+        title: 't',
+        task: 't',
+        audience: 't',
+        purpose: 't',
+        constraints: ['c'],
+        learningOutcomes: ['o'],
+        gradingIntent: 'g',
+        criteria: [{
+            id: 'crit',
+            label: 'Criterion',
+            description: 'd',
+            ...(what === 'points' ? {} : { points: 10 }),
+            cells: what === 'points'
+                ? { weak: { min: 0, max: 10, descriptor: 'd' } }
+                : { weak: { min: 0, max: 10 } }
+        }],
+        levels: [{ id: 'weak', label: 'Weak', description: 'd', rank: 1 }],
+        updatedAt: new Date(),
+        updatedBy: 'u'
+    } as WritingRubricDefinition;
+}
 
 const source = fs.readFileSync(
     path.join(__dirname, '..', 'route-writing-feedback.ts'),
@@ -163,6 +192,29 @@ describe('POST rubric-draft/approve completeness gates', () => {
         // future edit is caught, not just the single-line unbraced form.
         const linguisticBranch = ifStatementBody(body!, "if (lens === 'linguistic')");
         expect(linguisticBranch).not.toContain('requireCompleteRubricCells');
+    });
+
+    it('lets every message the cell gate throws past the safeError allowlist', () => {
+        // safeError replaces any message it does not recognise with a generic line, so a
+        // gate that refuses approval for a reason staff cannot read is no better than a
+        // silent one. Both of the gate's refusals are checked against the real allowlist.
+        const allowlist = source
+            .slice(source.indexOf('const safePrefixes'), source.indexOf('return safePrefixes'))
+            .match(/'(?:[^'\\]|\\.)*'/g)!
+            .map((literal) => literal.slice(1, -1).replace(/\\'/g, "'"));
+
+        const noPoints = draftMissing('points');
+        const noDescriptor = draftMissing('descriptor');
+        for (const draft of [noPoints, noDescriptor]) {
+            let thrown = '';
+            try {
+                requireCompleteRubricCells(draft);
+            } catch (error) {
+                thrown = (error as Error).message;
+            }
+            expect(thrown).not.toBe('');
+            expect(allowlist.some((prefix) => thrown.startsWith(prefix))).toBe(true);
+        }
     });
 
     it('keeps the new gate inside the same try/catch that returns HTTP 400 with a safe error', () => {

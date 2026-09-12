@@ -101,39 +101,31 @@ function withDefaultDescriptors(
     return withText;
 }
 
-/** Placeholder text shipped in the starter SFL profile; approval must reject these verbatim. */
-export const SFL_PROFILE_PLACEHOLDERS = {
-    genreLabel: 'Instructor-confirmed assignment genre',
-    task: 'Describe what students are expected to write.',
-    purpose: 'Describe what the writing should accomplish for its reader.',
-    audience: 'Describe the intended reader or audience.',
-    field: 'Describe the disciplinary subject matter and activity.',
-    tenor: 'Describe the writer-reader relationship and expected stance.',
-    mode: 'Describe the format, length, medium, and preparation conditions.',
-    productionConditions: 'Describe whether this is timed, take-home, collaborative, or resource-supported.'
-} as const;
-
 /**
  * buildDefaultSflContextProfile - creates an editable starter profile for V2.
  *
- * The values are deliberately plain placeholders and the state keeps approval
- * blocked until staff confirm or replace the profile.
+ * Fields staff must answer are seeded empty rather than pre-filled with wording
+ * that describes what to type: seeded prose is indistinguishable from a
+ * colleague's answer, so it invited approval of a profile nobody had read. The
+ * guidance now lives in the input placeholders, which vanish on first keystroke.
+ * Fields with a genuinely useful default — the marker, the opening section —
+ * keep it. The state keeps approval blocked until staff confirm the profile.
  *
  * @returns Staff-editable genre/register profile attached to the linguistic rubric
  */
 export function buildDefaultSflContextProfile(): WritingSflContextProfile {
     return {
         genreId: 'custom',
-        genreLabel: SFL_PROFILE_PLACEHOLDERS.genreLabel,
+        genreLabel: '',
         genreState: 'needs_staff_input',
-        task: SFL_PROFILE_PLACEHOLDERS.task,
-        purpose: SFL_PROFILE_PLACEHOLDERS.purpose,
-        audience: SFL_PROFILE_PLACEHOLDERS.audience,
-        field: SFL_PROFILE_PLACEHOLDERS.field,
-        tenor: SFL_PROFILE_PLACEHOLDERS.tenor,
-        mode: SFL_PROFILE_PLACEHOLDERS.mode,
+        task: '',
+        purpose: '',
+        audience: '',
+        field: '',
+        tenor: '',
+        mode: '',
         actualEvaluator: 'Instructor or teaching assistant.',
-        productionConditions: SFL_PROFILE_PLACEHOLDERS.productionConditions,
+        productionConditions: '',
         stages: [{
             id: 'main_response',
             label: 'Main response',
@@ -142,7 +134,7 @@ export function buildDefaultSflContextProfile(): WritingSflContextProfile {
             order: 1
         }],
         embeddedGenres: [],
-        taskRequirements: ['Replace this line with an explicit task requirement.'],
+        taskRequirements: [],
         learningOutcomes: [
             'Use language choices that fit the assignment purpose, reader, and genre.'
         ]
@@ -151,6 +143,10 @@ export function buildDefaultSflContextProfile(): WritingSflContextProfile {
 
 /**
  * buildDefaultWritingRubric - creates a fresh draft copy of the platform template.
+ *
+ * Description fields seed empty for the reason given on
+ * {@link buildDefaultSflContextProfile}; the learning outcomes seed with real
+ * ones because they are usable as written rather than instructions to rewrite.
  *
  * @param actorUserId - Internal actor recorded as the template creator
  * @param now - Shared timestamp used for deterministic persistence and tests
@@ -163,11 +159,11 @@ export function buildDefaultWritingRubric(
     return {
         version: 1,
         status: 'draft',
-        title: 'Assignment writing rubric',
-        task: 'Describe what students are expected to write for this assignment.',
-        audience: 'Describe the intended reader or audience.',
-        purpose: 'Describe the communicative purpose students should achieve.',
-        constraints: ['Replace this line with an assignment requirement.'],
+        title: '',
+        task: '',
+        audience: '',
+        purpose: '',
+        constraints: [],
         learningOutcomes: [
             'Organize information so the writing is cohesive and easy to follow.',
             'Represent the assignment subject accurately and completely.',

@@ -118,8 +118,8 @@ function safeError(error: unknown): string {
         'Assignment title is required', 'Assignment deadline is invalid',
         'Assignment instructions must be text', 'Assignment instructions exceeds',
         'Complete the genre and register profile', 'Confirm the genre and register profile',
-        'Add at least one reviewed stage', 'Add task requirements',
-        'Complete the rubric grid before approving',
+        'Add at least one section', 'Add task requirements',
+        'Complete the rubric grid before approving', 'Give every criterion its points',
         'Glossary term is required', 'Glossary definition is required',
         'Glossary term exceeds', 'Glossary definition exceeds'
     ];

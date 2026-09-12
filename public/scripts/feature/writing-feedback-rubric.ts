@@ -24,7 +24,7 @@
 import { showConfirmModal } from '../ui/modal-overlay.js';
 import { showSuccessToast } from '../ui/toast-notification.js';
 import { AutosaveSignedOutError, createAutosave } from './writing-feedback-autosave.js';
-import type { Autosave, AutosaveState } from './writing-feedback-autosave.js';
+import type { Autosave } from './writing-feedback-autosave.js';
 import {
     deriveGenreState,
     describeDetails,
@@ -69,6 +69,7 @@ import {
     formatDate,
     inputControl,
     jsonRequest,
+    labelWithRequiredMarker,
     refreshIcons,
     request,
     setWorkspaceMessage,
@@ -282,13 +283,6 @@ interface RubricSectionHandle {
     form: HTMLFormElement;
     working: RubricDefinition;
     canEdit: boolean;
-    /**
-     * Save and Approve moved to step 3, where there is one of each for the whole
-     * assignment. These let that single pair drive a rubric that no longer owns
-     * its own buttons: a failure still surfaces in the grid it belongs to.
-     */
-    showValidationError: (message: string) => void;
-    clearValidationError: () => void;
     /** Version this rubric would become on approval, used in the confirmation copy. */
     nextVersion: number;
     /** Whether an approved version already exists, which changes that copy. */
@@ -308,6 +302,12 @@ interface RubricPageContext {
      * than drop the text.
      */
     technicalMissing: boolean;
+    /**
+     * Recomputes the progress strip and step summaries. The page owns the strip but
+     * the grids are built by renderRubricSection, so an edit inside a grid has to
+     * reach back here or the counts stand still while staff type.
+     */
+    refreshProgress: () => void;
 }
 
 function rubricTextValue(form: HTMLFormElement, name: string): string {
@@ -330,6 +330,8 @@ interface SflFieldSpec {
     hint?: string;
     control: RubricControl;
     wide?: boolean;
+    /** Marks the field with a red asterisk; only the two genuinely blank-able fields omit it. */
+    required?: boolean;
 }
 
 /**
@@ -342,25 +344,33 @@ interface SflFieldSpec {
  * @returns Detached field wrapper
  */
 function sflField(spec: SflFieldSpec): HTMLDivElement {
-    const wrapper = field(spec.label, spec.control, undefined, spec.wide);
+    const wrapper = field(spec.label, spec.control, undefined, spec.wide, spec.required);
     if (spec.hint) wrapper.append(createText('small', spec.hint, 'wf-field-hint'));
     return wrapper;
 }
 
 /**
- * profileStatusChip - the profile's readiness, said as a count rather than a state
+ * profileStatusChip - whether the profile is finished, without a count
  *
- * "Needs your input" told staff nothing about how much was left, and "Ready" was
- * a claim the engine did not honour. A count is checkable against the questions
- * on screen.
+ * The count this used to print could not be checked against the card it sat on.
+ * {@link describeProfile} answers to `requireCompleteSflProfile`, the server-side gate
+ * on approval and generation, so four of its twelve checks read fields that live in
+ * the assignment description above rather than in this card, and two optional fields
+ * on the card are not checked at all. Staff counted the questions in front of them and
+ * got a different number, every time.
+ *
+ * The readiness it reports is unchanged -- still the full twelve, so the chip never
+ * turns green on a profile the server would refuse. Only the number is gone. What is
+ * actually outstanding is named in the step summary, which is the more useful answer
+ * to "what is left" than a count ever was.
  *
  * @param readiness - Current profile readiness
  * @returns Detached chip
  */
 function profileStatusChip(readiness: StepReadiness): HTMLElement {
     return readiness.complete
-        ? chip('Every question answered', 'green')
-        : chip(`${readiness.done} of ${readiness.total} answered`, 'amber');
+        ? chip('All fields completed', 'green')
+        : chip('Incomplete', 'amber');
 }
 
 /**
@@ -397,7 +407,7 @@ function renderSflProfileBox(
     const body = document.createElement('div');
     body.className = 'wf-profile-box-body';
 
-    const title = createText('h3', 'What kind of writing is this?', 'wf-subsection-title');
+    const title = createText('h3', 'Describe the writing', 'wf-subsection-title');
     // Recomputed in place by renderRubricPage's progress refresh; the count here
     // is only the value at first paint.
     const statusSlot = document.createElement('span');
@@ -405,62 +415,41 @@ function renderSflProfileBox(
     statusSlot.append(profileStatusChip(readiness));
     const header = disclosureHeader([title, statusSlot], body, `wf-profile-box-body-${crypto.randomUUID()}`, !complete, 'wf-profile-box-header');
 
-    // Approval does not require this sub-card, but generation does. Saying so here
-    // is the disclosure that used to arrive only as a failure on the review page.
-    body.append(createText('p', 'Not needed to approve — but the assistant cannot draft feedback without it.', 'wf-help-text'));
-
-    body.append(createText('p', 'The writing itself', 'wf-group-label'));
+    body.append(createText('p', 'What it is', 'wf-group-label'));
     const genreLabelControl = namedControl(inputControl(sflContext?.genreLabel ?? ''), 'sfl.genreLabel');
+    genreLabelControl.placeholder = 'e.g. A reflective essay, a lab report, a short design proposal';
     body.append(sflField({
-        label: 'What kind of writing is it?', control: genreLabelControl, wide: true,
-        hint: 'e.g. “A reflective essay”, “A lab report”, “A short design proposal”.'
+        label: 'What kind of writing is it?', control: genreLabelControl, wide: true, required: true
     }));
 
     const fieldControl = namedControl(textAreaControl(sflContext?.field ?? '', 2), 'sfl.field');
+    fieldControl.placeholder = 'The subject matter — e.g. the collapse of the Quebec Bridge';
     const tenorControl = namedControl(textAreaControl(sflContext?.tenor ?? '', 2), 'sfl.tenor');
-    body.append(sflField({
-        label: 'What is the writing about?', control: fieldControl,
-        hint: 'The subject matter — e.g. “The collapse of the Quebec Bridge.”'
-    }));
-    body.append(sflField({
-        label: 'How should the student sound?', control: tenorControl,
-        hint: 'How formal, and how close to the reader — e.g. “Personal, but still careful with claims.”'
-    }));
+    tenorControl.placeholder = 'How formal, and how close to the reader — e.g. personal, but still careful with claims';
+    body.append(sflField({ label: 'What is the writing about?', control: fieldControl, required: true }));
+    body.append(sflField({ label: 'How should the student sound?', control: tenorControl, required: true }));
 
     body.append(createText('p', 'How it is written', 'wf-group-label'));
     const modeControl = namedControl(textAreaControl(sflContext?.mode ?? '', 2), 'sfl.mode');
     const evaluatorControl = namedControl(textAreaControl(sflContext?.actualEvaluator ?? 'Instructor or teaching assistant.', 1), 'sfl.actualEvaluator');
     const productionControl = namedControl(textAreaControl(sflContext?.productionConditions ?? '', 2), 'sfl.productionConditions');
-    body.append(sflField({
-        label: 'How long, and in what form?', control: modeControl,
-        hint: 'e.g. “1,000 words, submitted as a Word file.”'
-    }));
-    body.append(sflField({ label: 'Who marks it?', control: evaluatorControl }));
-    body.append(sflField({
-        label: 'What were the writing conditions?', control: productionControl,
-        hint: 'e.g. “Take-home, over two weeks”, or “Written in class, one hour, closed book.”'
-    }));
+    modeControl.placeholder = 'e.g. 1,000 words';
+    productionControl.placeholder = 'e.g. Take-home, over two weeks, or written in class, one hour, closed book';
+    body.append(sflField({ label: 'How long, and in what form?', control: modeControl, required: true }));
+    body.append(sflField({ label: 'Who marks it?', control: evaluatorControl, required: true }));
+    body.append(sflField({ label: 'What were the writing conditions?', control: productionControl, required: true }));
 
     body.append(createText('p', 'How it is put together', 'wf-group-label'));
     body.append(renderStageRepeater(sflContext?.stages ?? [], canEdit, onInput));
     const embeddedGenres = namedControl(textAreaControl((sflContext?.embeddedGenres ?? []).join('\n'), 2), 'sfl.embeddedGenres');
-    embeddedGenres.placeholder = 'One per line';
+    embeddedGenres.placeholder = 'One per line — e.g. a data commentary inside a lab report. Leave blank if none';
     const taskRequirements = namedControl(textAreaControl((sflContext?.taskRequirements ?? []).join('\n'), 3), 'sfl.taskRequirements');
-    taskRequirements.placeholder = 'One per line';
+    taskRequirements.placeholder = 'One per line — e.g. at least three sources';
     const glossaryTerms = namedControl(textAreaControl((sflContext?.approvedGlossaryTerms ?? []).join('\n'), 2), 'sfl.approvedGlossaryTerms');
-    glossaryTerms.placeholder = 'One per line';
-    body.append(sflField({
-        label: 'Smaller pieces of writing inside it', control: embeddedGenres,
-        hint: 'e.g. a data commentary inside a lab report. Leave blank if none.'
-    }));
-    body.append(sflField({
-        label: 'What must they include?', control: taskRequirements,
-        hint: 'One per line — e.g. “At least three sources.”'
-    }));
-    body.append(sflField({
-        label: 'Words from your course glossary', control: glossaryTerms,
-        hint: 'One per line. Leave blank if none.'
-    }));
+    glossaryTerms.placeholder = 'One per line. Leave blank if none';
+    body.append(sflField({ label: 'Smaller pieces of writing inside it', control: embeddedGenres }));
+    body.append(sflField({ label: 'What must they include?', control: taskRequirements, required: true }));
+    body.append(sflField({ label: 'Words from your course glossary', control: glossaryTerms }));
 
     [genreLabelControl, fieldControl, tenorControl, modeControl, evaluatorControl, productionControl,
         embeddedGenres, taskRequirements, glossaryTerms].forEach((control) => bindTextControl(control, canEdit, onInput));
@@ -492,7 +481,7 @@ function renderStageRepeater(
     const wrapper = document.createElement('div');
     wrapper.className = 'wf-field wf-field--wide';
     const labelEl = document.createElement('label');
-    labelEl.textContent = 'What sections should it have, in order?';
+    labelEl.append(labelWithRequiredMarker('What sections should it have, in order?'));
     wrapper.append(labelEl);
 
     const list = document.createElement('div');
@@ -510,7 +499,7 @@ function renderStageRepeater(
             rowEl.className = 'wf-stage-row';
             rowEl.append(row.nameLabel, row.purpose);
             if (canEdit) {
-                const remove = createIconButton('trash-2', `Remove stage ${row.nameLabel.value || index + 1}`, 'danger', async () => {
+                const remove = createIconButton('trash-2', `Remove section ${row.nameLabel.value || index + 1}`, 'danger', async () => {
                     const at = rows.indexOf(row);
                     if (at === -1) return;
                     rows.splice(at, 1);
@@ -544,10 +533,10 @@ function renderStageRepeater(
         .forEach((stage) => addRow(stage.label, stage.purpose));
 
     if (canEdit) {
-        const addButton = createButton('Add stage', 'secondary', async () => {
+        const addButton = createButton('Add section', 'secondary', async () => {
             addRow('', '');
             onInput();
-        });
+        }, false, 'plus');
         wrapper.append(addButton);
     }
 
@@ -888,7 +877,7 @@ function collectSflContext(
     if (required.some((value) => !value)) {
         throw new Error('Complete the genre and register profile before saving.');
     }
-    if (!profile.stages.length) throw new Error('Add at least one reviewed stage before saving.');
+    if (!profile.stages.length) throw new Error('Add at least one section before saving.');
     return profile;
 }
 
@@ -1057,7 +1046,6 @@ async function fillRubricsFromInstructions(context: RubricPageContext, status: H
     }
 
     announceDetailsStatus(status, 'Reading the instructions…');
-    setWorkspaceMessage('Reading the instructions…', 'info');
     try {
         const orderedTargets = [...targets].sort((left, right) => {
             if (left === right) return 0;
@@ -1068,14 +1056,16 @@ async function fillRubricsFromInstructions(context: RubricPageContext, status: H
         }
         state.panelDirty = false;
         state.assignments = await request<Assignment[]>('/assignments');
-        pendingRubricNotice = { message: 'Filled from the instructions. Review before approving.', tone: 'success' };
-        setWorkspaceMessage('Filled from the instructions. Review before approving.', 'success');
+        // The toast is the whole report for an explicit fill. No pending notice:
+        // the reopened page would raise the same sentence as a banner beside it.
         showSuccessToast('Filled from the instructions. Review before approving.');
         await openRubricPage(context.assignment.id);
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Could not read the instructions. Fill the rubric in by hand.';
+        // The status line sits beside the control that failed, and the caller
+        // reports the same error in a modal; a third copy in the banner persists
+        // after both are gone.
         announceDetailsStatus(status, message, 'error');
-        setWorkspaceMessage(message, 'error');
         throw error;
     }
 }
@@ -1127,7 +1117,7 @@ export async function openRubricPage(assignmentId: string): Promise<void> {
 interface StepState {
     ordinal: number;
     label: string;
-    /** The short line under the label, e.g. "Every question answered". */
+    /** The short line under the label, e.g. "All fields completed". */
     detail: string;
     state: 'done' | 'current' | 'pending';
 }
@@ -1219,14 +1209,25 @@ function linkAccordion(headers: HTMLElement[]): void {
  * describeAllGrids - readiness across every grid the assignment owns
  *
  * A lab report has two, and a staff member thinks of "the grid" as finished only
- * when both are. Reads each editor's live working copy, so the strip moves as the
- * grid is edited rather than reporting the version the page loaded with.
+ * when both are.
  *
  * @param sections - Registered rubric editors
  * @returns Summed counts across every grid
  */
 function describeAllGrids(sections: RubricSectionHandle[]): GridReadiness {
-    const parts = sections.map((section) => describeGrid(section.working.criteria, section.working.levels));
+    const parts = sections.map((section) => {
+        // Read the form rather than the working copy. The working copy is only brought
+        // up to date when the page saves, so counting it left the strip reporting the
+        // grid as staff found it rather than as they have just edited it.
+        //
+        // The read goes into a detached snapshot because the grid's own structural
+        // actions -- "Spread points evenly" especially -- mutate the working copy
+        // directly and then redraw from it. Syncing the real copy from a DOM that has
+        // not been redrawn yet would undo them.
+        const snapshot = detachedRubric(section.working);
+        syncStructuredValues(section.form, snapshot);
+        return describeGrid(snapshot.criteria, snapshot.levels);
+    });
     if (!parts.length) return { criteria: 0, levels: 0, totalPoints: 0, emptyCells: 0, complete: false };
     return {
         criteria: parts.reduce((sum, part) => sum + part.criteria, 0),
@@ -1276,31 +1277,19 @@ function renderRubricPage(
     meta.className = 'wf-assignment-meta';
     const canEditAny = linguisticData.permissions.canEdit;
     meta.append(
+        createText('span', assignmentOriginText(assignment)),
         // The writing rubric's approval state belongs beside the assignment title;
         // a lab report's second rubric carries its own state in its section header.
         approvalStateChip(linguisticData),
-        createText('span', assignmentOriginText(assignment)),
         // Shown only when the assignment carries a deadline; "No deadline" spends a segment
         // on the absence of something optional.
         ...(assignment.dueAt ? [createText('span', `Deadline ${formatDate(assignment.dueAt, true)}`)] : []),
-        chip(canEditAny ? 'Editable' : 'Read-only', canEditAny ? 'green' : 'neutral')
+        // Edit rights are the norm for staff who can open this page, so only the
+        // restricted case is worth a chip.
+        ...(canEditAny ? [] : [chip('Read-only', 'neutral')])
     );
     header.append(heading, meta);
     root.append(header);
-
-    const instructions = document.createElement('details');
-    instructions.className = 'wf-assignment-instructions';
-    const instructionsSummary = document.createElement('summary');
-    instructionsSummary.textContent = 'What students were told to do';
-    instructions.append(
-        instructionsSummary,
-        createText(
-            'div',
-            assignment.instructions || 'Nothing was imported for this assignment. Describe the task in step 1 instead.',
-            assignment.instructions ? 'wf-assignment-instructions__text' : 'wf-muted-note'
-        )
-    );
-    root.append(instructions);
 
     // The progress strip is inserted here but filled by refreshProgress once the
     // steps below exist; everything it shows is derived, nothing is stored.
@@ -1311,10 +1300,6 @@ function renderRubricPage(
     const writingSource = linguisticData.draft ?? linguisticData.approved;
     if (!writingSource) throw new Error('This assignment does not have a rubric draft or approved rubric.');
     const technicalSource = technicalData?.draft ?? technicalData?.approved;
-
-    const clearValidation = (): void => {
-        root.querySelectorAll<HTMLElement>('.wf-validation-summary').forEach((node) => { node.hidden = true; });
-    };
 
     let context: RubricPageContext | undefined;
 
@@ -1329,7 +1314,6 @@ function renderRubricPage(
         onInput: () => {
             if (linguisticData.permissions.canEdit) state.panelDirty = true;
             if (linguisticData.permissions.canEdit) rubricAutosave?.markDirty();
-            clearValidation();
             refreshProgress();
         },
         onFillFromInstructions: async (status) => {
@@ -1341,8 +1325,8 @@ function renderRubricPage(
             const confirmation = await showConfirmModal(
                 'Start over from the standard rubric?',
                 isLabReport
-                    ? 'Both grids will be replaced with their starting templates. Nothing is saved until you choose Save for now or Approve rubric in step 3.'
-                    : 'The grid will be replaced with its starting template. Nothing is saved until you choose Save for now or Approve rubric in step 3.',
+                    ? 'Both grids will be replaced with their starting templates. Nothing is saved until you choose Save as draft or Approve rubric in step 3.'
+                    : 'The grid will be replaced with its starting template. Nothing is saved until you choose Save as draft or Approve rubric in step 3.',
                 'Reset rubric',
                 'Cancel',
                 'danger'
@@ -1388,7 +1372,10 @@ function renderRubricPage(
         detailsForm,
         sections: [],
         isLabReport,
-        technicalMissing: Boolean(technicalData) && !technicalData?.draft && !technicalData?.approved
+        technicalMissing: Boolean(technicalData) && !technicalData?.draft && !technicalData?.approved,
+        // Assigned further down, so the call is deferred through the closure rather
+        // than captured now.
+        refreshProgress: () => refreshProgress()
     };
     context = pageContext;
 
@@ -1396,20 +1383,42 @@ function renderRubricPage(
     step2Body.className = 'wf-step-body';
 
     // An imported assignment whose Canvas rubric was out of contract was seeded from
-    // the built-in profile instead. Staff met that silently until now.
-    if (assignment.canvasRubricRefusal && !linguisticData.approved) {
-        const dropped = document.createElement('div');
-        dropped.className = 'wf-owed';
-        dropped.append(
-            createText('p', "This assignment's Canvas rubric could not be imported", 'wf-owed__title'),
-            createText('p', `${canvasRefusalReason(assignment.canvasRubricRefusal)} The starting grid below is EngE-AI's default — replace it with your own before approving.`)
-        );
-        step2Body.append(dropped);
-    }
+    // the built-in profile instead. Staff met that silently until now. The callout is
+    // built per redraw inside the grid, immediately above the buttons that edit it.
+    const refusal = assignment.canvasRubricRefusal;
+    const canvasRefusalNotice = refusal && !linguisticData.approved
+        ? (): HTMLElement => {
+            const dropped = document.createElement('div');
+            dropped.className = 'wf-owed';
+            // Decorative: the sentence beside it already says everything, so the icon is
+            // hidden from assistive technology rather than read out as "info".
+            const icon = document.createElement('i');
+            icon.dataset.feather = 'info';
+            icon.className = 'wf-owed__icon';
+            icon.setAttribute('aria-hidden', 'true');
+            const body = document.createElement('div');
+            body.className = 'wf-owed__body';
+            if (refusal === 'no_rubric') {
+                // Nothing failed here — Canvas simply had no rubric — so this reads as a
+                // note about the default grid rather than an import error.
+                body.append(
+                    createText('p', "Since this assignment does not have a rubric in Canvas, the rubric below is EngE-AI's default rubric. Please review it before approving.")
+                );
+            } else {
+                body.append(
+                    createText('p', "This assignment's Canvas rubric could not be imported", 'wf-owed__title'),
+                    createText('p', `${canvasRefusalReason(refusal)} The starting grid below is EngE-AI's default — replace it with your own before approving.`)
+                );
+            }
+            dropped.append(icon, body);
+            return dropped;
+        }
+        : undefined;
 
     // The heading names the rubric (D-066) and the plain-English line explains it. A lab
     // report shows two grids at once, so the name is what tells them apart.
     step2Body.append(renderRubricSection(pageContext, linguisticData, 'linguistic', {
+        notice: canvasRefusalNotice,
         heading: isLabReport ? 'Writing rubric' : 'Rubric',
         subtitle: isLabReport
             ? 'How they wrote it — structure, clarity, and how the writing speaks to its reader'
@@ -1477,10 +1486,18 @@ function renderRubricPage(
     approveRow.append(approveCopy);
 
     if (canEditAny) {
+        // Created here, filled only if the session expires. role="alert" rather than a
+        // polite status: it appears once, and only to say that work has stopped being
+        // saved.
+        const autosaveStatus = document.createElement('p');
+        autosaveStatus.className = 'wf-autosave-status';
+        autosaveStatus.setAttribute('role', 'alert');
+        autosaveStatus.hidden = true;
+
         const actions = document.createElement('div');
         actions.className = 'wf-button-row';
         actions.append(
-            createButton('Save for now', 'secondary', async () => {
+            createButton('Save as draft', 'secondary', async () => {
                 await saveEveryRubric(pageContext);
                 state.panelDirty = false;
                 state.assignments = await request<Assignment[]>('/assignments');
@@ -1489,61 +1506,61 @@ function renderRubricPage(
             }),
             createButton('Approve rubric', 'primary', async () => approveEveryRubric(pageContext))
         );
-        // A quiet marker beside Save, not a toast: this reports something that happens on
-        // its own, and it must not compete with the explicit Save's success message.
-        const autosaveStatus = document.createElement('p');
-        autosaveStatus.className = 'wf-autosave-status';
-        autosaveStatus.setAttribute('role', 'status');
-        autosaveStatus.setAttribute('aria-live', 'polite');
-        actions.append(autosaveStatus);
-
-        const savedClock = (at?: number): string =>
-            at === undefined ? '' : new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-        const renderAutosave = (autosaveState: AutosaveState): void => {
-            if (autosaveState.status === 'saved') state.panelDirty = false;
-            const stamp = savedClock(autosaveState.savedAt);
-            autosaveStatus.textContent =
-                autosaveState.status === 'saving' ? 'Saving…'
-                : autosaveState.status === 'saved' ? `Saved ${stamp}`
-                : autosaveState.status === 'stopped'
-                    ? `You've been signed out — your last saved draft is from ${stamp || 'before this session'}. Sign in again to keep editing.`
-                : autosaveState.status === 'error' ? `Not saved — ${autosaveState.message ?? 'try Save for now'}`
-                : '';
-            autosaveStatus.classList.toggle('wf-autosave-status--alert',
-                autosaveState.status === 'error' || autosaveState.status === 'stopped');
-        };
-
+        // Autosave narrates one state and no other. "Saving…" and "Saved 14:32" were
+        // reassurance nobody asked for, and beside a button reading "Save as draft" they
+        // made the reader work out which save either one meant.
+        //
+        // An expired session is the exception, and the reason this line exists at all: the
+        // loop is stopped for good, nothing further is being stored, and the page gives no
+        // other sign of it. A toast would be wrong here -- this is not news about a moment
+        // that passes, it is a condition that holds for as long as the page is open, so it
+        // stays on the page until something is done about it.
         rubricAutosave = createAutosave({
             write: () => autosaveAssignmentRubrics(pageContext),
-            onStatus: renderAutosave
+            onStatus: (autosaveState) => {
+                // A background write that succeeds means the page is no longer holding
+                // unsaved work; leaving it dirty would have navigation ask about changes
+                // that are already stored.
+                if (autosaveState.status === 'saved') state.panelDirty = false;
+                if (autosaveState.status !== 'stopped') return;
+                const stamp = autosaveState.savedAt
+                    ? new Date(autosaveState.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                    : '';
+                // Not "sign in again", which means leaving this page, and everything typed
+                // since the stamp lives only in this tab. Signing in elsewhere restores the
+                // same-origin session cookie, after which Save as draft works from here and
+                // the work survives. Autosave itself stays stopped either way.
+                autosaveStatus.textContent = stamp
+                    ? `You've been signed out, and nothing has been saved since ${stamp}. Don't reload this page — sign in again in another tab, then come back and press Save as draft.`
+                    : "You've been signed out, and nothing you have typed here has been saved. Don't reload this page — sign in again in another tab, then come back and press Save as draft.";
+                autosaveStatus.hidden = false;
+            }
         });
 
         registerAutosaveFlushListeners();
 
         approveRow.append(actions);
+        // Below the approve row, not inside it: a sentence this long sitting beside the
+        // buttons is what used to widen their row until it wrapped, moving them from the
+        // right of the step to its bottom left.
+        step3Body.append(autosaveStatus);
     }
 
+    // What is still outstanding is the progress strip's job, once, at the top of the
+    // page. Step 3 used to restate it in a notice of its own, which said the same
+    // counts a second time and named no work the strip had not already named.
     step3Body.append(approveRow);
-
-    // What is still owed before feedback can be drafted. This is disclosure, not a
-    // gate: requireCompleteSflProfile enforces it at generation, and staff used to
-    // meet it only as a failure on the review page.
-    const owed = document.createElement('div');
-    owed.className = 'wf-owed';
-    owed.hidden = true;
-    step3Body.append(owed);
 
     step3.append(step3Header, step3Body);
     root.append(step3);
 
     /**
-     * refreshProgress - recomputes the strip, the step summaries, the profile chip,
-     * and the owed notice from the live working copies
+     * refreshProgress - recomputes the strip, the step summaries, and the profile
+     * chip from what the forms currently hold
      *
      * Called on every input. Everything it renders is derived; nothing is stored.
-     * It reads the details form and each editor's working copy rather than the
-     * rubric the page loaded with, so the numbers move as staff type.
+     * It reads the details form and each grid's form rather than the rubric the page
+     * loaded with, so the numbers move as staff type.
      */
     refreshProgress = (): void => {
         const details = readDetailsNow();
@@ -1555,11 +1572,11 @@ function renderRubricPage(
         stripMount.replaceChildren(renderProgressStrip([
             {
                 ordinal: 1, label: 'Describe the assignment', state: describedDone ? 'done' : 'current',
-                detail: detailsNow.complete
-                    ? (profileNow.complete
-                        ? 'Every question answered'
-                        : `Writing profile: ${profileNow.done} of ${profileNow.total} answered`)
-                    : `${detailsNow.done} of ${detailsNow.total} questions answered`
+                // Named when the description itself is done, because the remaining work is
+                // then in a card the reader has to open to see.
+                detail: describedDone
+                    ? 'All fields completed'
+                    : (detailsNow.complete ? 'Writing profile: incomplete' : 'Incomplete')
             },
             {
                 ordinal: 2, label: isLabReport ? 'Build the marking grids' : 'Build the marking grid',
@@ -1577,24 +1594,11 @@ function renderRubricPage(
             }
         ]));
 
-        const outstanding: string[] = [];
-        if (!profileNow.complete) {
-            outstanding.push(`“What kind of writing is this?” is ${profileNow.done} of ${profileNow.total} answered`);
-        }
-        if (gridNow.emptyCells > 0) {
-            outstanding.push(`${gridNow.emptyCells} ${gridNow.emptyCells === 1 ? 'box' : 'boxes'} in the grid ${gridNow.emptyCells === 1 ? 'is' : 'are'} still empty`);
-        }
-        owed.hidden = outstanding.length === 0;
-        owed.replaceChildren(
-            createText('p', outstanding.length === 1
-                ? 'One more thing before any feedback can be drafted'
-                : 'Two more things before any feedback can be drafted', 'wf-owed__title'),
-            createText('p', `${outstanding.join(', and ')}.`)
-        );
-
-        step1Meta.textContent = describedDone
-            ? 'Every question answered'
-            : `${detailsNow.done} of ${detailsNow.total} questions answered`;
+        // The same chip the profile sub-card uses: the two lines make the same claim
+        // about the same step, so they should not read as different kinds of thing.
+        step1Meta.replaceChildren(describedDone
+            ? chip('All fields completed', 'green')
+            : chip('Incomplete', 'amber'));
         step2Meta.textContent = gridNow.complete
             ? `${gridNow.criteria} criteria · ${gridNow.levels} levels · ${gridNow.totalPoints} points`
             : `${gridNow.emptyCells} ${gridNow.emptyCells === 1 ? 'box' : 'boxes'} still empty`;
@@ -1611,22 +1615,51 @@ function renderRubricPage(
 /**
  * saveEveryRubric - the page's one Save, writing every rubric the assignment owns
  *
- * A validation failure is surfaced in the grid it belongs to, the way the
- * per-section Save used to, so the message still appears next to the field that
- * caused it rather than beside a button two steps away.
+ * A validation failure is reported in the modal the caller raises, and only
+ * there. It used to be copied into a red banner above the grid as well, which
+ * said the same sentence a second time and then stayed on the page after the
+ * modal it came from was gone.
  *
  * @param context - Page context holding the details form and registered editors
  * @throws Error carrying the first staff-facing validation or transport failure
  */
 async function saveEveryRubric(context: RubricPageContext): Promise<void> {
-    try {
-        await saveAssignmentRubrics(context);
-        context.sections.forEach((section) => section.clearValidationError());
-    } catch (error) {
-        const message = error instanceof Error ? error.message : 'Review the rubric fields.';
-        context.sections.find((section) => section.canEdit)?.showValidationError(message);
-        throw error;
+    await saveAssignmentRubrics(context);
+}
+
+/**
+ * findApprovalBlocker - the server's approval gate, asked before the confirmation
+ *
+ * `requireCompleteRubricCells` still owns this rule and still enforces it; this
+ * only moves the answer in front of the dialog. Asking a staff member to confirm
+ * an approval and then refusing what they just confirmed reads as the
+ * confirmation itself having failed, and leaves them looking for what they did
+ * wrong in the dialog rather than in the grid.
+ *
+ * The messages match the server's word for word, and are checked in the same
+ * order, so the two can never name different problems for one grid.
+ *
+ * @param sections - Editable rubric editors, already synced from their forms by the save
+ * @returns Staff-facing reason approval would be refused, or null when it would be accepted
+ */
+function findApprovalBlocker(sections: RubricSectionHandle[]): string | null {
+    for (const section of sections) {
+        const prefix = section.errorLabel ? `${section.errorLabel}: ` : '';
+        const unweighted = section.working.criteria.filter(
+            (criterion) => criterion.points === undefined || criterion.points <= 0
+        );
+        if (unweighted.length > 0) {
+            const named = unweighted.map((criterion) => `"${criterion.label}"`).join(', ');
+            return `${prefix}Give every criterion its points before approving: ${named} ${unweighted.length === 1 ? 'has' : 'have'} none.`;
+        }
+        // Every criterion carries points by this line, so the only boxes describeGrid
+        // can still be counting are the descriptors -- the same cells the server counts.
+        const { emptyCells } = describeGrid(section.working.criteria, section.working.levels);
+        if (emptyCells > 0) {
+            return `${prefix}Complete the rubric grid before approving: ${emptyCells} cell${emptyCells === 1 ? '' : 's'} still need${emptyCells === 1 ? 's' : ''} a points range or a description.`;
+        }
     }
+    return null;
 }
 
 /**
@@ -1646,6 +1679,14 @@ async function approveEveryRubric(context: RubricPageContext): Promise<void> {
 
     const editable = context.sections.filter((section) => section.canEdit);
     if (!editable.length) return;
+
+    // Before the confirmation, not after it: there is no sense in asking a staff
+    // member to confirm an approval that will be refused. The modal this throw
+    // raises is the whole report -- the message names the criterion, and on a lab
+    // report its prefix names which of the two grids.
+    const blocker = findApprovalBlocker(editable);
+    if (blocker) throw new Error(blocker);
+
     const versions = editable.map((section) => `v${section.nextVersion}`).join(' and ');
     const alreadyApproved = editable.some((section) => section.hasApproved);
     const noun = editable.length > 1 ? 'Rubrics' : 'Rubric';
@@ -1681,6 +1722,8 @@ interface RubricSectionOptions {
     errorLabel: string;
     /** Whether this section header shows its own approval state. */
     showState: boolean;
+    /** Callout rendered above this grid's toolbar, rebuilt on every grid redraw. */
+    notice?: () => HTMLElement;
 }
 
 /** Configuration for the single shared assignment-details section. */
@@ -1781,42 +1824,39 @@ function renderAssignmentDetails(
     constraints.placeholder = 'One per line';
     const learningOutcomes = namedControl(textAreaControl(draft.learningOutcomes.join('\n'), 5), 'learningOutcomes');
     learningOutcomes.placeholder = 'One per line';
+    const title = namedControl(inputControl(draft.title), 'title');
+    title.placeholder = 'Assignment Rubric';
+    const task = namedControl(textAreaControl(draft.task, 3), 'task');
+    task.placeholder = '1-2 sentences describing what students are expected to do in this assignment';
+    const audience = namedControl(textAreaControl(draft.audience, 2), 'audience');
+    audience.placeholder = 'e.g. A first-year classmate who has not read the case';
+    const purpose = namedControl(textAreaControl(draft.purpose, 2), 'purpose');
+    purpose.placeholder = 'What the piece of writing is meant to achieve';
+    const gradingIntent = namedControl(textAreaControl(draft.gradingIntent, 2), 'gradingIntent');
 
+    // Guidance lives in each control's placeholder rather than in a line under the
+    // box: the two together were more reading than the question deserved.
     const entries: Array<{ label: string; hint?: string; control: HTMLInputElement | HTMLTextAreaElement; wide?: boolean }> = [
         {
             // This is RubricDefinition.title, not the assignment's. The page heading
             // above already carries the assignment name, so calling this one
             // "Assignment name" put two different values under the same word.
-            label: 'Rubric name',
-            hint: 'Shown to staff wherever this rubric is listed.',
-            control: namedControl(inputControl(draft.title), 'title'), wide: true
+            label: 'Rubric name', control: title, wide: true
         },
-        {
-            label: 'What are students asked to do?',
-            hint: 'One or two sentences, the way you would explain it out loud.',
-            control: namedControl(textAreaControl(draft.task, 3), 'task'), wide: true
-        },
-        {
-            label: 'Who are they writing for?',
-            hint: 'For example: a first-year classmate who has not read the case.',
-            control: namedControl(textAreaControl(draft.audience, 2), 'audience')
-        },
-        {
-            label: 'Why are they writing it?',
-            hint: 'What the piece of writing is meant to achieve.',
-            control: namedControl(textAreaControl(draft.purpose, 2), 'purpose')
-        },
-        { label: 'Rules they must follow', hint: 'One per line.', control: constraints },
-        { label: 'What they should learn from it', hint: 'One per line.', control: learningOutcomes },
-        {
-            label: 'What matters most when you mark it?',
-            hint: 'The thing you would mention first when handing the work back.',
-            control: namedControl(textAreaControl(draft.gradingIntent, 2), 'gradingIntent'), wide: true
-        }
+        { label: 'What are students asked to do?', control: task, wide: true },
+        { label: 'Who are they writing for?', control: audience },
+        { label: 'Why are they writing it?', control: purpose },
+        { label: 'Rules they must follow', control: constraints },
+        // Seeded with real outcomes, so this box's placeholder never shows; the
+        // one-per-line rule rides in the label to survive having content.
+        { label: 'What they should learn from it (one per line)', control: learningOutcomes },
+        { label: 'What matters most when you mark it?', control: gradingIntent, wide: true }
     ];
     entries.forEach((entry) => {
         bindTextControl(entry.control, options.canEdit, options.onInput);
-        const wrapper = field(entry.label, entry.control, entry.hint, entry.wide);
+        // Every field in the shared description is required; the two optional
+        // fields on this page both live in the genre profile below.
+        const wrapper = field(entry.label, entry.control, entry.hint, entry.wide, true);
         if (entry.control === constraints || entry.control === learningOutcomes) {
             const countSpan = createText('span', '', 'wf-field-count');
             wrapper.querySelector('label')?.append(countSpan);
@@ -1860,7 +1900,7 @@ function renderAssignmentDetails(
             labContext.focus();
         };
 
-        const handoutField = field('Lab handout', labContext);
+        const handoutField = field('Lab handout', labContext, undefined, false, true);
         handoutField.classList.add('wf-field--wide');
         if (options.canEdit) {
             const handoutActions = document.createElement('div');
@@ -2139,27 +2179,34 @@ function renderRubricSection(
     editor.className = 'wf-rubric-editor';
 
     const form = document.createElement('form');
-    const validation = document.createElement('div');
-    validation.className = 'wf-validation-summary';
-    validation.hidden = true;
-    validation.setAttribute('role', 'alert');
-    validation.tabIndex = -1;
     const announcer = createText('div', '', 'wf-visually-hidden');
     announcer.setAttribute('role', 'status');
     announcer.setAttribute('aria-live', 'polite');
     announcer.setAttribute('aria-atomic', 'true');
-    form.append(validation, announcer);
+    form.append(announcer);
 
     const announce = (message: string): void => {
         announcer.textContent = '';
         window.requestAnimationFrame(() => { announcer.textContent = message; });
     };
     const updateSummary = (): void => { summaryMeta.textContent = rubricSizeSummary(working); };
+    // Coalesced, and deferred by a frame on purpose. A structural grid action mutates
+    // the working copy, calls this, and only then redraws; reading the form in between
+    // would count the grid as it was drawn a moment ago. One frame later the redraw has
+    // happened, and a burst of keystrokes costs a single recount.
+    let progressFrame = 0;
+    const refreshProgressSoon = (): void => {
+        if (progressFrame) return;
+        progressFrame = window.requestAnimationFrame(() => {
+            progressFrame = 0;
+            context.refreshProgress();
+        });
+    };
     const markDirty = (): void => {
         if (canEdit) state.panelDirty = true;
         if (canEdit) rubricAutosave?.markDirty();
-        validation.hidden = true;
         updateSummary();
+        refreshProgressSoon();
     };
 
     // The rubric is one table: criteria are rows, performance levels are columns,
@@ -2192,7 +2239,8 @@ function renderRubricSection(
         reservedIds,
         syncFromForm: () => syncStructuredValues(form, working),
         onChange: markDirty,
-        announce
+        announce,
+        notice: options.notice
     });
 
     context.sections.push({
@@ -2201,12 +2249,6 @@ function renderRubricSection(
         form,
         working,
         canEdit,
-        showValidationError: (message: string) => {
-            validation.textContent = message;
-            validation.hidden = false;
-            validation.focus();
-        },
-        clearValidationError: () => { validation.hidden = true; },
         nextVersion: data.draft?.version ?? (data.approved?.version ?? 0) + 1,
         hasApproved: Boolean(data.approved)
     });

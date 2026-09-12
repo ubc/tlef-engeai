@@ -168,7 +168,7 @@ describe('requireCompleteSflProfile', () => {
             .toThrow('Complete the genre and register profile');
     });
 
-    it('accepts a profile once every placeholder field has been replaced', () => {
+    it('accepts a profile once every required field is answered', () => {
         const filled: WritingSflContextProfile = {
             ...buildDefaultSflContextProfile(),
             genreState: 'staff_confirmed',
@@ -179,7 +179,8 @@ describe('requireCompleteSflProfile', () => {
             field: 'Undergraduate chemical engineering lab measurements.',
             tenor: 'Student reporting findings to an evaluating instructor.',
             mode: 'A written take-home report submitted after the lab session.',
-            productionConditions: 'Take-home, individually written, open resources.'
+            productionConditions: 'Take-home, individually written, open resources.',
+            taskRequirements: ['Report the measured trend with its uncertainty.']
         };
         expect(() => requireCompleteSflProfile(filled)).not.toThrow();
     });

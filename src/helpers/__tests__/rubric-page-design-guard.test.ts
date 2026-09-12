@@ -60,7 +60,7 @@ describe('rubric page copy', () => {
         // A lab report renders two rubric sections. When the actions lived inside
         // a section, that put two Save buttons on one page.
         const source = read(RUBRIC_TS);
-        expect(source.match(/createButton\('Save for now'/g) ?? []).toHaveLength(1);
+        expect(source.match(/createButton\('Save as draft'/g) ?? []).toHaveLength(1);
         expect(source.match(/createButton\('Approve rubric'/g) ?? []).toHaveLength(1);
     });
 
