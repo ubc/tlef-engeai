@@ -151,6 +151,17 @@ describe('assignment-specific feedback validation', () => {
         expect(buildFeedbackSchema(rubric).safeParse(invalid).success).toBe(true);
     });
 
+    it('caps a criterion at three evidence items so annotations stay selective', () => {
+        const rubric = buildDefaultWritingRubric();
+        const feedback = feedbackFor(rubric);
+        const evidence = feedback.criteria[0].evidence[0];
+        feedback.criteria[0].evidence = [evidence, evidence, evidence];
+        expect(buildFeedbackSchema(rubric).safeParse(feedback).success).toBe(true);
+
+        feedback.criteria[0].evidence = [evidence, evidence, evidence, evidence];
+        expect(buildFeedbackSchema(rubric).safeParse(feedback).success).toBe(false);
+    });
+
     it('blocks numeric grading without a complete instructor-approved mapping', () => {
         const rubric = legacyFourCriterionRubric();
         const feedback = feedbackFor(rubric);
@@ -199,5 +210,26 @@ describe('reconcileExactEvidence', () => {
     it('still rejects paraphrased evidence', () => {
         expect(() => reconcileExactEvidence(withQuote('The vehicle steers with handles.'), styledText))
             .toThrow('did not match');
+    });
+});
+
+describe('revisionGoals bounds', () => {
+    const rubric = buildDefaultWritingRubric('instructor-1', new Date('2026-01-01T00:00:00.000Z'));
+
+    it('rejects a result carrying no revision goals', () => {
+        // Goals are the student's next steps and the seed for the editable staff summary.
+        // Without a floor the model could return none and the section rendered empty.
+        const result = { ...feedbackFor(rubric), revisionGoals: [] };
+        expect(buildFeedbackSchema(rubric).safeParse(result).success).toBe(false);
+    });
+
+    it('accepts a result carrying one revision goal', () => {
+        expect(buildFeedbackSchema(rubric).safeParse(feedbackFor(rubric)).success).toBe(true);
+    });
+
+    it('still rejects more than three revision goals', () => {
+        const [goal] = feedbackFor(rubric).revisionGoals;
+        const result = { ...feedbackFor(rubric), revisionGoals: [goal, goal, goal, goal] };
+        expect(buildFeedbackSchema(rubric).safeParse(result).success).toBe(false);
     });
 });

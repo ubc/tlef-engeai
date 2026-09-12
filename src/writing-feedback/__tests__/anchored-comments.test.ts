@@ -36,6 +36,13 @@ function comment(overrides: Partial<AnchoredComment> = {}): AnchoredComment {
     };
 }
 
+/** Distinct per-evidence rationales so the helper never trips seed de-duplication. */
+const RATIONALES = [
+    'Signals the text structure.',
+    'Leaves the reader without a stated purpose.',
+    'Names a source but not what it contributes.'
+];
+
 function run(quotes: string[], criterion = 'organization'): WritingFeedbackRun {
     return {
         id: 'run-1',
@@ -48,7 +55,7 @@ function run(quotes: string[], criterion = 'organization'): WritingFeedbackRun {
             criteria: [{
                 criterion,
                 suggestedLevel: 'proficient',
-                evidence: quotes.map((quote) => ({ quote, rationale: 'Signals the text structure.' })),
+                evidence: quotes.map((quote, index) => ({ quote, rationale: RATIONALES[index % RATIONALES.length] })),
                 explanation: 'Sequencing is mostly clear.',
                 confidence: 0.8
             }],
@@ -59,6 +66,19 @@ function run(quotes: string[], criterion = 'organization'): WritingFeedbackRun {
         createdAt: new Date(),
         modelMetadata: { engine: 'test', promptVersion: 'test' }
     };
+}
+
+/** One passage cited by two different criteria, which must anchor once per criterion. */
+function twoCriterionRun(quote: string): WritingFeedbackRun {
+    const base = run([quote], 'organization');
+    base.result.criteria.push({
+        criterion: 'content',
+        suggestedLevel: 'proficient',
+        evidence: [{ quote, rationale: 'Also develops the subject matter.' }],
+        explanation: 'Development is uneven.',
+        confidence: 0.7
+    });
+    return base;
 }
 
 describe('anchoredCommentInputSchema', () => {
@@ -147,6 +167,137 @@ describe('seedCommentsFromRun', () => {
         expect(verifiedText.slice(seeds[1].startOffset, seeds[1].endOffset)).toBe('First sample sentence.');
     });
 
+    it('leaves model seeds without criterion-level revision guidance', () => {
+        // criterion.explanation is one sentence about the whole criterion. Stamping it on
+        // every evidence seed repeated it N times in the annotation list, on top of the
+        // rubric-criterion section and the PDF that already show it once each.
+        const seeds = seedCommentsFromRun(run(['First sample sentence.', 'Second sample sentence.']), verifiedText);
+        expect(seeds).toHaveLength(2);
+        seeds.forEach((seed) => expect(seed.howToImprove).toBeUndefined());
+    });
+
+    it('anchors a passage cited by two criteria once for each criterion', () => {
+        // 'Second sample sentence.' occurs once in verifiedText. A search cursor shared
+        // across criteria started the second lookup past it, so the second criterion's
+        // annotation was dropped with no trace.
+        const seeds = seedCommentsFromRun(twoCriterionRun('Second sample sentence.'), verifiedText);
+        expect(seeds).toHaveLength(2);
+        expect(seeds.map((seed) => seed.criterion)).toEqual(['organization', 'content']);
+        seeds.forEach((seed) => {
+            expect(verifiedText.slice(seed.startOffset, seed.endOffset)).toBe('Second sample sentence.');
+        });
+    });
+
+    it('drops a later annotation that restates one already seeded', () => {
+        // The writer may make the same point twice under two criteria. Every evidence item
+        // becomes an annotation on the student PDF, so a restatement is read as two
+        // separate pieces of advice.
+        const restated = twoCriterionRun('Second sample sentence.');
+        restated.result.criteria[0].evidence[0].rationale = 'The opening does not orient the reader to the purpose.';
+        restated.result.criteria[1].evidence[0].rationale = 'The opening does not orient a reader to the purpose!';
+
+        const seeds = seedCommentsFromRun(restated, verifiedText);
+
+        expect(seeds).toHaveLength(1);
+        expect(seeds[0].criterion).toBe('organization');
+    });
+
+    it('seeds one annotation per validated finding, whatever the wording', () => {
+        // The live run linked finding F4 to both the content and the interpersonal criterion,
+        // so one sentence carried two annotations whose wording differed too much for the
+        // text similarity guard. One validated finding is one point about the text.
+        const shared = twoCriterionRun('Second sample sentence.');
+        shared.sflAnalysis = {
+            findings: [{
+                id: 'F4',
+                primaryFunction: 'interpersonal',
+                languageLevel: 'clause_word',
+                evidence: [{ quote: 'Second sample sentence.' }],
+                observation: 'Unqualified evaluation.',
+                functionalInterpretation: 'Presents a contested claim as settled.'
+            }]
+        } as WritingFeedbackRun['sflAnalysis'];
+        shared.result.criteria[0].evidence[0].sflFindingIds = ['F4'];
+        shared.result.criteria[0].evidence[0].rationale = 'The claim is asserted without support.';
+        shared.result.criteria[1].evidence[0].sflFindingIds = ['F4'];
+        shared.result.criteria[1].evidence[0].rationale = 'A reader is directed to agree rather than shown evidence.';
+
+        const seeds = seedCommentsFromRun(shared, verifiedText);
+
+        expect(seeds).toHaveLength(1);
+        expect(seeds[0].criterion).toBe('organization');
+    });
+
+    it('gives a shared finding to the criterion its function agrees with', () => {
+        // When two criteria cite one finding, rubric order used to decide. That handed an
+        // interpersonal finding to Content purely because Content is listed first, and left
+        // Interpersonal Positioning — where the point belongs — with nothing.
+        const shared = twoCriterionRun('Second sample sentence.');
+        shared.result.criteria[1].criterion = 'interpersonal_positioning';
+        shared.sflAnalysis = {
+            findings: [{
+                id: 'F4',
+                primaryFunction: 'interpersonal',
+                languageLevel: 'clause_word',
+                evidence: [{ quote: 'Second sample sentence.' }],
+                observation: 'Unqualified evaluation.',
+                functionalInterpretation: 'Presents a contested claim as settled.'
+            }]
+        } as WritingFeedbackRun['sflAnalysis'];
+        shared.result.criteria[0].evidence[0].sflFindingIds = ['F4'];
+        shared.result.criteria[0].evidence[0].rationale = 'The claim is asserted without support.';
+        shared.result.criteria[1].evidence[0].sflFindingIds = ['F4'];
+        shared.result.criteria[1].evidence[0].rationale = 'A reader is directed to agree rather than shown evidence.';
+
+        const seeds = seedCommentsFromRun(shared, verifiedText);
+
+        expect(seeds).toHaveLength(1);
+        expect(seeds[0].criterion).toBe('interpersonal_positioning');
+        expect(seeds[0].functionTag).toBe('interpersonal');
+    });
+
+    it('keeps annotations that cite different findings on one passage', () => {
+        const distinct = twoCriterionRun('Second sample sentence.');
+        distinct.sflAnalysis = {
+            findings: [
+                {
+                    id: 'F4',
+                    primaryFunction: 'interpersonal',
+                    languageLevel: 'clause_word',
+                    evidence: [{ quote: 'Second sample sentence.' }],
+                    observation: 'Unqualified evaluation.',
+                    functionalInterpretation: 'Presents a contested claim as settled.'
+                },
+                {
+                    id: 'F5',
+                    primaryFunction: 'content',
+                    languageLevel: 'section',
+                    evidence: [{ quote: 'Second sample sentence.' }],
+                    observation: 'Claim carries no source.',
+                    functionalInterpretation: 'Leaves the reader unable to trace the claim.'
+                }
+            ]
+        } as WritingFeedbackRun['sflAnalysis'];
+        distinct.result.criteria[0].evidence[0].sflFindingIds = ['F5'];
+        distinct.result.criteria[1].evidence[0].sflFindingIds = ['F4'];
+
+        const seeds = seedCommentsFromRun(distinct, verifiedText);
+
+        expect(seeds).toHaveLength(2);
+    });
+
+    it('keeps two distinct annotations on one passage', () => {
+        // De-duplication reads the comment text only. Anchoring one passage once per
+        // criterion is deliberate, so two genuinely different points must both survive.
+        const seeds = seedCommentsFromRun(twoCriterionRun('Second sample sentence.'), verifiedText);
+
+        expect(seeds).toHaveLength(2);
+        expect(seeds.map((seed) => seed.comment)).toEqual([
+            'Signals the text structure.',
+            'Also develops the subject matter.'
+        ]);
+    });
+
     it('maps a legacy assignment-authored criterion to its function tag; never seeds level or priority', () => {
         const assignment = buildDefaultWritingAssignment(
             'course-1',
@@ -199,6 +350,109 @@ describe('seedCommentsFromRun', () => {
 
         const seeds = seedCommentsFromRun(traced, verifiedText);
         expect(seeds[0]).toMatchObject({ functionTag: 'organizational', levelTag: 'section' });
+    });
+
+    it('prefers a linked finding whose function agrees with the criterion', () => {
+        // Evidence may link up to six findings. Taking whichever id came first made the
+        // annotation's label depend on writer ordering rather than on the passage.
+        const traced = run(['Second sample sentence.']);
+        traced.result.criteria[0].evidence[0].sflFindingIds = ['finding-organizational', 'finding-content'];
+        traced.sflAnalysis = {
+            schemaVersion: 'writing-feedback-sfl-analysis-v1',
+            foundationVersion: 'test-foundation',
+            profileGenreState: 'staff_confirmed',
+            findings: [
+                {
+                    id: 'finding-organizational',
+                    evidence: [{ quote: 'Second sample sentence.' }],
+                    observation: 'The sentence sits at a section boundary.',
+                    functionalInterpretation: 'It marks a shift between stages.',
+                    primaryFunction: 'organizational',
+                    crossFunctions: [],
+                    languageLevel: 'section',
+                    ruleIds: [],
+                    sourceIds: [],
+                    confidence: 0.8,
+                    alternatives: []
+                },
+                {
+                    id: 'finding-content',
+                    evidence: [{ quote: 'Second sample sentence.' }],
+                    observation: 'The sentence introduces a new participant.',
+                    functionalInterpretation: 'It develops the subject matter.',
+                    primaryFunction: 'content',
+                    crossFunctions: [],
+                    languageLevel: 'clause_word',
+                    ruleIds: [],
+                    sourceIds: [],
+                    confidence: 0.9,
+                    alternatives: []
+                }
+            ],
+            abstentions: [],
+            internalFlags: []
+        };
+
+        // The criterion is 'content', which agrees with finding-content — listed second.
+        // Taking the first linked id would label this passage 'organizational' instead.
+        traced.result.criteria[0].criterion = 'content';
+
+        const seeds = seedCommentsFromRun(traced, verifiedText);
+        expect(seeds[0]).toMatchObject({ functionTag: 'content', levelTag: 'clause_word' });
+    });
+
+    it('leaves an annotation untagged when no linked finding agrees with its criterion', () => {
+        // A live run labelled both Content annotations "Interpersonal" because their linked
+        // findings were interpersonal. A chip that contradicts the criterion it sits under
+        // reads as a bug to staff; the language level is still the finding's own.
+        const traced = run(['Second sample sentence.']);
+        traced.result.criteria[0].criterion = 'content';
+        traced.result.criteria[0].evidence[0].sflFindingIds = ['finding-interpersonal'];
+        traced.sflAnalysis = {
+            schemaVersion: 'writing-feedback-sfl-analysis-v1',
+            foundationVersion: 'test-foundation',
+            profileGenreState: 'staff_confirmed',
+            findings: [{
+                id: 'finding-interpersonal',
+                evidence: [{ quote: 'Second sample sentence.' }],
+                observation: 'The claim is asserted as self-evident.',
+                functionalInterpretation: 'It directs the reader to agree.',
+                primaryFunction: 'interpersonal',
+                crossFunctions: [],
+                languageLevel: 'clause_word',
+                ruleIds: [],
+                sourceIds: [],
+                confidence: 0.9,
+                alternatives: []
+            }],
+            abstentions: [],
+            internalFlags: []
+        };
+
+        const seeds = seedCommentsFromRun(traced, verifiedText);
+
+        expect(seeds).toHaveLength(1);
+        expect(seeds[0].functionTag).toBeUndefined();
+        expect(seeds[0].levelTag).toBe('clause_word');
+    });
+
+    it('leaves a traced run untagged when its evidence resolves to no finding', () => {
+        // The analyzer ran and this passage still traced to nothing, so the criterion's
+        // metafunction would be a guess presented to staff as fact.
+        const traced = run(['Second sample sentence.']);
+        traced.result.criteria[0].evidence[0].sflFindingIds = [];
+        traced.sflAnalysis = {
+            schemaVersion: 'writing-feedback-sfl-analysis-v1',
+            foundationVersion: 'test-foundation',
+            profileGenreState: 'staff_confirmed',
+            findings: [],
+            abstentions: [],
+            internalFlags: []
+        };
+
+        const seeds = seedCommentsFromRun(traced, verifiedText);
+        expect(seeds[0].functionTag).toBeUndefined();
+        expect(seeds[0].levelTag).toBeUndefined();
     });
 
     it('skips quotes that are not present in the verified text', () => {

@@ -34,7 +34,7 @@ import type {
 import { RELEASE_LOCK_TTL_MS } from './contracts';
 import { computeReleaseFingerprint } from './canvas-release-service';
 import { seedCommentsFromRun, stampCommentAuthors, validateAnchoredComments, withStaleFlags, type AnchoredCommentWithState } from './anchored-comments';
-import { RubricWritingFeedbackEngine } from './feedback-engine';
+import { NO_REVISION_GOALS_MESSAGE, RubricWritingFeedbackEngine } from './feedback-engine';
 import { TECHNICAL_PROMPT_VERSION, TechnicalWritingFeedbackEngine } from './technical-feedback-engine';
 import { lensesForAssignment, selectRubric } from './rubric-lens';
 import { ModelSelectionService } from '../dashboard-setting/model-selection-service';
@@ -83,7 +83,8 @@ const SAFE_TO_LOG_MESSAGES = new Set([
     'SFL analysis referenced an unknown rule id',
     'SFL analysis referenced an unknown source id',
     'SFL analysis duplicated a genre-staging finding',
-    'SFL analysis returned too many findings'
+    'SFL analysis returned too many findings',
+    NO_REVISION_GOALS_MESSAGE
 ]);
 
 /**

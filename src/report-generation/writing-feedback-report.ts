@@ -130,7 +130,8 @@ export class StudentWritingFeedbackPdfService implements WritingFeedbackPdfServi
                             input.feedback,
                             input.staffFeedback,
                             input.finalAssessment,
-                            input.technicalRubric
+                            input.technicalRubric,
+                            input.comments ?? []
                         );
                     }
                     if (include === 'annotated' || include === 'both') {
@@ -186,19 +187,20 @@ function bullet(doc: PDFKit.PDFDocument, text: string): void {
     body(doc).text(`•  ${text}`, { indent: 6, lineGap: 3, paragraphGap: 4 });
 }
 
-/** Summary sections: strengths, per-criterion evidence, revision goals, staff feedback. */
+/** Summary sections: strengths, per-criterion evidence, staff feedback, and fallback goals. */
 function renderGeneralSections(
     doc: PDFKit.PDFDocument,
     assignment: WritingAssignment,
     feedback: WritingFeedbackResult,
     staffFeedback?: string,
     finalAssessment?: StaffFinalAssessment,
-    technicalRubric?: WritingRubricDefinition
+    technicalRubric?: WritingRubricDefinition,
+    comments: AnchoredComment[] = []
 ): void {
     sectionHeading(doc, 'What you did well');
     feedback.strengths.forEach((strength) => bullet(doc, strength));
 
-    renderCriteriaAndGoals(doc, assignment.rubric, feedback);
+    renderCriteriaEvidence(doc, assignment.rubric, feedback);
 
     // The grade belongs to whichever rubric it was awarded against — the technical one for a
     // lab report — so the grid a student reads is the grid they were marked on.
@@ -209,29 +211,47 @@ function renderGeneralSections(
         if (gradedRubric) renderFinalAssessment(doc, gradedRubric, finalAssessment);
     }
 
+    // One "Priority revision goals" section either way: the staff summary is the writing
+    // lens's goals in wording a human approved, so a separate model-goals section would
+    // repeat it. approve() does not require a saved review, so when that text is absent
+    // the model goals fill the same section rather than leaving the student with no next steps.
     if (staffFeedback?.trim()) {
-        sectionHeading(doc, 'Feedback from your teaching team');
+        sectionHeading(doc, 'Priority revision goals');
         body(doc).text(staffFeedback.trim(), { lineGap: 3 });
+    } else {
+        renderRevisionGoals(doc, feedback);
     }
 
-    renderCourseMaterialSources(doc, feedback);
+    renderCourseMaterialSources(doc, feedback, comments);
 
-    sectionHeading(doc, 'Carry forward');
-    body(doc).text('Use these goals when you plan and revise your next writing assignment.', { lineGap: 3 });
 }
 
 /**
- * Course materials the feedback drew on, by label.
+ * The course materials this feedback points back to, by title.
  *
- * Labels only: no excerpt text, no retrieval score, no material identifier. The list a
- * student reads is the published subset the writer was allowed to cite, which is what
- * `result.courseMaterialMentions` holds.
+ * Titles only: no excerpt text, no retrieval score, no material identifier, and never a
+ * URL — the student may be reading this on paper. The run's own list is the published
+ * subset the writer was allowed to cite (`result.courseMaterialMentions`); titles named on
+ * individual annotations join it, because a reading worth sending a student back to should
+ * not be visible only to whoever hovers that one highlight.
  */
-function renderCourseMaterialSources(doc: PDFKit.PDFDocument, feedback: WritingFeedbackResult): void {
-    const mentions = feedback.courseMaterialMentions ?? [];
-    if (!mentions.length) return;
-    sectionHeading(doc, 'Course materials this feedback draws on');
-    mentions.forEach((mention) => bullet(doc, mention.label));
+function renderCourseMaterialSources(
+    doc: PDFKit.PDFDocument,
+    feedback: WritingFeedbackResult,
+    comments: AnchoredComment[]
+): void {
+    const titles: string[] = [];
+    const add = (title?: string): void => {
+        const clean = title?.trim();
+        if (clean && !titles.includes(clean)) titles.push(clean);
+    };
+    (feedback.courseMaterialMentions ?? []).forEach((mention) => add(mention.label));
+    comments.forEach((comment) => add(comment.courseMaterialMention?.label ?? comment.courseMaterialTitle));
+    if (!titles.length) return;
+    sectionHeading(doc, 'Useful readings');
+    body(doc).text('Go back to these before your next draft.', { lineGap: 3 });
+    doc.moveDown(0.3);
+    titles.forEach((title) => bullet(doc, title));
 }
 
 /** Staff-final rubric scores. Model suggestions are deliberately absent. */
@@ -247,18 +267,23 @@ function renderFinalAssessment(
 }
 
 /**
- * Rubric-labeled criteria evidence and prioritized revision goals for one feedback lens.
+ * Rubric-labeled criteria evidence for one feedback lens.
  *
  * Shared by the general (linguistic) and technical sections so a lens's evidence
  * always resolves its criterion/level labels from that lens's own rubric rather
  * than one hard-coded to the assignment's linguistic rubric.
  */
-function renderCriteriaAndGoals(
+function renderCriteriaEvidence(
     doc: PDFKit.PDFDocument,
     rubric: WritingRubricDefinition,
     feedback: WritingFeedbackResult
 ): void {
     sectionHeading(doc, 'Evidence from your writing');
+    // One passage may legitimately be evidence for two criteria, but printing the same
+    // sentence under two headings reads to a student as being told off twice for it. The
+    // first criterion to cite a passage keeps it; a later one drops it unless that
+    // quotation is all it has, since a criterion with no evidence at all is worse.
+    const printedQuotes = new Set<string>();
     feedback.criteria.forEach((criterion, index) => {
         const label = rubric.criteria.find((item) => item.id === criterion.criterion)?.label
             ?? criterion.criterion;
@@ -270,19 +295,32 @@ function renderCriteriaAndGoals(
             doc.moveDown(0.15);
             body(doc).text(criterion.explanation.trim(), { lineGap: 2 });
         }
-        criterion.evidence.forEach((item) => {
+        const fresh = criterion.evidence.filter((item) => !printedQuotes.has(item.quote));
+        const shown = fresh.length ? fresh : criterion.evidence;
+        shown.forEach((item) => {
+            printedQuotes.add(item.quote);
             doc.moveDown(0.2).font(ITALIC_FONT).fontSize(BODY_SIZE).fillColor(MUTED_COLOR)
                 .text(`“${item.quote}”`, { indent: 14, lineGap: 2 });
         });
         doc.fillColor(TEXT_COLOR);
     });
+}
 
+/**
+ * Prioritized revision goals for one lens.
+ *
+ * The writing lens renders these only when no staff summary was saved: that summary is
+ * seeded from these same goals, so printing both repeats the content to the student. The
+ * technical lens has no staff-editable summary and always renders them.
+ *
+ * The goal only: its guided question stays on the run for staff, because a student reading
+ * an approved next step does not also need it re-posed as a question.
+ */
+function renderRevisionGoals(doc: PDFKit.PDFDocument, feedback: WritingFeedbackResult): void {
     sectionHeading(doc, 'Priority revision goals');
     feedback.revisionGoals.slice(0, 3).forEach((goal, index) => {
         doc.font(BOLD_FONT).fontSize(BODY_SIZE).fillColor(TEXT_COLOR)
-            .text(`${index + 1}.  ${goal.goal}`, { lineGap: 2 });
-        doc.font(ITALIC_FONT).fontSize(BODY_SIZE).fillColor(MUTED_COLOR)
-            .text(`Ask yourself: ${goal.guidedQuestion}`, { indent: 14, lineGap: 2, paragraphGap: 6 });
+            .text(`${index + 1}.  ${goal.goal}`, { lineGap: 2, paragraphGap: 6 });
         doc.fillColor(TEXT_COLOR);
     });
 }
@@ -296,7 +334,8 @@ function renderTechnicalSections(
     sectionHeading(doc, 'Technical feedback');
     feedback.strengths.forEach((strength) => bullet(doc, strength));
     // Confidence and internal flags are staff-only and never reach a student document.
-    renderCriteriaAndGoals(doc, rubric, feedback);
+    renderCriteriaEvidence(doc, rubric, feedback);
+    renderRevisionGoals(doc, feedback);
 }
 
 /**
@@ -452,11 +491,10 @@ function renderAnnotatedText(
 function popupText(comment: AnchoredComment): string {
     const parts = [comment.comment.trim()];
     if (comment.howToImprove?.trim()) parts.push(`How to improve: ${comment.howToImprove.trim()}`);
-    if (comment.courseMaterialMention) {
-        parts.push(`Review: ${comment.courseMaterialMention.label}`);
-    } else if (comment.courseMaterialLink) {
-        parts.push(`See: ${comment.courseMaterialLink}`);
-    }
+    // A title, never a URL: a printed PDF cannot be clicked, and a raw link in a popup
+    // tells a student less than the name of the lecture it points at.
+    const material = comment.courseMaterialMention?.label ?? comment.courseMaterialTitle;
+    if (material) parts.push(`Read again: ${material}`);
     if (comment.glossarySnapshot) {
         parts.push(`Glossary — ${comment.glossarySnapshot.term}: ${comment.glossarySnapshot.definition}`);
     } else if (comment.glossaryDefinition) {

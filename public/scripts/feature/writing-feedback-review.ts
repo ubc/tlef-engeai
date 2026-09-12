@@ -5,8 +5,8 @@
  * Left: the submission as a single readable annotated document (verification
  * textarea only while staff confirmation is pending). Right: a sticky Feedback
  * panel with Annotations (text-anchored, editable comments with function/level
- * filters) and Summary (SFL sections, strengths, revision goals with Socratic
- * guiding questions, staff editors, history, release) tabs. Approval
+ * filters) and Summary (SFL sections, strengths, staff-editable student feedback,
+ * history, release) tabs. Approval
  * and release stay separate actions; nothing reaches a student without
  * explicit staff approval.
  *
@@ -1037,14 +1037,19 @@ function renderTechnicalTab(run: FeedbackRun, assignment: Assignment | null): HT
     });
     children.push(goalsSection);
 
-    // Internal flags stay in the staff workspace only, matching the Summary tab.
+    // Internal flags stay in the staff workspace only, matching the Summary tab, and are
+    // listed one per line for the same reason.
     if (run.result.internalFlags.length) {
         const flags = document.createElement('section');
         flags.className = 'wf-feedback-section wf-internal-note';
         flags.append(
             createText('h3', 'Internal review flags'),
-            createText('p', run.result.internalFlags.join(', '))
+            createText('p', 'What the model could not judge from the verified text. Staff-only; never in the student PDF.', 'wf-muted-note')
         );
+        const flagList = document.createElement('ul');
+        flagList.className = 'wf-strength-list';
+        run.result.internalFlags.forEach((flag) => flagList.append(createText('li', flag)));
+        flags.append(flagList);
         children.push(flags);
     }
 
@@ -1056,6 +1061,24 @@ interface SummaryContent {
     studentFeedback: HTMLTextAreaElement;
     internalNote: HTMLTextAreaElement;
     readFinalAssessment: () => StaffAssessmentDraft | undefined;
+}
+
+/**
+ * Seeds the editable student summary from the run's revision goals.
+ *
+ * Mirrors the numbering the student PDF uses (`renderRevisionGoals` in
+ * `src/report-generation/writing-feedback-report.ts`) so staff edit the goals in the
+ * shape the student receives them. The guided question stays on the run for staff and
+ * does not seed the summary: a student reads the approved goal, not a question about it.
+ *
+ * @param goals - Model revision goals from the immutable run
+ * @returns Numbered plain text, at most three goals, ready for the textarea
+ */
+function seedStudentFeedback(goals: Array<{ goal: string; guidedQuestion: string }>): string {
+    return goals
+        .slice(0, 3)
+        .map((goal, index) => `${index + 1}. ${goal.goal}`)
+        .join('\n\n');
 }
 
 function renderSummaryTab(
@@ -1123,24 +1146,6 @@ function renderSummaryTab(
     rubricSection.append(criterionList);
     children.push(rubricSection);
 
-    const goalsSection = document.createElement('section');
-    goalsSection.className = 'wf-feedback-section';
-    goalsSection.append(
-        createText('h3', 'Priority revision goals'),
-        createText('p', 'At most three high-impact goals. Each guiding question invites the student to think through the change instead of receiving the answer.', 'wf-muted-note')
-    );
-    feedbackRun.result.revisionGoals.slice(0, 3).forEach((goal) => {
-        const goalCard = document.createElement('article');
-        goalCard.className = 'wf-goal-card';
-        goalCard.append(
-            createText('strong', goal.goal),
-            createText('p', `Guiding question: ${goal.guidedQuestion}`, 'wf-guided-question'),
-            chip(goal.skillTag, 'neutral')
-        );
-        goalsSection.append(goalCard);
-    });
-    children.push(goalsSection);
-
     // Staff see everything retrieval read, marked where a document is not published: an
     // unpublished document can ground the writing without being nameable to the student, and
     // a reviewer needs to know which is which. Students see the published list only.
@@ -1159,7 +1164,7 @@ function renderSummaryTab(
     if (mentions.length) {
         const materialsSection = document.createElement('section');
         materialsSection.className = 'wf-feedback-section';
-        materialsSection.append(createText('h3', 'Course materials this feedback draws on'));
+        materialsSection.append(createText('h3', 'Useful readings'));
         const materialList = document.createElement('ul');
         materialList.className = 'wf-strength-list';
         mentions.forEach((mention) => {
@@ -1173,14 +1178,32 @@ function renderSummaryTab(
         children.push(materialsSection);
     }
 
+    // Internal flags stay in the staff workspace only; the PDF service and release payload
+    // exclude them. They sit directly under the criterion levels because that is what they
+    // qualify — a model that could not check source completeness has told the marker
+    // something about the level they are approving. One per line: joined into a sentence
+    // at the foot of the tab, a marker scrolled past them.
+    if (feedbackRun.result.internalFlags.length) {
+        const flags = document.createElement('section');
+        flags.className = 'wf-feedback-section wf-internal-note';
+        flags.append(
+            createText('h3', 'Internal review flags'),
+            createText('p', 'What the model could not judge from the verified text. Staff-only; never in the student PDF.', 'wf-muted-note')
+        );
+        const flagList = document.createElement('ul');
+        flagList.className = 'wf-strength-list';
+        feedbackRun.result.internalFlags.forEach((flag) => flagList.append(createText('li', flag)));
+        flags.append(flagList);
+        children.push(flags);
+    }
+
     const reviewSection = document.createElement('section');
     reviewSection.className = 'wf-feedback-section';
-    reviewSection.append(createText('h3', 'Student-facing feedback'));
+    reviewSection.append(createText('h3', 'Priority revision goals'));
     // Start from the newest staff revision when present; otherwise derive an
     // editable draft from model goals without treating that draft as approved.
     const studentFeedback = textAreaControl(
-        revision?.studentFeedback
-            ?? feedbackRun.result.revisionGoals.map((goal) => `${goal.goal}\n${goal.guidedQuestion}`).join('\n\n'),
+        revision?.studentFeedback ?? seedStudentFeedback(feedbackRun.result.revisionGoals),
         8
     );
     studentFeedback.id = 'wf-student-feedback';
@@ -1188,7 +1211,7 @@ function renderSummaryTab(
     internalNote.id = 'wf-internal-note';
     reviewSection.append(
         field(
-            'Feedback the student will receive',
+            'Goals the student will receive',
             studentFeedback,
             'Guide revision without supplying rewritten sentences or a model answer.'
         ),
@@ -1227,7 +1250,7 @@ function renderSummaryTab(
             const body = document.createElement('div');
             body.className = 'wf-history-item-body';
             body.append(
-                createText('h4', 'Student-facing feedback'),
+                createText('h4', 'Priority revision goals'),
                 createText('pre', item.studentFeedback, 'wf-history-text')
             );
             if (item.internalNote) {
@@ -1266,18 +1289,6 @@ function renderSummaryTab(
         });
         historySection.append(history);
         children.push(historySection);
-    }
-
-    // Internal flags stay in the staff workspace only. The PDF service and
-    // release payload intentionally exclude this section.
-    if (feedbackRun.result.internalFlags.length) {
-        const flags = document.createElement('section');
-        flags.className = 'wf-feedback-section wf-internal-note';
-        flags.append(
-            createText('h3', 'Internal review flags'),
-            createText('p', feedbackRun.result.internalFlags.join(', '))
-        );
-        children.push(flags);
     }
 
     const releaseSection = document.createElement('section');

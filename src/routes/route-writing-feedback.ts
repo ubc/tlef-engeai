@@ -17,6 +17,7 @@ import { asyncHandler, asyncHandlerWithAuth } from '../middleware/async-handler'
 import { requireCourseFeatureAPI, requireInstructorForCourseAPI } from '../middleware/require-course-role';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { LocalDocumentExtractionService } from '../writing-feedback/document-extraction-service';
+import { listPublishedCourseMaterialTitles } from '../writing-feedback/course-material-catalog';
 import { WritingFeedbackService } from '../writing-feedback/writing-feedback-service';
 import { MockCanvasGateway, SafeCanvasReleaseService } from '../writing-feedback/canvas-release-service';
 import type { CanvasRubricRow, WritingSourceType } from '../writing-feedback/contracts';
@@ -228,6 +229,19 @@ router.get('/:courseId/writing-feedback/workspace-context', asyncHandlerWithAuth
             canvas
         }
     });
+}));
+
+/**
+ * Published course materials staff may name on an annotation.
+ *
+ * @route GET /api/courses/:courseId/writing-feedback/course-materials
+ * @returns {CourseMaterialTitle[]} Titles in course order; no excerpt text, no file names
+ * @response 200 - Pickable titles, empty when the course has published none
+ */
+router.get('/:courseId/writing-feedback/course-materials', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    const mongo = await EngEAI_MongoDB.getInstance();
+    const course = await mongo.getActiveCourse(courseId(req));
+    res.json({ success: true, data: listPublishedCourseMaterialTitles(course) });
 }));
 
 router.get('/:courseId/writing-feedback/glossary', asyncHandlerWithAuth(async (req: Request, res: Response) => {

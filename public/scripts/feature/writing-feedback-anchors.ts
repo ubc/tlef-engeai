@@ -18,6 +18,7 @@
 import { showConfirmModal } from '../ui/modal-overlay.js';
 import {
     AnchoredComment,
+    CourseMaterialTitle,
     FUNCTION_TAG_LABELS,
     FUNCTION_TAG_TONES,
     LEVEL_TAG_LABELS,
@@ -70,10 +71,29 @@ let activeCommentId: string | null = null;
 let editingCommentId: string | null = null;
 let filters: { fn: 'all' | WfFunctionTag; level: 'all' | WfLevelTag } = { fn: 'all', level: 'all' };
 let glossaryCache: WritingGlossaryEntry[] | null = null;
+let courseMaterialCache: CourseMaterialTitle[] | null = null;
 
 async function loadGlossaryEntries(): Promise<WritingGlossaryEntry[]> {
     if (!glossaryCache) glossaryCache = await request<WritingGlossaryEntry[]>('/glossary');
     return glossaryCache;
+}
+
+/**
+ * The course's published materials, fetched once per page.
+ *
+ * Typed titles could name a document the course never released, or spell the same material
+ * differently from the label retrieval resolves for it. A failure leaves the field usable
+ * as free text rather than blocking the annotation.
+ */
+async function loadCourseMaterialTitles(): Promise<CourseMaterialTitle[]> {
+    if (!courseMaterialCache) {
+        try {
+            courseMaterialCache = await request<CourseMaterialTitle[]>('/course-materials');
+        } catch {
+            courseMaterialCache = [];
+        }
+    }
+    return courseMaterialCache;
 }
 
 function glossarySnapshot(entry: WritingGlossaryEntry): NonNullable<AnchoredComment['glossarySnapshot']> {
@@ -484,22 +504,20 @@ function renderCardDisplay(
         guidance.append(createText('span', 'Revision guidance: ', 'wf-annotation-label'), document.createTextNode(comment.howToImprove));
         card.append(guidance);
     }
-    if (comment.courseMaterialMention || comment.courseMaterialLink) {
+    // The server-resolved label wins over a staff title, and both are names rather than
+    // links: the student reads this in the workspace and on a printed PDF, where a URL is
+    // not clickable and says less than the name of the lecture it points at. A legacy
+    // comment that carries only a link falls back to showing it as plain text.
+    const materialName = comment.courseMaterialMention?.label
+        ?? comment.courseMaterialTitle
+        ?? comment.courseMaterialLink;
+    if (materialName) {
         const box = document.createElement('div');
         box.className = 'wf-material-box';
         const title = document.createElement('span');
         title.className = 'wf-material-title';
-        title.textContent = 'SUGGESTED COURSE MATERIAL';
-        if (comment.courseMaterialMention) {
-            box.append(title, createText('span', `Review this material before revising: ${comment.courseMaterialMention.label}`));
-        } else if (comment.courseMaterialLink) {
-            const link = document.createElement('a');
-            link.href = comment.courseMaterialLink;
-            link.target = '_blank';
-            link.rel = 'noopener';
-            link.textContent = comment.courseMaterialLink;
-            box.append(title, createText('span', 'Review this material before revising: '), link);
-        }
+        title.textContent = 'READ AGAIN';
+        box.append(title, createText('span', materialName));
         card.append(box);
     }
     const glossaryValue = comment.glossarySnapshot ?? comment.glossaryDefinition;
@@ -542,10 +560,15 @@ function renderCardEditor(
     const howToImprove = document.createElement('textarea');
     howToImprove.value = comment.howToImprove ?? '';
     howToImprove.rows = 2;
-    const link = document.createElement('input');
-    link.type = 'url';
-    link.value = comment.courseMaterialLink ?? '';
-    link.placeholder = 'https://…';
+    const materialTitle = document.createElement('input');
+    materialTitle.type = 'text';
+    materialTitle.maxLength = 240;
+    materialTitle.value = comment.courseMaterialTitle ?? '';
+    materialTitle.placeholder = 'Start typing a lecture or reading title';
+    const materialListId = `wf-course-material-${comment.id}`;
+    materialTitle.setAttribute('list', materialListId);
+    const materialOptions = document.createElement('datalist');
+    materialOptions.id = materialListId;
     const glossaryTerm = document.createElement('input');
     glossaryTerm.type = 'text';
     glossaryTerm.value = comment.glossarySnapshot?.term ?? comment.glossaryDefinition?.term ?? '';
@@ -596,7 +619,28 @@ function renderCardEditor(
     };
     commentText.addEventListener('input', () => { comment.comment = commentText.value; context.markDirty(); });
     howToImprove.addEventListener('input', () => { comment.howToImprove = howToImprove.value.trim() || undefined; context.markDirty(); });
-    link.addEventListener('input', () => { comment.courseMaterialLink = link.value.trim() || undefined; context.markDirty(); });
+    const refreshCourseMaterialOptions = async (): Promise<void> => {
+        const materials = await loadCourseMaterialTitles();
+        materialOptions.replaceChildren();
+        materials.forEach((material) => {
+            const option = document.createElement('option');
+            option.value = material.label;
+            materialOptions.append(option);
+        });
+    };
+    // The id is carried only while the text still names a material the course holds. A
+    // title typed freehand, or edited away from the one that was picked, keeps the label and
+    // drops the id rather than pointing at a material nobody chose.
+    const syncCourseMaterial = async (): Promise<void> => {
+        const value = materialTitle.value.trim();
+        comment.courseMaterialTitle = value || undefined;
+        const matchedMaterial = value
+            ? (await loadCourseMaterialTitles()).find((material) => material.label === value)
+            : undefined;
+        comment.courseMaterialId = matchedMaterial?.id;
+    };
+    materialTitle.addEventListener('focus', () => { void refreshCourseMaterialOptions(); });
+    materialTitle.addEventListener('input', () => { void syncCourseMaterial(); context.markDirty(); });
     glossaryTerm.addEventListener('focus', () => { void refreshGlossaryOptions(); });
     glossaryTerm.addEventListener('change', () => { void applyGlossaryMatch(); });
     [glossaryTerm, glossaryDefinition].forEach((control) => control.addEventListener('input', () => { syncGlossary(); context.markDirty(); }));
@@ -610,11 +654,11 @@ function renderCardEditor(
         field('Function', functionSelect),
         field('Level', levelSelect),
         field('Priority', prioritySelect),
-        field('Course material link', link, 'Optional link to a specific lecture or resource.'),
+        field('Course material title', materialTitle, 'Pick a published course material, or type another title. It appears in the student PDF under Useful readings.'),
         field('Glossary term', glossaryTerm),
         field('Glossary definition', glossaryDefinition)
     );
-    card.append(glossaryOptions, glossaryStatus);
+    card.append(materialOptions, glossaryOptions, glossaryStatus);
 
     const actions = document.createElement('div');
     actions.className = 'wf-annotation-actions';

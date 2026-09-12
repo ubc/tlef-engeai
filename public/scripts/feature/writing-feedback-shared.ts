@@ -237,6 +237,12 @@ export type WfLevelTag = 'text' | 'section' | 'clause_word';
 export type WfPriority = 'high' | 'medium' | 'low';
 
 /** Exact verified-text annotation stored in model seeds and staff revision snapshots. */
+/** One published course material staff may name on an annotation. */
+export interface CourseMaterialTitle {
+    id: string; // stable material id from the course record
+    label: string; // "Topic · Item · Material", the same shape retrieval resolves
+}
+
 export interface AnchoredComment {
     id: string; // stable identity used to diff comments across review revisions
     /** Which rubric this comment is about. Server defaults an absent value to 'linguistic'. */
@@ -247,7 +253,9 @@ export interface AnchoredComment {
     endOffset: number; // exclusive UTF-16 offset paired with the exact quote
     comment: string; // feedback exposed to the student after approval/release
     howToImprove?: string; // optional concrete revision direction
-    courseMaterialLink?: string; // optional staff-selected learning resource
+    courseMaterialLink?: string; // legacy staff link; never rendered as a link to a student
+    courseMaterialTitle?: string; // staff-authored lecture/reading title shown to the student
+    courseMaterialId?: string; // id of the picked course material, when picked rather than typed
     courseMaterialMention?: CourseMaterialMention; // resolved course-material label preferred for V2
     glossaryDefinition?: { term: string; definition: string }; // optional disciplinary-language support
     glossaryEntryId?: string; // selected glossary entry id
@@ -311,7 +319,7 @@ export interface StaffFinalAssessment {
 }
 
 const DIFF_FIELDS: Array<keyof AnchoredComment> = [
-    'quote', 'comment', 'howToImprove', 'courseMaterialLink', 'courseMaterialMention',
+    'quote', 'comment', 'howToImprove', 'courseMaterialLink', 'courseMaterialTitle', 'courseMaterialId', 'courseMaterialMention',
     'glossaryDefinition', 'glossaryEntryId', 'glossarySnapshot', 'functionTag', 'levelTag', 'priority'
 ];
 

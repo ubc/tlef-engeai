@@ -16,6 +16,7 @@ import { LLMModule, type LLMOptions, type Message } from 'ubc-genai-toolkit-llm'
 import { isMockResponse } from '../helpers/mock-response';
 import {
     buildFeedbackSchema,
+    MAX_EVIDENCE_PER_CRITERION,
     MAX_EVIDENCE_QUOTE_LENGTH,
     reconcileExactEvidence,
     validateExactEvidence
@@ -132,7 +133,12 @@ export function buildTechnicalFeedbackSystemPrompt(assignment: WritingAssignment
         ...PROHIBITIONS.map((rule) => `- ${rule}`),
         'Every evidence.quote must be copied exactly from the verified text.',
         `Use the shortest exact clause or single sentence that supports each judgment; never quote a full paragraph or submission. Each evidence.quote must be at most ${MAX_EVIDENCE_QUOTE_LENGTH} characters.`,
-        'Return at most three revision goals, each phrased as an action or a question the student can act on.',
+        `Return at most ${MAX_EVIDENCE_PER_CRITERION} evidence items per criterion, and only passages that each earn their own annotation.`,
+        'Three is a ceiling, not a target. Every evidence item becomes one annotation the student reads, so cite one passage when one carries the point and never pad a criterion to reach the limit.',
+        'Each evidence.rationale must name the specific problem in that passage and what to change; do not restate the quote and do not repeat the criterion explanation.',
+        'Never make the same point twice. Two evidence items anywhere in the result, including under different criteria, must not carry the same advice in different words; if a point is already made, choose different text or return fewer items.',
+        'Each explanation must synthesize that criterion\'s evidence as a whole — the pattern across its passages and why it sits at that level — not repeat any single rationale.',
+        'Return one to three revision goals, each phrased as an action or a question the student can act on.',
         `<approved_technical_rubric version="${rubric.version}">${JSON.stringify({
             assignmentTitle: assignment.title,
             title: rubric.title,

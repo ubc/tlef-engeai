@@ -176,7 +176,7 @@ describe('StudentWritingFeedbackPdfService', () => {
             submission: submission(),
             feedback: feedback(),
             grade: 85,
-            staffFeedback: 'Well structured overall; see the goals below.',
+            staffFeedback: 'Well structured overall; keep refining transitions.',
             include: 'general'
         });
         const text = searchableText(pdf);
@@ -184,11 +184,133 @@ describe('StudentWritingFeedbackPdfService', () => {
         expect(text).toContain('What you did well');
         expect(text).toContain('Evidence from your writing');
         expect(text).toContain('Priority revision goals');
-        expect(text).toContain('Feedback from your teaching team');
+        expect(text).not.toContain('Feedback from your teaching team');
+        expect(text).not.toContain('Carry forward');
         expect(text).toContain('Approved grade: 85');
         expect(text).not.toContain('/Highlight');
         // The full submission body belongs to the annotated mode only.
         expect(text).not.toContain('volute casing then decelerates');
+    });
+
+    it('prints a passage once even when two criteria cite it', async () => {
+        // A live run cited one sentence under both Content and Interpersonal Positioning, so
+        // the student read the same quotation twice under two headings. The criterion that
+        // has nothing else to show still keeps it: a criterion with no quotation at all
+        // would be worse than a repeat.
+        const shared = feedback();
+        const sharedQuote = shared.criteria[0].evidence[0].quote;
+        shared.criteria[1].evidence = [
+            { quote: sharedQuote, rationale: 'Also asserts the claim without support.' },
+            { quote: 'volute casing then decelerates', rationale: 'Names the second stage.' }
+        ];
+
+        const pdf = await service.render({
+            assignment,
+            submission: submission(),
+            feedback: shared,
+            include: 'general'
+        });
+        const text = searchableText(pdf);
+        const occurrences = text.split(sharedQuote).length - 1;
+
+        // Criterion 1 prints it; criterion 2 drops it because it has other evidence;
+        // criterion 3 keeps it because it is that criterion's only quotation.
+        expect(occurrences).toBe(2);
+        expect(text).toContain('volute casing then decelerates');
+    });
+
+    it('lists the cited course materials as readings the student can go back to', async () => {
+        // The section used to be headed "Course materials this feedback draws on", which
+        // describes the model's process rather than telling a student what to do with it.
+        const grounded = feedback();
+        grounded.courseMaterialMentions = [{ id: 'm1', label: 'Week 4 · Lecture 2 · Information flow' }];
+
+        const pdf = await service.render({
+            assignment,
+            submission: submission(),
+            feedback: grounded,
+            include: 'general',
+            comments: [comment({ courseMaterialTitle: 'Week 6 · Seminar · Reporting significance' })]
+        });
+        const text = searchableText(pdf);
+
+        expect(text).toContain('Useful readings');
+        expect(text).not.toContain('Course materials this feedback draws on');
+        expect(text).toContain('Week 4 · Lecture 2 · Information flow');
+        // A title cited only on an annotation still belongs in the reading list.
+        expect(text).toContain('Week 6 · Seminar · Reporting significance');
+    });
+
+    it('names a course material in an annotation popup without printing a URL', async () => {
+        const withLink = comment({
+            courseMaterialTitle: 'Seminar on reporting significance',
+            courseMaterialLink: 'https://example.test/lecture'
+        });
+
+        const pdf = await service.render({
+            assignment,
+            submission: submission(),
+            feedback: feedback(),
+            include: 'annotated',
+            comments: [withLink]
+        });
+        const text = searchableText(pdf);
+
+        expect(text).toContain('Read again: Seminar on reporting significance');
+        expect(text).not.toContain('https://example.test/lecture');
+    });
+
+    it('renders the staff summary instead of the model goals on the writing lens', async () => {
+        // The staff textarea is seeded from these same goals, so printing both gave the
+        // student the identical content twice, once in wording nobody approved.
+        const pdf = await service.render({
+            assignment,
+            submission: submission(),
+            feedback: feedback(),
+            include: 'general',
+            staffFeedback: 'Focus your next draft on the transition between components.'
+        });
+        const text = searchableText(pdf);
+
+        expect(text).toContain('Priority revision goals');
+        expect(text).toContain('Focus your next draft on the transition between components.');
+        expect(text).not.toContain('Feedback from your teaching team');
+        expect(text).not.toContain('Signal the transition between components explicitly.');
+    });
+
+    it('falls back to the model goals when no staff summary was saved', async () => {
+        // approve() does not require a saved review, so staffFeedback can legitimately
+        // be absent. Printing nothing would leave the student with no next steps at all.
+        const pdf = await service.render({
+            assignment,
+            submission: submission(),
+            feedback: feedback(),
+            include: 'general'
+        });
+        const text = searchableText(pdf);
+
+        expect(text).toContain('Priority revision goals');
+        expect(text).toContain('Signal the transition between components explicitly.');
+        expect(text).not.toContain('Feedback from your teaching team');
+        expect(text).not.toContain('Ask yourself');
+    });
+
+    it('keeps the technical lens goals, which have no staff-editable counterpart', async () => {
+        const labAssignment: WritingAssignment = { ...assignment, isLabReport: true };
+        const pdf = await service.render({
+            assignment: labAssignment,
+            submission: submission({ assignmentId: labAssignment.id }),
+            feedback: feedback(),
+            include: 'general',
+            staffFeedback: 'Focus your next draft on the transition between components.',
+            technicalFeedback: feedback(),
+            technicalRubric: assignment.rubric
+        });
+        const text = searchableText(pdf);
+
+        expect(text).toContain('Technical feedback');
+        expect(text).toContain('Priority revision goals');
+        expect(text).not.toContain('Feedback from your teaching team');
     });
 
     it('prints the staff-final rubric assessment and never labels model suggestions as final', async () => {

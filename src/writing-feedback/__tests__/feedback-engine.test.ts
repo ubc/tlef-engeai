@@ -14,8 +14,12 @@
 import type { CourseMaterialMention, SflAnalysis, WritingAssignment, WritingRubricCriterion } from '../contracts';
 import { SFL_FOUNDATION_VERSION } from '../contracts';
 import { buildDefaultWritingAssignment } from '../default-rubric-profile';
-import { RubricWritingFeedbackEngine, buildWritingFeedbackSystemPrompt } from '../feedback-engine';
-import { buildFeedbackSchema } from '../feedback-schema';
+import {
+    NO_REVISION_GOALS_MESSAGE,
+    RubricWritingFeedbackEngine,
+    buildWritingFeedbackSystemPrompt
+} from '../feedback-engine';
+import { buildFeedbackSchema, MAX_EVIDENCE_PER_CRITERION } from '../feedback-schema';
 import { approveRubricDraft } from '../rubric-schema';
 import type { LLMModule } from 'ubc-genai-toolkit-llm';
 
@@ -131,6 +135,21 @@ describe('RubricWritingFeedbackEngine generic rubric contract', () => {
         expect(() => buildFeedbackSchema(assignment.rubric).parse(generated)).not.toThrow();
     });
 
+    it('instructs the writer to keep annotations distinct and criterion explanations synthesized', () => {
+        // Every evidence item becomes one anchored annotation on the student PDF. Without
+        // these rules the writer restated one point under several criteria, echoed the
+        // criterion explanation in each annotation, and wrote explanations that repeated a
+        // single annotation instead of summing up the passages beneath them.
+        const prompt = buildWritingFeedbackSystemPrompt(dynamicAssignment());
+
+        expect(prompt).toContain('Each evidence.rationale must name the specific problem in that passage and what to change');
+        expect(prompt).toContain('Never make the same point twice');
+        expect(prompt).toContain('Each explanation must synthesize that criterion');
+        expect(prompt).toContain(`Return at most ${MAX_EVIDENCE_PER_CRITERION} evidence items per criterion`);
+        // The cap is a ceiling, not a target: three weak annotations are worse than one good one.
+        expect(prompt).toContain('Three is a ceiling, not a target');
+    });
+
     it('uses separate analyzer and writer calls and stores V2 run trace', async () => {
         const assignment = dynamicAssignment();
         const verifiedText = 'The measured outlet temperature increased steadily. The conclusion does not explain why that increase matters.';
@@ -205,6 +224,153 @@ describe('RubricWritingFeedbackEngine generic rubric contract', () => {
             expect(generated.runTrace?.writerPromptVersion).toBe('sfl-feedback-writer-v2.1.0');
         } finally {
             process.env.MOCK_RESPONSE = 'true';
+        }
+    });
+
+    it('cites material found for any linked finding, not only the first', async () => {
+        // Evidence may link several findings. Reading only the first meant a passage whose
+        // second finding matched a lecture was released with no reading beside it.
+        const assignment = dynamicAssignment();
+        const verifiedText = 'The measured outlet temperature increased steadily.';
+        const analysis = {
+            schemaVersion: 'writing-feedback-v2',
+            foundationVersion: SFL_FOUNDATION_VERSION,
+            profileGenreState: assignment.rubric.sflContext!.genreState,
+            findings: [
+                {
+                    id: 'finding-interpersonal',
+                    evidence: [{ quote: verifiedText }],
+                    observation: 'The claim is stated without hedging.',
+                    functionalInterpretation: 'It positions the reader to accept the claim as settled.',
+                    primaryFunction: 'interpersonal',
+                    crossFunctions: [],
+                    languageLevel: 'clause_word',
+                    ruleIds: [],
+                    sourceIds: [],
+                    confidence: 0.8,
+                    alternatives: []
+                },
+                {
+                    id: 'finding-content',
+                    evidence: [{ quote: verifiedText }],
+                    observation: 'The measurement is reported without its significance.',
+                    functionalInterpretation: 'The reader is left to infer why the increase matters.',
+                    primaryFunction: 'content',
+                    crossFunctions: [],
+                    languageLevel: 'section',
+                    ruleIds: [],
+                    sourceIds: [],
+                    confidence: 0.8,
+                    alternatives: []
+                }
+            ],
+            abstentions: [],
+            internalFlags: []
+        };
+        const writerResult = {
+            schemaVersion: 'writing-feedback-v2',
+            criteria: assignment.rubric.criteria.map((criterion) => ({
+                criterion: criterion.id,
+                suggestedLevel: 'established',
+                evidence: [{
+                    quote: verifiedText,
+                    rationale: 'The passage gives exact evidence for ' + criterion.label + '.',
+                    sflFindingIds: ['finding-interpersonal', 'finding-content']
+                }],
+                explanation: 'Revise ' + criterion.label + ' against the evidence.',
+                confidence: 0.7
+            })),
+            strengths: [],
+            revisionGoals: [{
+                skillTag: 'content',
+                goal: 'Connect the reported increase to its significance.',
+                guidedQuestion: 'What does the increase show?'
+            }],
+            internalFlags: []
+        };
+        const sendStructuredConversation = jest.fn(async (_messages, _schema, options) => (
+            options.structuredOutputName === 'sfl_analysis' ? { parsed: analysis } : { parsed: writerResult }
+        ));
+        const llm = { sendStructuredConversation } as unknown as LLMModule;
+        // Only the content-side query finds a lecture; the interpersonal one finds nothing.
+        const retriever = {
+            retrieve: jest.fn(async ({ query }: { query: string }) => (
+                /significance|content/i.test(query)
+                    ? [{ content: 'x', score: 0.9, published: true, metadata: { id: 'material-9', topicOrWeekTitle: 'Week 6', itemTitle: 'Lecture 3', name: 'Reporting significance' } }]
+                    : []
+            ))
+        };
+
+        process.env.MOCK_RESPONSE = 'false';
+        try {
+            const generated = await new RubricWritingFeedbackEngine(llm, retriever)
+                .generate({ assignment, verifiedText });
+            const cited = generated.criteria[0].evidence[0].courseMaterialMention;
+            expect(cited?.label).toBe('Week 6 · Lecture 3 · Reporting significance');
+        } finally {
+            process.env.MOCK_RESPONSE = 'true';
+        }
+    });
+
+    it('fails the run when the provider returns no revision goals despite the schema', async () => {
+        // minItems in the response_format is the provider-side guard. Not every provider
+        // enforces it, and a run without next steps is not a reviewable draft.
+        const assignment = dynamicAssignment();
+        const verifiedText = 'The measured outlet temperature increased steadily.';
+        const analysis: SflAnalysis = {
+            schemaVersion: 'writing-feedback-v2',
+            foundationVersion: SFL_FOUNDATION_VERSION,
+            profileGenreState: assignment.rubric.sflContext!.genreState,
+            findings: [{
+                id: 'finding-1',
+                evidence: [{ quote: 'The measured outlet temperature increased steadily.' }],
+                observation: 'The draft reports a measured increase.',
+                functionalInterpretation: 'The report can use that observation as evidence.',
+                primaryFunction: 'content',
+                crossFunctions: [],
+                languageLevel: 'section',
+                ruleIds: [],
+                sourceIds: ['SRC-WALSH-MARR-F2F#runtime'],
+                confidence: 0.8,
+                alternatives: []
+            }],
+            abstentions: [],
+            internalFlags: []
+        };
+        const writerResult = {
+            schemaVersion: 'writing-feedback-v2',
+            criteria: assignment.rubric.criteria.map((criterion) => ({
+                criterion: criterion.id,
+                suggestedLevel: 'established',
+                evidence: [{
+                    quote: 'The measured outlet temperature increased steadily.',
+                    rationale: 'The passage gives exact evidence for the criterion.',
+                    sflFindingIds: ['finding-1']
+                }],
+                explanation: `Revise ${criterion.label} directly against the evidence and profile.`,
+                confidence: 0.7
+            })),
+            strengths: [],
+            revisionGoals: [],
+            internalFlags: []
+        };
+        const sendStructuredConversation = jest.fn(async (_messages, _schema, options) => (
+            options.structuredOutputName === 'sfl_analysis'
+                ? { parsed: analysis }
+                : { parsed: writerResult }
+        ));
+        const llm = { sendStructuredConversation } as unknown as LLMModule;
+        const retriever = { retrieve: jest.fn(async () => []) };
+        const priorMockResponse = process.env.MOCK_RESPONSE;
+
+        process.env.MOCK_RESPONSE = 'false';
+        try {
+            await expect(
+                new RubricWritingFeedbackEngine(llm, retriever).generate({ assignment, verifiedText })
+            ).rejects.toThrow(NO_REVISION_GOALS_MESSAGE);
+        } finally {
+            if (priorMockResponse === undefined) delete process.env.MOCK_RESPONSE;
+            else process.env.MOCK_RESPONSE = priorMockResponse;
         }
     });
 });

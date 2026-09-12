@@ -306,10 +306,12 @@ describe('student-facing source list', () => {
             'utf8'
         );
         const section = report.match(/function renderCourseMaterialSources[\s\S]*?\n}/)?.[0] ?? '';
-        expect(section).toContain('Course materials this feedback draws on');
+        expect(section).toContain('Useful readings');
         expect(section).toContain('mention.label');
         expect(section).not.toContain('mention.id');
         expect(section).not.toContain('score');
+        // A title, never a URL: the student may be reading the PDF on paper.
+        expect(section).not.toContain('courseMaterialLink');
     });
 });
 

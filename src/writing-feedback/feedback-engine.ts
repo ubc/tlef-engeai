@@ -16,6 +16,7 @@ import { LLMModule, type LLMOptions, type Message } from 'ubc-genai-toolkit-llm'
 import { isMockResponse } from '../helpers/mock-response';
 import {
     buildFeedbackSchema,
+    MAX_EVIDENCE_PER_CRITERION,
     MAX_EVIDENCE_QUOTE_LENGTH,
     reconcileExactEvidence,
     validateExactEvidence
@@ -50,8 +51,18 @@ import {
     type WritingFeedbackMaterialRetriever,
     WRITING_FEEDBACK_COURSE_SOURCE_VERSION
 } from './course-material-mentions';
+import { SanitizedJobError } from './job-runner';
 
 type WritingFeedbackResultWithTrace = WritingFeedbackResult & { runTrace?: WritingFeedbackRunTrace };
+
+/**
+ * Staff-facing reason a run failed for want of next steps.
+ *
+ * Written by hand and never derived from a Zod or provider error: a raw model error can
+ * echo the prompt back, and the prompt carries verified submission text.
+ */
+export const NO_REVISION_GOALS_MESSAGE =
+    'The model returned no revision goals. Regenerate, or check the rubric and genre profile.';
 
 function firstEvidence(text: string): string {
     const normalized = text.trim();
@@ -201,7 +212,12 @@ export function buildWritingFeedbackSystemPrompt(assignment: WritingAssignment):
         `Use only these performance-level ids: ${rubric.levels.map((level) => level.id).join(', ')}.`,
         'Every evidence.quote must be copied exactly from one validated SFL evidence span.',
         `Use the shortest exact clause or single sentence available; never quote a full paragraph or submission. Each evidence.quote must be at most ${MAX_EVIDENCE_QUOTE_LENGTH} characters.`,
-        'Return at most three revision goals with guided questions or actions.',
+        `Return at most ${MAX_EVIDENCE_PER_CRITERION} evidence items per criterion, and only passages that each earn their own annotation.`,
+        'Three is a ceiling, not a target. Every evidence item becomes one annotation the student reads, so cite one passage when one carries the point and never pad a criterion to reach the limit.',
+        'Each evidence.rationale must name the specific problem in that passage and what to change; do not restate the quote and do not repeat the criterion explanation.',
+        'Never make the same point twice. Two evidence items anywhere in the result, including under different criteria, must not carry the same advice in different words; if a point is already made, choose different text or return fewer items.',
+        'Each explanation must synthesize that criterion\'s evidence as a whole — the pattern across its passages and why it sits at that level — not repeat any single rationale.',
+        'Return one to three revision goals, each with a guided question or action.',
         'Return zero to two strengths only when they are specific and evidence-backed; do not add praise padding.',
         'Be candid and instructional: direct about shortcomings, respectful toward first-year students, and free of euphemisms.',
         'Do not write "you may want to consider", do not use a praise sandwich, and do not inflate levels.',
@@ -282,8 +298,12 @@ function attachPerFindingMentions(
     for (const criterion of result.criteria) {
         for (const evidence of criterion.evidence) {
             if (evidence.courseMaterialMention) continue;
-            const findingId = (evidence.sflFindingIds ?? [])[0];
-            const mention = findingId ? byFinding.get(findingId)?.[0] : undefined;
+            // Every linked finding, not only the first: a passage often carries an
+            // interpersonal observation the course never covered and a content one it did,
+            // and reading only the first left that passage with no reading beside it.
+            const mention = (evidence.sflFindingIds ?? [])
+                .map((findingId) => byFinding.get(findingId)?.[0])
+                .find((candidate) => Boolean(candidate));
             if (mention) evidence.courseMaterialMention = mention;
         }
     }
@@ -429,6 +449,10 @@ export class RubricWritingFeedbackEngine implements WritingFeedbackEngine {
         // plain absent-means-unset contract WritingFeedbackResult/CriterionFeedback use,
         // and never leaves an undefined-valued key for MongoDB to serialize back as null.
         const writerResult = stripNulls(writerResponse.parsed) as WritingFeedbackResult;
+        // The schema's minItems constrains the provider; this covers a provider that does
+        // not enforce it. A run with no next steps is not a reviewable draft, and it is
+        // what seeds the editable student summary on the review page.
+        if (!writerResult.revisionGoals?.length) throw new SanitizedJobError(NO_REVISION_GOALS_MESSAGE);
         // Repair cosmetic quote drift only when it maps back to one exact source slice.
         const result = reconcileExactEvidence(writerResult, input.verifiedText) as WritingFeedbackResultWithTrace;
         attachPerFindingMentions(result, grounding.byFinding);

@@ -567,8 +567,19 @@ export interface AnchoredComment {
     endOffset: number; // exclusive UTF-16 source boundary
     comment: string; // primary student-safe popup feedback
     howToImprove?: string; // optional formative action appended to the popup
-    courseMaterialLink?: string; // optional http(s) learning resource
-    /** Server-resolved course-material label. Preferred over arbitrary links for V2 feedback. */
+    courseMaterialLink?: string; // legacy staff link; never rendered as a link to a student
+    /**
+     * Staff-authored title of the lecture, reading, or document this passage should send
+     * the student back to. A name, not a URL: it prints in the annotation and in the
+     * student PDF's reading list, where a bare link would be unusable on paper.
+     */
+    courseMaterialTitle?: string;
+    /**
+     * Id of the course material the title was picked from, when it was picked rather than
+     * typed. The label alone cannot survive the material being renamed; the id can.
+     */
+    courseMaterialId?: string;
+    /** Server-resolved course-material label. Preferred over a staff title for V2 feedback. */
     courseMaterialMention?: CourseMaterialMention;
     glossaryDefinition?: { term: string; definition: string }; // optional term support
     glossaryEntryId?: string; // selected course glossary entry, if any
