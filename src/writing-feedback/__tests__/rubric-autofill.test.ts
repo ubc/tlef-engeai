@@ -79,8 +79,8 @@ describe('mergeAutofill', () => {
         // The proposal's own points (25) are ignored for banding; the row's locked
         // weight (15) is, matching what "Space points evenly" would compute.
         expect(merged.criteria[0].cells).toEqual({
-            weak: { min: 0, max: 7, descriptor: 'W' },
-            strong: { min: 8, max: 15, descriptor: 'S' }
+            weak: { min: 0, max: 7, label: 'Weak', descriptor: 'W' },
+            strong: { min: 8, max: 15, label: 'Strong', descriptor: 'S' }
         });
     });
 
@@ -142,8 +142,8 @@ describe('mergeAutofill', () => {
         };
         const merged = mergeAutofill(draft(existing), badProposal, autofillMergeRules('metafunctions'));
         expect(merged.criteria[0].cells).toEqual({
-            weak: { min: 0, max: 12, descriptor: 'W' },
-            strong: { min: 13, max: 25, descriptor: 'S' }
+            weak: { min: 0, max: 12, label: 'Weak', descriptor: 'W' },
+            strong: { min: 13, max: 25, label: 'Strong', descriptor: 'S' }
         });
         expect(writingRubricDraftInputSchema.safeParse(merged).success).toBe(true);
     });
@@ -161,8 +161,8 @@ describe('mergeAutofill', () => {
         };
         const merged = mergeAutofill(draft(existing), wrongScaleProposal, autofillMergeRules('metafunctions'));
         expect(merged.criteria[0].cells).toEqual({
-            weak: { min: 0, max: 15 },
-            strong: { min: 16, max: 30 }
+            weak: { min: 0, max: 15, label: 'Weak' },
+            strong: { min: 16, max: 30, label: 'Strong' }
         });
     });
 
@@ -178,9 +178,26 @@ describe('mergeAutofill', () => {
         };
         const merged = mergeAutofill(draft(existing), zeroedProposal, autofillMergeRules('metafunctions'));
         expect(merged.criteria[0].cells).toEqual({
-            weak: { min: 0, max: 15 },
-            strong: { min: 16, max: 30 }
+            weak: { min: 0, max: 15, label: 'Weak' },
+            strong: { min: 16, max: 30, label: 'Strong' }
         });
+    });
+
+    it('keeps the rating names a rubric already has instead of taking the level labels', () => {
+        // Rating names are never the model's. A Canvas-imported rubric names its ratings per
+        // row, and filling descriptors in must not strip those names back to the columns'.
+        const named = existing.map((criterion) => (criterion.id === 'organization'
+            ? {
+                ...criterion,
+                cells: {
+                    weak: { min: 0, max: 9, label: 'No Attempt', descriptor: 'W' },
+                    strong: { min: 10, max: 25, label: 'Excellent', descriptor: 'S' }
+                }
+            }
+            : criterion));
+        const merged = mergeAutofill(draft(named), proposal, autofillMergeRules('metafunctions'));
+        expect(merged.criteria[0].cells?.weak?.label).toBe('No Attempt');
+        expect(merged.criteria[0].cells?.strong?.label).toBe('Excellent');
     });
 
     it('reconciles cells on a newly added row against that row\'s own proposed weight', () => {
@@ -192,8 +209,8 @@ describe('mergeAutofill', () => {
         // derived award for 20 points across two levels is 10/20, so the model's
         // own numbers are overridden here too, exactly as for an existing row.
         expect(added?.cells).toEqual({
-            weak: { min: 0, max: 10, descriptor: 'W' },
-            strong: { min: 11, max: 20, descriptor: 'S' }
+            weak: { min: 0, max: 10, label: 'Weak', descriptor: 'W' },
+            strong: { min: 11, max: 20, label: 'Strong', descriptor: 'S' }
         });
     });
 });

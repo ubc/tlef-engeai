@@ -116,7 +116,8 @@ const LAB_REPORT_DESCRIPTORS: Record<string, Record<string, string>> = {
 };
 
 /**
- * withLabReportDescriptors - merges the seeded descriptor text into derived point bands.
+ * withLabReportDescriptors - merges the seeded rating names and descriptor text into
+ * derived point bands.
  *
  * @param criterionId - Section whose bands are being built
  * @param cells - Bands already derived by {@link spaceBandsEvenly}
@@ -124,13 +125,20 @@ const LAB_REPORT_DESCRIPTORS: Record<string, Record<string, string>> = {
  */
 function withLabReportDescriptors(
     criterionId: string,
-    cells: Record<string, { min: number; max: number; descriptor?: string }>
-): Record<string, { min: number; max: number; descriptor?: string }> {
+    cells: Record<string, { min: number; max: number; label?: string; descriptor?: string }>
+): Record<string, { min: number; max: number; label?: string; descriptor?: string }> {
     const descriptors = LAB_REPORT_DESCRIPTORS[criterionId];
-    if (!descriptors) return cells;
-    const withText: Record<string, { min: number; max: number; descriptor?: string }> = {};
+    const withText: Record<string, { min: number; max: number; label?: string; descriptor?: string }> = {};
     Object.entries(cells).forEach(([levelId, cell]) => {
-        withText[levelId] = descriptors[levelId] ? { ...cell, descriptor: descriptors[levelId] } : cell;
+        // A rating is named per cell, the way Canvas names it per row, so the built-in
+        // technical rubric names every cell with its level's label.
+        const label = LAB_REPORT_LEVELS.find((level) => level.id === levelId)?.label;
+        const descriptor = descriptors?.[levelId];
+        withText[levelId] = {
+            ...cell,
+            ...(label ? { label } : {}),
+            ...(descriptor ? { descriptor } : {})
+        };
     });
     return withText;
 }

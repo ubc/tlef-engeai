@@ -81,8 +81,22 @@ function criterionTitle(rubric: RubricDefinition | undefined, id: string): strin
     return `This criterion was removed after rubric v${rubric?.version ?? 'unknown'}. Existing feedback still uses that saved rubric version.`;
 }
 
-function levelLabel(rubric: RubricDefinition | undefined, id: string): string {
-    return rubric?.levels.find((level) => level.id === id)?.label ?? id;
+/**
+ * levelLabel - what this criterion calls the rating it earned
+ *
+ * A rating is named per criterion, the way Canvas names it per row, so the name comes
+ * from the cell. The column's own label is the fallback for a grid whose cells were
+ * never named, and the raw id the last resort for a level the rubric no longer has.
+ *
+ * @param rubric - Rubric version the feedback was generated against
+ * @param criterionId - Criterion whose cell carries the name
+ * @param id - Level earned
+ * @returns Staff-facing rating name
+ */
+function levelLabel(rubric: RubricDefinition | undefined, criterionId: string, id: string): string {
+    const criterion = rubric?.criteria.find((entry) => entry.id === criterionId);
+    const named = criterion?.cells?.[id]?.label?.trim();
+    return named || rubric?.levels.find((level) => level.id === id)?.label || id;
 }
 
 function orderedCriterionIds(rubric: RubricDefinition | undefined, feedback: CriterionFeedback[]): string[] {
@@ -130,7 +144,8 @@ function deriveSuggestedGrading(run: FeedbackRun, rubric: RubricDefinition): Sug
         criteria.push({
             criterionId: definition.id,
             label: definition.label,
-            levelLabel: level?.label ?? feedback.suggestedLevel,
+            // The cell's own rating name where it has one; resolveBand returns the cell.
+            levelLabel: band.label?.trim() || level?.label || feedback.suggestedLevel,
             min: band.min,
             max: band.max,
             reason: feedback.explanation
@@ -1003,7 +1018,7 @@ function renderTechnicalTab(run: FeedbackRun, assignment: Assignment | null): HT
         const title = criterionTitle(rubric, criterionId);
         if (title) heading.title = title;
         criterionHeader.append(heading);
-        if (criterion) criterionHeader.append(chip(levelLabel(rubric, criterion.suggestedLevel), 'neutral'));
+        if (criterion) criterionHeader.append(chip(levelLabel(rubric, criterion.criterion, criterion.suggestedLevel), 'neutral'));
         item.append(criterionHeader);
         if (!criterion) {
             item.append(createText('p', 'No stored feedback was found for this rubric criterion.', 'wf-muted-note'));
@@ -1104,7 +1119,7 @@ function renderSummaryTab(
         const title = criterionTitle(rubric, criterionId);
         if (title) heading.title = title;
         criterionHeader.append(heading);
-        if (criterion) criterionHeader.append(chip(levelLabel(rubric, criterion.suggestedLevel), 'neutral'));
+        if (criterion) criterionHeader.append(chip(levelLabel(rubric, criterion.criterion, criterion.suggestedLevel), 'neutral'));
         item.append(criterionHeader);
         const lens = definition?.sflDimension
             ?? (definition?.functionTag ? `${FUNCTION_TAG_LABELS[definition.functionTag]} function` : undefined);

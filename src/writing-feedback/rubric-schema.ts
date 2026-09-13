@@ -54,10 +54,20 @@ export const writingSflContextProfileInputSchema = z.object({
     approvedGlossaryTerms: z.array(z.string().trim().min(1).max(80)).max(30).optional()
 });
 
+/**
+ * Fewest ratings a criterion may offer. A row shorter than this cannot separate work at
+ * all, whatever the rest of the grid does.
+ */
+export const MIN_RATINGS_PER_CRITERION = 2;
+
 /** One grid cell. Ranges are inclusive and may collapse to a single value. */
 const rubricCell = z.object({
     min: z.number().finite().min(0).max(1000),
     max: z.number().finite().min(0).max(1000),
+    // Canvas names its ratings per row, so the name belongs to the cell rather than to
+    // the column. Optional: a hand-authored grid may carry none, and the level's own
+    // label stands in wherever a cell has not been named.
+    label: z.string().trim().max(60).optional(),
     descriptor: z.string().trim().max(400).optional()
 });
 
@@ -191,17 +201,23 @@ export function assertRetiredIdsNotReused(
 }
 
 /**
- * requireCompleteRubricCells - approval gate ensuring every criterion carries a
- * points range and a descriptor at every performance level.
+ * requireCompleteRubricCells - approval gate ensuring every criterion carries
+ * points and a usable run of described ratings.
  *
  * Draft saves are never blocked by this — staff may save a partially filled
  * grid at any time. Only approval, which is what lets a rubric reach the
  * feedback engine, requires the grid to be complete.
  *
- * Two things are required of every criterion, and the points come first because
- * the grid cannot be read without them: a criterion carrying no points
- * contributes nothing to the mark, so an empty points cell is either an
- * oversight or a criterion that should have been deleted.
+ * Completeness is no longer "every cell filled". A Canvas rubric rates each row
+ * independently, and a criterion that offers four ratings where the widest row
+ * offers six is a rubric as its author wrote it, not an unfinished one. What is
+ * required is that a row's ratings run from the weakest upwards with no gap in
+ * the middle, so every score from zero to the criterion's points still lands on
+ * a named rating, and that each rating given points is also described.
+ *
+ * The points come first because the grid cannot be read without them: a criterion
+ * carrying no points contributes nothing to the mark, so an empty points cell is
+ * either an oversight or a criterion that should have been deleted.
  *
  * Both checks once had holes. The cell check skipped any criterion whose points
  * were undefined or zero, which made leaving the points blank a silent way to
@@ -214,8 +230,9 @@ export function assertRetiredIdsNotReused(
  * criterion, and there is nothing for the engine to award without them.
  *
  * @param draft - Candidate rubric draft about to be approved
- * @throws Error naming the criteria with no points, or how many cells are
- *         missing a range or a description
+ * @throws Error naming the criteria with no points, the criteria whose ratings
+ *         leave a gap, the criteria offering too few ratings, and the criteria
+ *         carrying a rating with no description
  */
 export function requireCompleteRubricCells(draft: WritingRubricDefinition): void {
     const unweighted = draft.criteria.filter(
@@ -228,16 +245,40 @@ export function requireCompleteRubricCells(draft: WritingRubricDefinition): void
         );
     }
 
-    let missing = 0;
+    // Canvas rates each row independently, so a criterion may offer fewer ratings than
+    // the widest one and the grid carries that shape rather than flattening it. What a
+    // row may not do is leave a hole: the ratings it offers run from the weakest upwards,
+    // so every score from zero to the criterion's points still lands on a named rating.
+    const ordered = [...draft.levels].sort((left, right) => left.rank - right.rank);
+    const ragged: string[] = [];
+    const undescribed: string[] = [];
+    const tooFew: string[] = [];
+
     draft.criteria.forEach((criterion) => {
-        draft.levels.forEach((level) => {
-            const band = resolveBand(criterion, level.id, draft.levels);
-            if (!band || !band.descriptor?.trim()) missing += 1;
-        });
+        const bands = ordered.map((level) => resolveBand(criterion, level.id, draft.levels));
+        const offered = bands.filter((band) => band !== undefined).length;
+        const contiguous = bands.every((band, index) => (band === undefined) === (index >= offered));
+
+        if (!contiguous) ragged.push(`"${criterion.label}"`);
+        else if (offered < MIN_RATINGS_PER_CRITERION) tooFew.push(`"${criterion.label}"`);
+        if (bands.some((band) => band !== undefined && !band.descriptor?.trim())) {
+            undescribed.push(`"${criterion.label}"`);
+        }
     });
-    if (missing > 0) {
+
+    if (ragged.length > 0) {
         throw new Error(
-            `Complete the rubric grid before approving: ${missing} cell${missing === 1 ? '' : 's'} still need${missing === 1 ? 's' : ''} a points range or a description.`
+            `Fill each criterion's ratings from the weakest upwards before approving: ${ragged.join(', ')} ${ragged.length === 1 ? 'leaves a gap' : 'leave gaps'} in the middle.`
+        );
+    }
+    if (tooFew.length > 0) {
+        throw new Error(
+            `Give every criterion at least ${MIN_RATINGS_PER_CRITERION} ratings before approving: ${tooFew.join(', ')} ${tooFew.length === 1 ? 'has' : 'have'} fewer.`
+        );
+    }
+    if (undescribed.length > 0) {
+        throw new Error(
+            `Describe every rating you have given points to before approving: ${undescribed.join(', ')} ${undescribed.length === 1 ? 'has' : 'have'} a rating with no description.`
         );
     }
 }

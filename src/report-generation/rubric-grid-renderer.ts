@@ -76,6 +76,25 @@ function descriptorFor(criterion: WritingRubricCriterion, level: WritingRubricLe
 }
 
 /**
+ * ratingNameFor - what this criterion calls the rating in this column.
+ *
+ * Named per criterion, the way Canvas names a rating per row, so the name is drawn in the
+ * cell rather than once in a column heading. A cell the criterion does not offer has no
+ * name at all: the column is blank for that row, which is how a criterion rated more
+ * coarsely than its neighbours prints.
+ *
+ * @param criterion - Row being drawn
+ * @param level - Column being drawn
+ * @returns The cell's rating name, the column's own label as fallback, or '' for a cell
+ *          this criterion does not offer
+ */
+function ratingNameFor(criterion: WritingRubricCriterion, level: WritingRubricLevel): string {
+    const cell = criterion.cells?.[level.id];
+    if (!cell) return '';
+    return cell.label?.trim() || level.label;
+}
+
+/**
  * Rough height of wrapped text at a known width.
  *
  * Deliberately arithmetic rather than a PDFKit measurement: geometry is decided before any
@@ -113,7 +132,10 @@ export function measureRubricGrid(rubric: WritingRubricDefinition, page: GridPag
     const rowHeights = rubric.criteria.map((criterion) => {
         const tallestCell = levels.reduce((tallest, level) => Math.max(
             tallest,
-            wrappedHeight(descriptorFor(criterion, level), columnWidth - CELL_PADDING * 2, DESCRIPTOR_SIZE)
+            // The rating's name now sits above its descriptor inside the cell, so it is
+            // part of what the row has to be tall enough for.
+            wrappedHeight(ratingNameFor(criterion, level), columnWidth - CELL_PADDING * 2, LABEL_SIZE)
+                + wrappedHeight(descriptorFor(criterion, level), columnWidth - CELL_PADDING * 2, DESCRIPTOR_SIZE)
         ), 0);
         const labelHeight = wrappedHeight(criterion.label, CRITERION_COLUMN_WIDTH - CELL_PADDING * 2, LABEL_SIZE)
             + LABEL_SIZE + LINE_GAP; // the awarded-points line below the name
@@ -135,7 +157,11 @@ export function measureRubricGrid(rubric: WritingRubricDefinition, page: GridPag
     return { landscape, columnWidth, criterionColumnWidth: CRITERION_COLUMN_WIDTH, rowHeights, pageBreakAfter };
 }
 
-/** Draws one header row of level names. */
+/**
+ * Draws the header: Criterion, one Ratings heading spanning the rating columns, as a
+ * Canvas rubric prints. The columns are not named here because a rating is named per
+ * criterion; each cell carries its own name.
+ */
 function drawHeader(
     doc: PDFKit.PDFDocument,
     levels: WritingRubricLevel[],
@@ -148,11 +174,9 @@ function drawHeader(
     doc.text('Criterion', left + CELL_PADDING, top + CELL_PADDING, {
         width: geometry.criterionColumnWidth - CELL_PADDING * 2
     });
-    levels.forEach((level, index) => {
-        const x = left + geometry.criterionColumnWidth + geometry.columnWidth * index;
-        doc.text(level.label, x + CELL_PADDING, top + CELL_PADDING, {
-            width: geometry.columnWidth - CELL_PADDING * 2
-        });
+    doc.text('Ratings', left + geometry.criterionColumnWidth + CELL_PADDING, top + CELL_PADDING, {
+        width: geometry.columnWidth * levels.length - CELL_PADDING * 2,
+        align: 'center'
     });
     return height;
 }
@@ -204,10 +228,20 @@ export function renderRubricGrid(
                 .lineWidth(earned && level.id === earned.id ? 1.6 : 0.5)
                 .strokeColor(earned && level.id === earned.id ? TEXT_COLOR : RULE_COLOR)
                 .stroke();
+            const ratingName = ratingNameFor(criterion, level);
+            const nameHeight = ratingName
+                ? wrappedHeight(ratingName, geometry.columnWidth - CELL_PADDING * 2, LABEL_SIZE)
+                : 0;
+            if (ratingName) {
+                doc.font(BOLD_FONT).fontSize(LABEL_SIZE).fillColor(TEXT_COLOR)
+                    .text(ratingName, x + CELL_PADDING, y + CELL_PADDING, {
+                        width: geometry.columnWidth - CELL_PADDING * 2
+                    });
+            }
             doc.font(BODY_FONT).fontSize(DESCRIPTOR_SIZE).fillColor(TEXT_COLOR)
-                .text(descriptorFor(criterion, level), x + CELL_PADDING, y + CELL_PADDING, {
+                .text(descriptorFor(criterion, level), x + CELL_PADDING, y + CELL_PADDING + nameHeight, {
                     width: geometry.columnWidth - CELL_PADDING * 2,
-                    height: height - CELL_PADDING * 2,
+                    height: height - CELL_PADDING * 2 - nameHeight,
                     lineGap: LINE_GAP
                 });
         });

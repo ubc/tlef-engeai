@@ -26,6 +26,7 @@ import { showSuccessToast } from '../ui/toast-notification.js';
 import { AutosaveSignedOutError, createAutosave } from './writing-feedback-autosave.js';
 import type { Autosave } from './writing-feedback-autosave.js';
 import {
+    MIN_RATINGS_PER_CRITERION,
     deriveGenreState,
     describeDetails,
     describeGrid,
@@ -42,6 +43,7 @@ import {
     RUBRIC_SLUG,
     parseBand,
     renderRubricGrid,
+    resolveBand,
     slugFromLabel,
     spaceBandsEvenly
 } from './writing-feedback-grid.js';
@@ -657,8 +659,13 @@ function readCellControls(
     levelIds.forEach((levelId, column) => {
         const band = parseBand(optionalControlValue(form, `criterion.${index}.cell.${column}.band`) ?? '');
         if (!band) return;
+        const label = optionalControlValue(form, `criterion.${index}.cell.${column}.label`)?.trim();
         const descriptor = optionalControlValue(form, `criterion.${index}.cell.${column}.descriptor`);
-        cells[levelId] = descriptor ? { ...band, descriptor } : band;
+        cells[levelId] = {
+            ...band,
+            ...(label ? { label } : {}),
+            ...(descriptor ? { descriptor } : {})
+        };
     });
     return Object.keys(cells).length ? cells : undefined;
 }
@@ -1857,11 +1864,31 @@ function findApprovalBlocker(sections: RubricSectionHandle[]): string | null {
             const named = unweighted.map((criterion) => `"${criterion.label}"`).join(', ');
             return `${prefix}Give every criterion its points before approving: ${named} ${unweighted.length === 1 ? 'has' : 'have'} none.`;
         }
-        // Every criterion carries points by this line, so the only boxes describeGrid
-        // can still be counting are the descriptors -- the same cells the server counts.
-        const { emptyCells } = describeGrid(section.working.criteria, section.working.levels);
-        if (emptyCells > 0) {
-            return `${prefix}Complete the rubric grid before approving: ${emptyCells} cell${emptyCells === 1 ? '' : 's'} still need${emptyCells === 1 ? 's' : ''} a points range or a description.`;
+        // The server's three cell rules, in its order and its words. A criterion may offer
+        // fewer ratings than the widest one, so what is checked is the run it offers: no
+        // gap inside it, enough of it to separate any work, and a description on each.
+        const ordered = [...section.working.levels].sort((left, right) => left.rank - right.rank);
+        const ragged: string[] = [];
+        const tooFew: string[] = [];
+        const undescribed: string[] = [];
+        section.working.criteria.forEach((criterion) => {
+            const bands = ordered.map((level) => resolveBand(criterion, level.id, section.working.levels));
+            const offered = bands.filter((band) => band !== undefined).length;
+            const contiguous = bands.every((band, index) => (band === undefined) === (index >= offered));
+            if (!contiguous) ragged.push(`"${criterion.label}"`);
+            else if (offered < MIN_RATINGS_PER_CRITERION) tooFew.push(`"${criterion.label}"`);
+            if (bands.some((band) => band !== undefined && !band.descriptor?.trim())) {
+                undescribed.push(`"${criterion.label}"`);
+            }
+        });
+        if (ragged.length > 0) {
+            return `${prefix}Fill each criterion's ratings from the weakest upwards before approving: ${ragged.join(', ')} ${ragged.length === 1 ? 'leaves a gap' : 'leave gaps'} in the middle.`;
+        }
+        if (tooFew.length > 0) {
+            return `${prefix}Give every criterion at least ${MIN_RATINGS_PER_CRITERION} ratings before approving: ${tooFew.join(', ')} ${tooFew.length === 1 ? 'has' : 'have'} fewer.`;
+        }
+        if (undescribed.length > 0) {
+            return `${prefix}Describe every rating you have given points to before approving: ${undescribed.join(', ')} ${undescribed.length === 1 ? 'has' : 'have'} a rating with no description.`;
         }
     }
     return null;

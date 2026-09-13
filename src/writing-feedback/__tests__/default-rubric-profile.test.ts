@@ -33,6 +33,17 @@ describe('default writing rubric profile', () => {
         });
     });
 
+    it('names every cell with its level, the way a Canvas rubric names each rating', () => {
+        // A rating is named per cell now; a built-in rubric that left the name to the column
+        // would open with every rating title blank in the editor.
+        const rubric = buildDefaultWritingRubric();
+        rubric.criteria.forEach((criterion) => {
+            DEFAULT_WRITING_LEVELS.forEach((level) => {
+                expect(criterion.cells?.[level.id]?.label).toBe(level.label);
+            });
+        });
+    });
+
     // A fresh draft asks the questions instead of answering them: seeded prose was
     // indistinguishable from a colleague's answer, so it invited approval of a rubric
     // nobody had read. The guidance lives in the page's input placeholders instead.

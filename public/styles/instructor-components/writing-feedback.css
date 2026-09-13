@@ -1767,10 +1767,11 @@
     min-width: 11rem;
 }
 
-/* 14px, the size the criterion and level names carry in .wf-grid-label-input. These
-   two are headings of the same rank as those, and at 13px they read as a caption over
-   the columns they name rather than as their titles. */
+/* 14px, the size the criterion and rating names carry in .wf-grid-label-input. These
+   are headings of the same rank as those, and at 13px they read as a caption over the
+   columns they name rather than as their titles. */
 .wf-grid-corner,
+.wf-grid-ratings-head,
 .wf-grid-points-head {
     color: var(--text-primary);
     font-size: 14px;
@@ -1801,11 +1802,46 @@
     background: var(--hover-bg);
 }
 
+/* One heading over every rating column, as a Canvas rubric has. It names a group of
+   columns rather than one, so it is centred over them instead of sitting at the left
+   edge of the first. */
+.wf-grid-ratings-head {
+    text-align: center;
+}
+
+.wf-grid-ratings-head .wf-grid-head-title {
+    justify-content: center;
+}
+
+/* The row under "Ratings" carries no names -- only the controls that add, remove and
+   reorder a column, aligned under the column each acts on. With nothing to show it
+   collapses to nothing, which is what a reader without edit rights sees. */
+.wf-grid-controls-row th {
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
 .wf-grid-head-bar {
     display: flex;
     align-items: center;
+    justify-content: flex-end;
     gap: 6px;
-    margin-bottom: 6px;
+    margin-bottom: 0;
+}
+
+/* The rating's own name, under the points it is worth and above what earns it. */
+.wf-grid-cell-name {
+    display: block;
+    width: 100%;
+    margin: 4px 0 2px;
+}
+
+/* A rating this criterion does not offer. It reads as quieter than an unfinished cell
+   because there is nothing owed in it: every field says n/a rather than asking. */
+.wf-grid-cell--unused .wf-grid-band,
+.wf-grid-cell--unused .wf-grid-text,
+.wf-grid-cell--unused .wf-grid-cell-name {
+    color: var(--text-secondary);
 }
 
 .wf-grid-head-controls {

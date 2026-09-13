@@ -278,11 +278,13 @@ describe('a Canvas rating is read as the top of a band', () => {
         ]));
         const shape = mapped.shape!;
         const cells = shape.criteria[0]!.cells!;
+        // Each cell carries the rating's own name: Canvas names ratings per row, so two
+        // criteria may name the same column differently.
         expect(shape.levels.map((level) => cells[level.id])).toEqual([
-            { min: 0, max: 5, descriptor: 'Weak descriptor' },
-            { min: 6, max: 8, descriptor: 'Developing descriptor' },
-            { min: 9, max: 12, descriptor: 'Proficient descriptor' },
-            { min: 13, max: 15, descriptor: 'Exemplary descriptor' }
+            { min: 0, max: 5, label: 'Weak', descriptor: 'Weak descriptor' },
+            { min: 6, max: 8, label: 'Developing', descriptor: 'Developing descriptor' },
+            { min: 9, max: 12, label: 'Proficient', descriptor: 'Proficient descriptor' },
+            { min: 13, max: 15, label: 'Exemplary', descriptor: 'Exemplary descriptor' }
         ]);
     });
 
@@ -343,8 +345,8 @@ describe('a Canvas rating is read as the top of a band', () => {
         const shape = mapped.shape!;
         const cells = shape.criteria[0]!.cells!;
         expect(shape.levels.map((level) => cells[level.id])).toEqual([
-            { min: 0, max: 5, descriptor: 'Weak descriptor' },
-            { min: 6, max: 10, descriptor: 'Strong descriptor' }
+            { min: 0, max: 5, label: 'Weak', descriptor: 'Weak descriptor' },
+            { min: 6, max: 10, label: 'Strong', descriptor: 'Strong descriptor' }
         ]);
     });
 
@@ -356,8 +358,8 @@ describe('a Canvas rating is read as the top of a band', () => {
         const shape = mapped.shape!;
         const short = shape.criteria[1]!.cells!;
         expect(Object.keys(short)).toHaveLength(2);
-        expect(short[shape.levels[0]!.id]).toEqual({ min: 0, max: 2, descriptor: 'No descriptor' });
-        expect(short[shape.levels[1]!.id]).toEqual({ min: 3, max: 6, descriptor: 'Ok descriptor' });
+        expect(short[shape.levels[0]!.id]).toEqual({ min: 0, max: 2, label: 'No', descriptor: 'No descriptor' });
+        expect(short[shape.levels[1]!.id]).toEqual({ min: 3, max: 6, label: 'Ok', descriptor: 'Ok descriptor' });
     });
 
     it('produces a draft the rubric schema still accepts', () => {

@@ -100,6 +100,7 @@ export interface WritingSflContextProfile {
 export interface WritingRubricCell {
     min: number; // lowest points awardable in this band, inclusive
     max: number; // highest points awardable in this band, inclusive
+    label?: string; // rating name for this criterion at this level, as Canvas names it per row
     descriptor?: string; // criterion-specific meaning of this level
 }
 

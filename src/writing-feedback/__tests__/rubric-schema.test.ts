@@ -425,16 +425,47 @@ describe('requireCompleteRubricCells', () => {
         };
     }
 
-    it('rejects a weighted criterion missing a band at some level', () => {
+    it('rejects a criterion offering fewer ratings than can separate any work', () => {
+        // One rating is not a scale: every submission earns it. A short row is allowed,
+        // but not shorter than the two the rubric schema requires of the grid itself.
         expect(() => requireCompleteRubricCells(draftWith({ weak: { min: 0, max: 5, descriptor: 'd' } })))
-            .toThrow(/points range or a description/);
+            .toThrow(/at least 2 ratings/);
     });
 
-    it('rejects a weighted criterion with a band but no descriptor', () => {
+    it('rejects a criterion whose ratings leave a gap in the middle', () => {
+        const levels = [
+            { id: 'weak', label: 'Weak', description: 'd', rank: 1 },
+            { id: 'middle', label: 'Middle', description: 'd', rank: 2 },
+            { id: 'strong', label: 'Strong', description: 'd', rank: 3 }
+        ];
+        const draft = draftWith({
+            weak: { min: 0, max: 3, descriptor: 'd' },
+            strong: { min: 7, max: 10, descriptor: 'd' }
+        });
+        // Scores of 4 to 6 would land on no rating at all.
+        expect(() => requireCompleteRubricCells({ ...draft, levels })).toThrow(/leaves a gap/);
+    });
+
+    it('accepts a criterion that stops short of the widest row', () => {
+        // Canvas rates each row independently, so a four-rating row in a six-rating rubric
+        // is the rubric as its author wrote it rather than an unfinished grid.
+        const levels = [
+            { id: 'weak', label: 'Weak', description: 'd', rank: 1 },
+            { id: 'middle', label: 'Middle', description: 'd', rank: 2 },
+            { id: 'strong', label: 'Strong', description: 'd', rank: 3 }
+        ];
+        const draft = draftWith({
+            weak: { min: 0, max: 4, descriptor: 'd1' },
+            middle: { min: 5, max: 10, descriptor: 'd2' }
+        });
+        expect(() => requireCompleteRubricCells({ ...draft, levels })).not.toThrow();
+    });
+
+    it('rejects a rating that carries points but no description', () => {
         expect(() => requireCompleteRubricCells(draftWith({
             weak: { min: 0, max: 5, descriptor: 'd' },
             strong: { min: 6, max: 10 }
-        }))).toThrow(/points range or a description/);
+        }))).toThrow(/no description/);
     });
 
     it('accepts a fully described weighted criterion', () => {

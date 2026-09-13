@@ -82,21 +82,31 @@ const DEFAULT_WRITING_DESCRIPTORS: Record<string, Record<string, string>> = {
 };
 
 /**
- * withDefaultDescriptors - merges the seeded descriptor text into derived point bands.
+ * withDefaultDescriptors - merges the seeded rating names and descriptor text into
+ * derived point bands.
+ *
+ * A rating is named per cell, the way Canvas names it per row, so a built-in rubric
+ * names every cell with its level's label rather than leaving the name to the column.
  *
  * @param criterionId - Criterion whose bands are being built
  * @param cells - Bands already derived by {@link spaceBandsEvenly}
- * @returns The same bands, each carrying its seeded descriptor when one exists
+ * @returns The same bands, each carrying its level's name and, when one exists, its
+ *          seeded descriptor
  */
 function withDefaultDescriptors(
     criterionId: string,
     cells: Record<WritingLevelId, WritingRubricCell>
 ): Record<WritingLevelId, WritingRubricCell> {
     const descriptors = DEFAULT_WRITING_DESCRIPTORS[criterionId];
-    if (!descriptors) return cells;
     const withText: Record<WritingLevelId, WritingRubricCell> = {};
     Object.entries(cells).forEach(([levelId, cell]) => {
-        withText[levelId] = descriptors[levelId] ? { ...cell, descriptor: descriptors[levelId] } : cell;
+        const label = DEFAULT_WRITING_LEVELS.find((level) => level.id === levelId)?.label;
+        const descriptor = descriptors?.[levelId];
+        withText[levelId] = {
+            ...cell,
+            ...(label ? { label } : {}),
+            ...(descriptor ? { descriptor } : {})
+        };
     });
     return withText;
 }

@@ -81,10 +81,11 @@ export interface SflContextProfile {
     approvedGlossaryTerms?: string[]; // optional terms relevant to the assignment
 }
 
-/** Mirror of WritingRubricCell. Points band and descriptor for one grid cell. */
+/** Mirror of WritingRubricCell. Rating name, points band, and descriptor for one grid cell. */
 export interface RubricCell {
     min: number;
     max: number;
+    label?: string;
     descriptor?: string;
 }
 

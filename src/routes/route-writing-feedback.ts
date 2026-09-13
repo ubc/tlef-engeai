@@ -120,6 +120,9 @@ function safeError(error: unknown): string {
         'Complete the genre and register profile', 'Confirm the genre and register profile',
         'Add at least one section', 'Add task requirements',
         'Complete the rubric grid before approving', 'Give every criterion its points',
+        // The rubric-cell gate's refusals, which staff have to be able to read and act on.
+        'Fill each criterion\'s ratings from the weakest upwards', 'Give every criterion at least',
+        'Describe every rating you have given points to',
         'Glossary term is required', 'Glossary definition is required',
         'Glossary term exceeds', 'Glossary definition exceeds'
     ];

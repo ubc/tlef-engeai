@@ -202,6 +202,52 @@ describe('describeGrid', () => {
         expect(readiness.complete).toBe(false);
     });
 
+    it('owes nothing for the ratings a short row does not offer', () => {
+        // A Canvas rubric rates each row independently, so a criterion offering two of the
+        // grid's three ratings is finished, not two-thirds finished. Counting its unused
+        // column would tell staff to fill a box that approval does not ask for.
+        const threeLevels: RubricLevel[] = [
+            ...levels.map((level) => ({ ...level })),
+            { id: 'exemplary', label: 'Exemplary', description: '', rank: 3 }
+        ];
+        const criteria: RubricCriterion[] = [{
+            id: 'organization', label: 'Organization', description: '', points: 10,
+            cells: {
+                weak: { min: 0, max: 5, descriptor: 'Ideas arrive in no clear order.' },
+                proficient: { min: 6, max: 10, descriptor: 'Each paragraph does one job.' }
+            }
+        }];
+        const readiness = describeGrid(criteria, threeLevels);
+        expect(readiness.emptyCells).toBe(0);
+        expect(readiness.complete).toBe(true);
+    });
+
+    it('still owes a rating skipped in the middle of a row', () => {
+        // Unlike a short row, a gap leaves scores between the two bands earning no rating
+        // at all, which is what the approval gate refuses.
+        const threeLevels: RubricLevel[] = [
+            ...levels.map((level) => ({ ...level })),
+            { id: 'exemplary', label: 'Exemplary', description: '', rank: 3 }
+        ];
+        const criteria: RubricCriterion[] = [{
+            id: 'organization', label: 'Organization', description: '', points: 10,
+            cells: {
+                weak: { min: 0, max: 3, descriptor: 'Ideas arrive in no clear order.' },
+                exemplary: { min: 8, max: 10, descriptor: 'Each paragraph does one job.' }
+            }
+        }];
+        expect(describeGrid(criteria, threeLevels).emptyCells).toBe(1);
+    });
+
+    it('owes the ratings a row is short of the minimum', () => {
+        // One rating cannot separate any two pieces of work, so the row still owes one.
+        const criteria: RubricCriterion[] = [{
+            id: 'organization', label: 'Organization', description: '', points: 10,
+            cells: { weak: { min: 0, max: 10, descriptor: 'Ideas arrive in no clear order.' } }
+        }];
+        expect(describeGrid(criteria, levels).emptyCells).toBe(1);
+    });
+
     it('counts a criterion weighted at zero the same way, since it awards nothing', () => {
         const criteria: RubricCriterion[] = [{
             id: 'organization', label: 'Organization', description: '', points: 0,

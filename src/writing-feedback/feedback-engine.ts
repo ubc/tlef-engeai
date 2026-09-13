@@ -42,6 +42,7 @@ import {
     SFL_WRITER_PROMPT_VERSION,
     sflFoundationPromptResource
 } from './sfl-foundation';
+import { resolveBand } from './rubric-bands';
 import { sflAnalysisSchema, requireCompleteSflProfile, validateSflAnalysis } from './sfl-analysis';
 import { stripNulls } from './strip-nulls';
 import {
@@ -220,14 +221,32 @@ export function buildWritingFeedbackSystemPrompt(assignment: WritingAssignment):
             purpose: rubric.purpose,
             constraints: rubric.constraints,
             learningOutcomes: rubric.learningOutcomes,
-            criteria: rubric.criteria.map(({ id, label, description, functionTag, sflDimension }) => ({
-                id,
-                label,
-                description,
-                functionTag,
-                sflDimension
+            // Each criterion carries the ratings it actually offers: the name, the points
+            // band, and the descriptor that earns it. A criterion may offer fewer ratings
+            // than the widest one, and a rating is named per criterion, so what a level
+            // means cannot be stated once for the whole grid -- which is what the levels
+            // list used to claim, using one row's wording for every row.
+            criteria: rubric.criteria.map((criterion) => ({
+                id: criterion.id,
+                label: criterion.label,
+                description: criterion.description,
+                functionTag: criterion.functionTag,
+                sflDimension: criterion.sflDimension,
+                ratings: [...rubric.levels]
+                    .sort((left, right) => left.rank - right.rank)
+                    .flatMap((level) => {
+                        const cell = resolveBand(criterion, level.id, rubric.levels);
+                        if (!cell) return [];
+                        return [{
+                            levelId: level.id,
+                            label: cell.label?.trim() || level.label,
+                            points: { min: cell.min, max: cell.max },
+                            descriptor: cell.descriptor
+                        }];
+                    })
             })),
-            levels: rubric.levels.map(({ id, label, description, rank }) => ({ id, label, description, rank }))
+            // Ids and order only: the scale's rank is grid-wide, its wording is not.
+            levels: rubric.levels.map(({ id, rank }) => ({ id, rank }))
         })}</approved_rubric>`
     ].join('\n');
 }
