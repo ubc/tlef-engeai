@@ -77,7 +77,11 @@ function feedback(
         criteria: criteria.map((criterion) => ({
             criterion: criterion.id,
             suggestedLevel,
-            evidence: [{ quote: 'The impeller accelerates the fluid outward', rationale: 'Signals process staging.' }],
+            evidence: [{
+                quote: 'The impeller accelerates the fluid outward',
+                rationale: 'Signals process staging.',
+                revisionGuidance: 'Name the casing transition immediately after this process.'
+            }],
             explanation: `The description provides evidence for ${criterion.label}.`,
             confidence: 0.82
         })),
@@ -200,8 +204,16 @@ describe('StudentWritingFeedbackPdfService', () => {
         const shared = feedback();
         const sharedQuote = shared.criteria[0].evidence[0].quote;
         shared.criteria[1].evidence = [
-            { quote: sharedQuote, rationale: 'Also asserts the claim without support.' },
-            { quote: 'volute casing then decelerates', rationale: 'Names the second stage.' }
+            {
+                quote: sharedQuote,
+                rationale: 'Also asserts the claim without support.',
+                revisionGuidance: 'Add the data that supports this claim.'
+            },
+            {
+                quote: 'volute casing then decelerates',
+                rationale: 'Names the second stage.',
+                revisionGuidance: 'Explain why the second stage matters for the reader.'
+            }
         ];
 
         const pdf = await service.render({
@@ -292,7 +304,7 @@ describe('StudentWritingFeedbackPdfService', () => {
         expect(text).toContain('Priority revision goals');
         expect(text).toContain('Signal the transition between components explicitly.');
         expect(text).not.toContain('Feedback from your teaching team');
-        expect(text).not.toContain('Ask yourself');
+        expect(text).toContain('Ask yourself');
     });
 
     it('keeps the technical lens goals, which have no staff-editable counterpart', async () => {

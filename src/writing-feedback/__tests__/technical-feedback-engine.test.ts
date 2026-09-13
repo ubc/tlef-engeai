@@ -130,6 +130,6 @@ describe('technical engine generation', () => {
     });
 
     it('exposes a stable prompt version', () => {
-        expect(TECHNICAL_PROMPT_VERSION).toBe('lab-report-technical-v1');
+        expect(TECHNICAL_PROMPT_VERSION).toBe('lab-report-technical-v1.1.0');
     });
 });

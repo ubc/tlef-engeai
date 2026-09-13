@@ -33,7 +33,11 @@ function feedbackFor(
         criteria: criterionIds.map((criterion, index) => ({
             criterion,
             suggestedLevel: rubric.levels[index % rubric.levels.length].id,
-            evidence: [{ quote: 'transfers thermal energy', rationale: 'Verified technical relationship.' }],
+            evidence: [{
+                quote: 'transfers thermal energy',
+                rationale: 'Verified technical relationship.',
+                revisionGuidance: 'Name what the energy transfer shows for the reader.'
+            }],
             explanation: 'Criterion-level formative guidance.',
             confidence: 0.8
         })),
@@ -108,6 +112,14 @@ describe('assignment-specific feedback validation', () => {
         const rubric = buildDefaultWritingRubric();
         const invalid = feedbackFor(rubric);
         invalid.criteria[0].suggestedLevel = 'distinguished';
+
+        expect(buildFeedbackSchema(rubric).safeParse(invalid).success).toBe(false);
+    });
+
+    it('requires passage-specific revision guidance for each evidence item', () => {
+        const rubric = buildDefaultWritingRubric();
+        const invalid = feedbackFor(rubric);
+        delete (invalid.criteria[0].evidence[0] as { revisionGuidance?: string }).revisionGuidance;
 
         expect(buildFeedbackSchema(rubric).safeParse(invalid).success).toBe(false);
     });

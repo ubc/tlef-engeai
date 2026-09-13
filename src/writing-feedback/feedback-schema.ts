@@ -61,6 +61,7 @@ const glossarySnapshotSchema: z.ZodType<WritingGlossarySnapshot> = z.object({
 const evidenceSchema = z.object({
     quote: z.string().min(1).max(MAX_EVIDENCE_QUOTE_LENGTH),
     rationale: z.string().min(1),
+    revisionGuidance: z.string().min(1),
     sflFindingIds: z.array(z.string().trim().min(1).max(80)).max(6).nullish(),
     courseMaterialMention: courseMaterialMentionSchema().nullish(),
     glossaryEntryId: z.string().trim().min(1).max(120).nullish(),

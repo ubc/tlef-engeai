@@ -268,7 +268,11 @@ describe('WritingFeedbackService anchored comments', () => {
                 criteria: [{
                     criterion: 'organization',
                     suggestedLevel: 'proficient',
-                    evidence: [{ quote: 'Verified student text.', rationale: 'Anchors the description.' }],
+                    evidence: [{
+                        quote: 'Verified student text.',
+                        rationale: 'Anchors the description.',
+                        revisionGuidance: 'Make this sentence name the sequence before the detail.'
+                    }],
                     explanation: 'Sequencing is clear.',
                     confidence: 0.8
                 }],
@@ -310,6 +314,7 @@ describe('WritingFeedbackService anchored comments', () => {
         expect(detail.seedComments).toHaveLength(1);
         expect(detail.seedComments[0].origin).toBe('model_seed');
         expect(detail.seedComments[0].startOffset).toBe(0);
+        expect(detail.seedComments[0].howToImprove).toBe('Make this sentence name the sequence before the detail.');
     });
 
     it('detail prefers stored comments and stale-flags drifted anchors', async () => {
@@ -557,7 +562,7 @@ describe('two-lens generation', () => {
         const technicalRun = mongo.createWritingFeedbackRun.mock.calls
             .map(([input]: [{ lens: string; modelMetadata: { promptVersion: string } }]) => input)
             .find((input) => input.lens === 'technical');
-        expect(technicalRun?.modelMetadata.promptVersion).toBe('lab-report-technical-v1');
+        expect(technicalRun?.modelMetadata.promptVersion).toBe('lab-report-technical-v1.1.0');
     });
 });
 

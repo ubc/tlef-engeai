@@ -1068,8 +1068,7 @@ interface SummaryContent {
  *
  * Mirrors the numbering the student PDF uses (`renderRevisionGoals` in
  * `src/report-generation/writing-feedback-report.ts`) so staff edit the goals in the
- * shape the student receives them. The guided question stays on the run for staff and
- * does not seed the summary: a student reads the approved goal, not a question about it.
+ * shape the student receives them, including the Socratic question paired with each goal.
  *
  * @param goals - Model revision goals from the immutable run
  * @returns Numbered plain text, at most three goals, ready for the textarea
@@ -1077,7 +1076,7 @@ interface SummaryContent {
 function seedStudentFeedback(goals: Array<{ goal: string; guidedQuestion: string }>): string {
     return goals
         .slice(0, 3)
-        .map((goal, index) => `${index + 1}. ${goal.goal}`)
+        .map((goal, index) => `${index + 1}. ${goal.goal}\nAsk yourself: ${goal.guidedQuestion}`)
         .join('\n\n');
 }
 

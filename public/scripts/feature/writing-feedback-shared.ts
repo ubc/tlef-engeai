@@ -158,6 +158,7 @@ export interface CriterionFeedback {
     evidence: Array<{
         quote: string;
         rationale: string;
+        revisionGuidance?: string;
         sflFindingIds?: string[];
         courseMaterialMention?: CourseMaterialMention;
         glossaryEntryId?: string;

@@ -260,7 +260,7 @@ describe('excerpt budgeting', () => {
 
 describe('prompt contract versions move with the contract', () => {
     it('names the grounded writer and resolver versions', () => {
-        expect(SFL_WRITER_PROMPT_VERSION).toBe('sfl-feedback-writer-v2.1.0');
+        expect(SFL_WRITER_PROMPT_VERSION).toBe('sfl-feedback-writer-v2.2.0');
         expect(COURSE_MATERIAL_RESOLVER_VERSION).toBe('course-material-mentions-v2.0.0');
     });
 });

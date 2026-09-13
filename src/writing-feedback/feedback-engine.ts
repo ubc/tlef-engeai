@@ -167,6 +167,7 @@ function deterministicFeedback(
             evidence: [{
                 quote: findingForCriterion(criterion, analysis.findings)?.evidence[0]?.quote ?? evidence,
                 rationale: `This exact passage identifies what staff should check for ${criterion.label}.`,
+                revisionGuidance: `Revise this passage so it better demonstrates ${criterion.label} for the assignment purpose and reader.`,
                 sflFindingIds: findingForCriterion(criterion, analysis.findings)
                     ? [findingForCriterion(criterion, analysis.findings)!.id]
                     : [],
@@ -214,7 +215,8 @@ export function buildWritingFeedbackSystemPrompt(assignment: WritingAssignment):
         `Use the shortest exact clause or single sentence available; never quote a full paragraph or submission. Each evidence.quote must be at most ${MAX_EVIDENCE_QUOTE_LENGTH} characters.`,
         `Return at most ${MAX_EVIDENCE_PER_CRITERION} evidence items per criterion, and only passages that each earn their own annotation.`,
         'Three is a ceiling, not a target. Every evidence item becomes one annotation the student reads, so cite one passage when one carries the point and never pad a criterion to reach the limit.',
-        'Each evidence.rationale must name the specific problem in that passage and what to change; do not restate the quote and do not repeat the criterion explanation.',
+        'Each evidence.rationale must name the specific problem in that passage; do not restate the quote and do not repeat the criterion explanation.',
+        'Each evidence.revisionGuidance must give a concrete next revision action for that exact passage. It must not copy the criterion explanation, the rationale, or a full revision goal.',
         'Never make the same point twice. Two evidence items anywhere in the result, including under different criteria, must not carry the same advice in different words; if a point is already made, choose different text or return fewer items.',
         'Each explanation must synthesize that criterion\'s evidence as a whole — the pattern across its passages and why it sits at that level — not repeat any single rationale.',
         'Return one to three revision goals, each with a guided question or action.',

@@ -313,14 +313,16 @@ function renderCriteriaEvidence(
  * seeded from these same goals, so printing both repeats the content to the student. The
  * technical lens has no staff-editable summary and always renders them.
  *
- * The goal only: its guided question stays on the run for staff, because a student reading
- * an approved next step does not also need it re-posed as a question.
+ * Each goal keeps its guided question so the student receives a concrete priority and a
+ * Socratic prompt for thinking through the revision.
  */
 function renderRevisionGoals(doc: PDFKit.PDFDocument, feedback: WritingFeedbackResult): void {
     sectionHeading(doc, 'Priority revision goals');
     feedback.revisionGoals.slice(0, 3).forEach((goal, index) => {
         doc.font(BOLD_FONT).fontSize(BODY_SIZE).fillColor(TEXT_COLOR)
-            .text(`${index + 1}.  ${goal.goal}`, { lineGap: 2, paragraphGap: 6 });
+            .text(`${index + 1}.  ${goal.goal}`, { lineGap: 2 });
+        doc.font(ITALIC_FONT).fontSize(BODY_SIZE).fillColor(MUTED_COLOR)
+            .text(`Ask yourself: ${goal.guidedQuestion}`, { indent: 14, lineGap: 2, paragraphGap: 6 });
         doc.fillColor(TEXT_COLOR);
     });
 }

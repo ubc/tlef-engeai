@@ -43,6 +43,12 @@ const RATIONALES = [
     'Names a source but not what it contributes.'
 ];
 
+const REVISION_GUIDANCE = [
+    'Add a sentence that names the sequence before moving into details.',
+    'State the purpose this sentence should prepare the reader to follow.',
+    'Explain what the named source contributes to the argument.'
+];
+
 function run(quotes: string[], criterion = 'organization'): WritingFeedbackRun {
     return {
         id: 'run-1',
@@ -55,7 +61,11 @@ function run(quotes: string[], criterion = 'organization'): WritingFeedbackRun {
             criteria: [{
                 criterion,
                 suggestedLevel: 'proficient',
-                evidence: quotes.map((quote, index) => ({ quote, rationale: RATIONALES[index % RATIONALES.length] })),
+                evidence: quotes.map((quote, index) => ({
+                    quote,
+                    rationale: RATIONALES[index % RATIONALES.length],
+                    revisionGuidance: REVISION_GUIDANCE[index % REVISION_GUIDANCE.length]
+                })),
                 explanation: 'Sequencing is mostly clear.',
                 confidence: 0.8
             }],
@@ -74,7 +84,11 @@ function twoCriterionRun(quote: string): WritingFeedbackRun {
     base.result.criteria.push({
         criterion: 'content',
         suggestedLevel: 'proficient',
-        evidence: [{ quote, rationale: 'Also develops the subject matter.' }],
+        evidence: [{
+            quote,
+            rationale: 'Also develops the subject matter.',
+            revisionGuidance: 'Connect this detail to the specific concept the reader needs.'
+        }],
         explanation: 'Development is uneven.',
         confidence: 0.7
     });
@@ -167,13 +181,14 @@ describe('seedCommentsFromRun', () => {
         expect(verifiedText.slice(seeds[1].startOffset, seeds[1].endOffset)).toBe('First sample sentence.');
     });
 
-    it('leaves model seeds without criterion-level revision guidance', () => {
-        // criterion.explanation is one sentence about the whole criterion. Stamping it on
-        // every evidence seed repeated it N times in the annotation list, on top of the
-        // rubric-criterion section and the PDF that already show it once each.
+    it('seeds model annotations with passage-specific revision guidance', () => {
+        // The guidance comes from the evidence item, not criterion.explanation: copying
+        // the broad criterion explanation onto every annotation was the old duplication bug.
         const seeds = seedCommentsFromRun(run(['First sample sentence.', 'Second sample sentence.']), verifiedText);
         expect(seeds).toHaveLength(2);
-        seeds.forEach((seed) => expect(seed.howToImprove).toBeUndefined());
+        expect(seeds[0].howToImprove).toBe(REVISION_GUIDANCE[0]);
+        expect(seeds[1].howToImprove).toBe(REVISION_GUIDANCE[1]);
+        seeds.forEach((seed) => expect(seed.howToImprove).not.toBe('Sequencing is mostly clear.'));
     });
 
     it('anchors a passage cited by two criteria once for each criterion', () => {

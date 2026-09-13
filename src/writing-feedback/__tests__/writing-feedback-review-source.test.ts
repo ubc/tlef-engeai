@@ -42,10 +42,9 @@ describe('writing feedback review source contract', () => {
         expect(summaryTab).toContain("createText('h3', 'Priority revision goals')");
         expect(summaryTab).not.toContain('Student-facing feedback');
         // The seed mirrors the student PDF's numbering and wording so staff edit the text
-        // in the shape the student receives it, which no longer re-poses each goal as a
-        // Socratic question.
+        // in the shape the student receives it, including the Socratic question.
         expect(source).toContain('function seedStudentFeedback');
-        expect(source).not.toContain('Ask yourself:');
+        expect(source).toContain('Ask yourself:');
     });
 
     it('lists internal review flags where they qualify the levels they belong to', () => {

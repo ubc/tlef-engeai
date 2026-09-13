@@ -253,6 +253,7 @@ export function seedCommentsFromRun(
                 startOffset: start,
                 endOffset: start + evidence.quote.length,
                 comment: evidence.rationale,
+                ...(evidence.revisionGuidance?.trim() ? { howToImprove: evidence.revisionGuidance.trim() } : {}),
                 origin: 'model_seed',
                 ...(evidence.courseMaterialMention ? { courseMaterialMention: evidence.courseMaterialMention } : {}),
                 ...(evidence.glossaryEntryId ? { glossaryEntryId: evidence.glossaryEntryId } : {}),

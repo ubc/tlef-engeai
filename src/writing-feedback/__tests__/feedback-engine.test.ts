@@ -142,7 +142,8 @@ describe('RubricWritingFeedbackEngine generic rubric contract', () => {
         // single annotation instead of summing up the passages beneath them.
         const prompt = buildWritingFeedbackSystemPrompt(dynamicAssignment());
 
-        expect(prompt).toContain('Each evidence.rationale must name the specific problem in that passage and what to change');
+        expect(prompt).toContain('Each evidence.rationale must name the specific problem in that passage');
+        expect(prompt).toContain('Each evidence.revisionGuidance must give a concrete next revision action for that exact passage');
         expect(prompt).toContain('Never make the same point twice');
         expect(prompt).toContain('Each explanation must synthesize that criterion');
         expect(prompt).toContain(`Return at most ${MAX_EVIDENCE_PER_CRITERION} evidence items per criterion`);
@@ -186,6 +187,7 @@ describe('RubricWritingFeedbackEngine generic rubric contract', () => {
                 evidence: [{
                     quote: 'The measured outlet temperature increased steadily.',
                     rationale: 'The passage gives exact evidence for the criterion.',
+                    revisionGuidance: 'Add one sentence explaining what the increase means for the conclusion.',
                     sflFindingIds: ['finding-1'],
                     courseMaterialMention: mention
                 }],
@@ -221,7 +223,7 @@ describe('RubricWritingFeedbackEngine generic rubric contract', () => {
             expect(generated.schemaVersion).toBe('writing-feedback-v2');
             expect(generated.courseMaterialMentions?.[0].label).toBe('Week 4 · Lecture 2 · Information flow');
             expect(generated.runTrace?.sflAnalysis?.findings[0].id).toBe('finding-1');
-            expect(generated.runTrace?.writerPromptVersion).toBe('sfl-feedback-writer-v2.1.0');
+            expect(generated.runTrace?.writerPromptVersion).toBe('sfl-feedback-writer-v2.2.0');
         } finally {
             process.env.MOCK_RESPONSE = 'true';
         }
@@ -275,6 +277,7 @@ describe('RubricWritingFeedbackEngine generic rubric contract', () => {
                 evidence: [{
                     quote: verifiedText,
                     rationale: 'The passage gives exact evidence for ' + criterion.label + '.',
+                    revisionGuidance: 'Revise the sentence so the reader can see why this detail matters.',
                     sflFindingIds: ['finding-interpersonal', 'finding-content']
                 }],
                 explanation: 'Revise ' + criterion.label + ' against the evidence.',
@@ -345,6 +348,7 @@ describe('RubricWritingFeedbackEngine generic rubric contract', () => {
                 evidence: [{
                     quote: 'The measured outlet temperature increased steadily.',
                     rationale: 'The passage gives exact evidence for the criterion.',
+                    revisionGuidance: 'Add one sentence explaining what the increase means for the conclusion.',
                     sflFindingIds: ['finding-1']
                 }],
                 explanation: `Revise ${criterion.label} directly against the evidence and profile.`,
