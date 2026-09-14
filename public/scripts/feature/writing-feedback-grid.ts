@@ -124,6 +124,62 @@ export function resolveBand(
 }
 
 /**
+ * respaceBandsEvenly - what "Spread points evenly" does to the grid, without touching it
+ *
+ * Every criterion that carries points gets evenly spaced bands in place of the ones it
+ * has. The rating titles and descriptions staff or Canvas wrote stay on their cells: only
+ * the numbers are the button's to replace.
+ *
+ * A column this criterion does not use is left empty rather than given a band. That is
+ * the same cell the grid shows as n/a -- an empty cell past the end of the row's ratings,
+ * in a column some other criterion does use -- so a short Canvas row keeps its shape. A
+ * gap in the middle of a row, and a column no criterion uses yet, are filled, because
+ * both are still owed.
+ *
+ * @param criteria - Criteria as the form currently holds them
+ * @param levels - The grid's rating columns
+ * @returns New criteria; the input is not modified
+ */
+export function respaceBandsEvenly(criteria: RubricCriterion[], levels: RubricLevel[]): RubricCriterion[] {
+    const ordered = [...levels].sort((left, right) => left.rank - right.rank);
+    const columnUsed = ordered.map((level) =>
+        criteria.some((criterion) => resolveBand(criterion, level.id, levels) !== undefined)
+    );
+
+    return criteria.map((criterion) => {
+        if (criterion.points === undefined || criterion.points <= 0) return criterion;
+
+        // Step 1: find the columns this row leaves unused, by the grid's own n/a rule.
+        const bands = ordered.map((level) => resolveBand(criterion, level.id, levels));
+        const lastFilled = bands.reduce((last, band, index) => (band ? index : last), -1);
+        const kept = ordered.filter((_, index) => {
+            const unused = bands[index] === undefined
+                && index > lastFilled
+                && lastFilled + 1 >= MIN_LEVELS
+                && columnUsed[index];
+            return !unused;
+        });
+
+        // Step 2: space the points across the columns that remain.
+        const spaced = spaceBandsEvenly(criterion.points, kept);
+
+        // Step 3: carry each cell's title and description onto its new band.
+        const cells: Record<string, RubricCell> = {};
+        kept.forEach((level) => {
+            const band = spaced[level.id];
+            if (!band) return;
+            const prior = criterion.cells?.[level.id];
+            cells[level.id] = {
+                ...band,
+                ...(prior?.label ? { label: prior.label } : {}),
+                ...(prior?.descriptor ? { descriptor: prior.descriptor } : {})
+            };
+        });
+        return { ...criterion, cells };
+    });
+}
+
+/**
  * totalRubricPoints - sum of the criterion weights.
  *
  * @param criteria - Criteria of one rubric
@@ -497,16 +553,19 @@ export function renderRubricGrid(
             'outline',
             async () => {
                 syncFromForm();
-                draft.criteria.forEach((criterion) => {
-                    if (criterion.points === undefined || criterion.points <= 0) return;
-                    const descriptors = criterion.cells ?? {};
-                    const spaced = spaceBandsEvenly(criterion.points, draft.levels);
-                    draft.levels.forEach((level) => {
-                        const descriptor = descriptors[level.id]?.descriptor;
-                        if (descriptor && spaced[level.id]) spaced[level.id].descriptor = descriptor;
-                    });
-                    criterion.cells = spaced;
-                });
+                // Autosave follows every edit within seconds, so an accidental click is
+                // saved before it can be noticed. The replacement is confirmed first.
+                const confirmation = await showConfirmModal(
+                    'Spread points evenly?',
+                    'Every criterion with points gets new, evenly spaced points ranges in place of the ones it has now. Rating titles and descriptions are kept, and cells marked n/a stay empty.',
+                    'Spread points',
+                    'Cancel',
+                    'danger'
+                );
+                // The modal resolves to its own slugified button label.
+                if (confirmation.action !== 'spread-points') return;
+                // In place: the grid's other actions and the page hold this same array.
+                draft.criteria.splice(0, draft.criteria.length, ...respaceBandsEvenly(draft.criteria, draft.levels));
                 onChange();
                 rerender();
                 announce('Points spaced evenly across every level.');
@@ -519,10 +578,13 @@ export function renderRubricGrid(
         );
         const librarySelect = document.createElement('select');
         librarySelect.className = 'wf-rubric-library-select';
-        librarySelect.setAttribute('aria-label', 'Criterion library');
+        librarySelect.setAttribute('aria-label', 'Criterion to add from the library');
         const placeholder = document.createElement('option');
         placeholder.value = '';
-        placeholder.textContent = available.length ? 'Pick one…' : 'No additional library criteria';
+        // Says what the list holds and what choosing from it does. "Pick one…" named
+        // neither, so the control read as a filter or a setting rather than as a way to
+        // add a ready-made criterion.
+        placeholder.textContent = available.length ? 'Select a criterion to add…' : 'No more criteria to add';
         librarySelect.append(placeholder);
         available.forEach((candidate) => {
             const option = document.createElement('option');
@@ -531,9 +593,12 @@ export function renderRubricGrid(
             librarySelect.append(option);
         });
         librarySelect.disabled = !available.length || draft.criteria.length >= MAX_CRITERIA;
+        // Filled rather than outlined: disabled until a criterion is selected, and an
+        // outline at reduced opacity is too close to an outline at full opacity to tell
+        // the moment it becomes clickable.
         const addFromLibrary = createButton(
-            'Add from the library',
-            'outline',
+            'Add selected',
+            'primary',
             async () => {
                 const candidate = available.find((entry) => entry.id === librarySelect.value);
                 if (!candidate) {

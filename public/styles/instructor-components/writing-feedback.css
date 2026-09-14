@@ -1166,12 +1166,15 @@
     line-height: 1.4;
 }
 
+/* 18px, the size of the step titles above it. Inherited from the 16px summary row it
+   read as a label on the grid rather than as the name of the rubric beneath it. The
+   subtitle and size line inside the row keep their own explicit sizes. */
 .wf-rubric-section__title {
     flex: 1 1 auto;
     margin: 0;
     padding: 0;
     color: inherit;
-    font-size: inherit;
+    font-size: 18px;
     font-weight: inherit;
     line-height: inherit;
     border: 0;
@@ -1435,6 +1438,12 @@
     font-size: 0.85rem;
     line-height: 1.5;
     color: var(--color-eng-red);
+}
+
+/* Discard buttons join the action row directly, so they line up and wrap with Save and
+   Approve instead of sitting in a box of their own. */
+.wf-discard-actions {
+    display: contents;
 }
 
 .wf-approve-copy {
@@ -3098,6 +3107,12 @@ mark.wf-anchor.is-filtered-out,
     .wf-approve-row .wf-button {
         width: 100%;
         min-height: 44px;
+    }
+
+    /* Stacked full-width, the buttons follow source order, which would put the
+       destructive action on top. It goes below Approve instead. */
+    .wf-approve-row .wf-discard-action {
+        order: 1;
     }
 
     .wf-header-actions {

@@ -1104,7 +1104,12 @@ export async function handleActionError(error: unknown): Promise<void> {
     await showErrorModal('Writing Feedback action failed', message);
 }
 
-const DISCLOSURE_TRANSITION_TIMEOUT_MS = 380;
+/**
+ * Longest a disclosure's open or close animation can take, fallback included. Anything
+ * that has to follow the page while a panel changes height -- the step accordion keeping
+ * the clicked header still -- follows it for this long.
+ */
+export const DISCLOSURE_TRANSITION_TIMEOUT_MS = 380;
 const disclosureTransitions = new WeakMap<HTMLElement, { finish: () => void }>();
 
 /** Completes the current disclosure transition once, including its timeout fallback. */

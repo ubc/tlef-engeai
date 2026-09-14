@@ -49,6 +49,7 @@ import {
 } from './writing-feedback-grid.js';
 import {
     Assignment,
+    DISCLOSURE_TRANSITION_TIMEOUT_MS,
     assignmentOriginText,
     CanvasRubricRefusal,
     RubricCell,
@@ -290,6 +291,14 @@ interface RubricSectionHandle {
     nextVersion: number;
     /** Whether an approved version already exists, which changes that copy. */
     hasApproved: boolean;
+    /** The active approved version, which discarding the draft returns the rubric to. */
+    approvedVersion?: number;
+    /**
+     * The unapproved draft's version, once one exists. Kept current by autosave: an approved
+     * rubric has no draft until its first edit is stored, and that store is what makes
+     * "Discard changes" something step 3 can offer.
+     */
+    draftVersion?: number;
 }
 
 /** Page-wide state the per-rubric save action reads at click time. */
@@ -1353,12 +1362,61 @@ function renderProgressStrip(steps: StepState[]): HTMLElement {
 }
 
 /**
+ * scrollingAncestor - the element that actually scrolls when this one moves
+ *
+ * The rubric page scrolls inside `.page-shell`, not the window, so a correction has to be
+ * applied to whichever ancestor owns the scrollbar.
+ *
+ * @param element - Element whose scroll container is wanted
+ * @returns Nearest ancestor that scrolls vertically, or the document's scroller
+ */
+function scrollingAncestor(element: HTMLElement): HTMLElement {
+    for (let node = element.parentElement; node; node = node.parentElement) {
+        const overflowY = getComputedStyle(node).overflowY;
+        if ((overflowY === 'auto' || overflowY === 'scroll') && node.scrollHeight > node.clientHeight) {
+            return node;
+        }
+    }
+    return (document.scrollingElement as HTMLElement | null) ?? document.documentElement;
+}
+
+/**
+ * holdInPlace - keeps an element at its current height on screen while the page around it
+ * changes height
+ *
+ * Each frame, for as long as a disclosure animation can run, the scroller is moved by
+ * however far the element has drifted. Correcting the drift rather than predicting it
+ * means the browser's own scroll anchoring -- which some browsers apply and some do not --
+ * can never be fought, only finished.
+ *
+ * @param element - Element that must not move on screen
+ */
+function holdInPlace(element: HTMLElement): void {
+    const scroller = scrollingAncestor(element);
+    const anchorTop = element.getBoundingClientRect().top;
+    const until = performance.now() + DISCLOSURE_TRANSITION_TIMEOUT_MS + 50;
+    const correct = (): void => {
+        const drift = element.getBoundingClientRect().top - anchorTop;
+        if (Math.abs(drift) >= 0.5) scroller.scrollTop += drift;
+        if (performance.now() < until) window.requestAnimationFrame(correct);
+    };
+    window.requestAnimationFrame(correct);
+}
+
+/**
  * linkAccordion - makes a set of disclosure headers mutually exclusive
  *
  * Watches `aria-expanded` rather than listening for clicks, because
  * {@link disclosureHeader}'s keyboard path calls its toggle directly and never
  * dispatches a click event: a click listener would leave Enter and Space able to
  * open two steps at once.
+ *
+ * Opening a step closes the others, and a closed step above the one just opened takes
+ * its whole height out from above the reader. Left alone, the scroll position stays the
+ * same number while everything under it moves up by that height, so the header they
+ * clicked is carried off the top of the screen and they land deep inside the step --
+ * on a lab report, at the technical rubric. The opened header is held where it was
+ * clicked for as long as the other step takes to close.
  *
  * @param headers - Headers that may not be open simultaneously
  */
@@ -1367,10 +1425,13 @@ function linkAccordion(headers: HTMLElement[]): void {
     headers.forEach((header) => {
         const observer = new MutationObserver(() => {
             if (settling || header.getAttribute('aria-expanded') !== 'true') return;
+            const open = headers.filter(
+                (other) => other !== header && other.getAttribute('aria-expanded') === 'true'
+            );
+            if (!open.length) return;
             settling = true;
-            headers
-                .filter((other) => other !== header && other.getAttribute('aria-expanded') === 'true')
-                .forEach((other) => other.click());
+            holdInPlace(header);
+            open.forEach((other) => other.click());
             settling = false;
         });
         observer.observe(header, { attributes: true, attributeFilter: ['aria-expanded'] });
@@ -1676,7 +1737,57 @@ function renderRubricPage(
 
         const actions = document.createElement('div');
         actions.className = 'wf-button-row';
+
+        // One discard action per rubric that has something to discard: an approved version
+        // to go back to, and unapproved edits on top of it. It sits with Save and Approve
+        // because it is the same kind of decision about the same rubric. A lab report names
+        // which rubric each one discards, since the two can be discarded separately.
+        const discardGroup = document.createElement('div');
+        discardGroup.className = 'wf-discard-actions';
+        const discardButton = (section: RubricSectionHandle): HTMLButtonElement => {
+            const rubricName = section.lens === 'technical' ? 'technical rubric' : 'writing rubric';
+            const button = createButton(
+                pageContext.isLabReport ? `Discard ${rubricName} changes` : 'Discard changes',
+                'danger',
+                async () => {
+                    const confirmation = await showConfirmModal(
+                        pageContext.isLabReport ? `Discard your changes to the ${rubricName}?` : 'Discard your changes?',
+                        `Everything changed since approval (draft v${section.draftVersion}) will be deleted, and ${pageContext.isLabReport ? `the ${rubricName}` : 'the rubric'} goes back to approved version v${section.approvedVersion}. This cannot be undone.`,
+                        'Discard changes',
+                        'Cancel',
+                        'danger'
+                    );
+                    // The modal resolves to its own slugified button label.
+                    if (confirmation.action !== 'discard-changes') return;
+                    // Store anything typed since the last autosave before deleting, so no write
+                    // still waiting on its timer can recreate the draft afterwards.
+                    await rubricAutosave?.flush();
+                    await jsonRequest(
+                        `/assignments/${encodeURIComponent(assignment.id)}/rubric-draft${section.lens === 'technical' ? '?lens=technical' : ''}`,
+                        'DELETE'
+                    );
+                    state.panelDirty = false;
+                    state.assignments = await request<Assignment[]>('/assignments');
+                    showSuccessToast(pageContext.isLabReport ? `Changes to the ${rubricName} discarded.` : 'Changes discarded.');
+                    await openRubricPage(assignment.id);
+                }
+            );
+            button.classList.add('wf-discard-action');
+            return button;
+        };
+        const refreshDiscardActions = (): void => {
+            discardGroup.replaceChildren(
+                ...pageContext.sections
+                    .filter((section) => section.canEdit
+                        && section.approvedVersion !== undefined
+                        && section.draftVersion !== undefined)
+                    .map(discardButton)
+            );
+        };
+        refreshDiscardActions();
+
         actions.append(
+            discardGroup,
             createButton('Save as draft', 'secondary', async () => {
                 await withFieldErrorReporting(pageContext, validationNote, async () => {
                     await saveEveryRubric(pageContext);
@@ -1705,7 +1816,12 @@ function renderRubricPage(
                 // A background write that succeeds means the page is no longer holding
                 // unsaved work; leaving it dirty would have navigation ask about changes
                 // that are already stored.
-                if (autosaveState.status === 'saved') state.panelDirty = false;
+                if (autosaveState.status === 'saved') {
+                    state.panelDirty = false;
+                    // A first edit to an approved rubric has just created its draft, so there
+                    // is now something to discard.
+                    refreshDiscardActions();
+                }
                 if (autosaveState.status !== 'stopped') return;
                 const stamp = autosaveState.savedAt
                     ? new Date(autosaveState.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -2312,11 +2428,15 @@ async function autosaveAssignmentRubrics(context: RubricPageContext): Promise<vo
             ...(section.lens === 'technical' ? { labContext } : {})
         };
         try {
-            await jsonRequest<Assignment>(
+            const updated = await jsonRequest<Assignment>(
                 `/assignments/${encodeURIComponent(context.assignment.id)}/rubric-draft${section.lens === 'technical' ? '?lens=technical' : ''}`,
                 'PUT',
                 input
             );
+            // The write created or reused this rubric's draft. Its version is what step 3's
+            // discard action names, and its existence is what lets that action appear.
+            const draft = section.lens === 'technical' ? updated.technicalRubricDraft : updated.rubricDraft;
+            if (draft) section.draftVersion = draft.version;
         } catch (error) {
             // The shared envelope reports an expired session as a plain failed request whose
             // message is the course guard's "Authentication required", so the status is what
@@ -2414,7 +2534,6 @@ function renderRubricSection(
     if (!source) throw new Error('This assignment does not have a rubric draft or approved rubric.');
     const working = detachedRubric(source);
     const canEdit = data.permissions.canEdit;
-    const lensQuery = lens === 'technical' ? '?lens=technical' : '';
 
     const section = document.createElement('div');
     section.className = 'wf-rubric-section';
@@ -2511,35 +2630,14 @@ function renderRubricSection(
         working,
         canEdit,
         nextVersion: data.draft?.version ?? (data.approved?.version ?? 0) + 1,
-        hasApproved: Boolean(data.approved)
+        hasApproved: Boolean(data.approved),
+        approvedVersion: data.approved?.version,
+        draftVersion: data.draft?.version
     });
 
-    // Save and Approve live in step 3, once for the whole assignment: a lab report
-    // has two of these sections, and two Save buttons on one page is a question
-    // staff should never have to answer. Discard stays here because it is genuinely
-    // per-rubric -- its message names this rubric's own draft and approved versions.
-    if (canEdit) {
-        const actions = document.createElement('div');
-        actions.className = 'wf-button-row';
-        if (data.draft && data.approved) {
-            actions.append(createButton('Discard draft', 'danger', async () => {
-                const confirmation = await showConfirmModal(
-                    'Discard this rubric draft?',
-                    `Draft v${data.draft!.version} will be removed. Approved rubric v${data.approved!.version} stays active.`,
-                    'Discard draft',
-                    'Cancel',
-                    'danger'
-                );
-                if (confirmation.action !== 'discard-draft') return;
-                await jsonRequest(`/assignments/${encodeURIComponent(assignment.id)}/rubric-draft${lensQuery}`, 'DELETE');
-                state.panelDirty = false;
-                state.assignments = await request<Assignment[]>('/assignments');
-                showSuccessToast('Rubric draft discarded.');
-                await openRubricPage(assignment.id);
-            }));
-        }
-        form.append(actions);
-    }
+    // Save, Approve and Discard all live in step 3. Discard used to sit here, under each
+    // grid, which read as a stray button and only appeared once the page had been
+    // reloaded after the first edit.
 
     editor.append(form);
     layout.append(editor);
