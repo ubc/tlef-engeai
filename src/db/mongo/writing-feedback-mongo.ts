@@ -842,6 +842,57 @@ export async function countWritingFeedbackRunsByLens(
     return runs(ctx).countDocuments({ courseId, assignmentId, lens });
 }
 
+/**
+ * countFeedbackStaleOnApproval — how many unreleased submissions a newer rubric version would put out of date.
+ *
+ * Feedback is tied to the rubric version it was generated with, and staff approval, release
+ * preview and release all refuse feedback from an older version. Once a newer version of this
+ * lens's rubric is approved, every unreleased submission whose latest run for the lens was
+ * generated with the version approved now has to be regenerated. Released submissions are exempt
+ * and are not counted.
+ *
+ * Each submission counts once, by its latest run for the lens, and a run whose submission no
+ * longer exists is not counted. A run with no recorded lens is a linguistic run, and one with no
+ * recorded rubric version counts as version 1 -- the same rules `getLatestWritingFeedbackRun`
+ * and the staleness check apply.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param assignmentId - Assignment whose rubric is about to change
+ * @param lens - Lens whose rubric is being approved
+ * @param approvedVersion - That lens's currently approved rubric version
+ * @returns Number of unreleased submissions whose latest run for the lens used that version
+ */
+export async function countFeedbackStaleOnApproval(
+    ctx: MongoDalContext,
+    courseId: string,
+    assignmentId: string,
+    lens: WritingFeedbackLens,
+    approvedVersion: number
+): Promise<number> {
+    const lensFilter: Filter<WritingFeedbackRun> = lens === 'linguistic'
+        ? { $or: [{ lens: 'linguistic' }, { lens: { $exists: false } }] }
+        : { lens };
+    const versionFilter = approvedVersion === 1
+        ? { rubricVersion: { $in: [1, null] } }
+        : { rubricVersion: approvedVersion };
+    const [counted] = await runs(ctx).aggregate<{ total: number }>([
+        // Step 1: this assignment's runs for the lens, newest first.
+        { $match: { courseId, assignmentId, ...lensFilter } },
+        { $sort: { createdAt: -1 } },
+        // Step 2: one row per submission, carrying its latest run's rubric version.
+        { $group: { _id: '$submissionId', rubricVersion: { $first: '$rubricVersion' } } },
+        // Step 3: keep the submissions whose latest run used the approved version.
+        { $match: versionFilter },
+        // Step 4: drop released and deleted submissions, then count what is left.
+        { $lookup: { from: SUBMISSIONS, localField: '_id', foreignField: 'id', as: 'submission' } },
+        { $unwind: '$submission' },
+        { $match: { 'submission.courseId': courseId, 'submission.status': { $ne: 'released' } } },
+        { $count: 'total' }
+    ]).toArray();
+    return counted?.total ?? 0;
+}
+
 function normalizeGlossaryTerm(term: string): string {
     return term.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
 }

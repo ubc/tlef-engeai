@@ -461,6 +461,22 @@ export class EngEAI_MongoDB {
         WritingFeedbackMongo.countWritingFeedbackRunsByLens(this.ctx(), courseId, assignmentId, lens);
 
     /**
+     * countFeedbackStaleOnApproval — counts unreleased submissions a newer rubric version would put out of date.
+     *
+     * @param courseId - Owning course id
+     * @param assignmentId - Assignment whose rubric is about to change
+     * @param lens - Lens whose rubric is being approved
+     * @param approvedVersion - That lens's currently approved rubric version
+     * @returns Number of unreleased submissions whose latest run for the lens used that version
+     */
+    public countFeedbackStaleOnApproval = async (
+        courseId: string,
+        assignmentId: string,
+        lens: WritingFeedbackLens,
+        approvedVersion: number
+    ) => WritingFeedbackMongo.countFeedbackStaleOnApproval(this.ctx(), courseId, assignmentId, lens, approvedVersion);
+
+    /**
      * listWritingGlossaryEntries — lists reusable Writing Feedback glossary definitions.
      *
      * @param courseId - Owning course id

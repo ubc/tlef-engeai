@@ -265,3 +265,32 @@ describe('unchanged rubrics never become a new version', () => {
         expect(body).toContain('draft: rubricContentEquals(selected.draft, selected.approved) ? undefined : selected.draft');
     });
 });
+
+describe('the rubric response reports what approving a newer version would put out of date', () => {
+    const routeSource = require('fs').readFileSync(
+        require('path').join(__dirname, '../route-writing-feedback.ts'),
+        'utf8'
+    ) as string;
+
+    function getRubricBody(): string {
+        const marker = "router.get('/:courseId/writing-feedback/assignments/:assignmentId/rubric'";
+        const start = routeSource.indexOf(marker);
+        expect(start).toBeGreaterThan(-1);
+        const next = routeSource.indexOf('\nrouter.', start + marker.length);
+        return routeSource.slice(start, next === -1 ? undefined : next);
+    }
+
+    it('counts stale feedback against the approved version of the requested lens', () => {
+        const body = getRubricBody();
+        expect(body).toContain('mongo.countFeedbackStaleOnApproval(courseId(req), assignment.id, lens, selected.approved.version)');
+    });
+
+    it('reports zero for a rubric that has never been approved, without querying', () => {
+        const body = getRubricBody();
+        expect(body).toMatch(/selected\.approved\s*\?\s*await mongo\.countFeedbackStaleOnApproval\([\s\S]*?\)\s*:\s*0;/);
+    });
+
+    it('returns the count with the rest of the rubric response', () => {
+        expect(getRubricBody()).toMatch(/permissions: \{[^}]*\},\s*feedbackStaleOnApproval\s*\}/);
+    });
+});

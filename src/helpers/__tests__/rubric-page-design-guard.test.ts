@@ -56,11 +56,14 @@ describe('rubric page copy', () => {
         expect(read(RUBRIC_TS)).toContain("createText('h1', assignment.title, 'wf-rubric-title')");
     });
 
-    it('offers one Save and one Approve for the whole assignment', () => {
+    it('offers one Approve for the whole assignment, and no everyday Save', () => {
         // A lab report renders two rubric sections. When the actions lived inside
-        // a section, that put two Save buttons on one page.
+        // a section, that put two Save buttons on one page. Autosave now stores every
+        // edit and says so, so the only save action left is the one shown after a
+        // sign-out stops autosave for good.
         const source = read(RUBRIC_TS);
-        expect(source.match(/createButton\('Save as draft'/g) ?? []).toHaveLength(1);
+        expect(source.match(/createButton\('Save as draft'/g) ?? []).toHaveLength(0);
+        expect(source.match(/createButton\('Save now'/g) ?? []).toHaveLength(1);
         expect(source.match(/createButton\('Approve rubric'/g) ?? []).toHaveLength(1);
     });
 

@@ -293,6 +293,8 @@ interface RubricSectionHandle {
     hasApproved: boolean;
     /** The active approved version, which discarding the draft returns the rubric to. */
     approvedVersion?: number;
+    /** When the active version was approved, for step 3's "Approved v2 · date". */
+    approvedAt?: string;
     /**
      * The unapproved draft's version, once one exists. Kept current by autosave: an approved
      * rubric has no draft until its first edit is stored, and that store is what makes
@@ -1712,13 +1714,50 @@ function renderRubricPage(
     approveRow.className = 'wf-approve-row';
     const approveCopy = document.createElement('div');
     approveCopy.className = 'wf-approve-copy';
-    approveCopy.append(
-        createText('p', 'Once approved, this rubric will be the version that student submissions are marked against.'),
-        createText('p', 'You can still change the rubric afterwards — feedback already drafted keeps the version it was marked against.', 'wf-help-text')
-    );
+    // Where each rubric stands: never approved, approved with nothing waiting, or approved
+    // with changes waiting. Rebuilt whenever autosave stores or removes a draft, so the page
+    // never asks for an approval that has already happened.
+    const approvalSummary = document.createElement('div');
+    approvalSummary.className = 'wf-approval-summary';
+    const approvalHelp = createText('p', '', 'wf-help-text');
+    approveCopy.append(approvalSummary, approvalHelp);
     approveRow.append(approveCopy);
 
+    const renderApprovalSummary = (): void => {
+        const sections = pageContext.sections;
+        const nameOf = (section: RubricSectionHandle): string =>
+            section.lens === 'technical' ? 'Technical rubric' : 'Writing rubric';
+        approvalSummary.replaceChildren(...sections.map((section) => {
+            const prefix = isLabReport ? `${nameOf(section)}: ` : '';
+            if (section.approvedVersion === undefined) {
+                return createText('p', isLabReport ? `${prefix}not approved yet.` : 'Not approved yet.');
+            }
+            const approvedOn = section.approvedAt ? ` · ${formatDate(section.approvedAt)}` : '';
+            return createText('p', section.draftVersion !== undefined
+                ? `${prefix}Approved v${section.approvedVersion} is in use. You have unapproved changes, saved as a draft.`
+                : `${prefix}Approved v${section.approvedVersion}${approvedOn}.`);
+        }));
+        const anyApproved = sections.some((section) => section.approvedVersion !== undefined);
+        const anyWaiting = sections.some((section) =>
+            section.approvedVersion === undefined || section.draftVersion !== undefined);
+        // The old line here said drafted feedback keeps its version, which was the opposite of
+        // what happens: feedback from an older version is refused until it is regenerated.
+        approvalHelp.textContent = !anyApproved
+            ? 'Once approved, feedback for this assignment is generated and marked against this rubric.'
+            : anyWaiting
+                ? "Approving a new version puts unreleased feedback generated with the current one out of date, so it will need to be regenerated. Released feedback isn't affected."
+                : 'Edits you make to the rubric are saved as a draft and only take effect once you approve them.';
+    };
+
     if (canEditAny) {
+        // What autosave is doing, in words. It stores every edit within seconds, and staff
+        // who did not expect their edits to be kept should see that happen rather than find
+        // out from the next page load.
+        const saveStatus = document.createElement('p');
+        saveStatus.className = 'wf-save-status';
+        saveStatus.setAttribute('role', 'status');
+        saveStatus.setAttribute('aria-live', 'polite');
+
         // Created here, filled only if the session expires. role="alert" rather than a
         // polite status: it appears once, and only to say that work has stopped being
         // saved.
@@ -1784,67 +1823,104 @@ function renderRubricPage(
                     .map(discardButton)
             );
         };
-        refreshDiscardActions();
+        let refreshApprovalState = (): void => {};
 
-        actions.append(
-            discardGroup,
-            createButton('Save as draft', 'secondary', async () => {
-                await withFieldErrorReporting(pageContext, validationNote, async () => {
-                    await saveEveryRubric(pageContext);
-                    state.panelDirty = false;
-                    state.assignments = await request<Assignment[]>('/assignments');
-                    showSuccessToast('Rubric draft saved. The approved rubric is unchanged.');
-                    await openRubricPage(assignment.id);
-                });
-            }),
-            createButton('Approve rubric', 'primary', async () => {
-                await withFieldErrorReporting(pageContext, validationNote, async () => approveEveryRubric(pageContext));
-            })
-        );
-        // Autosave narrates one state and no other. "Saving…" and "Saved 14:32" were
-        // reassurance nobody asked for, and beside a button reading "Save as draft" they
-        // made the reader work out which save either one meant.
-        //
-        // An expired session is the exception, and the reason this line exists at all: the
-        // loop is stopped for good, nothing further is being stored, and the page gives no
-        // other sign of it. A toast would be wrong here -- this is not news about a moment
-        // that passes, it is a condition that holds for as long as the page is open, so it
-        // stays on the page until something is done about it.
+        // Offered only when there is something to approve, and named for what it approves. A
+        // rubric already approved with nothing waiting shows no approve action at all.
+        const approveButton = createButton('Approve rubric', 'primary', async () => {
+            await withFieldErrorReporting(pageContext, validationNote, async () => approveEveryRubric(pageContext));
+        });
+
+        // Autosave stops for good once the session expires. After signing in again in another
+        // tab, this is the only way to store what was typed here, so it appears only then.
+        const saveNowButton = createButton('Save now', 'secondary', async () => {
+            await withFieldErrorReporting(pageContext, validationNote, async () => {
+                await saveEveryRubric(pageContext);
+                state.panelDirty = false;
+                saveStatus.textContent = 'Changes saved as a draft.';
+                refreshApprovalState();
+                showSuccessToast('Changes saved.');
+            });
+        });
+        saveNowButton.hidden = true;
+
+        refreshApprovalState = (): void => {
+            renderApprovalSummary();
+            refreshDiscardActions();
+            const waiting = pageContext.sections.filter((section) => section.canEdit
+                && (section.approvedVersion === undefined || section.draftVersion !== undefined));
+            approveButton.hidden = waiting.length === 0;
+            approveButton.textContent = waiting.some((section) => section.approvedVersion === undefined)
+                ? 'Approve rubric'
+                : 'Approve changes';
+            pageContext.refreshProgress();
+        };
+
+        actions.append(discardGroup, saveNowButton, approveButton);
+
+        // Autosave says what it is doing: it stores every edit as a draft within seconds, and
+        // staff who did not expect that should see it happen. An expired session is still
+        // reported separately, as an alert that stays on the page, because the loop is stopped
+        // for good and only Save now can store what is typed from then on.
         rubricAutosave = createAutosave({
             write: () => autosaveAssignmentRubrics(pageContext),
             onStatus: (autosaveState) => {
-                // A background write that succeeds means the page is no longer holding
-                // unsaved work; leaving it dirty would have navigation ask about changes
-                // that are already stored.
-                if (autosaveState.status === 'saved') {
-                    state.panelDirty = false;
-                    // A first edit to an approved rubric has just created its draft, so there
-                    // is now something to discard.
-                    refreshDiscardActions();
+                switch (autosaveState.status) {
+                    case 'pending':
+                    case 'saving':
+                        saveStatus.textContent = 'Saving…';
+                        return;
+                    case 'saved':
+                        // A background write that succeeds means the page is no longer holding
+                        // unsaved work; leaving it dirty would have navigation ask about changes
+                        // that are already stored.
+                        state.panelDirty = false;
+                        // The write may have created a draft (a first edit to an approved rubric)
+                        // or removed one (edits undone), which changes what step 3 offers.
+                        refreshApprovalState();
+                        saveStatus.textContent = pageContext.sections.some((section) =>
+                            section.canEdit && section.draftVersion !== undefined)
+                            ? 'Changes saved as a draft.'
+                            : 'All changes saved.';
+                        return;
+                    case 'error':
+                        // Autosave does not retry an ordinary failure on its own; the next edit does.
+                        saveStatus.textContent = "Your latest changes haven't been saved yet. Making another change will try again.";
+                        return;
+                    case 'stopped': {
+                        saveStatus.textContent = '';
+                        const stamp = autosaveState.savedAt
+                            ? new Date(autosaveState.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                            : '';
+                        // Not "sign in again", which means leaving this page, and everything typed
+                        // since the stamp lives only in this tab. Signing in elsewhere restores the
+                        // same-origin session cookie, after which Save now works from here and the
+                        // work survives. Autosave itself stays stopped either way.
+                        autosaveStatus.textContent = stamp
+                            ? `You've been signed out, and nothing has been saved since ${stamp}. Don't reload this page — sign in again in another tab, then come back and press Save now.`
+                            : "You've been signed out, and nothing you have typed here has been saved. Don't reload this page — sign in again in another tab, then come back and press Save now.";
+                        autosaveStatus.hidden = false;
+                        saveNowButton.hidden = false;
+                        return;
+                    }
+                    default:
+                        return;
                 }
-                if (autosaveState.status !== 'stopped') return;
-                const stamp = autosaveState.savedAt
-                    ? new Date(autosaveState.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                    : '';
-                // Not "sign in again", which means leaving this page, and everything typed
-                // since the stamp lives only in this tab. Signing in elsewhere restores the
-                // same-origin session cookie, after which Save as draft works from here and
-                // the work survives. Autosave itself stays stopped either way.
-                autosaveStatus.textContent = stamp
-                    ? `You've been signed out, and nothing has been saved since ${stamp}. Don't reload this page — sign in again in another tab, then come back and press Save as draft.`
-                    : "You've been signed out, and nothing you have typed here has been saved. Don't reload this page — sign in again in another tab, then come back and press Save as draft.";
-                autosaveStatus.hidden = false;
             }
         });
 
         registerAutosaveFlushListeners();
+        refreshApprovalState();
 
         approveRow.append(actions);
         // Below the approve row, not inside it: a sentence this long sitting beside the
         // buttons is what used to widen their row until it wrapped, moving them from the
         // right of the step to its bottom left.
-        step3Body.append(autosaveStatus, validationNote);
+        step3Body.append(saveStatus, autosaveStatus, validationNote);
     }
+
+    // Staff who cannot edit still see where each rubric stands; they just get no actions.
+    if (!canEditAny) renderApprovalSummary();
 
     // What is still outstanding is the progress strip's job, once, at the top of the
     // page. Step 3 used to restate it in a notice of its own, which said the same
@@ -1885,13 +1961,27 @@ function renderRubricPage(
                     ? `${gridNow.criteria} criteria · ${gridNow.levels} levels · ${gridNow.totalPoints} points`
                     : `${gridNow.emptyCells} ${gridNow.emptyCells === 1 ? 'box' : 'boxes'} still empty`
             },
-            {
-                ordinal: 3, label: 'Approve it',
-                state: describedDone && gridNow.complete ? 'current' : 'pending',
-                detail: describedDone && gridNow.complete
-                    ? 'Ready to approve'
-                    : 'Ready to approve — some things still owed'
-            }
+            (() => {
+                // Done when every rubric is approved with nothing waiting, and saying so, rather
+                // than asking again for an approval that has already happened.
+                const sections = pageContext.sections;
+                const waiting = sections.some((section) =>
+                    section.approvedVersion !== undefined && section.draftVersion !== undefined);
+                const unapproved = sections.some((section) => section.approvedVersion === undefined);
+                const ready = describedDone && gridNow.complete;
+                if (sections.length && !waiting && !unapproved) {
+                    return {
+                        ordinal: 3, label: 'Approve it', state: 'done' as const,
+                        detail: sections.length === 1 ? `Approved v${sections[0].approvedVersion}` : 'Both rubrics approved'
+                    };
+                }
+                const owed = ready ? '' : ' — some things still owed';
+                return {
+                    ordinal: 3, label: 'Approve it',
+                    state: ready ? 'current' as const : 'pending' as const,
+                    detail: `${waiting && !unapproved ? 'Unapproved changes' : 'Ready to approve'}${owed}`
+                };
+            })()
         ]));
 
         // The same chip the profile sub-card uses: the two lines make the same claim
@@ -2011,7 +2101,7 @@ function findApprovalBlocker(sections: RubricSectionHandle[]): string | null {
 }
 
 /**
- * approveEveryRubric - the page's one Approve, covering every rubric it owns
+ * approveEveryRubric - the page's one Approve, covering every rubric with something to approve
  *
  * Staff think of approving "the rubric" once, even on a lab report that keeps
  * two. Each request is the same per-rubric approve the page has always issued;
@@ -2028,27 +2118,63 @@ async function approveEveryRubric(context: RubricPageContext): Promise<void> {
     const editable = context.sections.filter((section) => section.canEdit);
     if (!editable.length) return;
 
+    // Step 1: only rubrics with something to approve -- never approved, or changed since. The
+    // save above has just removed any draft identical to the approved rubric, and approving
+    // one of those would be refused anyway.
+    const pending = editable.filter((section) => section.approvedVersion === undefined || section.draftVersion !== undefined);
+    if (!pending.length) {
+        showSuccessToast('Nothing has changed since the rubric was approved.');
+        await openRubricPage(context.assignment.id);
+        return;
+    }
+
     // Before the confirmation, not after it: there is no sense in asking a staff
     // member to confirm an approval that will be refused. The modal this throw
     // raises is the whole report -- the message names the criterion, and on a lab
     // report its prefix names which of the two grids.
-    const blocker = findApprovalBlocker(editable);
+    const blocker = findApprovalBlocker(pending);
     if (blocker) throw new Error(blocker);
 
-    const versions = editable.map((section) => `v${section.nextVersion}`).join(' and ');
-    const alreadyApproved = editable.some((section) => section.hasApproved);
-    const noun = editable.length > 1 ? 'Rubrics' : 'Rubric';
-    const confirmation = await showConfirmModal(
-        alreadyApproved ? 'Approve this rubric version?' : 'Approve this first rubric?',
-        alreadyApproved
-            ? `${noun} ${versions} will become active for future feedback. Older unreleased feedback must be regenerated. This does not update Canvas.`
-            : `${noun} ${versions} will become active for this assignment. This does not generate feedback or update Canvas.`,
-        'Approve rubric',
-        'Keep as draft'
-    );
-    if (confirmation.action !== 'approve-rubric') return;
+    // Step 2: what approving costs, per rubric, read now rather than at page load, since
+    // feedback may have been generated since the page opened.
+    const staleCounts = await Promise.all(pending.map(async (section) => {
+        if (section.approvedVersion === undefined) return 0;
+        const fresh = await request<RubricResponse>(
+            `/assignments/${encodeURIComponent(context.assignment.id)}/rubric${rubricLensQuery(section.lens)}`
+        );
+        return fresh.feedbackStaleOnApproval;
+    }));
 
-    for (const section of editable) {
+    // Step 3: confirm in terms of versions and the feedback they affect.
+    const rubricName = (section: RubricSectionHandle): string =>
+        section.lens === 'technical' ? 'technical rubric' : 'writing rubric';
+    const versionOf = (section: RubricSectionHandle): number => section.draftVersion ?? section.nextVersion;
+    const firstApproval = pending.every((section) => section.approvedVersion === undefined);
+    const lines = pending.map((section, index) => {
+        const subject = context.isLabReport ? `The ${rubricName(section)}` : 'The rubric';
+        if (section.approvedVersion === undefined) {
+            return `${subject} becomes v${versionOf(section)}, the version feedback is generated and marked against.`;
+        }
+        const count = staleCounts[index];
+        const cost = count > 0
+            ? ` ${count} ${count === 1 ? 'student has' : 'students have'} feedback from v${section.approvedVersion} that isn't released yet. It will need to be regenerated and approved again; comments and written feedback staff added are kept.`
+            : '';
+        return `${subject} becomes v${versionOf(section)}, replacing v${section.approvedVersion}.${cost}`;
+    });
+    if (pending.some((section) => section.approvedVersion !== undefined)) {
+        lines.push("Released feedback isn't affected.");
+    }
+    const confirmLabel = firstApproval ? 'Approve rubric' : 'Approve changes';
+    const confirmation = await showConfirmModal(
+        firstApproval ? 'Approve this rubric?' : 'Approve these changes?',
+        lines.join('<br><br>'),
+        confirmLabel,
+        'Cancel'
+    );
+    // The modal resolves to its own slugified button label.
+    if (confirmation.action !== confirmLabel.toLowerCase().replace(/\s+/g, '-')) return;
+
+    for (const section of pending) {
         await jsonRequest(
             `/assignments/${encodeURIComponent(context.assignment.id)}/rubric-draft/approve${rubricLensQuery(section.lens)}`,
             'POST'
@@ -2056,7 +2182,11 @@ async function approveEveryRubric(context: RubricPageContext): Promise<void> {
     }
     state.panelDirty = false;
     state.assignments = await request<Assignment[]>('/assignments');
-    showSuccessToast('Rubric approved for future feedback generation.');
+    const approvedNames = pending.map((section) => context.isLabReport
+        ? `${rubricName(section)} v${versionOf(section)}`
+        : `Rubric v${versionOf(section)}`);
+    const sentence = approvedNames.join(' and ');
+    showSuccessToast(`${sentence.charAt(0).toUpperCase()}${sentence.slice(1)} approved.`);
     await openRubricPage(context.assignment.id);
 }
 
@@ -2368,11 +2498,15 @@ async function saveAssignmentRubrics(context: RubricPageContext): Promise<void> 
             ...(section.lens === 'linguistic' ? { sflContext } : {}),
             ...(section.lens === 'technical' ? { labContext } : {})
         };
-        await jsonRequest<Assignment>(
+        const updated = await jsonRequest<Assignment>(
             `/assignments/${encodeURIComponent(context.assignment.id)}/rubric-draft${section.lens === 'technical' ? '?lens=technical' : ''}`,
             'PUT',
             input
         );
+        // A save that matches the approved rubric removes the draft instead of storing it, so
+        // whether this rubric still has anything to approve is only known from the reply.
+        const draft = section.lens === 'technical' ? updated.technicalRubricDraft : updated.rubricDraft;
+        section.draftVersion = draft?.version;
     }
 }
 
@@ -2633,6 +2767,7 @@ function renderRubricSection(
         nextVersion: data.draft?.version ?? (data.approved?.version ?? 0) + 1,
         hasApproved: Boolean(data.approved),
         approvedVersion: data.approved?.version,
+        approvedAt: data.approved?.approvedAt,
         draftVersion: data.draft?.version
     });
 

@@ -112,6 +112,7 @@ export interface RubricLevel {
 /** Versioned rubric snapshot returned by assignment and rubric endpoints. */
 export interface RubricDefinition {
     version: number; // immutable version used to detect stale feedback runs
+    approvedAt?: string; // when this version was approved; absent on drafts
     status: 'draft' | 'approved'; // separates editable work from active generation policy
     title: string; // staff/student display name for the rubric
     task: string; // assignment task context supplied to the feedback pipeline
@@ -427,6 +428,8 @@ export interface RubricResponse {
     history: RubricDefinition[]; // immutable prior versions available for provenance
     library: RubricCriterion[]; // optional criteria available for explicit instructor addition
     permissions: { canEdit: boolean }; // server-derived mutation permission for the current staff user
+    /** Unreleased submissions whose latest feedback for this rubric used the approved version; approving a newer version means regenerating them. 0 before first approval. */
+    feedbackStaleOnApproval: number;
 }
 
 /** One submission shown in the pre-import preview, with no source identifiers or file URLs. */

@@ -436,6 +436,12 @@ router.get('/:courseId/writing-feedback/assignments/:assignmentId/rubric', async
     const selected = selectRubric(assignment, lens);
     const currentCourse = await mongo.getActiveCourse(courseId(req));
     const globalUser = (req.session as any).globalUser;
+    // What approving a newer version of this rubric would cost: the unreleased feedback generated
+    // with the version approved now, all of which would need regenerating. Feedback is only ever
+    // generated against an approved rubric, so a rubric never approved has none.
+    const feedbackStaleOnApproval = selected.approved
+        ? await mongo.countFeedbackStaleOnApproval(courseId(req), assignment.id, lens, selected.approved.version)
+        : 0;
     res.json({
         success: true,
         data: {
@@ -448,7 +454,8 @@ router.get('/:courseId/writing-feedback/assignments/:assignmentId/rubric', async
             history: selected.history,
             // The optional criterion library applies to the linguistic lens only.
             library: lens === 'linguistic' ? listCriterionLibrary() : [],
-            permissions: { canEdit: Boolean(currentCourse && isCourseStaff(currentCourse, globalUser)) }
+            permissions: { canEdit: Boolean(currentCourse && isCourseStaff(currentCourse, globalUser)) },
+            feedbackStaleOnApproval
         }
     });
 }));
