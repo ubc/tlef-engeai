@@ -1,6 +1,7 @@
 /**
  * Writing feedback lens route contract — asserts the rubric routes resolve a
- * lens from the query string and that the lab-report toggle route exists,
+ * lens from the query string, that the one-time assignment type route and the
+ * technical seed route exist (D-123), and that the lab-report toggle is gone,
  * without depending on declaration order in the source file.
  *
  * A genuine source-text guard test: reads `route-writing-feedback.ts` with
@@ -46,9 +47,21 @@ const source = fs.readFileSync(
 );
 
 describe('writing feedback lens route contract', () => {
-    it('declares the lab-report toggle route', () => {
-        expect(source).toContain("'/:courseId/writing-feedback/assignments/:assignmentId/lab-report'");
-        expect(source).toMatch(/router\.patch\(\s*'\/:courseId\/writing-feedback\/assignments\/:assignmentId\/lab-report'/);
+    it('declares the one-time assignment type route and the technical seed route', () => {
+        expect(source).toMatch(/router\.put\(\s*'\/:courseId\/writing-feedback\/assignments\/:assignmentId\/type'/);
+        expect(source).toMatch(/router\.post\(\s*'\/:courseId\/writing-feedback\/assignments\/:assignmentId\/technical-rubric\/seed'/);
+    });
+
+    it('no longer lets staff toggle the lab-report flag', () => {
+        expect(source).not.toContain('/lab-report');
+        expect(source).not.toContain('setWritingAssignmentLabReport');
+    });
+
+    it('lets the fixed assignment-type refusals past the safeError allowlist', () => {
+        const allowlist = source
+            .slice(source.indexOf('const safePrefixes'), source.indexOf('return safePrefixes'));
+        expect(allowlist).toContain("'The assignment type has already been chosen'");
+        expect(allowlist).toContain("'Only a lab report has a technical rubric'");
     });
 
     it('declares all four rubric routes', () => {
@@ -215,6 +228,12 @@ describe('POST rubric-draft/approve completeness gates', () => {
             expect(thrown).not.toBe('');
             expect(allowlist.some((prefix) => thrown.startsWith(prefix))).toBe(true);
         }
+    });
+
+    it('refuses approval while the assignment type is still pending', () => {
+        const body = approveRouteBody();
+        expect(body).not.toBeNull();
+        expect(body).toMatch(/assignment\.assignmentTypePending === true[\s\S]*?status\(409\)[\s\S]*?CHOOSE_TYPE_BEFORE_APPROVAL_MESSAGE/);
     });
 
     it('keeps the new gate inside the same try/catch that returns HTTP 400 with a safe error', () => {

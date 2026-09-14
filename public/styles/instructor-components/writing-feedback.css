@@ -516,33 +516,6 @@
     gap: 10px;
 }
 
-/*
- * The lab-report hint only speaks after the toggle is used. While empty it is still a flex
- * item, so the row spends a gap on either side of nothing — leaving twice the space between
- * the toggle and the buttons as between the buttons themselves.
- */
-.wf-assignment-controls .wf-help-text:empty {
-    display: none;
-}
-
-.wf-lab-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 8px;
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    color: var(--text-primary);
-    font-size: 12px;
-    font-weight: 500;
-    white-space: nowrap;
-    cursor: pointer;
-}
-
-.wf-lab-toggle input[type="checkbox"] {
-    margin: 0;
-}
-
 .wf-expand-icon {
     display: inline-flex;
     color: var(--text-secondary);

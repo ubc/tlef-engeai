@@ -170,6 +170,14 @@ export interface WritingAssignment {
     rubricDraft?: WritingRubricDefinition;
     /** Immutable, previously approved versions retained for audit and calibration. */
     rubricHistory?: WritingRubricDefinition[];
+    /**
+     * True from creation until staff choose the assignment type (D-123).
+     *
+     * Absent on every assignment created before the choice existed; those keep the type they
+     * already have and are never asked. Cleared atomically by the one-time type choice, so the
+     * type cannot change afterwards.
+     */
+    assignmentTypePending?: boolean;
     /** True when this assignment is a lab report and also receives technical feedback. */
     isLabReport?: boolean;
     /** Approved technical rubric governing the technical lens. Absent until first approval. */

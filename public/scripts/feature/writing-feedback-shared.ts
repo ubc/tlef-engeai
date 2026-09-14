@@ -142,6 +142,7 @@ export interface Assignment {
     rubric: RubricDefinition; // current rubric; new assignments begin with a draft
     rubricDraft?: RubricDefinition; // inactive staff draft, when one exists
     rubricHistory?: RubricDefinition[]; // immutable prior approved versions used for review labels
+    assignmentTypePending?: boolean; // true until staff answer "What kind of assignment is this?" (D-123)
     isLabReport?: boolean; // whether this assignment also receives technical (lab-report) feedback
     technicalRubric?: RubricDefinition; // approved technical rubric; absent until first approval
     technicalRubricDraft?: RubricDefinition; // editable staff draft of the technical rubric
