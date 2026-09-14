@@ -16,6 +16,21 @@ export const LAB_REPORT_ASSIGNMENT_LABEL = 'Lab report assignment';
 /** Server refusal when another request answered first; mirrors `src/writing-feedback/assignment-type.ts`. */
 export const TYPE_ALREADY_CHOSEN_MESSAGE = 'The assignment type has already been chosen';
 
+export const PROCEED_TO_RUBRIC_TITLE = 'Next: approve the rubric';
+export const PROCEED_TO_RUBRIC_LABEL = 'Proceed to rubric';
+
+/**
+ * proceedToRubricMessage - explains, after the type is saved, why the rubric page comes next.
+ *
+ * @param type - The type just saved; a lab report has two rubrics to approve
+ * @returns Body text for the follow-up step of the type modal
+ */
+export function proceedToRubricMessage(type: AssignmentTypeChoice): string {
+    return type === 'lab_report'
+        ? 'Saved as a lab report assignment. Review its writing and technical rubrics and approve them — feedback cannot be generated on submissions until they are approved.'
+        : 'Saved as a writing assignment. Review its rubric and approve it — feedback cannot be generated on submissions until it is approved.';
+}
+
 /**
  * assignmentTypeFromAction - reads the answer from a closed modal.
  *

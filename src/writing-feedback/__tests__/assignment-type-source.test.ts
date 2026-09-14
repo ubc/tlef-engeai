@@ -33,6 +33,12 @@ describe('assignment type modal source contract', () => {
         expect(modal).toContain('/type`');
         expect(modal).not.toContain('/rubric-draft/fill');
     });
+
+    it('explains rubric approval before sending staff to the rubric page', () => {
+        expect(modal).toContain('PROCEED_TO_RUBRIC_LABEL');
+        const state = feature('writing-feedback-assignment-type-state.ts');
+        expect(state).toContain("'Proceed to rubric'");
+    });
 });
 
 describe('assignment list and rubric page source contract', () => {

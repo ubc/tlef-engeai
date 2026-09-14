@@ -147,7 +147,11 @@ function renderAssignmentCard(assignment: Assignment): HTMLElement {
 
     const heading = document.createElement('div');
     heading.className = 'wf-assignment-title-group';
-    heading.append(createText('h2', assignment.title));
+    const title = createText('h2', assignment.title);
+    // The kind sits inside the heading so it trails the last word of a wrapped title. Writing
+    // is the default kind, so only the exception is labelled.
+    if (assignment.isLabReport) title.append(chip('Lab report', 'blue'));
+    heading.append(title);
     const meta = document.createElement('p');
     meta.className = 'wf-assignment-meta';
     // Provenance rides on the date rather than a separate badge: the record is created at the

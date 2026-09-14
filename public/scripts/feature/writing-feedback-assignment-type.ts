@@ -16,9 +16,12 @@ import { type Assignment, handleActionError, jsonRequest } from './writing-feedb
 import {
     ASSIGNMENT_TYPE_QUESTION,
     LAB_REPORT_ASSIGNMENT_LABEL,
+    PROCEED_TO_RUBRIC_LABEL,
+    PROCEED_TO_RUBRIC_TITLE,
     TYPE_ALREADY_CHOSEN_MESSAGE,
     WRITING_ASSIGNMENT_LABEL,
     assignmentTypeFromAction,
+    proceedToRubricMessage,
     type AssignmentTypeChoice
 } from './writing-feedback-assignment-type-state.js';
 
@@ -64,16 +67,41 @@ export async function ensureAssignmentTypeChosen(assignment: Assignment): Promis
     for (;;) {
         const type = await askAssignmentType(assignment.title);
 
-        // Record the answer. Retry on failure; stop if someone else already answered.
+        // Step 1: record the answer. Retry on failure; stop if someone else already answered.
         try {
             Object.assign(assignment, await jsonRequest<Assignment>(`${base}/type`, 'PUT', { type }));
-            return assignment;
         } catch (error) {
             if (error instanceof Error && error.message.startsWith(TYPE_ALREADY_CHOSEN_MESSAGE)) {
                 assignment.assignmentTypePending = false;
                 return assignment;
             }
             await handleActionError(error);
+            continue;
         }
+
+        // Step 2: say why the rubric page comes next, so the redirect is not a surprise.
+        await showProceedToRubric(type);
+        return assignment;
     }
+}
+
+/**
+ * showProceedToRubric - the modal's follow-up step, shown once the type is saved.
+ *
+ * Its only button, and Enter, continue to the rubric page the caller opens next.
+ *
+ * @param type - The type just saved
+ */
+async function showProceedToRubric(type: AssignmentTypeChoice): Promise<void> {
+    const content = document.createElement('p');
+    content.textContent = proceedToRubricMessage(type);
+    await showCustomModal({
+        type: 'info',
+        title: PROCEED_TO_RUBRIC_TITLE,
+        content,
+        showCloseButton: false,
+        closeOnOverlayClick: false,
+        closeOnEscape: false,
+        buttons: [{ text: PROCEED_TO_RUBRIC_LABEL, type: 'primary', closeOnClick: true }]
+    });
 }

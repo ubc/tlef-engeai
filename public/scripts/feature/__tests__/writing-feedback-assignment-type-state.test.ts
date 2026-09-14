@@ -1,7 +1,23 @@
 import {
     assignmentTypeFromAction,
-    oldestPendingAssignment
+    oldestPendingAssignment,
+    proceedToRubricMessage
 } from '../writing-feedback-assignment-type-state';
+
+describe('proceedToRubricMessage', () => {
+    it('tells staff the rubric must be approved before feedback', () => {
+        const message = proceedToRubricMessage('writing');
+        expect(message).toContain('writing assignment');
+        expect(message).toContain('approve it');
+        expect(message).toContain('feedback cannot be generated');
+    });
+
+    it('names both rubrics for a lab report', () => {
+        const message = proceedToRubricMessage('lab_report');
+        expect(message).toContain('writing and technical rubrics');
+        expect(message).toContain('feedback cannot be generated');
+    });
+});
 
 describe('assignmentTypeFromAction', () => {
     it('maps the modal button actions to the two answers', () => {

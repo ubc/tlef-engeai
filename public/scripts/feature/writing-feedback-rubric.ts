@@ -1282,6 +1282,7 @@ function renderRubricPage(
     meta.className = 'wf-assignment-meta';
     const canEditAny = linguisticData.permissions.canEdit;
     meta.append(
+        ...(isLabReport ? [chip('Lab report', 'blue')] : []),
         createText('span', assignmentOriginText(assignment)),
         // The writing rubric's approval state belongs beside the assignment title;
         // a lab report's second rubric carries its own state in its section header.
