@@ -575,3 +575,60 @@ describe('rubricContentEquals', () => {
         expect(rubricContentEquals(rubric(), undefined)).toBe(false);
     });
 });
+
+describe('rubricContentEquals with cells approved before they carried names', () => {
+    // Mirrors the real case: a rubric approved with unnamed cells, and a draft saved from the grid,
+    // which now fills each unnamed cell's name in from its level.
+    function approvedWithUnnamedCells(): WritingRubricDefinition {
+        return {
+            version: 1,
+            status: 'approved',
+            title: 'Writing Assignment 2',
+            task: 't',
+            audience: 'a',
+            purpose: 'p',
+            constraints: ['c'],
+            learningOutcomes: ['o'],
+            gradingIntent: 'g',
+            criteria: [{
+                id: 'organization', label: 'Organization', description: 'd', points: 10,
+                cells: {
+                    needs_improvement: { min: 0, max: 5, descriptor: 'N' },
+                    excellent: { min: 6, max: 10, descriptor: 'E' }
+                }
+            }],
+            levels: [
+                { id: 'needs_improvement', label: 'Needs Improvement', description: 'd', rank: 1 },
+                { id: 'excellent', label: 'Excellent', description: 'd', rank: 2 }
+            ],
+            updatedAt: new Date('2026-09-01T00:00:00Z'),
+            updatedBy: 'staff-a'
+        };
+    }
+
+    function draftSavedFromGrid(names: { needs_improvement: string; excellent: string }): WritingRubricDefinition {
+        const approved = approvedWithUnnamedCells();
+        return {
+            ...approved,
+            version: 2,
+            status: 'draft',
+            criteria: [{
+                ...approved.criteria[0],
+                cells: {
+                    needs_improvement: { min: 0, max: 5, label: names.needs_improvement, descriptor: 'N' },
+                    excellent: { min: 6, max: 10, label: names.excellent, descriptor: 'E' }
+                }
+            }]
+        };
+    }
+
+    it('treats an unnamed cell as carrying its level label, so an undone edit is no change', () => {
+        const draft = draftSavedFromGrid({ needs_improvement: 'Needs Improvement', excellent: 'Excellent' });
+        expect(rubricContentEquals(draft, approvedWithUnnamedCells())).toBe(true);
+    });
+
+    it('still sees a cell renamed to something other than its level label', () => {
+        const draft = draftSavedFromGrid({ needs_improvement: 'Needs Improvement', excellent: 'Outstanding' });
+        expect(rubricContentEquals(draft, approvedWithUnnamedCells())).toBe(false);
+    });
+});

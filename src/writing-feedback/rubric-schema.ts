@@ -314,6 +314,34 @@ function canonicalRubricContent(value: unknown): unknown {
 }
 
 /**
+ * withCellNamesResolved - the same rubric with every cell naming its rating
+ *
+ * A cell with no name of its own is shown in the grid, sent to the feedback prompt, and
+ * printed under its level's label, so an unnamed cell and one named with that label say the
+ * same thing. Rubrics approved before cells carried names have none, while the grid now fills
+ * each cell's name in from its level on every save. Compared as stored, every such rubric
+ * looked edited for good, however carefully staff undid their changes.
+ *
+ * @param rubric - Rubric whose cells may be unnamed
+ * @returns A copy whose cells each carry a name, their own or their level's
+ */
+function withCellNamesResolved(rubric: WritingRubricDefinition): WritingRubricDefinition {
+    const levelLabels = new Map((rubric.levels ?? []).map((level) => [level.id, level.label]));
+    return {
+        ...rubric,
+        criteria: (rubric.criteria ?? []).map((criterion) => (criterion.cells
+            ? {
+                ...criterion,
+                cells: Object.fromEntries(Object.entries(criterion.cells).map(([levelId, cell]) => [
+                    levelId,
+                    { ...cell, label: cell.label?.trim() || levelLabels.get(levelId) }
+                ]))
+            }
+            : criterion))
+    };
+}
+
+/**
  * rubricContentEquals - whether two rubrics say the same thing
  *
  * Compares everything a rubric says -- the shared description, the genre profile, the lab
@@ -321,6 +349,9 @@ function canonicalRubricContent(value: unknown): unknown {
  * status, and who changed or approved it when. An approval that changes nothing would still
  * create a new version and put every feedback draft generated with the current one out of
  * date, so the routes use this to refuse it.
+ *
+ * An unnamed cell is compared as if it carried its level's label, which is how every reader of
+ * the rubric already treats it (see {@link withCellNamesResolved}).
  *
  * @param left - One rubric, typically the saved draft
  * @param right - The other, typically the approved rubric
@@ -333,8 +364,8 @@ export function rubricContentEquals(left?: WritingRubricDefinition, right?: Writ
         RUBRIC_METADATA_FIELDS.forEach((field) => { delete copy[field]; });
         return copy;
     };
-    return JSON.stringify(canonicalRubricContent(contentOf(left)))
-        === JSON.stringify(canonicalRubricContent(contentOf(right)));
+    return JSON.stringify(canonicalRubricContent(contentOf(withCellNamesResolved(left))))
+        === JSON.stringify(canonicalRubricContent(contentOf(withCellNamesResolved(right))));
 }
 
 /**

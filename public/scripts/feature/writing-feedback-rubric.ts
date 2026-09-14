@@ -1685,9 +1685,9 @@ function renderRubricPage(
         // The old line here said drafted feedback keeps its version, which was the opposite of
         // what happens: feedback from an older version is refused until it is regenerated.
         approvalHelp.textContent = !anyApproved
-            ? 'Once approved, feedback for this assignment is generated and marked against this rubric.'
+            ? 'Once approved, feedback for this assignment can be generated and will be marked against this rubric.'
             : anyWaiting
-                ? "Approving a new version puts unreleased feedback generated with the current one out of date, so it will need to be regenerated. Released feedback isn't affected."
+                ? "Approving a new version puts unreleased feedback generated with the current one out of date, so it will need to be regenerated. Feedback already released to Canvas isn't affected."
                 : 'Edits you make to the rubric are saved as a draft and only take effect once you approve them.';
     };
 
@@ -2104,7 +2104,7 @@ async function approveEveryRubric(context: RubricPageContext): Promise<void> {
         return `${subject} becomes v${versionOf(section)}, replacing v${section.approvedVersion}.${cost}`;
     });
     if (pending.some((section) => section.approvedVersion !== undefined)) {
-        lines.push("Released feedback isn't affected.");
+        lines.push("Feedback already released to Canvas isn't affected.");
     }
     const confirmLabel = firstApproval ? 'Approve rubric' : 'Approve changes';
     const confirmation = await showConfirmModal(
