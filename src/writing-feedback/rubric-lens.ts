@@ -51,6 +51,29 @@ export interface SelectedRubric {
 }
 
 /**
+ * rubricForVersion - one lens's approved rubric at a particular version
+ *
+ * Feedback records the rubric version it was generated with. Once a newer version is
+ * approved, feedback that has already been released still has to be read against its own
+ * version, which by then lives in that lens's history.
+ *
+ * @param assignment - Assignment holding one or two rubrics
+ * @param lens - Lens whose rubric is wanted
+ * @param version - Version stamped on the feedback; runs from before versions were recorded
+ *   count as version 1, the same rule the staleness check applies
+ * @returns The approved rubric at that version, or undefined when none is on record
+ */
+export function rubricForVersion(
+    assignment: WritingAssignment,
+    lens: WritingFeedbackLens,
+    version: number | undefined
+): WritingRubricDefinition | undefined {
+    const { approved, history } = selectRubric(assignment, lens);
+    const wanted = version ?? 1;
+    return [approved, ...history].find((rubric) => rubric?.version === wanted);
+}
+
+/**
  * selectRubric - reads one lens's rubric state without exposing field names.
  *
  * The linguistic lens keeps its legacy shape, where a never-approved assignment

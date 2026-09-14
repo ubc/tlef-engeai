@@ -27,7 +27,6 @@ import {
     ReviewRevision,
     RubricCriterion,
     RubricDefinition,
-    SOURCE_LABELS,
     StaffFinalAssessment,
     STATUS_LABELS,
     STATUS_TONES,
@@ -44,6 +43,7 @@ import {
     element,
     field,
     formatDate,
+    isLateSubmission,
     jsonRequest,
     refreshIcons,
     request,
@@ -486,10 +486,9 @@ function renderReviewView(root: HTMLDivElement, detail: SubmissionDetail): void 
         await views.showLanding();
     });
     const identity = document.createElement('div');
-    identity.append(
-        createText('h2', submission.studentLabel || 'Unlabelled student'),
-        createText('p', `${assignment?.title ?? 'Writing assignment'} · Attempt ${submission.attempt} · ${SOURCE_LABELS[submission.sourceType]} · Submitted ${formatDate(submission.createdAt, true)}${assignment?.dueAt ? ` · Deadline ${formatDate(assignment.dueAt, true)}` : ''}`)
-    );
+    const subtitle = createText('p', `${assignment?.title ?? 'Writing assignment'} · Attempt ${submission.attempt}${submission.submittedAt ? ` · Submitted ${formatDate(submission.submittedAt, true)}` : ''}`);
+    if (isLateSubmission(submission, assignment)) subtitle.append(' · ', createText('span', 'Late', 'wf-late-flag'));
+    identity.append(createText('h2', submission.studentLabel || 'Unlabelled student'), subtitle);
     left.append(back, identity);
     const meta = document.createElement('div');
     meta.className = 'wf-review-meta';
@@ -501,8 +500,13 @@ function renderReviewView(root: HTMLDivElement, detail: SubmissionDetail): void 
     root.append(topbar);
 
     // A run is reviewable only against the rubric version that produced it.
-    // Version drift blocks annotation display, approval, and release until regeneration.
-    const staleRubric = Boolean(feedbackRun && assignment && (feedbackRun.rubricVersion ?? 1) !== assignment.rubric.version);
+    // Version drift blocks annotation display, approval, and release until regeneration --
+    // except for released feedback. It was approved and sent against its own rubric version,
+    // which rubricForRun still finds in the history, so a newer approved rubric leaves it
+    // readable rather than hiding it behind "Regenerate".
+    const released = submission.status === 'released';
+    const staleRubric = !released
+        && Boolean(feedbackRun && assignment && (feedbackRun.rubricVersion ?? 1) !== assignment.rubric.version);
     if (staleRubric) {
         const warning = createText(
             'div',
@@ -516,7 +520,7 @@ function renderReviewView(root: HTMLDivElement, detail: SubmissionDetail): void 
     // The technical lens can drift (or be missing) independently of the linguistic
     // run above; approval/release/PDF all require it once the assignment is a lab
     // report with an approved technical rubric, so surface that gap here too.
-    const technicalStale = Boolean(
+    const technicalStale = !released && Boolean(
         assignment?.isLabReport
         && assignment.technicalRubric?.status === 'approved'
         && (!detail.technicalFeedbackRun

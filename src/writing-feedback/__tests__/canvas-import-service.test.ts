@@ -96,6 +96,9 @@ describe('SafeCanvasImportService', () => {
         expect(first.submissions.every((item) => item.sourceType === 'canvas_text')).toBe(true);
         expect(first.submissions.every((item) => item.verifiedText === item.originalText)).toBe(true);
         expect(first.submissions.every((item) => item.requiresVerification === false)).toBe(true);
+        // The stored time is the student's Canvas submission time, not the import time.
+        const preview = await service.previewAssignment('demo-technical-description');
+        expect(first.submissions[0].submittedAt).toEqual(preview.submissions[0].submittedAt);
         expect(retry).toMatchObject({ importedCount: 0, skippedCount: 1 });
         expect(store.submissions).toHaveLength(1);
     });

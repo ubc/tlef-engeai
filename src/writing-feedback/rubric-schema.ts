@@ -283,6 +283,60 @@ export function requireCompleteRubricCells(draft: WritingRubricDefinition): void
     }
 }
 
+/** Fields that record which version a rubric is and who touched it when, not what it says. */
+const RUBRIC_METADATA_FIELDS = ['version', 'status', 'updatedAt', 'updatedBy', 'approvedAt', 'approvedBy'] as const;
+
+/**
+ * canonicalRubricContent - a stable form of a rubric value, for comparing two of them
+ *
+ * Object keys are sorted, and `null` and a missing value are treated alike: the database
+ * driver stores an undefined-valued key as `null`, so a draft sent from the browser and
+ * the approved copy read back from Mongo would otherwise never match. Array order is kept,
+ * because criteria and rating order is part of what a rubric says.
+ *
+ * @param value - Any part of a rubric definition
+ * @returns The same value with sorted keys and no null or undefined entries
+ */
+function canonicalRubricContent(value: unknown): unknown {
+    if (value === null || value === undefined) return undefined;
+    if (value instanceof Date) return value.toISOString();
+    if (Array.isArray(value)) return value.map(canonicalRubricContent);
+    if (typeof value === 'object') {
+        const record = value as Record<string, unknown>;
+        return Object.fromEntries(
+            Object.keys(record)
+                .sort()
+                .map((key) => [key, canonicalRubricContent(record[key])] as const)
+                .filter(([, entry]) => entry !== undefined)
+        );
+    }
+    return value;
+}
+
+/**
+ * rubricContentEquals - whether two rubrics say the same thing
+ *
+ * Compares everything a rubric says -- the shared description, the genre profile, the lab
+ * handout, and every criterion, rating and band -- and ignores which version it is, its
+ * status, and who changed or approved it when. An approval that changes nothing would still
+ * create a new version and put every feedback draft generated with the current one out of
+ * date, so the routes use this to refuse it.
+ *
+ * @param left - One rubric, typically the saved draft
+ * @param right - The other, typically the approved rubric
+ * @returns True only when both exist and their content matches
+ */
+export function rubricContentEquals(left?: WritingRubricDefinition, right?: WritingRubricDefinition): boolean {
+    if (!left || !right) return false;
+    const contentOf = (rubric: WritingRubricDefinition): Record<string, unknown> => {
+        const copy: Record<string, unknown> = { ...rubric };
+        RUBRIC_METADATA_FIELDS.forEach((field) => { delete copy[field]; });
+        return copy;
+    };
+    return JSON.stringify(canonicalRubricContent(contentOf(left)))
+        === JSON.stringify(canonicalRubricContent(contentOf(right)));
+}
+
 /**
  * buildRubricDraft - creates a new editable rubric version from validated input.
  *

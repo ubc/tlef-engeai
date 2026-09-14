@@ -227,3 +227,41 @@ describe('POST rubric-draft/approve completeness gates', () => {
         );
     });
 });
+
+describe('unchanged rubrics never become a new version', () => {
+    // Read here rather than through the helpers above, so these checks do not depend on how
+    // the rest of the suite slices the route file.
+    const routeSource = require('fs').readFileSync(
+        require('path').join(__dirname, '../route-writing-feedback.ts'),
+        'utf8'
+    ) as string;
+
+    function routeBody(marker: string): string {
+        const start = routeSource.indexOf(marker);
+        expect(start).toBeGreaterThan(-1);
+        const next = routeSource.indexOf('\nrouter.', start + marker.length);
+        return routeSource.slice(start, next === -1 ? undefined : next);
+    }
+
+    it('refuses an approval that changes nothing, before any version is promoted', () => {
+        const body = routeBody("'/:courseId/writing-feedback/assignments/:assignmentId/rubric-draft/approve'");
+        const refusal = body.indexOf('rubricContentEquals(selected.draft, selected.approved)');
+        expect(refusal).toBeGreaterThan(-1);
+        expect(body).toContain('Nothing has changed since approved v');
+        expect(refusal).toBeLessThan(body.indexOf('approveRubricDraft('));
+        expect(refusal).toBeLessThan(body.indexOf('approveWritingRubricDraft('));
+    });
+
+    it('removes a saved draft that says the same as the approved rubric instead of storing it', () => {
+        const body = routeBody("router.put(\n    '/:courseId/writing-feedback/assignments/:assignmentId/rubric-draft'");
+        const check = body.indexOf('rubricContentEquals(draft, currentApproved)');
+        expect(check).toBeGreaterThan(-1);
+        expect(body).toContain('discardWritingRubricDraft(');
+        expect(check).toBeLessThan(body.indexOf('saveWritingRubricDraft('));
+    });
+
+    it('does not report a draft identical to the approved rubric as unapproved changes', () => {
+        const body = routeBody("router.get('/:courseId/writing-feedback/assignments/:assignmentId/rubric'");
+        expect(body).toContain('draft: rubricContentEquals(selected.draft, selected.approved) ? undefined : selected.draft');
+    });
+});

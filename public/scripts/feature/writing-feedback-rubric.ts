@@ -2433,10 +2433,11 @@ async function autosaveAssignmentRubrics(context: RubricPageContext): Promise<vo
                 'PUT',
                 input
             );
-            // The write created or reused this rubric's draft. Its version is what step 3's
-            // discard action names, and its existence is what lets that action appear.
+            // The write created or reused this rubric's draft -- or, when the rubric now says
+            // the same as the approved one, the server removed the draft. Its version is what
+            // step 3's discard action names, and its absence is what takes that action away.
             const draft = section.lens === 'technical' ? updated.technicalRubricDraft : updated.rubricDraft;
-            if (draft) section.draftVersion = draft.version;
+            section.draftVersion = draft?.version;
         } catch (error) {
             // The shared envelope reports an expired session as a plain failed request whose
             // message is the course guard's "Authentication required", so the status is what

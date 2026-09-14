@@ -19,7 +19,8 @@ import {
     buildRubricDraft,
     gradeMappingFromApprovedRubric,
     requireCompleteRubricCells,
-    writingRubricDraftInputSchema
+    writingRubricDraftInputSchema,
+    rubricContentEquals
 } from '../rubric-schema';
 import type { WritingRubricDraftInput } from '../rubric-schema';
 import type { WritingRubricDefinition } from '../contracts';
@@ -505,5 +506,72 @@ describe('requireCompleteRubricCells', () => {
         draft.criteria[0]!.points = undefined;
         draft.criteria.push({ id: 'second', label: 'Second', description: 'd', points: 0, cells: undefined });
         expect(() => requireCompleteRubricCells(draft)).toThrow(/"Criterion", "Second" have none/);
+    });
+});
+
+describe('rubricContentEquals', () => {
+    function rubric(overrides: Partial<WritingRubricDefinition> = {}): WritingRubricDefinition {
+        return {
+            version: 1,
+            status: 'approved',
+            title: 'Lab report',
+            task: 'Report the experiment',
+            audience: 'A peer',
+            purpose: 'Explain the result',
+            constraints: ['Five pages'],
+            learningOutcomes: ['Explain a deviation'],
+            gradingIntent: 'Formative',
+            criteria: [
+                { id: 'clarity', label: 'Clarity', description: 'd', points: 10,
+                  cells: { weak: { min: 0, max: 5, label: 'Weak', descriptor: 'W' }, strong: { min: 6, max: 10, label: 'Strong', descriptor: 'S' } } }
+            ],
+            levels: [
+                { id: 'weak', label: 'Weak', description: 'd', rank: 1 },
+                { id: 'strong', label: 'Strong', description: 'd', rank: 2 }
+            ],
+            updatedAt: new Date('2026-09-01T00:00:00Z'),
+            updatedBy: 'staff-a',
+            approvedAt: new Date('2026-09-01T00:00:00Z'),
+            approvedBy: 'staff-a',
+            ...overrides
+        };
+    }
+
+    it('treats a draft that only differs in version, status and audit fields as unchanged', () => {
+        // Approving this would create a new version that says nothing new.
+        const draft = rubric({
+            version: 2, status: 'draft', updatedAt: new Date('2026-09-12T00:00:00Z'), updatedBy: 'staff-b',
+            approvedAt: undefined, approvedBy: undefined
+        });
+        expect(rubricContentEquals(draft, rubric())).toBe(true);
+    });
+
+    it('treats null and a missing value alike, since Mongo stores an undefined key as null', () => {
+        const fromBrowser = rubric({ labContext: undefined });
+        const fromMongo = { ...rubric(), labContext: null } as unknown as WritingRubricDefinition;
+        expect(rubricContentEquals(fromBrowser, fromMongo)).toBe(true);
+    });
+
+    it('ignores the order object keys arrive in', () => {
+        const reordered = JSON.parse(JSON.stringify(rubric())) as Record<string, unknown>;
+        const shuffled = Object.fromEntries(Object.entries(reordered).reverse()) as unknown as WritingRubricDefinition;
+        expect(rubricContentEquals({ ...shuffled, updatedAt: new Date(), approvedAt: new Date() }, rubric())).toBe(true);
+    });
+
+    it('sees a changed rating description', () => {
+        const edited = rubric();
+        edited.criteria = [{ ...edited.criteria[0], cells: { ...edited.criteria[0].cells, strong: { min: 6, max: 10, label: 'Strong', descriptor: 'Changed' } } }];
+        expect(rubricContentEquals(edited, rubric())).toBe(false);
+    });
+
+    it('sees reordered ratings, because rating order is part of the rubric', () => {
+        const reordered = rubric();
+        reordered.levels = [...reordered.levels].reverse();
+        expect(rubricContentEquals(reordered, rubric())).toBe(false);
+    });
+
+    it('is false when either rubric is missing', () => {
+        expect(rubricContentEquals(undefined, rubric())).toBe(false);
+        expect(rubricContentEquals(rubric(), undefined)).toBe(false);
     });
 });
