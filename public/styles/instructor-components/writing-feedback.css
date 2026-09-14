@@ -2347,6 +2347,12 @@ mark.wf-anchor.is-filtered-out,
     gap: 6px;
 }
 
+/* Technical / Writing switch for lab reports, inside the panel body on both review steps: spaced
+   from the filters and annotation cards below it. */
+.wf-lens-tabs {
+    margin-bottom: 16px;
+}
+
 .wf-tab-btn {
     padding: 6px 14px;
     background: var(--chat-bg);

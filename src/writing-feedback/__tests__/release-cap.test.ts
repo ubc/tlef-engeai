@@ -1,14 +1,12 @@
 /**
- * Release cap tests — a submission may be revised, but not indefinitely
+ * Release cap tests — a submission's feedback reaches Canvas once (D-128)
  *
- * Feedback can be corrected and sent again, so the first release is not final. It is capped at
- * five because each release adds a fresh Canvas submission comment and notifies the student, and
- * an accidental loop would bury them. The revision number is what the review page shows staff so
- * a re-released submission is visible as such without opening its history.
+ * Course staff release feedback exactly once. A correction is a new attempt, not a second
+ * Canvas comment on the same one. Attempts that never reached the student do not count.
  *
  * @author: EngE-AI Team
- * @version: 1.0.0
- * @description: Coverage for the five-release cap and the revision number it assigns.
+ * @version: 1.1.0
+ * @description: Coverage for the single-release cap and the revision number it assigns.
  */
 
 import { MAX_SUBMISSION_RELEASES, nextReleaseRevision } from '../release-cap';
@@ -27,34 +25,17 @@ describe('nextReleaseRevision', () => {
         expect(nextReleaseRevision([])).toBe(1);
     });
 
-    it('counts only releases that actually reached the student', () => {
-        const attempts = [
-            release('released'),
-            release('failed'),
-            release('previewed'),
-            release('reconciliation_required'),
-            release('reconciled')
-        ];
-        // released + reconciled are the two that landed; the rest never did.
-        expect(nextReleaseRevision(attempts)).toBe(3);
+    it('allows exactly one release per submission', () => {
+        expect(MAX_SUBMISSION_RELEASES).toBe(1);
     });
 
-    it('returns null once the cap is reached', () => {
-        const five = Array.from({ length: MAX_SUBMISSION_RELEASES }, () => release('released'));
-        expect(nextReleaseRevision(five)).toBeNull();
+    it('does not count attempts that never reached the student', () => {
+        const attempts = [release('failed'), release('previewed'), release('reconciliation_required')];
+        expect(nextReleaseRevision(attempts)).toBe(1);
     });
 
-    it('allows exactly five', () => {
-        const four = Array.from({ length: 4 }, () => release('released'));
-        expect(nextReleaseRevision(four)).toBe(MAX_SUBMISSION_RELEASES);
-    });
-
-    it('caps at five, not five per status', () => {
-        const mixed = [
-            ...Array.from({ length: 3 }, () => release('released')),
-            ...Array.from({ length: 2 }, () => release('reconciled')),
-            release('failed')
-        ];
-        expect(nextReleaseRevision(mixed)).toBeNull();
+    it('refuses a second release once one has landed, whether released or reconciled', () => {
+        expect(nextReleaseRevision([release('released')])).toBeNull();
+        expect(nextReleaseRevision([release('reconciled')])).toBeNull();
     });
 });

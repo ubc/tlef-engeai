@@ -847,7 +847,7 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
     const lensTabs = (): HTMLElement | null => {
         if (!isLabReport) return null;
         const list = document.createElement('div');
-        list.className = 'wf-panel-tabs';
+        list.className = 'wf-panel-tabs wf-lens-tabs';
         list.setAttribute('role', 'tablist');
         list.setAttribute('aria-label', 'Feedback lens');
         lenses.forEach((lens) => {
@@ -1431,8 +1431,8 @@ function renderReleaseCard(
     const isDemo = workspace.canvas.mode === 'demo';
     const finalAssessment = latestReview(submission)?.finalAssessment;
     const hasFinalAssessment = Boolean(finalAssessment);
-    // A completed release is not the end of the story: staff may correct feedback and release a
-    // revision, up to the cap, so this card offers that path instead of closing the submission.
+    // Feedback reaches Canvas once (D-128). After that the card only reports the release and says
+    // a correction means a new attempt; there is no second release of the same attempt.
     const capReached = counts.max > 0 && counts.released >= counts.max;
     if (priorRelease?.status === 'released' || priorRelease?.status === 'reconciled' || submission.status === 'released') {
         card.append(
@@ -1476,7 +1476,7 @@ function renderReleaseCard(
             'p',
             isDemo
                 ? 'Local demo mode creates a release record but never contacts Canvas or a real student.'
-                : 'Preview first, then send the approved feedback PDF and staff-final grade to this exact Canvas attempt.'
+                : 'Send the approved feedback PDF and staff-final grade to this exact Canvas attempt. Feedback can be released only once.'
         )
     );
     const releaseState = document.createElement('div');
@@ -1491,31 +1491,17 @@ function renderReleaseCard(
     else if (priorRelease?.status === 'failed') releaseState.textContent = priorRelease.sanitizedError || 'The prior Canvas release failed safely and may be retried.';
     else if (priorRelease?.status === 'feedback_attached') releaseState.textContent = 'Feedback is attached; the Canvas grade still needs confirmation.';
     else if (priorRelease?.status === 'grade_queued') releaseState.textContent = 'Canvas accepted the grade job; check its completion before retrying.';
-    else releaseState.textContent = 'Ready for a dry-run preview.';
+    else releaseState.textContent = 'Ready to release.';
 
     const buttons = document.createElement('div');
     buttons.className = 'wf-button-row';
     buttons.append(
-        createButton('Preview release', 'secondary', async () => {
-            // Preview is a server-side dry run; the UI states explicitly that this
-            // path must not create a Canvas comment, grade, rubric rating, or file.
-            const preview = await jsonRequest<{ grade?: number; postManually?: boolean }>(
-                `/submissions/${encodeURIComponent(submission.id)}/release-preview`,
-                'POST'
-            );
-            releaseState.textContent = preview.grade === undefined
-                ? 'Preview created. Release remains blocked until a staff-final grade is saved.'
-                : `Preview created with grade ${preview.grade}. No Canvas write occurred. ${preview.postManually
-                    ? 'Canvas will keep the result hidden until the assignment is posted.'
-                    : 'Canvas will show the result to the student immediately after release.'}`;
-            showSuccessToast('Release preview created. Nothing was sent to Canvas.');
-        }, !workspace.canvas.canImport || capReached),
         createButton(isDemo ? 'Simulate release' : 'Release to Canvas', 'primary', async () => {
             // External delivery (or its visibly synthetic demo equivalent) always
             // requires a second, submission-specific confirmation.
             const confirmation = await showConfirmModal(
                 isDemo ? 'Simulate this Canvas release?' : 'Release approved feedback to Canvas?',
-                `${submission.studentLabel || 'This student'} · ${assignment?.title || 'Writing assignment'}\n\nThe approved PDF and numeric grade will be included.`,
+                `${submission.studentLabel || 'This student'} · ${assignment?.title || 'Writing assignment'}\n\nThe approved PDF and numeric grade will be included. Feedback can be released only once.`,
                 isDemo ? 'Simulate release' : 'Release to Canvas',
                 'Cancel'
             );

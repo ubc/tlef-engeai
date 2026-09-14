@@ -1,15 +1,13 @@
 /**
  * Release lock tests — the cap, the revision number, and what may be resumed
  *
- * `release-cap.test.ts` pins the arithmetic; this suite pins the service that applies it. Staff
- * may correct feedback and release it again, so a completed release must not freeze a submission,
- * but each release adds a fresh Canvas comment and notifies the student, so the fifth is the last.
- * Attempts that never reached the student — a preview, a failure part-way — must stay resumable
- * and must not consume a revision.
+ * `release-cap.test.ts` pins the arithmetic; this suite pins the service that applies it. Feedback
+ * reaches Canvas once (D-128). Attempts that never reached the student — a preview, a failure
+ * part-way — must stay resumable and must not consume the release.
  *
  * @author: EngE-AI Team
- * @version: 1.0.0
- * @description: Service-level coverage for the five-release cap, revision numbering, and resume.
+ * @version: 1.1.0
+ * @description: Service-level coverage for the single-release cap, revision numbering, and resume.
  */
 
 import { buildDefaultWritingAssignment } from '../default-rubric-profile';
@@ -137,12 +135,6 @@ describe('release preview cap', () => {
         expect(releaseService.preview).toHaveBeenCalledWith(expect.objectContaining({ revision: 1 }));
     });
 
-    it('allows a revised release after one has succeeded, numbered as the next revision', async () => {
-        const { service, releaseService } = buildService([release('released')]);
-        const preview = await service.previewRelease('course-1', 'submission-1', releaseService);
-        expect(releaseService.preview).toHaveBeenCalledWith(expect.objectContaining({ revision: 2 }));
-        expect(preview.revision).toBe(2);
-    });
 
     it('does not spend a revision on an attempt that never reached the student', async () => {
         const { service, releaseService } = buildService([release('failed', 'r-failed'), release('previewed', 'r-prev')]);
@@ -150,11 +142,11 @@ describe('release preview cap', () => {
         expect(releaseService.preview).toHaveBeenCalledWith(expect.objectContaining({ revision: 1 }));
     });
 
-    it('refuses a sixth release', async () => {
+    it('refuses a second release once one has reached the student', async () => {
         const spent = Array.from({ length: MAX_SUBMISSION_RELEASES }, (_unused, index) => release('released', `r${index}`));
         const { service, releaseService } = buildService(spent);
         await expect(service.previewRelease('course-1', 'submission-1', releaseService))
-            .rejects.toThrow('limit');
+            .rejects.toThrow('released only once');
         expect(releaseService.preview).not.toHaveBeenCalled();
     });
 });
@@ -166,11 +158,11 @@ describe('release cap', () => {
         expect(releaseService.release).toHaveBeenCalledWith(expect.objectContaining({ revision: 1 }));
     });
 
-    it('refuses to send a sixth release even when preview is bypassed', async () => {
+    it('refuses to send a second release even when preview is bypassed', async () => {
         const spent = Array.from({ length: MAX_SUBMISSION_RELEASES }, (_unused, index) => release('released', `r${index}`));
         const { service, releaseService } = buildService(spent);
         await expect(service.release('course-1', 'submission-1', releaseService))
-            .rejects.toThrow('limit');
+            .rejects.toThrow('released only once');
         expect(releaseService.release).not.toHaveBeenCalled();
     });
 
@@ -463,5 +455,62 @@ describe('submission detail', () => {
         const detail = await service.detail('course-1', 'submission-1');
         expect(detail.releaseCount).toBe(1);
         expect(detail.maxReleases).toBe(MAX_SUBMISSION_RELEASES);
+    });
+});
+
+describe('releasing to canvas in one step', () => {
+    const CURRENT_FINGERPRINT = computeReleaseFingerprint({
+        submissionId: 'submission-1',
+        feedbackRunId: 'run-linguistic',
+        rubricVersion: approvedAssignment().rubric.version
+    });
+
+    function buildOneStepService(submissionOverrides: Partial<WritingSubmission> = {}) {
+        const assignment = approvedAssignment();
+        let stored: WritingRelease | null = null;
+        const mongo = {
+            getWritingSubmission: jest.fn(async () => submission(submissionOverrides)),
+            getWritingAssignment: jest.fn(async () => assignment),
+            getLatestWritingFeedbackRun: jest.fn(async () => feedbackRun(assignment.rubric.version)),
+            listWritingReleases: jest.fn(async () => [] as WritingRelease[]),
+            findActiveWritingJob: jest.fn(async () => null),
+            getLatestWritingRelease: jest.fn(async () => stored),
+            claimWritingReleaseForQueue: jest.fn(async () => (stored ? { ...stored, releaseLockedAt: new Date() } : null)),
+            releaseWritingReleaseLock: jest.fn(async () => stored),
+            finalizeWritingRelease: jest.fn(async () => stored),
+            enqueueWritingJob: jest.fn(async (input) => ({ ...input, id: 'job-1', attempts: 0 }))
+        };
+        const releaseService = {
+            preview: jest.fn(async (input: CanvasReleaseInput) => {
+                stored = { ...release('previewed'), payloadFingerprint: CURRENT_FINGERPRINT, revision: input.revision };
+                return stored;
+            }),
+            release: jest.fn()
+        };
+        const service = new WritingFeedbackService(
+            mongo as unknown as EngEAI_MongoDB,
+            { generate: jest.fn() },
+            { render: jest.fn(async () => Buffer.from('pdf')) } as never
+        );
+        return { service, mongo, releaseService };
+    }
+
+    it('previews and queues the release from a single staff action', async () => {
+        const { service, mongo, releaseService } = buildOneStepService();
+
+        const job = await service.releaseToCanvas('course-1', 'submission-1', releaseService, 'user-1');
+
+        expect(releaseService.preview).toHaveBeenCalledTimes(1);
+        expect(mongo.claimWritingReleaseForQueue).toHaveBeenCalledWith(CURRENT_FINGERPRINT, { queuedByUserId: 'user-1' });
+        expect(job.id).toBe('job-1');
+    });
+
+    it('refuses an unapproved submission before any preview is prepared', async () => {
+        const { service, mongo, releaseService } = buildOneStepService({ status: 'draft_ready' });
+
+        await expect(service.releaseToCanvas('course-1', 'submission-1', releaseService, 'user-1'))
+            .rejects.toThrow('Staff approval is required');
+        expect(releaseService.preview).not.toHaveBeenCalled();
+        expect(mongo.enqueueWritingJob).not.toHaveBeenCalled();
     });
 });

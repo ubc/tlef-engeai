@@ -283,3 +283,13 @@ describe('POST summary-redraft', () => {
         expect(source).toContain('summaryEditsInputSchema.safeParse');
     });
 });
+
+describe('POST release', () => {
+    it('prepares the preview and queues the write from one staff action', () => {
+        const body = source.match(/router\.post\('\/:courseId\/writing-feedback\/submissions\/:submissionId\/release',([\s\S]*?)\n}\)\);/)?.[1] ?? '';
+        expect(body).not.toBe('');
+        expect(body.trim().startsWith('withCanvasClientWhenLinked,')).toBe(true);
+        expect(body).toContain('releaseToCanvas(');
+        expect(body).toContain('resolveReleaseService(req, mongo)');
+    });
+});

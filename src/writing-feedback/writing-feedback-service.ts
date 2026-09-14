@@ -704,6 +704,36 @@ export class WritingFeedbackService {
     }
 
     /**
+     * releaseToCanvas - releases approved feedback from one staff action (D-128).
+     *
+     * Staff no longer preview separately: this prepares the release preview (PDF render and Canvas
+     * preflight, no Canvas write) and queues the write in the same request. Feedback reaches Canvas
+     * once; the cap refuses a second release.
+     *
+     * @param courseId - Course authorization/persistence boundary
+     * @param submissionId - Approved submission to release
+     * @param releaseService - Canvas release coordinator resolved for this request
+     * @param queuedByUserId - `GlobalUser.userId` of the staff member releasing
+     * @returns The active or newly queued release job
+     * @throws Error with the staff-facing reason when the release cannot be attempted
+     */
+    async releaseToCanvas(
+        courseId: string,
+        submissionId: string,
+        releaseService: CanvasReleaseService,
+        queuedByUserId: string
+    ): Promise<WritingJob> {
+        // Step 1: refuse cheaply, before rendering a PDF or preflighting Canvas.
+        const submission = await this.requireSubmission(courseId, submissionId);
+        if (submission.status !== 'approved') throw new Error('Staff approval is required before Canvas release');
+        // Step 2: the dry-run preview staff no longer trigger separately. It is idempotent per payload,
+        // so pressing Release again reuses the same preview rather than creating another.
+        await this.previewRelease(courseId, submissionId, releaseService);
+        // Step 3: queue the write against the preview just prepared.
+        return this.enqueueRelease(courseId, submissionId, queuedByUserId);
+    }
+
+    /**
      * Queues a Canvas release, checking now everything that can be checked before the worker runs.
      *
      * A live release uploads the feedback PDF, posts a comment, and starts a Canvas grade job; doing that

@@ -162,3 +162,12 @@ describe('two-step review source contract', () => {
         expect(anchorsSource).toContain('detail.workingComments');
     });
 });
+
+describe('single release source contract', () => {
+    it('offers only Release to Canvas, with no separate preview step', () => {
+        expect(source).not.toContain("'Preview release'");
+        expect(source).not.toContain('/release-preview');
+        expect(source).toContain("'Release to Canvas'");
+        expect(source).toContain('Feedback can be released only once.');
+    });
+});
