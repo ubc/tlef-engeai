@@ -350,13 +350,14 @@ export interface Submission {
     studentId: string; // course-local learner reference; never a PUID
     studentLabel?: string; // optional staff-visible display label
     attempt: number; // assignment attempt used for idempotent Canvas import
+    submittedAt?: string; // Canvas submission time for display and lateness; absent for manual entries
     sourceType: 'manual' | 'canvas_text' | 'digital_file' | 'paper_scan'; // intake provenance controlling verification
     originalText: string; // parser/OCR output retained for staff comparison
     verifiedText?: string; // staff-confirmed source of truth for evidence offsets
     requiresVerification: boolean; // blocks generation until transcript confirmation
     status: SubmissionStatus; // server lifecycle state controlling available actions
     reviews?: ReviewRevision[]; // append-only staff revision audit history
-    createdAt: string; // submission/import timestamp used for queue ordering and lateness
+    createdAt: string; // import timestamp used for queue ordering; not when the student submitted
 }
 
 /** Complete review payload combining a submission, model run, and annotation sources. */
@@ -481,14 +482,6 @@ export const STATUS_LABELS: Record<SubmissionStatus, string> = {
     approved: 'Approved',
     released: 'Released',
     failed: 'Needs attention'
-};
-
-/** Staff-facing intake provenance labels. */
-export const SOURCE_LABELS: Record<Submission['sourceType'], string> = {
-    manual: 'Pasted text',
-    canvas_text: 'Canvas text',
-    digital_file: 'Digital file',
-    paper_scan: 'Paper scan'
 };
 
 /** Supported semantic color treatments for compact workspace chips. */
@@ -775,6 +768,19 @@ export function formatDate(value?: string, withTime = false): string {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return '—';
     return new Intl.DateTimeFormat(undefined, withTime ? { dateStyle: 'medium', timeStyle: 'short' } : { dateStyle: 'medium' }).format(date);
+}
+
+/**
+ * isLateSubmission - reports whether a submission arrived after its assignment deadline
+ *
+ * A missing deadline or submission time is never late.
+ *
+ * @param submission - Submission whose Canvas submission time is checked
+ * @param assignment - Assignment carrying the optional deadline
+ * @returns True when the submission time is after the deadline
+ */
+export function isLateSubmission(submission: Submission, assignment: Assignment | null | undefined): boolean {
+    return Boolean(assignment?.dueAt && submission.submittedAt && new Date(submission.submittedAt) > new Date(assignment.dueAt));
 }
 
 /**

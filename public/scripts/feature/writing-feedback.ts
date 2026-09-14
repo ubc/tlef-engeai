@@ -41,6 +41,7 @@ import {
     formatDate,
     handleActionError,
     inputControl,
+    isLateSubmission,
     jsonRequest,
     queryState,
     refreshIcons,
@@ -278,7 +279,7 @@ async function expandAssignment(assignmentId: string): Promise<void> {
     submissions.forEach((submission) => {
         const row = document.createElement('div');
         row.className = 'wf-submission-row';
-        const late = Boolean(assignment.dueAt && new Date(submission.createdAt) > new Date(assignment.dueAt));
+        const late = isLateSubmission(submission, assignment);
 
         // The row is the object, so the row opens it — the same mouse/Enter/Space contract the
         // assignment header above already uses, and a far larger target than a button would be.
@@ -301,7 +302,7 @@ async function expandAssignment(assignmentId: string): Promise<void> {
         info.append(createText('strong', rowLabel));
         const rowMeta = document.createElement('span');
         rowMeta.className = 'wf-submission-meta';
-        rowMeta.append(createText('span', `Submitted ${formatDate(submission.createdAt, true)}`));
+        if (submission.submittedAt) rowMeta.append(createText('span', `Submitted ${formatDate(submission.submittedAt, true)}`));
         if (late) rowMeta.append(createText('span', 'Late', 'wf-late-flag'));
         rowMeta.append(
             createText('span', `Attempt ${submission.attempt}`),

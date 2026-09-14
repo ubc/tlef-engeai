@@ -228,6 +228,11 @@ export interface WritingSubmission {
     studentLabel?: string;
     attempt: number; // distinguishes repeat attempts by the same student for idempotent import/release
     /**
+     * When the student submitted, as Canvas reports it. Absent for manually created
+     * submissions, which have no trustworthy submission time; `createdAt` is the import time.
+     */
+    submittedAt?: Date;
+    /**
      * Provider-scoped Canvas user id, present only on submissions pulled from a live Canvas
      * course. It exists because {@link WritingSubmission.studentId} is a one-way hash and
      * Canvas addresses a submission by user id on write-back, so release could not otherwise
