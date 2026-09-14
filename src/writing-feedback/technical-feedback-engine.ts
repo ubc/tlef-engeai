@@ -41,7 +41,7 @@ export const TECHNICAL_PROMPT_VERSION = 'lab-report-technical-v1.1.0';
  * than perfect data") and the instructor requirement that students must not be
  * penalized for results that differ from theory.
  */
-const PRIME_DIRECTIVE = [
+export const PRIME_DIRECTIVE = [
     'Do not judge whether the student\'s result agrees with theory or with literature values.',
     'Judge whether the argument is internally consistent, whether every claim is supported by data the student themself reports, and whether deviations from expected values are explained plausibly.',
     'A well-explained anomalous result is stronger work than an unexplained result that happens to match theory.'

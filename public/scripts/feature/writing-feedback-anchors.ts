@@ -115,7 +115,10 @@ function glossarySnapshot(entry: WritingGlossaryEntry): NonNullable<AnchoredComm
  */
 export function initAnchorWorkingSet(detail: SubmissionDetail): void {
     workingSets.clear();
-    const source = detail.comments.length ? detail.comments : detail.seedComments;
+    // The server resolves each lens (newest of saved revision or summary redraft, else seeds);
+    // the legacy fallback covers a detail payload from before that field existed.
+    const source = detail.workingComments
+        ?? (detail.comments.length ? detail.comments : detail.seedComments);
     for (const comment of source) {
         // Comments stored before lab-report annotation carry no lens and are all linguistic,
         // matching the default the server's validator applies to the same records.

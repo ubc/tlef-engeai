@@ -2311,6 +2311,37 @@ mark.wf-anchor.is-filtered-out,
     font-weight: 600;
 }
 
+/* Two-step review bar (D-124): Back and Next of equal width around the step title. */
+.wf-panel-header.wf-step-bar {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+}
+
+.wf-step-bar__center {
+    text-align: center;
+}
+
+.wf-step-bar__center p {
+    margin: 0;
+}
+
+@media (max-width: 480px) {
+    .wf-panel-header.wf-step-bar {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .wf-step-bar__center {
+        grid-column: 1 / -1;
+        order: -1;
+    }
+}
+
+.wf-summary-strengths {
+    display: grid;
+    gap: 8px;
+}
+
 .wf-panel-tabs {
     display: flex;
     gap: 6px;
@@ -2348,6 +2379,11 @@ mark.wf-anchor.is-filtered-out,
 }
 
 .wf-panel-body[hidden] {
+    display: none;
+}
+
+/* Shown only on the Summary step (D-124); its flex display would otherwise beat [hidden]. */
+.wf-panel-footer[hidden] {
     display: none;
 }
 

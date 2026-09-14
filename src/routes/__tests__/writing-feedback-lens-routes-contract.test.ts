@@ -246,3 +246,40 @@ describe('POST rubric-draft/approve completeness gates', () => {
         );
     });
 });
+
+describe('POST summary-redraft', () => {
+    function redraftRouteBody(): string | null {
+        const pattern = /router\.post\(\s*'\/:courseId\/writing-feedback\/submissions\/:submissionId\/summary-redraft',([\s\S]*?)\nrouter\./;
+        return source.match(pattern)?.[1].trim() ?? null;
+    }
+
+    it('is declared behind the shared guards with no extra middleware', () => {
+        const body = redraftRouteBody();
+        expect(body).not.toBeNull();
+        expect(body?.startsWith('asyncHandlerWithAuth(')).toBe(true);
+    });
+
+    it('validates annotations and lenses before calling the service', () => {
+        const body = redraftRouteBody()!;
+        expect(body).toContain('anchoredCommentsInputSchema.safeParse');
+        expect(body).toContain('redraftSummary(');
+        expect(body.indexOf('anchoredCommentsInputSchema.safeParse')).toBeLessThan(body.indexOf('redraftSummary('));
+    });
+
+    it('never logs or returns model or annotation content', () => {
+        const body = redraftRouteBody()!;
+        expect(body).not.toMatch(/appLogger|console\./);
+        expect(body).toContain('SUMMARY_REDRAFT_FAILED_MESSAGE');
+    });
+
+    it('lets the fixed redraft and summary refusals past the safeError allowlist', () => {
+        const allowlist = source.slice(source.indexOf('const safePrefixes'), source.indexOf('return safePrefixes'));
+        expect(allowlist).toContain("'The summary can only be redrafted before approval'");
+        expect(allowlist).toContain("'The summary changed since you opened it'");
+        expect(allowlist).toContain("'Summary edits failed validation'");
+    });
+
+    it('accepts summaryEdits on review save through the bounded schema', () => {
+        expect(source).toContain('summaryEditsInputSchema.safeParse');
+    });
+});

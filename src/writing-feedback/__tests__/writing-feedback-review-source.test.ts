@@ -10,6 +10,11 @@ const source = fs.readFileSync(
     'utf8'
 );
 
+const editorSource = fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', 'public', 'scripts', 'feature', 'writing-feedback-summary-editor.ts'),
+    'utf8'
+);
+
 const anchorsSource = fs.readFileSync(
     path.join(__dirname, '..', '..', '..', 'public', 'scripts', 'feature', 'writing-feedback-anchors.ts'),
     'utf8'
@@ -37,23 +42,26 @@ describe('writing feedback review source contract', () => {
         // editable textarea, so staff read every goal twice and could edit only one copy.
         // The remaining section is named "Priority revision goals" because that is the
         // heading the student reads on the PDF.
-        const summaryTab = source.match(/function renderSummaryTab[\s\S]*?\n}/)?.[0] ?? '';
+        const summaryTab = source.match(/function renderSummaryLens[\s\S]*?\n}\n/)?.[0] ?? '';
         expect(summaryTab).not.toBe('');
         expect(summaryTab).toContain("createText('h3', 'Priority revision goals')");
         expect(summaryTab).not.toContain('Student-facing feedback');
         // The seed mirrors the student PDF's numbering and wording so staff edit the text
         // in the shape the student receives it, including the Socratic question.
-        expect(source).toContain('function seedStudentFeedback');
-        expect(source).toContain('Ask yourself:');
+        expect(source).toContain('seedSummaryText(');
+        expect(editorSource).toContain('export function seedSummaryText');
+        expect(editorSource).toContain('Ask yourself:');
     });
 
     it('lists internal review flags where they qualify the levels they belong to', () => {
         // A live run abstained on source completeness and word count. Both were joined into
         // one comma-separated sentence at the very bottom of the tab, under the release
         // card, so a marker approving a level never saw what the model could not check.
-        const summaryTab = source.match(/function renderSummaryTab[\s\S]*?\n}/)?.[0] ?? '';
-        expect(summaryTab).not.toContain('internalFlags.join');
-        const flagsIndex = summaryTab.indexOf("createText('h3', 'Internal review flags')");
+        const summaryTab = source.match(/function renderSummaryLens[\s\S]*?\n}\n/)?.[0] ?? '';
+        const flagsSection = source.match(/function renderInternalFlags[\s\S]*?\n}/)?.[0] ?? '';
+        expect(flagsSection).not.toContain('internalFlags.join');
+        expect(flagsSection).toContain("createText('h3', 'Internal review flags')");
+        const flagsIndex = summaryTab.indexOf('renderInternalFlags(run)');
         const goalsIndex = summaryTab.indexOf("createText('h3', 'Priority revision goals')");
         expect(flagsIndex).toBeGreaterThan(-1);
         expect(goalsIndex).toBeGreaterThan(-1);
@@ -94,5 +102,63 @@ describe('annotation course-material copy', () => {
         expect(anchorsSource).toContain("request<CourseMaterialTitle[]>('/course-materials')");
         expect(anchorsSource).toContain('wf-course-material-');
         expect(anchorsSource).toContain("materialTitle.setAttribute('list'");
+    });
+});
+
+describe('summary editor source contract', () => {
+    const editor = fs.readFileSync(
+        path.join(__dirname, '..', '..', '..', 'public', 'scripts', 'feature', 'writing-feedback-summary-editor.ts'),
+        'utf8'
+    );
+
+    it('uses the approved labels', () => {
+        expect(editor).toContain("'What you did well'");
+        expect(editor).toContain('`Strength ${');
+        expect(editor).toContain("'+ Add strength'");
+        expect(editor).toContain("'Feedback'");
+    });
+
+    it('caps staff strengths at five and never sends a blank explanation', () => {
+        expect(editor).toContain('MAX_STAFF_STRENGTHS = 5');
+        expect(editor).toMatch(/explanation\.trim\(\)/);
+    });
+});
+
+describe('two-step review source contract', () => {
+    it('replaces the Summary tab with the step bar', () => {
+        expect(source).not.toContain("label: 'Summary', panel: summaryBody");
+        expect(source).toContain('stepBarState(');
+        expect(source).toContain("'← Back'");
+        expect(source).toContain("'Next →'");
+    });
+
+    it('renders the footer only on the summary step', () => {
+        expect(source).toMatch(/footer\.hidden = step !== 'summary'/);
+    });
+
+    it('re-reads annotation evidence whenever the summary step opens', () => {
+        expect(source).toMatch(/if \(step === 'summary'\) evidenceRefreshers\.forEach/);
+    });
+
+    it('redrafts through the summary-redraft route and confirms before replacing edits', () => {
+        expect(source).toContain('/summary-redraft`');
+        expect(source).toContain("'Update the summary from your annotations?'");
+        expect(source).toContain("'Keep my summary'");
+        expect(source).toContain("'Redraft summary'");
+        expect(source).toContain("'Summary and suggested grades redrafted from your final annotations.'");
+    });
+
+    it('no longer renders the read-only technical draft', () => {
+        expect(source).not.toContain('function renderTechnicalTab');
+        expect(source).not.toContain('Read-only technical draft');
+    });
+
+    it('saves summary edits bound to their runs', () => {
+        expect(source).toContain('summaryEdits');
+        expect(source).toContain('technicalFeedbackRunId');
+    });
+
+    it('starts the annotation working set from the server-resolved comments', () => {
+        expect(anchorsSource).toContain('detail.workingComments');
     });
 });

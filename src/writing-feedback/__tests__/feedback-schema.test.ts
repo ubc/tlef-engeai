@@ -17,6 +17,7 @@ import type {
 import { buildDefaultWritingRubric } from '../default-rubric-profile';
 import {
     buildFeedbackSchema,
+    buildSummaryRedraftSchema,
     MAX_EVIDENCE_QUOTE_LENGTH,
     reconcileExactEvidence,
     resolveNumericGrade,
@@ -243,5 +244,32 @@ describe('revisionGoals bounds', () => {
         const [goal] = feedbackFor(rubric).revisionGoals;
         const result = { ...feedbackFor(rubric), revisionGoals: [goal, goal, goal, goal] };
         expect(buildFeedbackSchema(rubric).safeParse(result).success).toBe(false);
+    });
+});
+
+describe('buildSummaryRedraftSchema', () => {
+    const rubric = buildDefaultWritingRubric('instructor-1', new Date('2026-01-01T00:00:00.000Z'));
+    const complete = () => ({
+        criteria: rubric.criteria.map((criterion) => ({
+            criterion: criterion.id, suggestedLevel: rubric.levels[0].id, explanation: 'Why.', confidence: 0.5
+        })),
+        strengths: ['One.'],
+        revisionGoals: [{ skillTag: 'x', goal: 'Goal.', guidedQuestion: 'Question?' }]
+    });
+
+    it('accepts a complete redraft', () => {
+        expect(buildSummaryRedraftSchema(rubric).safeParse(complete()).success).toBe(true);
+    });
+
+    it('rejects unknown ids, a missing criterion, too many strengths, and 0 or 4 goals', () => {
+        const schema = buildSummaryRedraftSchema(rubric);
+        const unknown = complete(); unknown.criteria[0].criterion = 'nope';
+        const missing = complete(); missing.criteria.pop();
+        const strengths = complete(); strengths.strengths = ['a', 'b', 'c'];
+        const noGoals = complete(); noGoals.revisionGoals = [];
+        const fourGoals = complete(); fourGoals.revisionGoals = Array(4).fill(complete().revisionGoals[0]);
+        for (const value of [unknown, missing, strengths, noGoals, fourGoals]) {
+            expect(schema.safeParse(value).success).toBe(false);
+        }
     });
 });

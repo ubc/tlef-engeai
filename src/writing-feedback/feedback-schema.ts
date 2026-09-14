@@ -122,6 +122,47 @@ export function buildFeedbackSchema(rubric: WritingRubricDefinition) {
 }
 
 /**
+ * buildSummaryRedraftSchema - structured output for a writer-only summary redraft (D-125).
+ *
+ * No evidence field: quotes come from staff annotations, so the model cannot invent any.
+ *
+ * @param rubric - Approved rubric for the lens being redrafted
+ * @returns Zod schema accepting one explanation and level per criterion, strengths, and goals
+ * @throws Error when the rubric has no criteria or levels
+ */
+export function buildSummaryRedraftSchema(rubric: WritingRubricDefinition) {
+    const criterionIds = rubric.criteria.map((criterion) => criterion.id);
+    const levelIds = rubric.levels.map((level) => level.id);
+    if (!criterionIds.length || !levelIds.length) {
+        throw new Error('An approved rubric requires criteria and performance levels');
+    }
+    const allowedCriteria = new Set(criterionIds);
+    const allowedLevels = new Set(levelIds);
+    return z.object({
+        criteria: z.array(z.object({
+            criterion: z.string().refine((value) => allowedCriteria.has(value), 'Criterion is not part of the approved rubric'),
+            suggestedLevel: z.string().refine((value) => allowedLevels.has(value), 'Performance level is not part of the approved rubric'),
+            explanation: z.string().min(1),
+            confidence: z.number().min(0).max(1)
+        })).length(criterionIds.length),
+        strengths: z.array(z.string().min(1)).max(2),
+        revisionGoals: z.array(z.object({
+            skillTag: z.string().min(1),
+            goal: z.string().min(1),
+            guidedQuestion: z.string().min(1)
+        })).min(1).max(3)
+    }).superRefine((redraft, ctx) => {
+        if (new Set(redraft.criteria.map((criterion) => criterion.criterion)).size !== criterionIds.length) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: 'Redraft must contain each approved criterion exactly once',
+                path: ['criteria']
+            });
+        }
+    });
+}
+
+/**
  * validateExactEvidence — enforces the no-invented-evidence invariant.
  *
  * @param result - Structured feedback result to validate

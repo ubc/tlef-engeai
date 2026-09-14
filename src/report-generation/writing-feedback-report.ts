@@ -90,6 +90,7 @@ export class StudentWritingFeedbackPdfService implements WritingFeedbackPdfServi
         annotationAuthor?: string;
         technicalFeedback?: WritingFeedbackResult;
         technicalRubric?: WritingRubricDefinition;
+        technicalStaffFeedback?: string;
     }): Promise<Buffer> {
         const include = input.include ?? 'general';
         const lens = input.lens ?? 'writing';
@@ -115,14 +116,14 @@ export class StudentWritingFeedbackPdfService implements WritingFeedbackPdfServi
                     if (!input.technicalFeedback || !input.technicalRubric) {
                         throw new Error('Generate technical feedback before creating a technical PDF');
                     }
-                    renderTechnicalSections(doc, input.technicalRubric, input.technicalFeedback);
+                    renderTechnicalSections(doc, input.technicalRubric, input.technicalFeedback, input.technicalStaffFeedback);
                 } else {
                     if (include === 'general' || include === 'both') {
                         // A lab report is one document, and it leads with the technical
                         // feedback: that is the rubric it is graded on, so it is what the
                         // student came to read. Its writing feedback follows, ungraded.
                         if (input.assignment.isLabReport && input.technicalFeedback && input.technicalRubric) {
-                            renderTechnicalSections(doc, input.technicalRubric, input.technicalFeedback);
+                            renderTechnicalSections(doc, input.technicalRubric, input.technicalFeedback, input.technicalStaffFeedback);
                         }
                         renderGeneralSections(
                             doc,
@@ -331,13 +332,20 @@ function renderRevisionGoals(doc: PDFKit.PDFDocument, feedback: WritingFeedbackR
 function renderTechnicalSections(
     doc: PDFKit.PDFDocument,
     rubric: WritingRubricDefinition,
-    feedback: WritingFeedbackResult
+    feedback: WritingFeedbackResult,
+    staffGoals?: string
 ): void {
     sectionHeading(doc, 'Technical feedback');
     feedback.strengths.forEach((strength) => bullet(doc, strength));
     // Confidence and internal flags are staff-only and never reach a student document.
     renderCriteriaEvidence(doc, rubric, feedback);
-    renderRevisionGoals(doc, feedback);
+    // Staff-edited goals replace the model's, the same precedence the writing section uses.
+    if (staffGoals?.trim()) {
+        sectionHeading(doc, 'Priority revision goals');
+        body(doc).text(staffGoals.trim(), { lineGap: 3 });
+    } else {
+        renderRevisionGoals(doc, feedback);
+    }
 }
 
 /**

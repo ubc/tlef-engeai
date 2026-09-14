@@ -554,6 +554,15 @@ export interface WritingFeedbackRun {
     courseMaterialExcerpts?: CourseMaterialExcerpt[];
     courseSourceVersion?: string;
     glossaryEntryVersions?: WritingGlossarySnapshot[];
+    /** Run this summary was redrafted from (D-125); absent on generation runs. */
+    redraftOfRunId?: string;
+    /**
+     * Annotation working set, for this run's lens, that the summary was redrafted from. Staff
+     * annotations are student-derived text: staff-only, never logged. Absent on generation runs.
+     */
+    sourceComments?: AnchoredComment[];
+    /** `fingerprintAnnotations(sourceComments)`, compared by the review page's Next step. */
+    annotationsFingerprint?: string;
 }
 
 /** Staff/model comment anchored to an exact UTF-16 span of verified submission text. */
@@ -611,6 +620,26 @@ export interface AnchoredComment {
     priority?: 'high' | 'medium' | 'low';
 }
 
+/**
+ * Staff-edited summary sections for one lens, bound to the run they were edited against (D-126).
+ *
+ * Applies only while `feedbackRunId` is still the latest run for the lens, so text written
+ * against a summary staff later redrafted is never released.
+ */
+export interface StaffSummaryEdit {
+    lens: WritingFeedbackLens;
+    feedbackRunId: string; // run the edits were made against
+    strengths: string[]; // "What you did well", 0..5
+    criterionExplanations: Array<{ criterion: WritingCriterionId; explanation: string }>;
+    revisionGoalsText?: string; // technical lens only; the writing lens keeps `studentFeedback`
+}
+
+/** Which run a lens's summary currently comes from, and the annotations it reflects. */
+export interface SummarySource {
+    runId: string;
+    annotationsFingerprint: string;
+}
+
 /** Append-only staff revision that snapshots narrative and anchored-comment edits. */
 export interface StaffReviewRevision {
     id: string; // immutable revision identity
@@ -623,6 +652,10 @@ export interface StaffReviewRevision {
     comments?: AnchoredComment[];
     /** Human-authored rubric result. Model suggestions remain separate and staff-only. */
     finalAssessment?: StaffFinalAssessment;
+    /** Technical run the technical summary edits were made against, for a lab report. */
+    technicalFeedbackRunId?: string;
+    /** Editable summary sections per lens (D-126). */
+    summaryEdits?: StaffSummaryEdit[];
     createdAt: Date; // append-only revision timestamp
 }
 
@@ -733,6 +766,8 @@ export interface WritingReleasePayload {
     /** Technical model draft provenance for a lab report; absent for single-lens releases. */
     technicalFeedbackRunId?: string;
     finalAssessment?: StaffFinalAssessment;
+    /** Staff summary edits that shape the released PDF; part of the release fingerprint. */
+    summaryEdits?: StaffSummaryEdit[];
 }
 
 /** Canvas release adapter boundary invoked only after release policy checks succeed. */
@@ -793,6 +828,8 @@ export interface WritingFeedbackPdfService {
         technicalFeedback?: WritingFeedbackResult;
         /** Approved technical rubric supplying criterion labels for that section. */
         technicalRubric?: WritingRubricDefinition;
+        /** Staff-edited technical revision goals text; replaces the model goals in the technical section. */
+        technicalStaffFeedback?: string;
     }): Promise<Buffer>;
 }
 
@@ -829,6 +866,8 @@ export interface CanvasReleaseInput {
      * only records the number it is given, so neither adapter has to query that history itself.
      */
     revision?: number;
+    /** Staff summary edits that shape the released PDF; part of the release fingerprint. */
+    summaryEdits?: StaffSummaryEdit[];
 }
 
 /** Release coordinator boundary separating preview persistence from external mutation. */

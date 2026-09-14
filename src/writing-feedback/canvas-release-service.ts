@@ -50,6 +50,11 @@ export function computeReleaseFingerprint(payload: WritingReleasePayload): strin
                     .sort((left, right) => left.criterionId.localeCompare(right.criterionId))
             })
             : undefined))
+        // Hashed only when present, so every fingerprint computed before summary edits existed
+        // (and every payload without edits) is unchanged.
+        .update(payload.summaryEdits?.length
+            ? field(JSON.stringify([...payload.summaryEdits].sort((left, right) => left.lens.localeCompare(right.lens))))
+            : '')
         .digest('hex');
 }
 
@@ -110,7 +115,8 @@ export class SafeCanvasReleaseService implements CanvasReleaseService {
             grade,
             studentFeedback: input.studentFeedback,
             technicalFeedbackRunId: input.technicalFeedbackRun?.id,
-            finalAssessment: input.finalAssessment
+            finalAssessment: input.finalAssessment,
+            summaryEdits: input.summaryEdits
         });
         // Fingerprint lookup makes repeated previews and release retries reuse one record.
         const existing = await this.findByFingerprint(payloadFingerprint);

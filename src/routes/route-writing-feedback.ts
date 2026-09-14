@@ -18,7 +18,9 @@ import { requireCourseFeatureAPI, requireInstructorForCourseAPI } from '../middl
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { LocalDocumentExtractionService } from '../writing-feedback/document-extraction-service';
 import { listPublishedCourseMaterialTitles } from '../writing-feedback/course-material-catalog';
-import { WritingFeedbackService } from '../writing-feedback/writing-feedback-service';
+import { REDRAFT_NOT_DRAFT_READY_MESSAGE, WritingFeedbackService } from '../writing-feedback/writing-feedback-service';
+import { summaryEditsInputSchema } from '../writing-feedback/summary-edits';
+import { SUMMARY_REDRAFT_FAILED_MESSAGE } from '../writing-feedback/summary-redraft-engine';
 import { MockCanvasGateway, SafeCanvasReleaseService } from '../writing-feedback/canvas-release-service';
 import type { CanvasRubricRow, WritingSourceType } from '../writing-feedback/contracts';
 import { SafeCanvasImportService } from '../writing-feedback/canvas-import-service';
@@ -130,7 +132,9 @@ function safeError(error: unknown): string {
         'Glossary term is required', 'Glossary definition is required',
         'Glossary term exceeds', 'Glossary definition exceeds',
         'The assignment type has already been chosen', 'Only a lab report has a technical rubric',
-        'Choose the assignment type before approving'
+        'Choose the assignment type before approving',
+        'The summary can only be redrafted before approval', 'The summary changed since you opened it',
+        'Summary edits failed validation', 'The summary could not be updated from your annotations'
     ];
     return safePrefixes.some((prefix) => message.startsWith(prefix))
         ? message
@@ -823,6 +827,41 @@ router.post('/:courseId/writing-feedback/submissions/:submissionId/generate', as
     }
 }));
 
+/**
+ * Redrafts the summary of every changed lens from the final annotations (D-125).
+ *
+ * Synchronous: the annotations are unsaved student-derived text, so they are never queued.
+ * Model failures return a fixed message; nothing from the prompt, response, or annotations is
+ * logged or returned.
+ */
+router.post('/:courseId/writing-feedback/submissions/:submissionId/summary-redraft', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    const parsedComments = anchoredCommentsInputSchema.safeParse(req.body?.comments);
+    if (!parsedComments.success) {
+        return res.status(400).json({
+            success: false,
+            error: `Feedback comments failed validation: ${parsedComments.error.issues[0]?.message ?? 'check the comment fields'}`
+        });
+    }
+    const lenses: WritingFeedbackLens[] = Array.isArray(req.body?.lenses)
+        ? req.body.lenses.filter((lens: unknown): lens is WritingFeedbackLens => lens === 'linguistic' || lens === 'technical')
+        : [];
+    if (!lenses.length) {
+        return res.status(400).json({ success: false, error: 'lenses must name at least one feedback lens' });
+    }
+    try {
+        const mongo = await EngEAI_MongoDB.getInstance();
+        const result = await new WritingFeedbackService(mongo)
+            .redraftSummary(courseId(req), String(req.params.submissionId), { comments: parsedComments.data, lenses });
+        res.json({ success: true, data: result });
+    } catch (error) {
+        const message = safeError(error);
+        const status = message === REDRAFT_NOT_DRAFT_READY_MESSAGE
+            ? 409
+            : message === SUMMARY_REDRAFT_FAILED_MESSAGE ? 502 : 400;
+        res.status(status).json({ success: false, error: message });
+    }
+}));
+
 router.post('/:courseId/writing-feedback/submissions/:submissionId/reviews', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const studentFeedback = cleanText(req.body?.studentFeedback);
@@ -851,6 +890,17 @@ router.post('/:courseId/writing-feedback/submissions/:submissionId/reviews', asy
             }
             finalAssessment = parsedAssessment.data;
         }
+        let summaryEdits;
+        if (req.body?.summaryEdits !== undefined) {
+            const parsedEdits = summaryEditsInputSchema.safeParse(req.body.summaryEdits);
+            if (!parsedEdits.success) {
+                return res.status(400).json({
+                    success: false,
+                    error: `Summary edits failed validation: ${parsedEdits.error.issues[0]?.message ?? 'check the summary fields'}`
+                });
+            }
+            summaryEdits = parsedEdits.data;
+        }
         const globalUser = (req.session as any).globalUser;
         const mongo = await EngEAI_MongoDB.getInstance();
         const revision = await new WritingFeedbackService(mongo).appendReview(courseId(req), String(req.params.submissionId), {
@@ -859,11 +909,16 @@ router.post('/:courseId/writing-feedback/submissions/:submissionId/reviews', asy
             studentFeedback,
             internalNote: typeof req.body?.internalNote === 'string' ? req.body.internalNote.slice(0, 4000) : undefined,
             comments,
-            finalAssessment
+            finalAssessment,
+            summaryEdits,
+            technicalFeedbackRunId: typeof req.body?.technicalFeedbackRunId === 'string'
+                ? req.body.technicalFeedbackRunId.slice(0, 64)
+                : undefined
         }, globalUser.name);
         res.status(201).json({ success: true, data: revision });
     } catch (error) {
-        res.status(400).json({ success: false, error: safeError(error) });
+        const message = safeError(error);
+        res.status(message.startsWith('The summary changed since you opened it') ? 409 : 400).json({ success: false, error: message });
     }
 }));
 
