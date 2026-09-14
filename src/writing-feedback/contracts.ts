@@ -100,6 +100,7 @@ export interface WritingSflContextProfile {
 export interface WritingRubricCell {
     min: number; // lowest points awardable in this band, inclusive
     max: number; // highest points awardable in this band, inclusive
+    label?: string; // rating name for this criterion at this level, as Canvas names it per row
     descriptor?: string; // criterion-specific meaning of this level
 }
 
@@ -234,6 +235,11 @@ export interface WritingSubmission {
     /** Staff-visible label; never returned to students. */
     studentLabel?: string;
     attempt: number; // distinguishes repeat attempts by the same student for idempotent import/release
+    /**
+     * When the student submitted, as Canvas reports it. Absent for manually created
+     * submissions, which have no trustworthy submission time; `createdAt` is the import time.
+     */
+    submittedAt?: Date;
     /**
      * Provider-scoped Canvas user id, present only on submissions pulled from a live Canvas
      * course. It exists because {@link WritingSubmission.studentId} is a one-way hash and

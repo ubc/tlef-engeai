@@ -21,6 +21,7 @@ import {
     approveWritingRubricDraft,
     chooseWritingAssignmentType,
     completeWritingJob,
+    countFeedbackStaleOnApproval,
     createCanvasWritingAssignment,
     createManualWritingAssignment,
     discardWritingRubricDraft,
@@ -616,5 +617,55 @@ describe('createCanvasWritingAssignment', () => {
 
         expect(created.canvasRubricImport).toBeUndefined();
         expect(created.rubricSource).toBe('internal_profile');
+    });
+});
+
+describe('countFeedbackStaleOnApproval', () => {
+    // Typed parameter, so the recorded pipeline can be read back without a cast.
+    function runsWithAggregate(rows: Array<{ total: number }>) {
+        const toArray = jest.fn().mockResolvedValue(rows);
+        return { aggregate: jest.fn((_pipeline: object[]) => ({ toArray })) };
+    }
+
+    it('counts each unreleased submission once, by its latest run at the approved version', async () => {
+        const runs = runsWithAggregate([{ total: 3 }]);
+        const ctx = contextWithCollections({ 'writing-feedback-runs': runs });
+
+        await expect(countFeedbackStaleOnApproval(ctx, 'course-1', 'assignment-1', 'technical', 2)).resolves.toBe(3);
+
+        const pipeline = runs.aggregate.mock.calls[0][0];
+        expect(pipeline[0]).toEqual({ $match: { courseId: 'course-1', assignmentId: 'assignment-1', lens: 'technical' } });
+        expect(pipeline).toContainEqual({ $sort: { createdAt: -1 } });
+        expect(pipeline).toContainEqual({ $group: { _id: '$submissionId', rubricVersion: { $first: '$rubricVersion' } } });
+        expect(pipeline).toContainEqual({ $match: { rubricVersion: 2 } });
+        expect(pipeline).toContainEqual({
+            $lookup: { from: 'writing-submissions', localField: '_id', foreignField: 'id', as: 'submission' }
+        });
+        // Released feedback is exempt from staleness, so approving a new version costs it nothing.
+        expect(pipeline).toContainEqual({
+            $match: { 'submission.courseId': 'course-1', 'submission.status': { $ne: 'released' } }
+        });
+    });
+
+    it('treats a run with no recorded lens as writing, and no recorded version as version 1', async () => {
+        const runs = runsWithAggregate([{ total: 1 }]);
+        const ctx = contextWithCollections({ 'writing-feedback-runs': runs });
+
+        await countFeedbackStaleOnApproval(ctx, 'course-1', 'assignment-1', 'linguistic', 1);
+
+        const pipeline = runs.aggregate.mock.calls[0][0];
+        expect(pipeline[0]).toEqual({
+            $match: {
+                courseId: 'course-1',
+                assignmentId: 'assignment-1',
+                $or: [{ lens: 'linguistic' }, { lens: { $exists: false } }]
+            }
+        });
+        expect(pipeline).toContainEqual({ $match: { rubricVersion: { $in: [1, null] } } });
+    });
+
+    it('returns 0 when no unreleased feedback used the approved version', async () => {
+        const ctx = contextWithCollections({ 'writing-feedback-runs': runsWithAggregate([]) });
+        await expect(countFeedbackStaleOnApproval(ctx, 'course-1', 'assignment-1', 'technical', 4)).resolves.toBe(0);
     });
 });

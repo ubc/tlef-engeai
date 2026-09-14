@@ -591,6 +591,67 @@ describe('two-lens approval', () => {
     });
 });
 
+describe('released feedback keeps the rubric version it was generated with', () => {
+    // buildService stamps its runs with the rubric versions in force when it builds them, so
+    // approving a newer version afterwards leaves those runs one version behind.
+    function withNewerApprovedRubric(options: BuildServiceOptions = {}) {
+        const built = buildService(options);
+        const olderWriting = built.assignment.rubric;
+        built.assignment.rubric = approveRubricDraft(
+            { ...olderWriting, version: olderWriting.version + 1, title: 'Rewritten rubric' },
+            'instructor-1',
+            new Date('2026-02-01T00:00:00.000Z')
+        );
+        built.assignment.rubricHistory = [olderWriting];
+        if (built.assignment.technicalRubric) {
+            const olderTechnical = built.assignment.technicalRubric;
+            built.assignment.technicalRubric = approveRubricDraft(
+                { ...olderTechnical, version: olderTechnical.version + 1, title: 'Rewritten technical rubric' },
+                'instructor-1',
+                new Date('2026-02-01T00:00:00.000Z')
+            );
+            built.assignment.technicalRubricHistory = [olderTechnical];
+        }
+        return built;
+    }
+
+    it('draws a released PDF with its own rubric version after a newer one is approved', async () => {
+        const { service, mongo, pdfService } = withNewerApprovedRubric();
+        mongo.getWritingSubmission.mockResolvedValue(submission('released'));
+
+        await service.renderPdf('course-1', 'submission-1');
+
+        // v1 is the version the feedback was generated with; the newly approved rubric is v2.
+        expect(pdfService.render).toHaveBeenCalledWith(expect.objectContaining({
+            assignment: expect.objectContaining({ rubric: expect.objectContaining({ version: 1 }) })
+        }));
+    });
+
+    it('still refuses a PDF for unreleased feedback generated with an older rubric', async () => {
+        const { service, mongo, pdfService } = withNewerApprovedRubric();
+        mongo.getWritingSubmission.mockResolvedValue(submission('approved'));
+
+        await expect(service.renderPdf('course-1', 'submission-1'))
+            .rejects.toThrow('Rubric changed after feedback generation');
+        expect(pdfService.render).not.toHaveBeenCalled();
+    });
+
+    it('gives a released lab report its own technical rubric version too', async () => {
+        const { service, mongo, pdfService } = withNewerApprovedRubric({
+            isLabReport: true,
+            technicalApproved: true,
+            technicalRubricVersion: 1
+        });
+        mongo.getWritingSubmission.mockResolvedValue(submission('released'));
+
+        await service.renderPdf('course-1', 'submission-1');
+
+        expect(pdfService.render).toHaveBeenCalledWith(expect.objectContaining({
+            technicalRubric: expect.objectContaining({ version: 1 })
+        }));
+    });
+});
+
 describe('WritingFeedbackService summary redraft', () => {
     const verifiedText = 'The results clearly prove the claim. It is obvious that everyone agrees.';
 

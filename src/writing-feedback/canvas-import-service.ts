@@ -397,6 +397,7 @@ export class SafeCanvasImportService {
                     // synthetic fixture has nothing meaningful to address.
                     canvasUserId: integration === 'canvas' ? source.canvasUserId : undefined,
                     attempt: source.attempt,
+                    submittedAt: source.submittedAt,
                     sourceType: intake.sourceType,
                     originalText: intake.text,
                     verifiedText: needsVerification ? undefined : intake.text,

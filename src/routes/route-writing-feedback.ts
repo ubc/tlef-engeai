@@ -42,6 +42,7 @@ import {
     buildRubricDraft,
     gradeMappingFromApprovedRubric,
     requireCompleteRubricCells,
+    rubricContentEquals,
     writingRubricDraftInputSchema
 } from '../writing-feedback/rubric-schema';
 import { requireCompleteSflProfile } from '../writing-feedback/sfl-analysis';
@@ -129,6 +130,9 @@ function safeError(error: unknown): string {
         'Complete the genre and register profile', 'Confirm the genre and register profile',
         'Add at least one section', 'Add task requirements',
         'Complete the rubric grid before approving', 'Give every criterion its points',
+        // The rubric-cell gate's refusals, which staff have to be able to read and act on.
+        'Fill each criterion\'s ratings from the weakest upwards', 'Give every criterion at least',
+        'Describe every rating you have given points to',
         'Glossary term is required', 'Glossary definition is required',
         'Glossary term exceeds', 'Glossary definition exceeds',
         'The assignment type has already been chosen', 'Only a lab report has a technical rubric',
@@ -458,16 +462,26 @@ router.get('/:courseId/writing-feedback/assignments/:assignmentId/rubric', async
     const selected = selectRubric(assignment, lens);
     const currentCourse = await mongo.getActiveCourse(courseId(req));
     const globalUser = (req.session as any).globalUser;
+    // What approving a newer version of this rubric would cost: the unreleased feedback generated
+    // with the version approved now, all of which would need regenerating. Feedback is only ever
+    // generated against an approved rubric, so a rubric never approved has none.
+    const feedbackStaleOnApproval = selected.approved
+        ? await mongo.countFeedbackStaleOnApproval(courseId(req), assignment.id, lens, selected.approved.version)
+        : 0;
     res.json({
         success: true,
         data: {
             lens,
             approved: selected.approved,
-            draft: selected.draft,
+            // A draft identical to the approved rubric is not a change. Drafts like this were
+            // left behind by approvals that saved first, and reporting one would show staff
+            // unapproved changes that do not exist.
+            draft: rubricContentEquals(selected.draft, selected.approved) ? undefined : selected.draft,
             history: selected.history,
             // The optional criterion library applies to the linguistic lens only.
             library: lens === 'linguistic' ? listCriterionLibrary() : [],
-            permissions: { canEdit: Boolean(currentCourse && isCourseStaff(currentCourse, globalUser)) }
+            permissions: { canEdit: Boolean(currentCourse && isCourseStaff(currentCourse, globalUser)) },
+            feedbackStaleOnApproval
         }
     });
 }));
@@ -510,6 +524,16 @@ router.put(
         const version = selected.draft?.version
             ?? (currentApproved ? currentApproved.version + 1 : 1);
         const draft = buildRubricDraft(parsed.data, version, globalUser.userId);
+
+        // A draft that says the same as the approved rubric is no change at all -- staff who
+        // undo their own edits land here. Storing it would leave the page reporting unapproved
+        // changes, so any existing draft is removed instead and the approved rubric stands.
+        if (currentApproved && rubricContentEquals(draft, currentApproved)) {
+            const cleared = selected.draft
+                ? await mongo.discardWritingRubricDraft(courseId(req), assignment.id, lens)
+                : assignment;
+            return res.json({ success: true, data: cleared });
+        }
 
         // Saving is deliberately separate from approval and does not change the active rubric.
         const updated = await mongo.saveWritingRubricDraft(courseId(req), assignment.id, draft, lens);
@@ -616,6 +640,17 @@ router.post(
             return res.status(409).json({ success: false, error: 'Mark this assignment as a lab report before editing its technical rubric' });
         }
         const selected = selectRubric(assignment, lens);
+        // With an approved rubric in place, no draft means nothing has changed: saving removes
+        // a draft identical to the approved rubric. An identical draft still on file (left by
+        // an earlier save) is refused the same way, because approving it would create a new
+        // version that says nothing new and put every feedback draft generated with the
+        // current version out of date.
+        if (selected.approved && (!selected.draft || rubricContentEquals(selected.draft, selected.approved))) {
+            return res.status(409).json({
+                success: false,
+                error: `Nothing has changed since approved v${selected.approved.version}.`
+            });
+        }
         if (!selected.draft) {
             return res.status(409).json({ success: false, error: 'Save a rubric draft before approval' });
         }

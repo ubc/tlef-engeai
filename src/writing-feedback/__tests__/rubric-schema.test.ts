@@ -19,7 +19,8 @@ import {
     buildRubricDraft,
     gradeMappingFromApprovedRubric,
     requireCompleteRubricCells,
-    writingRubricDraftInputSchema
+    writingRubricDraftInputSchema,
+    rubricContentEquals
 } from '../rubric-schema';
 import type { WritingRubricDraftInput } from '../rubric-schema';
 import type { WritingRubricDefinition } from '../contracts';
@@ -425,16 +426,47 @@ describe('requireCompleteRubricCells', () => {
         };
     }
 
-    it('rejects a weighted criterion missing a band at some level', () => {
+    it('rejects a criterion offering fewer ratings than can separate any work', () => {
+        // One rating is not a scale: every submission earns it. A short row is allowed,
+        // but not shorter than the two the rubric schema requires of the grid itself.
         expect(() => requireCompleteRubricCells(draftWith({ weak: { min: 0, max: 5, descriptor: 'd' } })))
-            .toThrow(/points range or a description/);
+            .toThrow(/at least 2 ratings/);
     });
 
-    it('rejects a weighted criterion with a band but no descriptor', () => {
+    it('rejects a criterion whose ratings leave a gap in the middle', () => {
+        const levels = [
+            { id: 'weak', label: 'Weak', description: 'd', rank: 1 },
+            { id: 'middle', label: 'Middle', description: 'd', rank: 2 },
+            { id: 'strong', label: 'Strong', description: 'd', rank: 3 }
+        ];
+        const draft = draftWith({
+            weak: { min: 0, max: 3, descriptor: 'd' },
+            strong: { min: 7, max: 10, descriptor: 'd' }
+        });
+        // Scores of 4 to 6 would land on no rating at all.
+        expect(() => requireCompleteRubricCells({ ...draft, levels })).toThrow(/leaves a gap/);
+    });
+
+    it('accepts a criterion that stops short of the widest row', () => {
+        // Canvas rates each row independently, so a four-rating row in a six-rating rubric
+        // is the rubric as its author wrote it rather than an unfinished grid.
+        const levels = [
+            { id: 'weak', label: 'Weak', description: 'd', rank: 1 },
+            { id: 'middle', label: 'Middle', description: 'd', rank: 2 },
+            { id: 'strong', label: 'Strong', description: 'd', rank: 3 }
+        ];
+        const draft = draftWith({
+            weak: { min: 0, max: 4, descriptor: 'd1' },
+            middle: { min: 5, max: 10, descriptor: 'd2' }
+        });
+        expect(() => requireCompleteRubricCells({ ...draft, levels })).not.toThrow();
+    });
+
+    it('rejects a rating that carries points but no description', () => {
         expect(() => requireCompleteRubricCells(draftWith({
             weak: { min: 0, max: 5, descriptor: 'd' },
             strong: { min: 6, max: 10 }
-        }))).toThrow(/points range or a description/);
+        }))).toThrow(/no description/);
     });
 
     it('accepts a fully described weighted criterion', () => {
@@ -474,5 +506,129 @@ describe('requireCompleteRubricCells', () => {
         draft.criteria[0]!.points = undefined;
         draft.criteria.push({ id: 'second', label: 'Second', description: 'd', points: 0, cells: undefined });
         expect(() => requireCompleteRubricCells(draft)).toThrow(/"Criterion", "Second" have none/);
+    });
+});
+
+describe('rubricContentEquals', () => {
+    function rubric(overrides: Partial<WritingRubricDefinition> = {}): WritingRubricDefinition {
+        return {
+            version: 1,
+            status: 'approved',
+            title: 'Lab report',
+            task: 'Report the experiment',
+            audience: 'A peer',
+            purpose: 'Explain the result',
+            constraints: ['Five pages'],
+            learningOutcomes: ['Explain a deviation'],
+            gradingIntent: 'Formative',
+            criteria: [
+                { id: 'clarity', label: 'Clarity', description: 'd', points: 10,
+                  cells: { weak: { min: 0, max: 5, label: 'Weak', descriptor: 'W' }, strong: { min: 6, max: 10, label: 'Strong', descriptor: 'S' } } }
+            ],
+            levels: [
+                { id: 'weak', label: 'Weak', description: 'd', rank: 1 },
+                { id: 'strong', label: 'Strong', description: 'd', rank: 2 }
+            ],
+            updatedAt: new Date('2026-09-01T00:00:00Z'),
+            updatedBy: 'staff-a',
+            approvedAt: new Date('2026-09-01T00:00:00Z'),
+            approvedBy: 'staff-a',
+            ...overrides
+        };
+    }
+
+    it('treats a draft that only differs in version, status and audit fields as unchanged', () => {
+        // Approving this would create a new version that says nothing new.
+        const draft = rubric({
+            version: 2, status: 'draft', updatedAt: new Date('2026-09-12T00:00:00Z'), updatedBy: 'staff-b',
+            approvedAt: undefined, approvedBy: undefined
+        });
+        expect(rubricContentEquals(draft, rubric())).toBe(true);
+    });
+
+    it('treats null and a missing value alike, since Mongo stores an undefined key as null', () => {
+        const fromBrowser = rubric({ labContext: undefined });
+        const fromMongo = { ...rubric(), labContext: null } as unknown as WritingRubricDefinition;
+        expect(rubricContentEquals(fromBrowser, fromMongo)).toBe(true);
+    });
+
+    it('ignores the order object keys arrive in', () => {
+        const reordered = JSON.parse(JSON.stringify(rubric())) as Record<string, unknown>;
+        const shuffled = Object.fromEntries(Object.entries(reordered).reverse()) as unknown as WritingRubricDefinition;
+        expect(rubricContentEquals({ ...shuffled, updatedAt: new Date(), approvedAt: new Date() }, rubric())).toBe(true);
+    });
+
+    it('sees a changed rating description', () => {
+        const edited = rubric();
+        edited.criteria = [{ ...edited.criteria[0], cells: { ...edited.criteria[0].cells, strong: { min: 6, max: 10, label: 'Strong', descriptor: 'Changed' } } }];
+        expect(rubricContentEquals(edited, rubric())).toBe(false);
+    });
+
+    it('sees reordered ratings, because rating order is part of the rubric', () => {
+        const reordered = rubric();
+        reordered.levels = [...reordered.levels].reverse();
+        expect(rubricContentEquals(reordered, rubric())).toBe(false);
+    });
+
+    it('is false when either rubric is missing', () => {
+        expect(rubricContentEquals(undefined, rubric())).toBe(false);
+        expect(rubricContentEquals(rubric(), undefined)).toBe(false);
+    });
+});
+
+describe('rubricContentEquals with cells approved before they carried names', () => {
+    // Mirrors the real case: a rubric approved with unnamed cells, and a draft saved from the grid,
+    // which now fills each unnamed cell's name in from its level.
+    function approvedWithUnnamedCells(): WritingRubricDefinition {
+        return {
+            version: 1,
+            status: 'approved',
+            title: 'Writing Assignment 2',
+            task: 't',
+            audience: 'a',
+            purpose: 'p',
+            constraints: ['c'],
+            learningOutcomes: ['o'],
+            gradingIntent: 'g',
+            criteria: [{
+                id: 'organization', label: 'Organization', description: 'd', points: 10,
+                cells: {
+                    needs_improvement: { min: 0, max: 5, descriptor: 'N' },
+                    excellent: { min: 6, max: 10, descriptor: 'E' }
+                }
+            }],
+            levels: [
+                { id: 'needs_improvement', label: 'Needs Improvement', description: 'd', rank: 1 },
+                { id: 'excellent', label: 'Excellent', description: 'd', rank: 2 }
+            ],
+            updatedAt: new Date('2026-09-01T00:00:00Z'),
+            updatedBy: 'staff-a'
+        };
+    }
+
+    function draftSavedFromGrid(names: { needs_improvement: string; excellent: string }): WritingRubricDefinition {
+        const approved = approvedWithUnnamedCells();
+        return {
+            ...approved,
+            version: 2,
+            status: 'draft',
+            criteria: [{
+                ...approved.criteria[0],
+                cells: {
+                    needs_improvement: { min: 0, max: 5, label: names.needs_improvement, descriptor: 'N' },
+                    excellent: { min: 6, max: 10, label: names.excellent, descriptor: 'E' }
+                }
+            }]
+        };
+    }
+
+    it('treats an unnamed cell as carrying its level label, so an undone edit is no change', () => {
+        const draft = draftSavedFromGrid({ needs_improvement: 'Needs Improvement', excellent: 'Excellent' });
+        expect(rubricContentEquals(draft, approvedWithUnnamedCells())).toBe(true);
+    });
+
+    it('still sees a cell renamed to something other than its level label', () => {
+        const draft = draftSavedFromGrid({ needs_improvement: 'Needs Improvement', excellent: 'Outstanding' });
+        expect(rubricContentEquals(draft, approvedWithUnnamedCells())).toBe(false);
     });
 });

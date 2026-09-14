@@ -81,10 +81,11 @@ export interface SflContextProfile {
     approvedGlossaryTerms?: string[]; // optional terms relevant to the assignment
 }
 
-/** Mirror of WritingRubricCell. Points band and descriptor for one grid cell. */
+/** Mirror of WritingRubricCell. Rating name, points band, and descriptor for one grid cell. */
 export interface RubricCell {
     min: number;
     max: number;
+    label?: string;
     descriptor?: string;
 }
 
@@ -111,6 +112,7 @@ export interface RubricLevel {
 /** Versioned rubric snapshot returned by assignment and rubric endpoints. */
 export interface RubricDefinition {
     version: number; // immutable version used to detect stale feedback runs
+    approvedAt?: string; // when this version was approved; absent on drafts
     status: 'draft' | 'approved'; // separates editable work from active generation policy
     title: string; // staff/student display name for the rubric
     task: string; // assignment task context supplied to the feedback pipeline
@@ -380,13 +382,14 @@ export interface Submission {
     studentId: string; // course-local learner reference; never a PUID
     studentLabel?: string; // optional staff-visible display label
     attempt: number; // assignment attempt used for idempotent Canvas import
+    submittedAt?: string; // Canvas submission time for display and lateness; absent for manual entries
     sourceType: 'manual' | 'canvas_text' | 'digital_file' | 'paper_scan'; // intake provenance controlling verification
     originalText: string; // parser/OCR output retained for staff comparison
     verifiedText?: string; // staff-confirmed source of truth for evidence offsets
     requiresVerification: boolean; // blocks generation until transcript confirmation
     status: SubmissionStatus; // server lifecycle state controlling available actions
     reviews?: ReviewRevision[]; // append-only staff revision audit history
-    createdAt: string; // submission/import timestamp used for queue ordering and lateness
+    createdAt: string; // import timestamp used for queue ordering; not when the student submitted
 }
 
 /** Complete review payload combining a submission, model run, and annotation sources. */
@@ -460,6 +463,8 @@ export interface RubricResponse {
     history: RubricDefinition[]; // immutable prior versions available for provenance
     library: RubricCriterion[]; // optional criteria available for explicit instructor addition
     permissions: { canEdit: boolean }; // server-derived mutation permission for the current staff user
+    /** Unreleased submissions whose latest feedback for this rubric used the approved version; approving a newer version means regenerating them. 0 before first approval. */
+    feedbackStaleOnApproval: number;
 }
 
 /** One submission shown in the pre-import preview, with no source identifiers or file URLs. */
@@ -515,14 +520,6 @@ export const STATUS_LABELS: Record<SubmissionStatus, string> = {
     approved: 'Approved',
     released: 'Released',
     failed: 'Needs attention'
-};
-
-/** Staff-facing intake provenance labels. */
-export const SOURCE_LABELS: Record<Submission['sourceType'], string> = {
-    manual: 'Pasted text',
-    canvas_text: 'Canvas text',
-    digital_file: 'Digital file',
-    paper_scan: 'Paper scan'
 };
 
 /** Supported semantic color treatments for compact workspace chips. */
@@ -812,6 +809,38 @@ export function formatDate(value?: string, withTime = false): string {
 }
 
 /**
+ * isLateSubmission - reports whether a submission arrived after its assignment deadline
+ *
+ * A missing deadline or submission time is never late.
+ *
+ * @param submission - Submission whose Canvas submission time is checked
+ * @param assignment - Assignment carrying the optional deadline
+ * @returns True when the submission time is after the deadline
+ */
+export function isLateSubmission(submission: Submission, assignment: Assignment | null | undefined): boolean {
+    return Boolean(assignment?.dueAt && submission.submittedAt && new Date(submission.submittedAt) > new Date(assignment.dueAt));
+}
+
+/**
+ * scrollingAncestor - the element that actually scrolls when this one moves
+ *
+ * Workspace pages scroll inside `.page-shell`, not the window, so a scroll correction has to
+ * be applied to whichever ancestor owns the scrollbar.
+ *
+ * @param element - Element whose scroll container is wanted
+ * @returns Nearest ancestor that scrolls vertically, or the document's scroller
+ */
+export function scrollingAncestor(element: HTMLElement): HTMLElement {
+    for (let node = element.parentElement; node; node = node.parentElement) {
+        const overflowY = getComputedStyle(node).overflowY;
+        if ((overflowY === 'auto' || overflowY === 'scroll') && node.scrollHeight > node.clientHeight) {
+            return node;
+        }
+    }
+    return (document.scrollingElement as HTMLElement | null) ?? document.documentElement;
+}
+
+/**
  * createText - creates an element with text-only content
  *
  * Using `textContent` keeps student writing and server labels out of the HTML parser.
@@ -839,7 +868,7 @@ export function createText(tag: keyof HTMLElementTagNameMap, text: string, class
  */
 export function createButton(
     label: string,
-    variant: 'primary' | 'secondary' | 'quiet' | 'danger' | 'chip',
+    variant: 'primary' | 'secondary' | 'outline' | 'quiet' | 'danger' | 'chip',
     action: (button: HTMLButtonElement) => Promise<void>,
     disabled = false,
     iconName?: string
@@ -1138,7 +1167,12 @@ export async function handleActionError(error: unknown): Promise<void> {
     await showErrorModal('Writing Feedback action failed', message);
 }
 
-const DISCLOSURE_TRANSITION_TIMEOUT_MS = 380;
+/**
+ * Longest a disclosure's open or close animation can take, fallback included. Anything
+ * that has to follow the page while a panel changes height -- the step accordion keeping
+ * the clicked header still -- follows it for this long.
+ */
+export const DISCLOSURE_TRANSITION_TIMEOUT_MS = 380;
 const disclosureTransitions = new WeakMap<HTMLElement, { finish: () => void }>();
 
 /** Completes the current disclosure transition once, including its timeout fallback. */

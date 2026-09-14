@@ -37,7 +37,7 @@ import { computeReleaseFingerprint } from './canvas-release-service';
 import { seedCommentsFromRun, stampCommentAuthors, validateAnchoredComments, withStaleFlags, type AnchoredCommentWithState } from './anchored-comments';
 import { NO_REVISION_GOALS_MESSAGE, RubricWritingFeedbackEngine } from './feedback-engine';
 import { TECHNICAL_PROMPT_VERSION, TechnicalWritingFeedbackEngine } from './technical-feedback-engine';
-import { lensesForAssignment, selectRubric } from './rubric-lens';
+import { lensesForAssignment, selectRubric, rubricForVersion } from './rubric-lens';
 import { ModelSelectionService } from '../dashboard-setting/model-selection-service';
 import { StudentWritingFeedbackPdfService } from '../report-generation/writing-feedback-report';
 import { buildStaffFinalAssessment, gradedLensFor, type StaffFinalAssessmentInput } from './staff-final-assessment';
@@ -620,13 +620,19 @@ export class WritingFeedbackService {
     }
 
     /**
-     * Renders a student-safe PDF from the current-rubric run and latest staff revision.
+     * Renders a student-safe PDF from the latest run and latest staff revision.
+     *
+     * Unreleased feedback must have been generated with the current approved rubric. Released
+     * feedback is exempt: it was approved and sent to the student against the rubric it was
+     * generated with, and approving a newer rubric must not make it impossible to download.
+     * It is drawn with that rubric version, read from the lens's history.
      *
      * @param courseId - Course authorization/persistence boundary
      * @param submissionId - Submission whose feedback is downloaded
      * @param include - General, annotated, or combined PDF section selection
      * @returns Complete PDF bytes
-     * @throws Error when no run exists or its rubric provenance is stale
+     * @throws Error when no run exists, unreleased feedback's rubric is stale, or released
+     *   feedback's own rubric version is no longer on record
      */
     async renderPdf(
         courseId: string,
@@ -638,11 +644,29 @@ export class WritingFeedbackService {
         const assignment = await this.requireAssignment(courseId, submission.assignmentId);
         const run = await this.mongo.getLatestWritingFeedbackRun(submissionId);
         if (!run) throw new Error('Generate feedback before creating a PDF');
-        this.assertCurrentRubric(run.rubricVersion, assignment);
-        const { technicalRun, technicalRubric } = await this.loadTechnicalLens(submissionId, assignment);
+
+        // Step 1: pick the rubric each lens is drawn with. Released feedback keeps the version it
+        // was generated with; anything else must match the current approved rubric.
+        let pdfAssignment = assignment;
+        let technicalRun: WritingFeedbackRun | null;
+        let technicalRubric: WritingRubricDefinition | undefined;
+        if (submission.status === 'released') {
+            const releasedRubric = rubricForVersion(assignment, 'linguistic', run.rubricVersion);
+            // Drawing released feedback with a rubric it was not generated with would put the
+            // wrong criteria and bands in front of a student, so a missing version stops here.
+            if (!releasedRubric) {
+                throw new Error(`Rubric v${run.rubricVersion ?? 1} used for this released feedback is no longer on record`);
+            }
+            pdfAssignment = { ...assignment, rubric: releasedRubric };
+            ({ technicalRun, technicalRubric } = await this.loadReleasedTechnicalLens(submissionId, assignment));
+        } else {
+            this.assertCurrentRubric(run.rubricVersion, assignment);
+            ({ technicalRun, technicalRubric } = await this.loadTechnicalLens(submissionId, assignment));
+        }
+        // Step 2: assemble the student-safe feedback, staff text, and comments from the reviews.
         const studentDocument = this.buildStudentDocument(submission, run, technicalRun);
         return this.pdfService.render({
-            assignment,
+            assignment: pdfAssignment,
             submission,
             feedback: studentDocument.feedback,
             grade: studentDocument.latestReview?.finalAssessment?.totalPoints,
@@ -1144,6 +1168,32 @@ export class WritingFeedbackService {
         const technicalRun = await this.mongo.getLatestWritingFeedbackRun(submissionId, 'technical');
         if (technicalRun) this.assertCurrentRubricForLens(technicalRun.rubricVersion, technicalRubric, 'technical');
         return { technicalRun, technicalRubric };
+    }
+
+    /**
+     * Loads the technical run for released feedback, with the technical rubric it was generated with.
+     *
+     * The released counterpart of {@link loadTechnicalLens}: no staleness check, because released
+     * feedback is exempt, and the rubric comes from the technical lens's history by the run's own
+     * version rather than from whatever is approved now.
+     *
+     * @param submissionId - Released submission whose technical run is being resolved
+     * @param assignment - Assignment supplying the technical lens's approved rubric and history
+     * @returns The latest technical run (or null when the assignment has none) and its own rubric
+     */
+    private async loadReleasedTechnicalLens(
+        submissionId: string,
+        assignment: WritingAssignment
+    ): Promise<{ technicalRun: WritingFeedbackRun | null; technicalRubric: WritingRubricDefinition | undefined }> {
+        if (!lensesForAssignment(assignment).includes('technical')) {
+            return { technicalRun: null, technicalRubric: undefined };
+        }
+        const technicalRun = await this.mongo.getLatestWritingFeedbackRun(submissionId, 'technical');
+        if (!technicalRun) return { technicalRun: null, technicalRubric: undefined };
+        return {
+            technicalRun,
+            technicalRubric: rubricForVersion(assignment, 'technical', technicalRun.rubricVersion)
+        };
     }
 
     /**

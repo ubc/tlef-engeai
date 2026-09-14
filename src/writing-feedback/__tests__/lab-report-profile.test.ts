@@ -88,4 +88,13 @@ describe('APSC 182 weights are data, not prose', () => {
             });
         });
     });
+
+    it('names every cell with its level, the way a Canvas rubric names each rating', () => {
+        const rubric = buildLabReportRubric('u', new Date());
+        rubric.criteria.forEach((criterion) => {
+            rubric.levels.forEach((level) => {
+                expect(criterion.cells?.[level.id]?.label).toBe(level.label);
+            });
+        });
+    });
 });

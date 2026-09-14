@@ -54,10 +54,20 @@ export const writingSflContextProfileInputSchema = z.object({
     approvedGlossaryTerms: z.array(z.string().trim().min(1).max(80)).max(30).optional()
 });
 
+/**
+ * Fewest ratings a criterion may offer. A row shorter than this cannot separate work at
+ * all, whatever the rest of the grid does.
+ */
+export const MIN_RATINGS_PER_CRITERION = 2;
+
 /** One grid cell. Ranges are inclusive and may collapse to a single value. */
 const rubricCell = z.object({
     min: z.number().finite().min(0).max(1000),
     max: z.number().finite().min(0).max(1000),
+    // Canvas names its ratings per row, so the name belongs to the cell rather than to
+    // the column. Optional: a hand-authored grid may carry none, and the level's own
+    // label stands in wherever a cell has not been named.
+    label: z.string().trim().max(60).optional(),
     descriptor: z.string().trim().max(400).optional()
 });
 
@@ -191,17 +201,23 @@ export function assertRetiredIdsNotReused(
 }
 
 /**
- * requireCompleteRubricCells - approval gate ensuring every criterion carries a
- * points range and a descriptor at every performance level.
+ * requireCompleteRubricCells - approval gate ensuring every criterion carries
+ * points and a usable run of described ratings.
  *
  * Draft saves are never blocked by this — staff may save a partially filled
  * grid at any time. Only approval, which is what lets a rubric reach the
  * feedback engine, requires the grid to be complete.
  *
- * Two things are required of every criterion, and the points come first because
- * the grid cannot be read without them: a criterion carrying no points
- * contributes nothing to the mark, so an empty points cell is either an
- * oversight or a criterion that should have been deleted.
+ * Completeness is no longer "every cell filled". A Canvas rubric rates each row
+ * independently, and a criterion that offers four ratings where the widest row
+ * offers six is a rubric as its author wrote it, not an unfinished one. What is
+ * required is that a row's ratings run from the weakest upwards with no gap in
+ * the middle, so every score from zero to the criterion's points still lands on
+ * a named rating, and that each rating given points is also described.
+ *
+ * The points come first because the grid cannot be read without them: a criterion
+ * carrying no points contributes nothing to the mark, so an empty points cell is
+ * either an oversight or a criterion that should have been deleted.
  *
  * Both checks once had holes. The cell check skipped any criterion whose points
  * were undefined or zero, which made leaving the points blank a silent way to
@@ -214,8 +230,9 @@ export function assertRetiredIdsNotReused(
  * criterion, and there is nothing for the engine to award without them.
  *
  * @param draft - Candidate rubric draft about to be approved
- * @throws Error naming the criteria with no points, or how many cells are
- *         missing a range or a description
+ * @throws Error naming the criteria with no points, the criteria whose ratings
+ *         leave a gap, the criteria offering too few ratings, and the criteria
+ *         carrying a rating with no description
  */
 export function requireCompleteRubricCells(draft: WritingRubricDefinition): void {
     const unweighted = draft.criteria.filter(
@@ -228,18 +245,127 @@ export function requireCompleteRubricCells(draft: WritingRubricDefinition): void
         );
     }
 
-    let missing = 0;
+    // Canvas rates each row independently, so a criterion may offer fewer ratings than
+    // the widest one and the grid carries that shape rather than flattening it. What a
+    // row may not do is leave a hole: the ratings it offers run from the weakest upwards,
+    // so every score from zero to the criterion's points still lands on a named rating.
+    const ordered = [...draft.levels].sort((left, right) => left.rank - right.rank);
+    const ragged: string[] = [];
+    const undescribed: string[] = [];
+    const tooFew: string[] = [];
+
     draft.criteria.forEach((criterion) => {
-        draft.levels.forEach((level) => {
-            const band = resolveBand(criterion, level.id, draft.levels);
-            if (!band || !band.descriptor?.trim()) missing += 1;
-        });
+        const bands = ordered.map((level) => resolveBand(criterion, level.id, draft.levels));
+        const offered = bands.filter((band) => band !== undefined).length;
+        const contiguous = bands.every((band, index) => (band === undefined) === (index >= offered));
+
+        if (!contiguous) ragged.push(`"${criterion.label}"`);
+        else if (offered < MIN_RATINGS_PER_CRITERION) tooFew.push(`"${criterion.label}"`);
+        if (bands.some((band) => band !== undefined && !band.descriptor?.trim())) {
+            undescribed.push(`"${criterion.label}"`);
+        }
     });
-    if (missing > 0) {
+
+    if (ragged.length > 0) {
         throw new Error(
-            `Complete the rubric grid before approving: ${missing} cell${missing === 1 ? '' : 's'} still need${missing === 1 ? 's' : ''} a points range or a description.`
+            `Fill each criterion's ratings from the weakest upwards before approving: ${ragged.join(', ')} ${ragged.length === 1 ? 'leaves a gap' : 'leave gaps'} in the middle.`
         );
     }
+    if (tooFew.length > 0) {
+        throw new Error(
+            `Give every criterion at least ${MIN_RATINGS_PER_CRITERION} ratings before approving: ${tooFew.join(', ')} ${tooFew.length === 1 ? 'has' : 'have'} fewer.`
+        );
+    }
+    if (undescribed.length > 0) {
+        throw new Error(
+            `Describe every rating you have given points to before approving: ${undescribed.join(', ')} ${undescribed.length === 1 ? 'has' : 'have'} a rating with no description.`
+        );
+    }
+}
+
+/** Fields that record which version a rubric is and who touched it when, not what it says. */
+const RUBRIC_METADATA_FIELDS = ['version', 'status', 'updatedAt', 'updatedBy', 'approvedAt', 'approvedBy'] as const;
+
+/**
+ * canonicalRubricContent - a stable form of a rubric value, for comparing two of them
+ *
+ * Object keys are sorted, and `null` and a missing value are treated alike: the database
+ * driver stores an undefined-valued key as `null`, so a draft sent from the browser and
+ * the approved copy read back from Mongo would otherwise never match. Array order is kept,
+ * because criteria and rating order is part of what a rubric says.
+ *
+ * @param value - Any part of a rubric definition
+ * @returns The same value with sorted keys and no null or undefined entries
+ */
+function canonicalRubricContent(value: unknown): unknown {
+    if (value === null || value === undefined) return undefined;
+    if (value instanceof Date) return value.toISOString();
+    if (Array.isArray(value)) return value.map(canonicalRubricContent);
+    if (typeof value === 'object') {
+        const record = value as Record<string, unknown>;
+        return Object.fromEntries(
+            Object.keys(record)
+                .sort()
+                .map((key) => [key, canonicalRubricContent(record[key])] as const)
+                .filter(([, entry]) => entry !== undefined)
+        );
+    }
+    return value;
+}
+
+/**
+ * withCellNamesResolved - the same rubric with every cell naming its rating
+ *
+ * A cell with no name of its own is shown in the grid, sent to the feedback prompt, and
+ * printed under its level's label, so an unnamed cell and one named with that label say the
+ * same thing. Rubrics approved before cells carried names have none, while the grid now fills
+ * each cell's name in from its level on every save. Compared as stored, every such rubric
+ * looked edited for good, however carefully staff undid their changes.
+ *
+ * @param rubric - Rubric whose cells may be unnamed
+ * @returns A copy whose cells each carry a name, their own or their level's
+ */
+function withCellNamesResolved(rubric: WritingRubricDefinition): WritingRubricDefinition {
+    const levelLabels = new Map((rubric.levels ?? []).map((level) => [level.id, level.label]));
+    return {
+        ...rubric,
+        criteria: (rubric.criteria ?? []).map((criterion) => (criterion.cells
+            ? {
+                ...criterion,
+                cells: Object.fromEntries(Object.entries(criterion.cells).map(([levelId, cell]) => [
+                    levelId,
+                    { ...cell, label: cell.label?.trim() || levelLabels.get(levelId) }
+                ]))
+            }
+            : criterion))
+    };
+}
+
+/**
+ * rubricContentEquals - whether two rubrics say the same thing
+ *
+ * Compares everything a rubric says -- the shared description, the genre profile, the lab
+ * handout, and every criterion, rating and band -- and ignores which version it is, its
+ * status, and who changed or approved it when. An approval that changes nothing would still
+ * create a new version and put every feedback draft generated with the current one out of
+ * date, so the routes use this to refuse it.
+ *
+ * An unnamed cell is compared as if it carried its level's label, which is how every reader of
+ * the rubric already treats it (see {@link withCellNamesResolved}).
+ *
+ * @param left - One rubric, typically the saved draft
+ * @param right - The other, typically the approved rubric
+ * @returns True only when both exist and their content matches
+ */
+export function rubricContentEquals(left?: WritingRubricDefinition, right?: WritingRubricDefinition): boolean {
+    if (!left || !right) return false;
+    const contentOf = (rubric: WritingRubricDefinition): Record<string, unknown> => {
+        const copy: Record<string, unknown> = { ...rubric };
+        RUBRIC_METADATA_FIELDS.forEach((field) => { delete copy[field]; });
+        return copy;
+    };
+    return JSON.stringify(canonicalRubricContent(contentOf(withCellNamesResolved(left))))
+        === JSON.stringify(canonicalRubricContent(contentOf(withCellNamesResolved(right))));
 }
 
 /**

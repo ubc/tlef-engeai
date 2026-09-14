@@ -259,7 +259,13 @@ function buildCells(row: CanvasRubricRow, levels: WritingRubricLevel[]): Record<
         // already prompts "Enter a description" on a cell that has none — which is the honest
         // state here. Falling back to the rating name would just repeat the column header.
         const descriptor = (rating.description ?? '').trim().replace(/\s+/g, ' ').slice(0, MAX_DESCRIPTOR);
-        const spread = descriptor ? { descriptor } : {};
+        // Canvas names a rating per row, so the name is the cell's, not the column's. The
+        // grid falls back to the level's own label wherever a row left its rating unnamed.
+        const ratingLabel = (rating.label ?? '').trim().replace(/\s+/g, ' ').slice(0, MAX_LEVEL_LABEL);
+        const spread = {
+            ...(ratingLabel ? { label: ratingLabel } : {}),
+            ...(descriptor ? { descriptor } : {})
+        };
 
         if (evenly) {
             const band = evenly[level.id];

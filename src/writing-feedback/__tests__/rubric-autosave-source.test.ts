@@ -60,7 +60,7 @@ describe('rubric page autosave wiring', () => {
     });
 
     it('clears the page dirty flag once a background write succeeds', () => {
-        expect(source).toMatch(/status === 'saved'[\s\S]{0,200}state\.panelDirty = false/);
+        expect(source).toMatch(/(?:status === 'saved'|case 'saved':)[\s\S]{0,300}state\.panelDirty = false/);
     });
 
     it('flushes on page hide and on visibility change', () => {

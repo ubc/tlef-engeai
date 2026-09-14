@@ -35,14 +35,22 @@ const LONG = 'The report states its purpose in the opening paragraph and each se
 
 const draft = {
     criteria: [
+        // Names its ratings its own way, as a Canvas row does.
         { id: 'organization', label: 'Organization', description: 'How the report is put together, section by section.', points: 30,
           cells: {
-            weak: { min: 0, max: 7, descriptor: 'Sections appear in no order a reader can follow.' },
-            developing: { min: 8, max: 15, descriptor: 'An order exists but the reader has to reconstruct it.' },
-            proficient: { min: 16, max: 22, descriptor: LONG },
-            exemplary: { min: 23, max: 30, descriptor: 'Every section earns its place and says why it follows the last.' }
+            weak: { min: 0, max: 7, label: 'No Attempt/Poor', descriptor: 'Sections appear in no order a reader can follow.' },
+            developing: { min: 8, max: 15, label: 'Needs Improvement', descriptor: 'An order exists but the reader has to reconstruct it.' },
+            proficient: { min: 16, max: 22, label: 'Satisfactory', descriptor: LONG },
+            exemplary: { min: 23, max: 30, label: 'Good', descriptor: 'Every section earns its place and says why it follows the last.' }
           } },
-        { id: 'content', label: 'Content', description: 'What the report actually claims and what backs the claims up.', points: 45, cells: {} },
+        // A short row: three ratings where the widest offers four, which is how a Canvas
+        // rubric that rates one criterion more coarsely than the rest arrives here.
+        { id: 'content', label: 'Content', description: 'What the report actually claims and what backs the claims up.', points: 45,
+          cells: {
+            weak: { min: 0, max: 14, label: 'Missing', descriptor: 'Claims are absent or unsupported.' },
+            developing: { min: 15, max: 30, label: 'Partial', descriptor: 'Some claims are backed, others are asserted.' },
+            proficient: { min: 31, max: 45, label: 'Complete', descriptor: 'Every claim is backed by something a reader can check.' }
+          } },
         { id: 'interpersonal_positioning', label: 'Interpersonal Positioning', description: 'How the writing addresses the person reading it.', points: 25, cells: {} }
     ],
     levels: [

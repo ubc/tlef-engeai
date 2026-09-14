@@ -55,6 +55,12 @@ export interface GridReadiness {
 }
 
 /**
+ * Fewest ratings a criterion may offer. Mirrors MIN_RATINGS_PER_CRITERION in
+ * src/writing-feedback/rubric-schema.ts, which is what actually refuses the approval.
+ */
+export const MIN_RATINGS_PER_CRITERION = 2;
+
+/**
  * answered - whether a field holds something a staff member actually wrote
  *
  * Fields once seeded with stub prose needed a second test, comparing the value
@@ -199,11 +205,24 @@ export function deriveGenreState(
  * @returns Counts plus the number of boxes still empty
  */
 export function describeGrid(criteria: RubricCriterion[], levels: RubricLevel[]): GridReadiness {
+    const ordered = [...levels].sort((left, right) => left.rank - right.rank);
     let emptyCells = 0;
     for (const criterion of criteria) {
         if (criterion.points === undefined || criterion.points <= 0) emptyCells += 1;
-        for (const level of levels) {
-            if (!answered(criterion.cells?.[level.id]?.descriptor)) emptyCells += 1;
+
+        // A criterion may offer fewer ratings than the widest one -- a Canvas rubric rates
+        // each row independently -- so only the run of ratings it actually offers has to be
+        // filled. The unused columns past the end of that run are not boxes anyone owes.
+        const offered = ordered.map((level) => criterion.cells?.[level.id]);
+        const lastOffered = offered.reduce((last, cell, index) => (cell ? index : last), -1);
+        // Short of the minimum, the ratings still missing are counted: a row offering one
+        // rating, or none, cannot separate any two pieces of work.
+        emptyCells += Math.max(0, MIN_RATINGS_PER_CRITERION - 1 - lastOffered);
+        for (let index = 0; index <= lastOffered; index += 1) {
+            const cell = offered[index];
+            // A hole inside the run is owed: without it, scores in that range earn no rating.
+            if (!cell) emptyCells += 1;
+            else if (!answered(cell.descriptor)) emptyCells += 1;
         }
     }
     const totalPoints = criteria.reduce((sum, criterion) => sum + (criterion.points ?? 0), 0);

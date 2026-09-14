@@ -36,6 +36,15 @@
     width: 100%;
 }
 
+/* The landing page with no assignments: a plain line rather than a card, matching how the
+   flags page reports an empty list (.flags-list-empty in flag-instructor.css, which this
+   page does not load). */
+.wf-assignment-list-empty {
+    margin: 0;
+    padding: 0.75rem 1rem;
+    color: var(--text-secondary);
+}
+
 /* Header — layout for left cluster and actions; bar chrome from .page-header */
 .wf-header {
     flex-wrap: wrap;
@@ -200,6 +209,22 @@
 
 .wf-button--secondary:hover:not(:disabled) {
     background: var(--hover-bg);
+}
+
+/*
+ * Outline variant — a green-on-transparent button for the optional "add one more"
+ * affordances ("Add section", "Extract text"). It reads as available without
+ * competing with the primary save action at the foot of the form.
+ */
+.wf-button--outline {
+    background: transparent;
+    color: var(--color-chbe-green);
+    border: 1px solid var(--color-chbe-green);
+    font-weight: 600;
+}
+
+.wf-button--outline:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--color-chbe-green) 10%, transparent);
 }
 
 .wf-button--quiet {
@@ -754,6 +779,50 @@
     border-color: var(--pinned-color);
 }
 
+/* Empty required field, marked when a save or approve is refused. The red outline
+   is the durable signal; the shake only draws the eye on the press that caused it,
+   and is removed on animationend so a later repaint cannot replay it. */
+.wf-field input.wf-field-invalid,
+.wf-field select.wf-field-invalid,
+.wf-field textarea.wf-field-invalid {
+    border-color: var(--color-eng-red);
+    box-shadow: 0 0 0 1px var(--color-eng-red);
+}
+
+.wf-field input.wf-field-invalid:focus,
+.wf-field select.wf-field-invalid:focus,
+.wf-field textarea.wf-field-invalid:focus {
+    border-color: var(--color-eng-red);
+}
+
+.wf-field-shake {
+    animation: wf-field-shake 320ms ease-in-out;
+}
+
+@keyframes wf-field-shake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-5px); }
+    40% { transform: translateX(5px); }
+    60% { transform: translateX(-3px); }
+    80% { transform: translateX(3px); }
+}
+
+/* The outline already says which box is wrong, so the motion is purely additive
+   and drops out entirely rather than being shortened. */
+@media (prefers-reduced-motion: reduce) {
+    .wf-field-shake {
+        animation: none;
+    }
+}
+
+/* Summary beside the Save/Approve buttons, naming the first field marked above. */
+.wf-validation-note {
+    margin: 10px 0 0;
+    color: var(--color-eng-red);
+    font-size: 13px;
+    line-height: 1.4;
+}
+
 .wf-field input[type="radio"] {
     width: 16px;
     accent-color: var(--color-chbe-green);
@@ -1084,12 +1153,15 @@
     line-height: 1.4;
 }
 
+/* 18px, the size of the step titles above it. Inherited from the 16px summary row it
+   read as a label on the grid rather than as the name of the rubric beneath it. The
+   subtitle and size line inside the row keep their own explicit sizes. */
 .wf-rubric-section__title {
     flex: 1 1 auto;
     margin: 0;
     padding: 0;
     color: inherit;
-    font-size: inherit;
+    font-size: 18px;
     font-weight: inherit;
     line-height: inherit;
     border: 0;
@@ -1188,8 +1260,7 @@
 
 /* Every control inside a step is a touch target at every width. The grid tools
    already carried this; the description form's own actions did not, so
-   'Fill these in for me', 'Start over from the standard rubric' and the stage
-   repeater's Add measured 36px on a phone. */
+   'Fill these in for me' and the stage repeater's Add measured 36px on a phone. */
 
 .wf-step-body .wf-button,
 .wf-approve-row .wf-button {
@@ -1355,6 +1426,39 @@
     color: var(--color-eng-red);
 }
 
+/* What autosave is doing, under step 3's buttons. Quiet, because it reports routine work; the
+   signed-out alert keeps the red for the one state that needs acting on. It takes no space
+   until autosave has something to say: sitting below the buttons, a line appearing moves
+   nothing staff are about to click. */
+.wf-save-status {
+    margin: 12px 0 0;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: var(--text-secondary);
+}
+
+.wf-save-status:empty {
+    display: none;
+}
+
+/* Step 3's approve and save-now actions are hidden with the attribute. A .wf-button sets its
+   own display, which would otherwise override it. */
+.wf-button[hidden] {
+    display: none;
+}
+
+.wf-approval-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+/* Discard buttons join the action row directly, so they line up and wrap with Save and
+   Approve instead of sitting in a box of their own. */
+.wf-discard-actions {
+    display: contents;
+}
+
 .wf-approve-copy {
     display: flex;
     flex-direction: column;
@@ -1487,17 +1591,10 @@
  * empty box. Brand outline instead: unmistakably an action, and it pairs with
  * the red-outlined delete beside it rather than competing with the fields.
  */
+/* Colour comes from .wf-button--outline; only the spacing is positional. */
 .wf-stage-repeater + .wf-button {
     margin-top: 10px;
     margin-bottom: 20px;
-    background: transparent;
-    color: var(--color-chbe-green);
-    border: 1px solid var(--color-chbe-green);
-    font-weight: 600;
-}
-
-.wf-stage-repeater + .wf-button:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--color-chbe-green) 10%, transparent);
 }
 
 @media (max-width: 900px) {
@@ -1520,16 +1617,35 @@
 }
 
 .wf-rubric-library-select {
-    /* The grid toolbar's one non-button control; 44px so it matches the buttons beside it. */
+    /* The grid toolbar's one non-button control. It carries .wf-button--outline's
+       colours rather than the form-field grey so the toolbar reads as one row:
+       44px tall and 600-weight to match the buttons on either side of it. */
     min-height: 44px;
     min-width: min(100%, 16rem);
     padding: 8px 12px;
-    background: white;
-    color: var(--text-primary);
-    border: 1px solid var(--border-color);
+    background: transparent;
+    color: var(--color-chbe-green);
+    border: 1px solid var(--color-chbe-green);
     border-radius: 6px;
     font: inherit;
     font-size: 14px;
+    font-weight: 600;
+}
+
+.wf-rubric-library-select:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--color-chbe-green) 10%, transparent);
+}
+
+.wf-rubric-library-select:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+/* The popup list is a menu of criterion names, not a row of actions, so it keeps
+   ordinary body text rather than inheriting the control's green. */
+.wf-rubric-library-select option {
+    color: var(--text-primary);
+    font-weight: 400;
 }
 
 .wf-rubric-library-select:focus-visible {
@@ -1673,10 +1789,11 @@
     min-width: 11rem;
 }
 
-/* 14px, the size the criterion and level names carry in .wf-grid-label-input. These
-   two are headings of the same rank as those, and at 13px they read as a caption over
-   the columns they name rather than as their titles. */
+/* 14px, the size the criterion and rating names carry in .wf-grid-label-input. These
+   are headings of the same rank as those, and at 13px they read as a caption over the
+   columns they name rather than as their titles. */
 .wf-grid-corner,
+.wf-grid-ratings-head,
 .wf-grid-points-head {
     color: var(--text-primary);
     font-size: 14px;
@@ -1707,11 +1824,46 @@
     background: var(--hover-bg);
 }
 
+/* One heading over every rating column, as a Canvas rubric has. It names a group of
+   columns rather than one, so it is centred over them instead of sitting at the left
+   edge of the first. */
+.wf-grid-ratings-head {
+    text-align: center;
+}
+
+.wf-grid-ratings-head .wf-grid-head-title {
+    justify-content: center;
+}
+
+/* The row under "Ratings" carries no names -- only the controls that add, remove and
+   reorder a column, aligned under the column each acts on. With nothing to show it
+   collapses to nothing, which is what a reader without edit rights sees. */
+.wf-grid-controls-row th {
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
 .wf-grid-head-bar {
     display: flex;
     align-items: center;
+    justify-content: flex-end;
     gap: 6px;
-    margin-bottom: 6px;
+    margin-bottom: 0;
+}
+
+/* The rating's own name, under the points it is worth and above what earns it. */
+.wf-grid-cell-name {
+    display: block;
+    width: 100%;
+    margin: 4px 0 2px;
+}
+
+/* A rating this criterion does not offer. It reads as quieter than an unfinished cell
+   because there is nothing owed in it: every field says n/a rather than asking. */
+.wf-grid-cell--unused .wf-grid-band,
+.wf-grid-cell--unused .wf-grid-text,
+.wf-grid-cell--unused .wf-grid-cell-name {
+    color: var(--text-secondary);
 }
 
 .wf-grid-head-controls {
@@ -2386,7 +2538,6 @@ mark.wf-anchor.is-filtered-out,
     min-height: 0;
     padding: 16px;
     overflow-y: auto;
-    overscroll-behavior: contain;
 }
 
 .wf-panel-body[hidden] {
@@ -3010,6 +3161,12 @@ mark.wf-anchor.is-filtered-out,
     .wf-approve-row .wf-button {
         width: 100%;
         min-height: 44px;
+    }
+
+    /* Stacked full-width, the buttons follow source order, which would put the
+       destructive action on top. It goes below Approve instead. */
+    .wf-approve-row .wf-discard-action {
+        order: 1;
     }
 
     .wf-header-actions {

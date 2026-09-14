@@ -118,23 +118,39 @@ export function autofillMergeRules(source: RubricGridSource): AutofillMergeRules
  * not part of `levels` — is passed through unchanged so the shared draft validator
  * still rejects it.
  *
+ * Rating names are never the model's either. A cell keeps the name it already had --
+ * which for a Canvas-imported rubric is the name Canvas gave that rating -- and a cell
+ * that had none takes its level's label, so filling descriptors in can never strip a
+ * rubric of its rating titles.
+ *
  * @param modelCells - Cells the model proposed, keyed by level id
  * @param points - The criterion's resolved weight after this merge, if any
- * @param levels - Rubric's performance levels, used only to derive bands
- * @returns Cells with weight-correct numeric bands and the model's descriptor text
+ * @param levels - Rubric's performance levels, used to derive bands and fallback names
+ * @param existing - The criterion's cells before this merge, whose rating names are kept
+ * @returns Cells with weight-correct numeric bands, the existing rating names, and the
+ *          model's descriptor text
  */
 function reconcileProposedCells(
     modelCells: Record<WritingLevelId, WritingRubricCell>,
     points: number | undefined,
-    levels: ReadonlyArray<WritingRubricLevel>
+    levels: ReadonlyArray<WritingRubricLevel>,
+    existing?: Record<WritingLevelId, WritingRubricCell>
 ): Record<WritingLevelId, WritingRubricCell> {
-    if (points === undefined) return modelCells;
-    const derived = spaceBandsEvenly(points, levels);
+    const nameFor = (levelId: WritingLevelId): string | undefined =>
+        existing?.[levelId]?.label?.trim() || levels.find((level) => level.id === levelId)?.label;
+    const derived = points === undefined ? undefined : spaceBandsEvenly(points, levels);
     const reconciled: Record<WritingLevelId, WritingRubricCell> = {};
     for (const [levelId, cell] of Object.entries(modelCells)) {
-        const band = derived[levelId];
+        const band = derived?.[levelId] ?? (derived ? undefined : { min: cell.min, max: cell.max });
+        const label = nameFor(levelId);
         reconciled[levelId] = band
-            ? { ...band, ...(cell.descriptor ? { descriptor: cell.descriptor } : {}) }
+            ? {
+                ...band,
+                ...(label ? { label } : {}),
+                ...(cell.descriptor ? { descriptor: cell.descriptor } : {})
+            }
+            // A level id the model invented passes through untouched, so the draft
+            // validator still rejects it.
             : cell;
     }
     return reconciled;
@@ -172,7 +188,7 @@ export function mergeAutofill(
             ...(rules.mayWriteRow && match.description ? { description: match.description } : {}),
             ...(rules.mayWriteRow && match.points !== undefined ? { points: match.points } : {}),
             ...(rules.mayWriteCells && match.cells
-                ? { cells: reconcileProposedCells(match.cells, nextPoints, draft.levels) }
+                ? { cells: reconcileProposedCells(match.cells, nextPoints, draft.levels, criterion.cells) }
                 : {})
         };
     });

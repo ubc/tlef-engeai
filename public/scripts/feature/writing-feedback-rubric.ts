@@ -27,6 +27,7 @@ import { AutosaveSignedOutError, createAutosave } from './writing-feedback-autos
 import type { Autosave } from './writing-feedback-autosave.js';
 import { ensureAssignmentTypeChosen } from './writing-feedback-assignment-type.js';
 import {
+    MIN_RATINGS_PER_CRITERION,
     deriveGenreState,
     describeDetails,
     describeGrid,
@@ -43,11 +44,12 @@ import {
     RUBRIC_SLUG,
     parseBand,
     renderRubricGrid,
-    slugFromLabel,
-    spaceBandsEvenly
+    resolveBand,
+    slugFromLabel
 } from './writing-feedback-grid.js';
 import {
     Assignment,
+    DISCLOSURE_TRANSITION_TIMEOUT_MS,
     assignmentOriginText,
     CanvasRubricRefusal,
     RubricCell,
@@ -66,6 +68,7 @@ import {
     createText,
     disclosureHeader,
     element,
+    expandDisclosure,
     field,
     formatDate,
     inputControl,
@@ -73,6 +76,7 @@ import {
     labelWithRequiredMarker,
     refreshIcons,
     request,
+    scrollingAncestor,
     setWorkspaceMessage,
     setQueryState,
     setView,
@@ -209,42 +213,6 @@ const LAB_REPORT_CRITERIA_MIRROR: Array<{ id: string; label: string; description
         } }
 ];
 
-/**
- * defaultRubricCriteria - builds fresh criterion rows for the reset action
- *
- * @param lens - Which rubric's default template to build
- * @returns Detached criteria with bands and descriptors already spaced via {@link spaceBandsEvenly}
- */
-function defaultRubricCriteria(lens: WritingFeedbackLens): RubricCriterion[] {
-    const source = lens === 'technical' ? LAB_REPORT_CRITERIA_MIRROR : DEFAULT_WRITING_CRITERIA_MIRROR;
-    const levels = lens === 'technical' ? LAB_REPORT_LEVELS_MIRROR : DEFAULT_WRITING_LEVELS_MIRROR;
-    return source.map((criterion) => {
-        const cells = spaceBandsEvenly(criterion.points, levels);
-        Object.entries(criterion.descriptors).forEach(([levelId, descriptor]) => {
-            if (cells[levelId]) cells[levelId] = { ...cells[levelId], descriptor };
-        });
-        return {
-            id: criterion.id,
-            label: criterion.label,
-            description: criterion.description,
-            ...('functionTag' in criterion && criterion.functionTag ? { functionTag: criterion.functionTag } : {}),
-            ...('sflDimension' in criterion && criterion.sflDimension ? { sflDimension: criterion.sflDimension } : {}),
-            points: criterion.points,
-            cells
-        } as RubricCriterion;
-    });
-}
-
-/**
- * defaultRubricLevels - fresh, detached copies of the default ordinal scale
- *
- * @param lens - Which rubric's default level set to build
- * @returns Detached levels, safe for an editor to mutate
- */
-function defaultRubricLevels(lens: WritingFeedbackLens): RubricLevel[] {
-    return (lens === 'technical' ? LAB_REPORT_LEVELS_MIRROR : DEFAULT_WRITING_LEVELS_MIRROR).map((level) => ({ ...level }));
-}
-
 /** The assignment description shared by every rubric the assignment owns. */
 interface AssignmentDetailsInput {
     title: string;
@@ -288,6 +256,16 @@ interface RubricSectionHandle {
     nextVersion: number;
     /** Whether an approved version already exists, which changes that copy. */
     hasApproved: boolean;
+    /** The active approved version, which discarding the draft returns the rubric to. */
+    approvedVersion?: number;
+    /** When the active version was approved, for step 3's "Approved v2 · date". */
+    approvedAt?: string;
+    /**
+     * The unapproved draft's version, once one exists. Kept current by autosave: an approved
+     * rubric has no draft until its first edit is stored, and that store is what makes
+     * "Discard changes" something step 3 can offer.
+     */
+    draftVersion?: number;
 }
 
 /** Page-wide state the per-rubric save action reads at click time. */
@@ -448,9 +426,9 @@ function renderSflProfileBox(
     taskRequirements.placeholder = 'One per line — e.g. at least three sources';
     const glossaryTerms = namedControl(textAreaControl((sflContext?.approvedGlossaryTerms ?? []).join('\n'), 2), 'sfl.approvedGlossaryTerms');
     glossaryTerms.placeholder = 'One per line. Leave blank if none';
-    body.append(sflField({ label: 'Smaller pieces of writing inside it', control: embeddedGenres }));
+    body.append(sflField({ label: 'Smaller pieces of writing inside it (optional)', control: embeddedGenres }));
     body.append(sflField({ label: 'What must they include?', control: taskRequirements, required: true }));
-    body.append(sflField({ label: 'Words from your course glossary', control: glossaryTerms }));
+    body.append(sflField({ label: 'Words from your course glossary (optional)', control: glossaryTerms }));
 
     [genreLabelControl, fieldControl, tenorControl, modeControl, evaluatorControl, productionControl,
         embeddedGenres, taskRequirements, glossaryTerms].forEach((control) => bindTextControl(control, canEdit, onInput));
@@ -534,7 +512,7 @@ function renderStageRepeater(
         .forEach((stage) => addRow(stage.label, stage.purpose));
 
     if (canEdit) {
-        const addButton = createButton('Add section', 'secondary', async () => {
+        const addButton = createButton('Add section', 'outline', async () => {
             addRow('', '');
             onInput();
         }, false, 'plus');
@@ -657,8 +635,13 @@ function readCellControls(
     levelIds.forEach((levelId, column) => {
         const band = parseBand(optionalControlValue(form, `criterion.${index}.cell.${column}.band`) ?? '');
         if (!band) return;
+        const label = optionalControlValue(form, `criterion.${index}.cell.${column}.label`)?.trim();
         const descriptor = optionalControlValue(form, `criterion.${index}.cell.${column}.descriptor`);
-        cells[levelId] = descriptor ? { ...band, descriptor } : band;
+        cells[levelId] = {
+            ...band,
+            ...(label ? { label } : {}),
+            ...(descriptor ? { descriptor } : {})
+        };
     });
     return Object.keys(cells).length ? cells : undefined;
 }
@@ -770,6 +753,162 @@ function detailsFromDraft(draft: RubricDefinition): DetailsValues {
 }
 
 /**
+ * MissingFieldsError - a validation failure that knows which controls are empty
+ *
+ * The collectors used to throw a hand-written sentence listing the fields in
+ * prose ("Fill in the title, task, audience, purpose, and how to grade."). That
+ * prose named nothing on the page: the labels above those boxes are questions
+ * ("Who are they writing for?"), so staff were told to fill in words they could
+ * not find. Carrying the control names instead lets the page mark the boxes
+ * themselves and read their real labels back out of the DOM, which cannot drift
+ * from what is rendered the way a second copy of the wording always did.
+ *
+ * The collectors stay pure. Marking happens only where a staff member pressed a
+ * button — {@link reportMissingFields} — because autosave runs these same
+ * collectors on a timer and must never paint a half-typed form red.
+ */
+class MissingFieldsError extends Error {
+    /** Control names, in the order the form asks for them. */
+    readonly controlNames: string[];
+
+    constructor(controlNames: string[]) {
+        super(`${controlNames.length} required field${controlNames.length === 1 ? '' : 's'} still empty.`);
+        this.name = 'MissingFieldsError';
+        this.controlNames = controlNames;
+    }
+}
+
+/**
+ * fieldLabelFor - the visible label of the field a control sits in
+ *
+ * Read from the DOM rather than from a table beside the validator, so the words
+ * quoted back at staff are by construction the words above the box.
+ *
+ * @param control - Control to describe
+ * @returns Label text without its required marker or item count, or '' when unlabelled
+ */
+function fieldLabelFor(control: RubricControl): string {
+    const label = control.closest('.wf-field')?.querySelector('label');
+    if (!label) return '';
+    // The asterisk and the "3 items" count are appended as element children, so the
+    // direct text nodes of the label (or of its text wrapper) are the label itself.
+    const source = label.querySelector('.wf-field-label-text') ?? label;
+    return Array.from(source.childNodes)
+        .filter((node) => node.nodeType === Node.TEXT_NODE)
+        .map((node) => node.textContent ?? '')
+        .join('')
+        .trim();
+}
+
+/**
+ * revealControl - opens any collapsed disclosure between a control and the page
+ *
+ * The genre profile is a collapsible box, so a control inside it can be both
+ * empty and invisible. Scrolling to a hidden box would land on nothing.
+ *
+ * Resolves only once every panel has finished opening. {@link expandDisclosure}
+ * animates `max-height` from zero, so a scroll issued before it settles measures
+ * a box that is still flat and lands on the section header instead of the field.
+ * Clicking the header would start that animation without handing back anything to
+ * wait on, so the panels are expanded directly and their headers told what
+ * happened, keeping `aria-expanded` in step with what the next click must undo.
+ *
+ * @param control - Control that must become visible
+ */
+async function revealControl(control: RubricControl): Promise<void> {
+    const collapsed: HTMLElement[] = [];
+    for (let node = control.parentElement; node; node = node.parentElement) {
+        if (node.classList.contains('wf-disclosure-body') && node.hidden) collapsed.push(node);
+    }
+    // Outermost first: a nested panel measures its own height as zero while an
+    // ancestor is still `hidden`, and would animate open to nothing.
+    for (const panel of collapsed.reverse()) {
+        document
+            .querySelector<HTMLElement>(`[aria-controls="${CSS.escape(panel.id)}"]`)
+            ?.setAttribute('aria-expanded', 'true');
+        await expandDisclosure(panel);
+    }
+}
+
+/**
+ * clearFieldErrors - returns every marked control to its normal state
+ *
+ * @param form - The assignment-details form rendered once per page
+ * @param note - The line under step 3 that carries the summary
+ */
+function clearFieldErrors(form: HTMLFormElement, note: HTMLElement): void {
+    form.querySelectorAll<RubricControl>('.wf-field-invalid').forEach((control) => {
+        control.classList.remove('wf-field-invalid', 'wf-field-shake');
+        control.removeAttribute('aria-invalid');
+    });
+    note.textContent = '';
+    note.hidden = true;
+}
+
+/**
+ * reportMissingFields - marks the empty fields and sends the staff member to the first
+ *
+ * Replaces the modal for this one class of failure. A modal is the right shape
+ * for a failure with nothing to point at; an empty required box is the opposite,
+ * and a dialog covering the form while describing it was the whole problem.
+ *
+ * Focus, not the animation, is what carries this to a screen reader: moving the
+ * caret into the first empty box announces its label, and `aria-invalid` marks
+ * the rest for anyone who navigates the form afterwards.
+ *
+ * @param form - The assignment-details form rendered once per page
+ * @param note - The line under step 3 that carries the summary
+ * @param controlNames - Names of the empty controls, in form order
+ */
+async function reportMissingFields(form: HTMLFormElement, note: HTMLElement, controlNames: string[]): Promise<void> {
+    clearFieldErrors(form, note);
+
+    const controls = controlNames
+        .map((name) => form.elements.namedItem(name) as RubricControl | null)
+        .filter((control): control is RubricControl => Boolean(control));
+    if (!controls.length) {
+        // Nothing on this page to point at, so the sentence has to carry the whole
+        // report. Reachable only if a control is renamed without its validator.
+        note.textContent = 'Some required fields are empty. Check steps 1 and 2.';
+        note.hidden = false;
+        return;
+    }
+
+    controls.forEach((control) => {
+        control.classList.add('wf-field-invalid', 'wf-field-shake');
+        control.setAttribute('aria-invalid', 'true');
+        control.addEventListener('animationend', () => control.classList.remove('wf-field-shake'), { once: true });
+        // Clears as soon as the box stops being empty, so the red does not outlive
+        // the problem and wait for another press to be told it is fixed.
+        const clearWhenFilled = (): void => {
+            if (!control.value.trim()) return;
+            control.classList.remove('wf-field-invalid', 'wf-field-shake');
+            control.removeAttribute('aria-invalid');
+            control.removeEventListener('input', clearWhenFilled);
+            if (!form.querySelector('.wf-field-invalid')) {
+                note.textContent = '';
+                note.hidden = true;
+            }
+        };
+        control.addEventListener('input', clearWhenFilled);
+    });
+
+    const first = controls[0];
+    const firstLabel = fieldLabelFor(first);
+    const others = controls.length - 1;
+    note.textContent = firstLabel
+        ? (others === 0
+            ? `Answer \u201C${firstLabel}\u201D to continue.`
+            : `Answer \u201C${firstLabel}\u201D and ${others} other${others === 1 ? '' : 's'} to continue. They are highlighted above.`)
+        : `${controls.length} required field${controls.length === 1 ? ' is' : 's are'} empty. They are highlighted above.`;
+    note.hidden = false;
+
+    await revealControl(first);
+    first.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    first.focus({ preventScroll: true });
+}
+
+/**
  * readAssignmentDetails - reads the shared assignment description without judging it
  *
  * The progress strip and the profile chip recompute on every keystroke, when the
@@ -792,22 +931,24 @@ function readAssignmentDetails(form: HTMLFormElement): AssignmentDetailsInput {
     };
 }
 
+/** Control names in the shared description that must carry a value before a rubric is written. */
+const REQUIRED_DETAIL_CONTROLS = ['title', 'task', 'audience', 'purpose', 'gradingIntent'];
+
 /**
  * collectAssignmentDetails - validates the one shared assignment description
  *
  * @param form - The assignment-details form rendered once per page
  * @returns Description values written into every rubric this assignment owns
- * @throws Error carrying a message written for staff, shown in the validation summary
+ * @throws MissingFieldsError naming every empty control, for {@link reportMissingFields} to mark
  */
 function collectAssignmentDetails(form: HTMLFormElement): AssignmentDetailsInput {
-    const required = ['title', 'task', 'audience', 'purpose', 'gradingIntent'];
-    if (required.some((name) => !rubricTextValue(form, name))) {
-        throw new Error('Fill in the title, task, audience, purpose, and how to grade.');
-    }
     const details = readAssignmentDetails(form);
-    if (!details.constraints.length || !details.learningOutcomes.length) {
-        throw new Error('Add at least one requirement and one learning outcome.');
-    }
+    const missing = REQUIRED_DETAIL_CONTROLS.filter((name) => !rubricTextValue(form, name));
+    // The two list fields are reported in the same pass rather than behind a second
+    // throw, so one press names everything outstanding instead of one round per rule.
+    if (!details.constraints.length) missing.push('constraints');
+    if (!details.learningOutcomes.length) missing.push('learningOutcomes');
+    if (missing.length) throw new MissingFieldsError(missing);
     return details;
 }
 
@@ -863,7 +1004,7 @@ function readSflContext(
  * @param details - Description values written into the profile on save
  * @param previousGenreId - Genre id carried forward from the stored profile
  * @returns The profile persisted with this rubric draft
- * @throws Error carrying a message written for staff, shown in the validation summary
+ * @throws MissingFieldsError naming every empty control, for {@link reportMissingFields} to mark
  */
 function collectSflContext(
     form: HTMLFormElement,
@@ -871,14 +1012,20 @@ function collectSflContext(
     previousGenreId: string | undefined
 ): SflContextProfile {
     const profile = readSflContext(form, details, previousGenreId);
-    const required = [
-        profile.genreLabel, profile.field, profile.tenor,
-        profile.mode, profile.actualEvaluator, profile.productionConditions
+    const required: Array<[string, string]> = [
+        ['sfl.genreLabel', profile.genreLabel],
+        ['sfl.field', profile.field],
+        ['sfl.tenor', profile.tenor],
+        ['sfl.mode', profile.mode],
+        ['sfl.actualEvaluator', profile.actualEvaluator],
+        ['sfl.productionConditions', profile.productionConditions]
     ];
-    if (required.some((value) => !value)) {
-        throw new Error('Complete the genre and register profile before saving.');
-    }
-    if (!profile.stages.length) throw new Error('Add at least one section before saving.');
+    const missing = required.filter(([, value]) => !value).map(([name]) => name);
+    // The repeater is seeded with one row and readStageRepeaterRows drops rows whose
+    // label is blank, so an empty stage list means that first row's name box is empty.
+    // Naming the box is what lets the page point at it; the list itself has no control.
+    if (!profile.stages.length) missing.push('sfl.stage.0.label');
+    if (missing.length) throw new MissingFieldsError(missing);
     return profile;
 }
 
@@ -1186,12 +1333,42 @@ function renderProgressStrip(steps: StepState[]): HTMLElement {
 }
 
 /**
+ * holdInPlace - keeps an element at its current height on screen while the page around it
+ * changes height
+ *
+ * Each frame, for as long as a disclosure animation can run, the scroller is moved by
+ * however far the element has drifted. Correcting the drift rather than predicting it
+ * means the browser's own scroll anchoring -- which some browsers apply and some do not --
+ * can never be fought, only finished.
+ *
+ * @param element - Element that must not move on screen
+ */
+function holdInPlace(element: HTMLElement): void {
+    const scroller = scrollingAncestor(element);
+    const anchorTop = element.getBoundingClientRect().top;
+    const until = performance.now() + DISCLOSURE_TRANSITION_TIMEOUT_MS + 50;
+    const correct = (): void => {
+        const drift = element.getBoundingClientRect().top - anchorTop;
+        if (Math.abs(drift) >= 0.5) scroller.scrollTop += drift;
+        if (performance.now() < until) window.requestAnimationFrame(correct);
+    };
+    window.requestAnimationFrame(correct);
+}
+
+/**
  * linkAccordion - makes a set of disclosure headers mutually exclusive
  *
  * Watches `aria-expanded` rather than listening for clicks, because
  * {@link disclosureHeader}'s keyboard path calls its toggle directly and never
  * dispatches a click event: a click listener would leave Enter and Space able to
  * open two steps at once.
+ *
+ * Opening a step closes the others, and a closed step above the one just opened takes
+ * its whole height out from above the reader. Left alone, the scroll position stays the
+ * same number while everything under it moves up by that height, so the header they
+ * clicked is carried off the top of the screen and they land deep inside the step --
+ * on a lab report, at the technical rubric. The opened header is held where it was
+ * clicked for as long as the other step takes to close.
  *
  * @param headers - Headers that may not be open simultaneously
  */
@@ -1200,10 +1377,13 @@ function linkAccordion(headers: HTMLElement[]): void {
     headers.forEach((header) => {
         const observer = new MutationObserver(() => {
             if (settling || header.getAttribute('aria-expanded') !== 'true') return;
+            const open = headers.filter(
+                (other) => other !== header && other.getAttribute('aria-expanded') === 'true'
+            );
+            if (!open.length) return;
             settling = true;
-            headers
-                .filter((other) => other !== header && other.getAttribute('aria-expanded') === 'true')
-                .forEach((other) => other.click());
+            holdInPlace(header);
+            open.forEach((other) => other.click());
             settling = false;
         });
         observer.observe(header, { attributes: true, attributeFilter: ['aria-expanded'] });
@@ -1325,27 +1505,6 @@ function renderRubricPage(
         onFillFromInstructions: async (status) => {
             if (!context) throw new Error('The rubric page is still loading.');
             await fillRubricsFromInstructions(context, status);
-        },
-        onResetToDefault: async () => {
-            if (!context) throw new Error('The rubric page is still loading.');
-            const confirmation = await showConfirmModal(
-                'Start over from the standard rubric?',
-                isLabReport
-                    ? 'Both grids will be replaced with their starting templates. Nothing is saved until you choose Save as draft or Approve rubric in step 3.'
-                    : 'The grid will be replaced with its starting template. Nothing is saved until you choose Save as draft or Approve rubric in step 3.',
-                'Reset rubric',
-                'Cancel',
-                'danger'
-            );
-            if (confirmation.action !== 'reset-rubric') return;
-            context.sections.forEach((section) => {
-                if (!section.canEdit) return;
-                section.working.criteria = defaultRubricCriteria(section.lens);
-                section.working.levels = defaultRubricLevels(section.lens);
-            });
-            state.panelDirty = linguisticData.permissions.canEdit ? true : state.panelDirty;
-            if (linguisticData.permissions.canEdit) rubricAutosave?.markDirty();
-            await openRubricPage(assignment.id);
         }
     });
 
@@ -1485,13 +1644,50 @@ function renderRubricPage(
     approveRow.className = 'wf-approve-row';
     const approveCopy = document.createElement('div');
     approveCopy.className = 'wf-approve-copy';
-    approveCopy.append(
-        createText('p', 'You can approve now. Approving fixes the version that student work is marked against.'),
-        createText('p', 'You can still change the rubric afterwards — feedback already drafted keeps the version it was marked against.', 'wf-help-text')
-    );
+    // Where each rubric stands: never approved, approved with nothing waiting, or approved
+    // with changes waiting. Rebuilt whenever autosave stores or removes a draft, so the page
+    // never asks for an approval that has already happened.
+    const approvalSummary = document.createElement('div');
+    approvalSummary.className = 'wf-approval-summary';
+    const approvalHelp = createText('p', '', 'wf-help-text');
+    approveCopy.append(approvalSummary, approvalHelp);
     approveRow.append(approveCopy);
 
+    const renderApprovalSummary = (): void => {
+        const sections = pageContext.sections;
+        const nameOf = (section: RubricSectionHandle): string =>
+            section.lens === 'technical' ? 'Technical rubric' : 'Writing rubric';
+        approvalSummary.replaceChildren(...sections.map((section) => {
+            const prefix = isLabReport ? `${nameOf(section)}: ` : '';
+            if (section.approvedVersion === undefined) {
+                return createText('p', isLabReport ? `${prefix}not approved yet.` : 'Not approved yet.');
+            }
+            const approvedOn = section.approvedAt ? ` · ${formatDate(section.approvedAt)}` : '';
+            return createText('p', section.draftVersion !== undefined
+                ? `${prefix}Approved v${section.approvedVersion} is in use. You have unapproved changes, saved as a draft.`
+                : `${prefix}Approved v${section.approvedVersion}${approvedOn}.`);
+        }));
+        const anyApproved = sections.some((section) => section.approvedVersion !== undefined);
+        const anyWaiting = sections.some((section) =>
+            section.approvedVersion === undefined || section.draftVersion !== undefined);
+        // The old line here said drafted feedback keeps its version, which was the opposite of
+        // what happens: feedback from an older version is refused until it is regenerated.
+        approvalHelp.textContent = !anyApproved
+            ? 'Once approved, feedback for this assignment can be generated and will be marked against this rubric.'
+            : anyWaiting
+                ? "Approving a new version puts unreleased feedback generated with the current one out of date, so it will need to be regenerated. Feedback already released to Canvas isn't affected."
+                : 'Edits you make to the rubric are saved as a draft and only take effect once you approve them.';
+    };
+
     if (canEditAny) {
+        // What autosave is doing, in words. It stores every edit within seconds, and staff
+        // who did not expect their edits to be kept should see that happen rather than find
+        // out from the next page load.
+        const saveStatus = document.createElement('p');
+        saveStatus.className = 'wf-save-status';
+        saveStatus.setAttribute('role', 'status');
+        saveStatus.setAttribute('aria-live', 'polite');
+
         // Created here, filled only if the session expires. role="alert" rather than a
         // polite status: it appears once, and only to say that work has stopped being
         // saved.
@@ -1500,62 +1696,170 @@ function renderRubricPage(
         autosaveStatus.setAttribute('role', 'alert');
         autosaveStatus.hidden = true;
 
+        // Empty required fields are reported on the fields themselves, not in a modal,
+        // so this line is the summary that goes with the marks. role="alert": it appears
+        // in response to a press, and the focus move that accompanies it lands elsewhere.
+        const validationNote = document.createElement('p');
+        validationNote.className = 'wf-validation-note';
+        validationNote.setAttribute('role', 'alert');
+        validationNote.hidden = true;
+
         const actions = document.createElement('div');
         actions.className = 'wf-button-row';
-        actions.append(
-            createButton('Save as draft', 'secondary', async () => {
+
+        // One discard action per rubric that has something to discard: an approved version
+        // to go back to, and unapproved edits on top of it. It sits with Save and Approve
+        // because it is the same kind of decision about the same rubric. A lab report names
+        // which rubric each one discards, since the two can be discarded separately.
+        const discardGroup = document.createElement('div');
+        discardGroup.className = 'wf-discard-actions';
+        const discardButton = (section: RubricSectionHandle): HTMLButtonElement => {
+            const rubricName = section.lens === 'technical' ? 'technical rubric' : 'writing rubric';
+            const button = createButton(
+                pageContext.isLabReport ? `Discard ${rubricName} changes` : 'Discard changes',
+                'danger',
+                async () => {
+                    const confirmation = await showConfirmModal(
+                        pageContext.isLabReport ? `Discard your changes to the ${rubricName}?` : 'Discard your changes?',
+                        `Everything changed since approval (draft v${section.draftVersion}) will be deleted, and ${pageContext.isLabReport ? `the ${rubricName}` : 'the rubric'} goes back to approved version v${section.approvedVersion}. This cannot be undone.`,
+                        'Discard changes',
+                        'Cancel',
+                        'danger'
+                    );
+                    // The modal resolves to its own slugified button label.
+                    if (confirmation.action !== 'discard-changes') return;
+                    // Store anything typed since the last autosave before deleting, so no write
+                    // still waiting on its timer can recreate the draft afterwards.
+                    await rubricAutosave?.flush();
+                    await jsonRequest(
+                        `/assignments/${encodeURIComponent(assignment.id)}/rubric-draft${section.lens === 'technical' ? '?lens=technical' : ''}`,
+                        'DELETE'
+                    );
+                    state.panelDirty = false;
+                    state.assignments = await request<Assignment[]>('/assignments');
+                    showSuccessToast(pageContext.isLabReport ? `Changes to the ${rubricName} discarded.` : 'Changes discarded.');
+                    await openRubricPage(assignment.id);
+                }
+            );
+            button.classList.add('wf-discard-action');
+            return button;
+        };
+        const refreshDiscardActions = (): void => {
+            discardGroup.replaceChildren(
+                ...pageContext.sections
+                    .filter((section) => section.canEdit
+                        && section.approvedVersion !== undefined
+                        && section.draftVersion !== undefined)
+                    .map(discardButton)
+            );
+        };
+        let refreshApprovalState = (): void => {};
+
+        // Offered only when there is something to approve, and named for what it approves. A
+        // rubric already approved with nothing waiting shows no approve action at all.
+        const approveButton = createButton('Approve rubric', 'primary', async () => {
+            await withFieldErrorReporting(pageContext, validationNote, async () => approveEveryRubric(pageContext));
+        });
+
+        // Autosave stops for good once the session expires. After signing in again in another
+        // tab, this is the only way to store what was typed here, so it appears only then.
+        const saveNowButton = createButton('Save now', 'secondary', async () => {
+            await withFieldErrorReporting(pageContext, validationNote, async () => {
                 await saveEveryRubric(pageContext);
                 state.panelDirty = false;
-                state.assignments = await request<Assignment[]>('/assignments');
-                showSuccessToast('Rubric draft saved. The approved rubric is unchanged.');
-                await openRubricPage(assignment.id);
-            }),
-            createButton('Approve rubric', 'primary', async () => approveEveryRubric(pageContext))
-        );
-        // Autosave narrates one state and no other. "Saving…" and "Saved 14:32" were
-        // reassurance nobody asked for, and beside a button reading "Save as draft" they
-        // made the reader work out which save either one meant.
-        //
-        // An expired session is the exception, and the reason this line exists at all: the
-        // loop is stopped for good, nothing further is being stored, and the page gives no
-        // other sign of it. A toast would be wrong here -- this is not news about a moment
-        // that passes, it is a condition that holds for as long as the page is open, so it
-        // stays on the page until something is done about it.
+                saveStatus.textContent = 'Changes saved as a draft.';
+                refreshApprovalState();
+                showSuccessToast('Changes saved.');
+            });
+        });
+        saveNowButton.hidden = true;
+
+        refreshApprovalState = (): void => {
+            renderApprovalSummary();
+            refreshDiscardActions();
+            const waiting = pageContext.sections.filter((section) => section.canEdit
+                && (section.approvedVersion === undefined || section.draftVersion !== undefined));
+            approveButton.hidden = waiting.length === 0;
+            approveButton.textContent = waiting.some((section) => section.approvedVersion === undefined)
+                ? 'Approve rubric'
+                : 'Approve changes';
+            pageContext.refreshProgress();
+        };
+
+        actions.append(discardGroup, saveNowButton, approveButton);
+
+        // Autosave says what it is doing: it stores every edit as a draft within seconds, and
+        // staff who did not expect that should see it happen. An expired session is still
+        // reported separately, as an alert that stays on the page, because the loop is stopped
+        // for good and only Save now can store what is typed from then on.
         rubricAutosave = createAutosave({
             write: () => autosaveAssignmentRubrics(pageContext),
             onStatus: (autosaveState) => {
-                // A background write that succeeds means the page is no longer holding
-                // unsaved work; leaving it dirty would have navigation ask about changes
-                // that are already stored.
-                if (autosaveState.status === 'saved') state.panelDirty = false;
-                if (autosaveState.status !== 'stopped') return;
-                const stamp = autosaveState.savedAt
-                    ? new Date(autosaveState.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                    : '';
-                // Not "sign in again", which means leaving this page, and everything typed
-                // since the stamp lives only in this tab. Signing in elsewhere restores the
-                // same-origin session cookie, after which Save as draft works from here and
-                // the work survives. Autosave itself stays stopped either way.
-                autosaveStatus.textContent = stamp
-                    ? `You've been signed out, and nothing has been saved since ${stamp}. Don't reload this page — sign in again in another tab, then come back and press Save as draft.`
-                    : "You've been signed out, and nothing you have typed here has been saved. Don't reload this page — sign in again in another tab, then come back and press Save as draft.";
-                autosaveStatus.hidden = false;
+                switch (autosaveState.status) {
+                    case 'pending':
+                    case 'saving':
+                        saveStatus.textContent = 'Saving…';
+                        return;
+                    case 'saved':
+                        // A background write that succeeds means the page is no longer holding
+                        // unsaved work; leaving it dirty would have navigation ask about changes
+                        // that are already stored.
+                        state.panelDirty = false;
+                        // The write may have created a draft (a first edit to an approved rubric)
+                        // or removed one (edits undone), which changes what step 3 offers.
+                        refreshApprovalState();
+                        saveStatus.textContent = pageContext.sections.some((section) =>
+                            section.canEdit && section.draftVersion !== undefined)
+                            ? 'Changes saved as a draft.'
+                            : 'All changes saved.';
+                        return;
+                    case 'error':
+                        // Autosave does not retry an ordinary failure on its own; the next edit does.
+                        saveStatus.textContent = "Your latest changes haven't been saved yet. Making another change will try again.";
+                        return;
+                    case 'stopped': {
+                        saveStatus.textContent = '';
+                        const stamp = autosaveState.savedAt
+                            ? new Date(autosaveState.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                            : '';
+                        // Not "sign in again", which means leaving this page, and everything typed
+                        // since the stamp lives only in this tab. Signing in elsewhere restores the
+                        // same-origin session cookie, after which Save now works from here and the
+                        // work survives. Autosave itself stays stopped either way.
+                        autosaveStatus.textContent = stamp
+                            ? `You've been signed out, and nothing has been saved since ${stamp}. Don't reload this page — sign in again in another tab, then come back and press Save now.`
+                            : "You've been signed out, and nothing you have typed here has been saved. Don't reload this page — sign in again in another tab, then come back and press Save now.";
+                        autosaveStatus.hidden = false;
+                        saveNowButton.hidden = false;
+                        return;
+                    }
+                    default:
+                        return;
+                }
             }
         });
 
         registerAutosaveFlushListeners();
+        refreshApprovalState();
 
         approveRow.append(actions);
         // Below the approve row, not inside it: a sentence this long sitting beside the
         // buttons is what used to widen their row until it wrapped, moving them from the
         // right of the step to its bottom left.
-        step3Body.append(autosaveStatus);
+        step3Body.append(saveStatus, autosaveStatus, validationNote);
     }
+
+    // Staff who cannot edit still see where each rubric stands; they just get no actions.
+    if (!canEditAny) renderApprovalSummary();
 
     // What is still outstanding is the progress strip's job, once, at the top of the
     // page. Step 3 used to restate it in a notice of its own, which said the same
     // counts a second time and named no work the strip had not already named.
-    step3Body.append(approveRow);
+    //
+    // First, ahead of the save status and alerts appended above: those belong under the
+    // buttons they report on, and an always-present status line sitting above the row left
+    // a blank band at the top of the step whenever autosave had nothing to say.
+    step3Body.prepend(approveRow);
 
     step3.append(step3Header, step3Body);
     root.append(step3);
@@ -1591,13 +1895,27 @@ function renderRubricPage(
                     ? `${gridNow.criteria} criteria · ${gridNow.levels} levels · ${gridNow.totalPoints} points`
                     : `${gridNow.emptyCells} ${gridNow.emptyCells === 1 ? 'box' : 'boxes'} still empty`
             },
-            {
-                ordinal: 3, label: 'Approve it',
-                state: describedDone && gridNow.complete ? 'current' : 'pending',
-                detail: describedDone && gridNow.complete
-                    ? 'Ready to approve'
-                    : 'Ready to approve — some things still owed'
-            }
+            (() => {
+                // Done when every rubric is approved with nothing waiting, and saying so, rather
+                // than asking again for an approval that has already happened.
+                const sections = pageContext.sections;
+                const waiting = sections.some((section) =>
+                    section.approvedVersion !== undefined && section.draftVersion !== undefined);
+                const unapproved = sections.some((section) => section.approvedVersion === undefined);
+                const ready = describedDone && gridNow.complete;
+                if (sections.length && !waiting && !unapproved) {
+                    return {
+                        ordinal: 3, label: 'Approve it', state: 'done' as const,
+                        detail: sections.length === 1 ? `Approved v${sections[0].approvedVersion}` : 'Both rubrics approved'
+                    };
+                }
+                const owed = ready ? '' : ' — some things still owed';
+                return {
+                    ordinal: 3, label: 'Approve it',
+                    state: ready ? 'current' as const : 'pending' as const,
+                    detail: `${waiting && !unapproved ? 'Unapproved changes' : 'Ready to approve'}${owed}`
+                };
+            })()
         ]));
 
         // The same chip the profile sub-card uses: the two lines make the same claim
@@ -1616,6 +1934,34 @@ function renderRubricPage(
 
     if (notice) setWorkspaceMessage(notice.message, notice.tone);
     refreshIcons();
+}
+
+/**
+ * withFieldErrorReporting - runs a write, reporting empty required fields on the page
+ *
+ * {@link runButtonAction} raises a modal for anything a button action throws, which
+ * is right for a transport failure and wrong for an empty box: the dialog covers
+ * the form it is describing. So a {@link MissingFieldsError} is swallowed here,
+ * after the fields it names have been marked — the marks and the line under step 3
+ * are the whole report. Every other failure is rethrown and still gets its modal.
+ *
+ * @param context - Page context holding the details form
+ * @param note - The line under step 3 that carries the summary
+ * @param write - The save or approve to attempt
+ * @throws Error for any failure that is not an empty required field
+ */
+async function withFieldErrorReporting(
+    context: RubricPageContext,
+    note: HTMLElement,
+    write: () => Promise<void>
+): Promise<void> {
+    clearFieldErrors(context.detailsForm, note);
+    try {
+        await write();
+    } catch (error) {
+        if (!(error instanceof MissingFieldsError)) throw error;
+        await reportMissingFields(context.detailsForm, note, error.controlNames);
+    }
 }
 
 /**
@@ -1658,18 +2004,38 @@ function findApprovalBlocker(sections: RubricSectionHandle[]): string | null {
             const named = unweighted.map((criterion) => `"${criterion.label}"`).join(', ');
             return `${prefix}Give every criterion its points before approving: ${named} ${unweighted.length === 1 ? 'has' : 'have'} none.`;
         }
-        // Every criterion carries points by this line, so the only boxes describeGrid
-        // can still be counting are the descriptors -- the same cells the server counts.
-        const { emptyCells } = describeGrid(section.working.criteria, section.working.levels);
-        if (emptyCells > 0) {
-            return `${prefix}Complete the rubric grid before approving: ${emptyCells} cell${emptyCells === 1 ? '' : 's'} still need${emptyCells === 1 ? 's' : ''} a points range or a description.`;
+        // The server's three cell rules, in its order and its words. A criterion may offer
+        // fewer ratings than the widest one, so what is checked is the run it offers: no
+        // gap inside it, enough of it to separate any work, and a description on each.
+        const ordered = [...section.working.levels].sort((left, right) => left.rank - right.rank);
+        const ragged: string[] = [];
+        const tooFew: string[] = [];
+        const undescribed: string[] = [];
+        section.working.criteria.forEach((criterion) => {
+            const bands = ordered.map((level) => resolveBand(criterion, level.id, section.working.levels));
+            const offered = bands.filter((band) => band !== undefined).length;
+            const contiguous = bands.every((band, index) => (band === undefined) === (index >= offered));
+            if (!contiguous) ragged.push(`"${criterion.label}"`);
+            else if (offered < MIN_RATINGS_PER_CRITERION) tooFew.push(`"${criterion.label}"`);
+            if (bands.some((band) => band !== undefined && !band.descriptor?.trim())) {
+                undescribed.push(`"${criterion.label}"`);
+            }
+        });
+        if (ragged.length > 0) {
+            return `${prefix}Fill each criterion's ratings from the weakest upwards before approving: ${ragged.join(', ')} ${ragged.length === 1 ? 'leaves a gap' : 'leave gaps'} in the middle.`;
+        }
+        if (tooFew.length > 0) {
+            return `${prefix}Give every criterion at least ${MIN_RATINGS_PER_CRITERION} ratings before approving: ${tooFew.join(', ')} ${tooFew.length === 1 ? 'has' : 'have'} fewer.`;
+        }
+        if (undescribed.length > 0) {
+            return `${prefix}Describe every rating you have given points to before approving: ${undescribed.join(', ')} ${undescribed.length === 1 ? 'has' : 'have'} a rating with no description.`;
         }
     }
     return null;
 }
 
 /**
- * approveEveryRubric - the page's one Approve, covering every rubric it owns
+ * approveEveryRubric - the page's one Approve, covering every rubric with something to approve
  *
  * Staff think of approving "the rubric" once, even on a lab report that keeps
  * two. Each request is the same per-rubric approve the page has always issued;
@@ -1686,27 +2052,63 @@ async function approveEveryRubric(context: RubricPageContext): Promise<void> {
     const editable = context.sections.filter((section) => section.canEdit);
     if (!editable.length) return;
 
+    // Step 1: only rubrics with something to approve -- never approved, or changed since. The
+    // save above has just removed any draft identical to the approved rubric, and approving
+    // one of those would be refused anyway.
+    const pending = editable.filter((section) => section.approvedVersion === undefined || section.draftVersion !== undefined);
+    if (!pending.length) {
+        showSuccessToast('Nothing has changed since the rubric was approved.');
+        await openRubricPage(context.assignment.id);
+        return;
+    }
+
     // Before the confirmation, not after it: there is no sense in asking a staff
     // member to confirm an approval that will be refused. The modal this throw
     // raises is the whole report -- the message names the criterion, and on a lab
     // report its prefix names which of the two grids.
-    const blocker = findApprovalBlocker(editable);
+    const blocker = findApprovalBlocker(pending);
     if (blocker) throw new Error(blocker);
 
-    const versions = editable.map((section) => `v${section.nextVersion}`).join(' and ');
-    const alreadyApproved = editable.some((section) => section.hasApproved);
-    const noun = editable.length > 1 ? 'Rubrics' : 'Rubric';
-    const confirmation = await showConfirmModal(
-        alreadyApproved ? 'Approve this rubric version?' : 'Approve this first rubric?',
-        alreadyApproved
-            ? `${noun} ${versions} will become active for future feedback. Older unreleased feedback must be regenerated. This does not update Canvas.`
-            : `${noun} ${versions} will become active for this assignment. This does not generate feedback or update Canvas.`,
-        'Approve rubric',
-        'Keep as draft'
-    );
-    if (confirmation.action !== 'approve-rubric') return;
+    // Step 2: what approving costs, per rubric, read now rather than at page load, since
+    // feedback may have been generated since the page opened.
+    const staleCounts = await Promise.all(pending.map(async (section) => {
+        if (section.approvedVersion === undefined) return 0;
+        const fresh = await request<RubricResponse>(
+            `/assignments/${encodeURIComponent(context.assignment.id)}/rubric${rubricLensQuery(section.lens)}`
+        );
+        return fresh.feedbackStaleOnApproval;
+    }));
 
-    for (const section of editable) {
+    // Step 3: confirm in terms of versions and the feedback they affect.
+    const rubricName = (section: RubricSectionHandle): string =>
+        section.lens === 'technical' ? 'technical rubric' : 'writing rubric';
+    const versionOf = (section: RubricSectionHandle): number => section.draftVersion ?? section.nextVersion;
+    const firstApproval = pending.every((section) => section.approvedVersion === undefined);
+    const lines = pending.map((section, index) => {
+        const subject = context.isLabReport ? `The ${rubricName(section)}` : 'The rubric';
+        if (section.approvedVersion === undefined) {
+            return `${subject} becomes v${versionOf(section)}, the version feedback is generated and marked against.`;
+        }
+        const count = staleCounts[index];
+        const cost = count > 0
+            ? ` ${count} ${count === 1 ? 'student has' : 'students have'} feedback from v${section.approvedVersion} that isn't released yet. It will need to be regenerated and approved again; comments and written feedback staff added are kept.`
+            : '';
+        return `${subject} becomes v${versionOf(section)}, replacing v${section.approvedVersion}.${cost}`;
+    });
+    if (pending.some((section) => section.approvedVersion !== undefined)) {
+        lines.push("Feedback already released to Canvas isn't affected.");
+    }
+    const confirmLabel = firstApproval ? 'Approve rubric' : 'Approve changes';
+    const confirmation = await showConfirmModal(
+        firstApproval ? 'Approve this rubric?' : 'Approve these changes?',
+        lines.join('<br><br>'),
+        confirmLabel,
+        'Cancel'
+    );
+    // The modal resolves to its own slugified button label.
+    if (confirmation.action !== confirmLabel.toLowerCase().replace(/\s+/g, '-')) return;
+
+    for (const section of pending) {
         await jsonRequest(
             `/assignments/${encodeURIComponent(context.assignment.id)}/rubric-draft/approve${rubricLensQuery(section.lens)}`,
             'POST'
@@ -1714,7 +2116,11 @@ async function approveEveryRubric(context: RubricPageContext): Promise<void> {
     }
     state.panelDirty = false;
     state.assignments = await request<Assignment[]>('/assignments');
-    showSuccessToast('Rubric approved for future feedback generation.');
+    const approvedNames = pending.map((section) => context.isLabReport
+        ? `${rubricName(section)} v${versionOf(section)}`
+        : `Rubric v${versionOf(section)}`);
+    const sentence = approvedNames.join(' and ');
+    showSuccessToast(`${sentence.charAt(0).toUpperCase()}${sentence.slice(1)} approved.`);
     await openRubricPage(context.assignment.id);
 }
 
@@ -1742,7 +2148,6 @@ interface AssignmentDetailsOptions {
     notice?: { message: string; tone: 'success' | 'error' };
     onInput: () => void;
     onFillFromInstructions: (status: HTMLElement) => Promise<void>;
-    onResetToDefault: () => Promise<void>;
 }
 
 const firstOpenAutofillAttempts = new Set<string>();
@@ -1799,9 +2204,6 @@ function renderAssignmentDetails(
 
     const headingRow = document.createElement('div');
     headingRow.className = 'wf-rubric-heading-row';
-    if (options.isLabReport) {
-        headingRow.append(createText('span', 'used by both rubrics', 'wf-quiet-note'));
-    }
     const fillStatus = createText('p', options.notice?.message ?? '', 'wf-rubric-details-status');
     fillStatus.setAttribute('role', 'status');
     fillStatus.setAttribute('aria-live', 'polite');
@@ -1810,15 +2212,12 @@ function renderAssignmentDetails(
     if (options.canEdit) {
         const fillButton = createButton(
             'Fill these in for me',
-            'secondary',
+            'outline',
             async () => options.onFillFromInstructions(fillStatus),
             !options.hasInstructions
         );
         if (!options.hasInstructions) fillButton.title = 'Add the assignment instructions first';
         headingRow.append(fillButton);
-
-        const resetButton = createButton('Start over from the standard rubric', 'secondary', async () => options.onResetToDefault());
-        headingRow.append(resetButton);
     }
 
     const form = document.createElement('form');
@@ -1883,37 +2282,69 @@ function renderAssignmentDetails(
     if (options.isLabReport) {
         const labContext = namedControl(textAreaControl(options.labContext, 10), 'labContext');
         labContext.maxLength = MAX_LAB_CONTEXT;
-        labContext.placeholder = 'Paste the lab handout: what students were asked to do, the steps, and any expected observations.';
+        // The handout normally arrives as a file, so the placeholder describes the
+        // upload path first and leaves pasting as the fallback it actually is.
+        labContext.placeholder = options.canEdit
+            ? 'Extract the handout from a file above, or type it here: what students were asked to do, the steps, and any expected observations.'
+            : 'No lab handout saved.';
         bindTextControl(labContext, options.canEdit, options.onInput);
 
-        const handoutFile = inputControl('', 'file');
-        handoutFile.accept = '.txt,.md,.markdown,.docx,.pdf,.html,.htm';
-        handoutFile.setAttribute('aria-label', 'Lab handout file');
-        const extractionState = createText('p', '', 'wf-help-text');
-        extractionState.setAttribute('role', 'status');
-        extractionState.setAttribute('aria-live', 'polite');
+        const handoutField = field(
+            'Lab handout (optional)',
+            labContext,
+            undefined,
+            true
+        );
 
-        const extractHandout = async (): Promise<void> => {
-            const selectedFile = handoutFile.files?.[0];
-            if (!selectedFile) throw new Error('Choose a lab handout file first.');
-            const payload = new FormData();
-            payload.append('file', selectedFile);
-            // Reuses the existing local extractor; nothing here enters the RAG pipeline.
-            const extracted = await request<{ text: string }>('/instructions/extract', { method: 'POST', body: payload });
-            labContext.value = extracted.text.slice(0, MAX_LAB_CONTEXT);
-            options.onInput();
-            extractionState.textContent = `Extracted ${selectedFile.name}. Review and trim the text before saving.`;
-            labContext.focus();
-        };
-
-        const handoutField = field('Lab handout', labContext, undefined, false, true);
-        handoutField.classList.add('wf-field--wide');
         if (options.canEdit) {
+            const handoutFile = inputControl('', 'file');
+            handoutFile.accept = '.txt,.md,.markdown,.docx,.pdf,.html,.htm';
+            const extractionState = createText('p', '', 'wf-help-text');
+            extractionState.setAttribute('role', 'status');
+            extractionState.setAttribute('aria-live', 'polite');
+
+            const extractHandout = async (): Promise<void> => {
+                const selectedFile = handoutFile.files?.[0];
+                if (!selectedFile) throw new Error('Choose a lab handout file first.');
+                const payload = new FormData();
+                payload.append('file', selectedFile);
+                // Reuses the existing local extractor; nothing here enters the RAG pipeline.
+                const extracted = await request<{ text: string }>('/instructions/extract', { method: 'POST', body: payload });
+                labContext.value = extracted.text.slice(0, MAX_LAB_CONTEXT);
+                options.onInput();
+                // A handout longer than the field allows is cut silently otherwise, and
+                // staff would only find the missing tail by rereading the whole box.
+                extractionState.textContent = extracted.text.length > MAX_LAB_CONTEXT
+                    ? `Extracted ${selectedFile.name}, trimmed to the first ${MAX_LAB_CONTEXT.toLocaleString()} characters. Review the text below.`
+                    : `Extracted ${selectedFile.name}. Review and edit the text below before saving.`;
+                labContext.focus();
+            };
+
+            const extractButton = createButton('Extract text', 'outline', extractHandout, true, undefined);
+            handoutFile.addEventListener('change', () => {
+                const selectedName = handoutFile.files?.[0]?.name;
+                extractButton.disabled = !selectedName;
+                extractionState.textContent = selectedName
+                    ? `${selectedName} selected. Choose "Extract text" to pull its text into the box below.`
+                    : '';
+            });
+
             const handoutActions = document.createElement('div');
             handoutActions.className = 'wf-inline-field-actions';
-            handoutActions.append(handoutFile, createButton('Extract from file', 'secondary', extractHandout));
-            handoutField.append(handoutActions, extractionState);
+            handoutActions.append(extractButton);
+
+            // The upload sits in its own field above the text box so the controls run
+            // in the order staff use them: choose a file, extract, then edit.
+            const handoutFileField = field(
+                'Lab handout file (optional)',
+                handoutFile,
+                'TXT, DOCX, text-based PDF, or HTML. Extracting replaces whatever is in the handout box below.',
+                true
+            );
+            handoutFileField.append(handoutActions, extractionState);
+            grid.append(handoutFileField);
         }
+
         grid.append(handoutField);
     }
 
@@ -1996,11 +2427,15 @@ async function saveAssignmentRubrics(context: RubricPageContext): Promise<void> 
             ...(section.lens === 'linguistic' ? { sflContext } : {}),
             ...(section.lens === 'technical' ? { labContext } : {})
         };
-        await jsonRequest<Assignment>(
+        const updated = await jsonRequest<Assignment>(
             `/assignments/${encodeURIComponent(context.assignment.id)}/rubric-draft${section.lens === 'technical' ? '?lens=technical' : ''}`,
             'PUT',
             input
         );
+        // A save that matches the approved rubric removes the draft instead of storing it, so
+        // whether this rubric still has anything to approve is only known from the reply.
+        const draft = section.lens === 'technical' ? updated.technicalRubricDraft : updated.rubricDraft;
+        section.draftVersion = draft?.version;
     }
 }
 
@@ -2056,11 +2491,16 @@ async function autosaveAssignmentRubrics(context: RubricPageContext): Promise<vo
             ...(section.lens === 'technical' ? { labContext } : {})
         };
         try {
-            await jsonRequest<Assignment>(
+            const updated = await jsonRequest<Assignment>(
                 `/assignments/${encodeURIComponent(context.assignment.id)}/rubric-draft${section.lens === 'technical' ? '?lens=technical' : ''}`,
                 'PUT',
                 input
             );
+            // The write created or reused this rubric's draft -- or, when the rubric now says
+            // the same as the approved one, the server removed the draft. Its version is what
+            // step 3's discard action names, and its absence is what takes that action away.
+            const draft = section.lens === 'technical' ? updated.technicalRubricDraft : updated.rubricDraft;
+            section.draftVersion = draft?.version;
         } catch (error) {
             // The shared envelope reports an expired session as a plain failed request whose
             // message is the course guard's "Authentication required", so the status is what
@@ -2157,7 +2597,6 @@ function renderRubricSection(
     if (!source) throw new Error('This assignment does not have a rubric draft or approved rubric.');
     const working = detachedRubric(source);
     const canEdit = data.permissions.canEdit;
-    const lensQuery = lens === 'technical' ? '?lens=technical' : '';
 
     const section = document.createElement('div');
     section.className = 'wf-rubric-section';
@@ -2254,35 +2693,15 @@ function renderRubricSection(
         working,
         canEdit,
         nextVersion: data.draft?.version ?? (data.approved?.version ?? 0) + 1,
-        hasApproved: Boolean(data.approved)
+        hasApproved: Boolean(data.approved),
+        approvedVersion: data.approved?.version,
+        approvedAt: data.approved?.approvedAt,
+        draftVersion: data.draft?.version
     });
 
-    // Save and Approve live in step 3, once for the whole assignment: a lab report
-    // has two of these sections, and two Save buttons on one page is a question
-    // staff should never have to answer. Discard stays here because it is genuinely
-    // per-rubric -- its message names this rubric's own draft and approved versions.
-    if (canEdit) {
-        const actions = document.createElement('div');
-        actions.className = 'wf-button-row';
-        if (data.draft && data.approved) {
-            actions.append(createButton('Discard draft', 'danger', async () => {
-                const confirmation = await showConfirmModal(
-                    'Discard this rubric draft?',
-                    `Draft v${data.draft!.version} will be removed. Approved rubric v${data.approved!.version} stays active.`,
-                    'Discard draft',
-                    'Cancel',
-                    'danger'
-                );
-                if (confirmation.action !== 'discard-draft') return;
-                await jsonRequest(`/assignments/${encodeURIComponent(assignment.id)}/rubric-draft${lensQuery}`, 'DELETE');
-                state.panelDirty = false;
-                state.assignments = await request<Assignment[]>('/assignments');
-                showSuccessToast('Rubric draft discarded.');
-                await openRubricPage(assignment.id);
-            }));
-        }
-        form.append(actions);
-    }
+    // Save, Approve and Discard all live in step 3. Discard used to sit here, under each
+    // grid, which read as a stray button and only appeared once the page had been
+    // reloaded after the first edit.
 
     editor.append(form);
     layout.append(editor);
