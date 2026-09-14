@@ -1273,8 +1273,7 @@
 
 /* Every control inside a step is a touch target at every width. The grid tools
    already carried this; the description form's own actions did not, so
-   'Fill these in for me', 'Start over from the standard rubric' and the stage
-   repeater's Add measured 36px on a phone. */
+   'Fill these in for me' and the stage repeater's Add measured 36px on a phone. */
 
 .wf-step-body .wf-button,
 .wf-approve-row .wf-button {

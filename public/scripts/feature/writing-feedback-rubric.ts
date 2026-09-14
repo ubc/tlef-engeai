@@ -44,8 +44,7 @@ import {
     parseBand,
     renderRubricGrid,
     resolveBand,
-    slugFromLabel,
-    spaceBandsEvenly
+    slugFromLabel
 } from './writing-feedback-grid.js';
 import {
     Assignment,
@@ -211,42 +210,6 @@ const LAB_REPORT_CRITERIA_MIRROR: Array<{ id: string; label: string; description
             exemplary: 'Calculations are presented clearly and logically, are fully accurate, use correct equations, and are precise about significant figures throughout.'
         } }
 ];
-
-/**
- * defaultRubricCriteria - builds fresh criterion rows for the reset action
- *
- * @param lens - Which rubric's default template to build
- * @returns Detached criteria with bands and descriptors already spaced via {@link spaceBandsEvenly}
- */
-function defaultRubricCriteria(lens: WritingFeedbackLens): RubricCriterion[] {
-    const source = lens === 'technical' ? LAB_REPORT_CRITERIA_MIRROR : DEFAULT_WRITING_CRITERIA_MIRROR;
-    const levels = lens === 'technical' ? LAB_REPORT_LEVELS_MIRROR : DEFAULT_WRITING_LEVELS_MIRROR;
-    return source.map((criterion) => {
-        const cells = spaceBandsEvenly(criterion.points, levels);
-        Object.entries(criterion.descriptors).forEach(([levelId, descriptor]) => {
-            if (cells[levelId]) cells[levelId] = { ...cells[levelId], descriptor };
-        });
-        return {
-            id: criterion.id,
-            label: criterion.label,
-            description: criterion.description,
-            ...('functionTag' in criterion && criterion.functionTag ? { functionTag: criterion.functionTag } : {}),
-            ...('sflDimension' in criterion && criterion.sflDimension ? { sflDimension: criterion.sflDimension } : {}),
-            points: criterion.points,
-            cells
-        } as RubricCriterion;
-    });
-}
-
-/**
- * defaultRubricLevels - fresh, detached copies of the default ordinal scale
- *
- * @param lens - Which rubric's default level set to build
- * @returns Detached levels, safe for an editor to mutate
- */
-function defaultRubricLevels(lens: WritingFeedbackLens): RubricLevel[] {
-    return (lens === 'technical' ? LAB_REPORT_LEVELS_MIRROR : DEFAULT_WRITING_LEVELS_MIRROR).map((level) => ({ ...level }));
-}
 
 /** The assignment description shared by every rubric the assignment owns. */
 interface AssignmentDetailsInput {
@@ -1554,27 +1517,6 @@ function renderRubricPage(
         onFillFromInstructions: async (status) => {
             if (!context) throw new Error('The rubric page is still loading.');
             await fillRubricsFromInstructions(context, status);
-        },
-        onResetToDefault: async () => {
-            if (!context) throw new Error('The rubric page is still loading.');
-            const confirmation = await showConfirmModal(
-                'Start over from the standard rubric?',
-                isLabReport
-                    ? 'Both grids will be replaced with their starting templates. Nothing is saved until you choose Save as draft or Approve rubric in step 3.'
-                    : 'The grid will be replaced with its starting template. Nothing is saved until you choose Save as draft or Approve rubric in step 3.',
-                'Reset rubric',
-                'Cancel',
-                'danger'
-            );
-            if (confirmation.action !== 'reset-rubric') return;
-            context.sections.forEach((section) => {
-                if (!section.canEdit) return;
-                section.working.criteria = defaultRubricCriteria(section.lens);
-                section.working.levels = defaultRubricLevels(section.lens);
-            });
-            state.panelDirty = linguisticData.permissions.canEdit ? true : state.panelDirty;
-            if (linguisticData.permissions.canEdit) rubricAutosave?.markDirty();
-            await openRubricPage(assignment.id);
         }
     });
 
@@ -2214,7 +2156,6 @@ interface AssignmentDetailsOptions {
     notice?: { message: string; tone: 'success' | 'error' };
     onInput: () => void;
     onFillFromInstructions: (status: HTMLElement) => Promise<void>;
-    onResetToDefault: () => Promise<void>;
 }
 
 const firstOpenAutofillAttempts = new Set<string>();
@@ -2285,9 +2226,6 @@ function renderAssignmentDetails(
         );
         if (!options.hasInstructions) fillButton.title = 'Add the assignment instructions first';
         headingRow.append(fillButton);
-
-        const resetButton = createButton('Start over from the standard rubric', 'outline', async () => options.onResetToDefault());
-        headingRow.append(resetButton);
     }
 
     const form = document.createElement('form');
