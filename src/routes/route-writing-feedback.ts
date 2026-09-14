@@ -17,7 +17,10 @@ import { asyncHandler, asyncHandlerWithAuth } from '../middleware/async-handler'
 import { requireCourseFeatureAPI, requireInstructorForCourseAPI } from '../middleware/require-course-role';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { LocalDocumentExtractionService } from '../writing-feedback/document-extraction-service';
-import { WritingFeedbackService } from '../writing-feedback/writing-feedback-service';
+import { listPublishedCourseMaterialTitles } from '../writing-feedback/course-material-catalog';
+import { REDRAFT_NOT_DRAFT_READY_MESSAGE, WritingFeedbackService } from '../writing-feedback/writing-feedback-service';
+import { summaryEditsInputSchema } from '../writing-feedback/summary-edits';
+import { SUMMARY_REDRAFT_FAILED_MESSAGE } from '../writing-feedback/summary-redraft-engine';
 import { MockCanvasGateway, SafeCanvasReleaseService } from '../writing-feedback/canvas-release-service';
 import type { CanvasRubricRow, WritingSourceType } from '../writing-feedback/contracts';
 import { SafeCanvasImportService } from '../writing-feedback/canvas-import-service';
@@ -45,7 +48,13 @@ import { requireCompleteSflProfile } from '../writing-feedback/sfl-analysis';
 import { listCriterionLibrary } from '../writing-feedback/criterion-library';
 import { isCourseStaff } from '../utils/course-staff';
 import { parseLens, selectRubric } from '../writing-feedback/rubric-lens';
-import { routeRubricsForLabReport, seedRubricForLens } from '../writing-feedback/rubric-seed';
+import { seedRubricForLens } from '../writing-feedback/rubric-seed';
+import {
+    AssignmentTypeService,
+    CHOOSE_TYPE_BEFORE_APPROVAL_MESSAGE,
+    assignmentTypeErrorStatus,
+    isAssignmentTypeChoice
+} from '../writing-feedback/assignment-type';
 import { mapCanvasRubric } from '../writing-feedback/canvas-rubric-mapping';
 import {
     autofillMergeRules,
@@ -121,7 +130,11 @@ function safeError(error: unknown): string {
         'Add at least one section', 'Add task requirements',
         'Complete the rubric grid before approving', 'Give every criterion its points',
         'Glossary term is required', 'Glossary definition is required',
-        'Glossary term exceeds', 'Glossary definition exceeds'
+        'Glossary term exceeds', 'Glossary definition exceeds',
+        'The assignment type has already been chosen', 'Only a lab report has a technical rubric',
+        'Choose the assignment type before approving',
+        'The summary can only be redrafted before approval', 'The summary changed since you opened it',
+        'Summary edits failed validation', 'The summary could not be updated from your annotations'
     ];
     return safePrefixes.some((prefix) => message.startsWith(prefix))
         ? message
@@ -228,6 +241,19 @@ router.get('/:courseId/writing-feedback/workspace-context', asyncHandlerWithAuth
             canvas
         }
     });
+}));
+
+/**
+ * Published course materials staff may name on an annotation.
+ *
+ * @route GET /api/courses/:courseId/writing-feedback/course-materials
+ * @returns {CourseMaterialTitle[]} Titles in course order; no excerpt text, no file names
+ * @response 200 - Pickable titles, empty when the course has published none
+ */
+router.get('/:courseId/writing-feedback/course-materials', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    const mongo = await EngEAI_MongoDB.getInstance();
+    const course = await mongo.getActiveCourse(courseId(req));
+    res.json({ success: true, data: listPublishedCourseMaterialTitles(course) });
 }));
 
 router.get('/:courseId/writing-feedback/glossary', asyncHandlerWithAuth(async (req: Request, res: Response) => {
@@ -581,6 +607,11 @@ router.post(
         const mongo = await EngEAI_MongoDB.getInstance();
         const assignment = await mongo.getWritingAssignment(courseId(req), String(req.params.assignmentId));
         if (!assignment) return res.status(404).json({ success: false, error: 'Writing assignment not found' });
+        // A pending assignment has no settled type, so which rubric it is graded on is not
+        // known yet. Refused here so a direct link cannot approve around the modal (D-123).
+        if (assignment.assignmentTypePending === true) {
+            return res.status(409).json({ success: false, error: CHOOSE_TYPE_BEFORE_APPROVAL_MESSAGE });
+        }
         if (lens === 'technical' && !assignment.isLabReport) {
             return res.status(409).json({ success: false, error: 'Mark this assignment as a lab report before editing its technical rubric' });
         }
@@ -614,86 +645,48 @@ router.post(
 );
 
 /**
- * Marks or clears an assignment as a lab report.
+ * Records the one-time assignment type (D-123).
  *
- * Marking seeds an editable technical rubric draft so staff have something to
- * edit. Clearing is refused once the technical rubric is approved or any
- * technical feedback exists, because those records reference its criterion ids.
+ * `lab_report` also moves an imported Canvas grid to the technical rubric and returns the
+ * writing rubric to the default profile. Refused with 409 once the type has been chosen.
  */
-router.patch(
-    '/:courseId/writing-feedback/assignments/:assignmentId/lab-report',
+router.put(
+    '/:courseId/writing-feedback/assignments/:assignmentId/type',
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
-        const isLabReport = req.body?.isLabReport;
-        if (typeof isLabReport !== 'boolean') {
-            return res.status(400).json({ success: false, error: 'isLabReport must be true or false' });
+        const type = req.body?.type;
+        if (!isAssignmentTypeChoice(type)) {
+            return res.status(400).json({ success: false, error: 'type must be writing or lab_report' });
         }
         const mongo = await EngEAI_MongoDB.getInstance();
-        const assignmentId = String(req.params.assignmentId);
-        const assignment = await mongo.getWritingAssignment(courseId(req), assignmentId);
-        if (!assignment) return res.status(404).json({ success: false, error: 'Writing assignment not found' });
-
-        // Marking an assignment a lab report moves an imported Canvas grid onto the technical
-        // lens and returns the writing lens to the metafunctions, which discards whatever the
-        // Canvas grid had become. Refused once that grid is approved or has produced feedback,
-        // mirroring the protection the un-marking branch gives the technical lens.
-        const willResetWriting = isLabReport
-            && assignment.rubricSource === 'canvas'
-            && !assignment.technicalRubric
-            && !assignment.technicalRubricDraft;
-        if (willResetWriting) {
-            if (assignment.rubric.status === 'approved') {
-                return res.status(409).json({
-                    success: false,
-                    error: 'Mark this assignment as a lab report before approving its writing rubric'
-                });
-            }
-            const writingRunCount = await mongo.countWritingFeedbackRunsByLens(courseId(req), assignmentId, 'linguistic');
-            if (writingRunCount > 0) {
-                return res.status(409).json({
-                    success: false,
-                    error: 'Writing feedback already exists for this assignment'
-                });
-            }
-        }
-
-        if (!isLabReport) {
-            if (assignment.technicalRubric?.status === 'approved') {
-                return res.status(409).json({
-                    success: false,
-                    error: 'This assignment has an approved technical rubric and can no longer be unmarked as a lab report'
-                });
-            }
-            const technicalRunCount = await mongo.countWritingFeedbackRunsByLens(courseId(req), assignmentId, 'technical');
-            if (technicalRunCount > 0) {
-                return res.status(409).json({
-                    success: false,
-                    error: 'Technical feedback already exists for this assignment'
-                });
-            }
-        }
-
         const globalUser = (req.session as any).globalUser;
-        const updated = await mongo.setWritingAssignmentLabReport(courseId(req), assignmentId, isLabReport);
-        if (!updated) return res.status(404).json({ success: false, error: 'Writing assignment not found' });
-
-        // Seed an editable technical draft so staff open a populated editor, never a blank one.
-        // A Canvas rubric imported before this flag was set is the technical marking scheme, so
-        // it moves here rather than staying on the writing lens, which returns to the
-        // metafunctions and gets its auto-fill back.
-        if (isLabReport && !updated.technicalRubric && !updated.technicalRubricDraft) {
-            const routing = routeRubricsForLabReport({
-                canvasRubricImport: updated.canvasRubricImport,
-                actorUserId: globalUser.userId
-            });
-            const routed = await mongo.applyLabReportRubricRouting(
-                courseId(req),
-                assignmentId,
-                routing,
-                willResetWriting
-            );
-            return res.json({ success: true, data: routed ?? updated });
+        try {
+            const updated = await new AssignmentTypeService(mongo)
+                .choose(courseId(req), String(req.params.assignmentId), type, globalUser.userId);
+            res.json({ success: true, data: updated });
+        } catch (error) {
+            res.status(assignmentTypeErrorStatus(error)).json({ success: false, error: safeError(error) });
         }
-        res.json({ success: true, data: updated });
+    })
+);
+
+/**
+ * Seeds a lab report's technical rubric draft when it has none.
+ *
+ * Idempotent; never resets the writing rubric. Refused with 409 for an assignment that is
+ * not a lab report.
+ */
+router.post(
+    '/:courseId/writing-feedback/assignments/:assignmentId/technical-rubric/seed',
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        const mongo = await EngEAI_MongoDB.getInstance();
+        const globalUser = (req.session as any).globalUser;
+        try {
+            const updated = await new AssignmentTypeService(mongo)
+                .seedTechnicalRubric(courseId(req), String(req.params.assignmentId), globalUser.userId);
+            res.json({ success: true, data: updated });
+        } catch (error) {
+            res.status(assignmentTypeErrorStatus(error)).json({ success: false, error: safeError(error) });
+        }
     })
 );
 
@@ -834,6 +827,41 @@ router.post('/:courseId/writing-feedback/submissions/:submissionId/generate', as
     }
 }));
 
+/**
+ * Redrafts the summary of every changed lens from the final annotations (D-125).
+ *
+ * Synchronous: the annotations are unsaved student-derived text, so they are never queued.
+ * Model failures return a fixed message; nothing from the prompt, response, or annotations is
+ * logged or returned.
+ */
+router.post('/:courseId/writing-feedback/submissions/:submissionId/summary-redraft', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    const parsedComments = anchoredCommentsInputSchema.safeParse(req.body?.comments);
+    if (!parsedComments.success) {
+        return res.status(400).json({
+            success: false,
+            error: `Feedback comments failed validation: ${parsedComments.error.issues[0]?.message ?? 'check the comment fields'}`
+        });
+    }
+    const lenses: WritingFeedbackLens[] = Array.isArray(req.body?.lenses)
+        ? req.body.lenses.filter((lens: unknown): lens is WritingFeedbackLens => lens === 'linguistic' || lens === 'technical')
+        : [];
+    if (!lenses.length) {
+        return res.status(400).json({ success: false, error: 'lenses must name at least one feedback lens' });
+    }
+    try {
+        const mongo = await EngEAI_MongoDB.getInstance();
+        const result = await new WritingFeedbackService(mongo)
+            .redraftSummary(courseId(req), String(req.params.submissionId), { comments: parsedComments.data, lenses });
+        res.json({ success: true, data: result });
+    } catch (error) {
+        const message = safeError(error);
+        const status = message === REDRAFT_NOT_DRAFT_READY_MESSAGE
+            ? 409
+            : message === SUMMARY_REDRAFT_FAILED_MESSAGE ? 502 : 400;
+        res.status(status).json({ success: false, error: message });
+    }
+}));
+
 router.post('/:courseId/writing-feedback/submissions/:submissionId/reviews', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const studentFeedback = cleanText(req.body?.studentFeedback);
@@ -862,6 +890,17 @@ router.post('/:courseId/writing-feedback/submissions/:submissionId/reviews', asy
             }
             finalAssessment = parsedAssessment.data;
         }
+        let summaryEdits;
+        if (req.body?.summaryEdits !== undefined) {
+            const parsedEdits = summaryEditsInputSchema.safeParse(req.body.summaryEdits);
+            if (!parsedEdits.success) {
+                return res.status(400).json({
+                    success: false,
+                    error: `Summary edits failed validation: ${parsedEdits.error.issues[0]?.message ?? 'check the summary fields'}`
+                });
+            }
+            summaryEdits = parsedEdits.data;
+        }
         const globalUser = (req.session as any).globalUser;
         const mongo = await EngEAI_MongoDB.getInstance();
         const revision = await new WritingFeedbackService(mongo).appendReview(courseId(req), String(req.params.submissionId), {
@@ -870,11 +909,16 @@ router.post('/:courseId/writing-feedback/submissions/:submissionId/reviews', asy
             studentFeedback,
             internalNote: typeof req.body?.internalNote === 'string' ? req.body.internalNote.slice(0, 4000) : undefined,
             comments,
-            finalAssessment
+            finalAssessment,
+            summaryEdits,
+            technicalFeedbackRunId: typeof req.body?.technicalFeedbackRunId === 'string'
+                ? req.body.technicalFeedbackRunId.slice(0, 64)
+                : undefined
         }, globalUser.name);
         res.status(201).json({ success: true, data: revision });
     } catch (error) {
-        res.status(400).json({ success: false, error: safeError(error) });
+        const message = safeError(error);
+        res.status(message.startsWith('The summary changed since you opened it') ? 409 : 400).json({ success: false, error: message });
     }
 }));
 
@@ -987,15 +1031,18 @@ router.post('/:courseId/writing-feedback/submissions/:submissionId/release-previ
     }
 }));
 
-router.post('/:courseId/writing-feedback/submissions/:submissionId/release', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.post('/:courseId/writing-feedback/submissions/:submissionId/release', withCanvasClientWhenLinked, asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const mongo = await EngEAI_MongoDB.getInstance();
+        // One staff action (D-128): the dry-run preview is prepared here, then the write is queued.
         // Queued rather than performed here: a live release uploads the feedback PDF, posts a comment,
         // and starts a Canvas grade job, and a request that outlives its connection leaves staff
         // unable to tell whether the student received anything.
-        const job = await new WritingFeedbackService(mongo).enqueueRelease(
+        const resolved = await resolveReleaseService(req, mongo);
+        const job = await new WritingFeedbackService(mongo).releaseToCanvas(
             courseId(req),
             String(req.params.submissionId),
+            resolved.service,
             await resolveUserKey(req)
         );
         res.status(202).json({

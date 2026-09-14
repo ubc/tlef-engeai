@@ -17,6 +17,7 @@ import type {
 import { buildDefaultWritingRubric } from '../default-rubric-profile';
 import {
     buildFeedbackSchema,
+    buildSummaryRedraftSchema,
     MAX_EVIDENCE_QUOTE_LENGTH,
     reconcileExactEvidence,
     resolveNumericGrade,
@@ -33,7 +34,11 @@ function feedbackFor(
         criteria: criterionIds.map((criterion, index) => ({
             criterion,
             suggestedLevel: rubric.levels[index % rubric.levels.length].id,
-            evidence: [{ quote: 'transfers thermal energy', rationale: 'Verified technical relationship.' }],
+            evidence: [{
+                quote: 'transfers thermal energy',
+                rationale: 'Verified technical relationship.',
+                revisionGuidance: 'Name what the energy transfer shows for the reader.'
+            }],
             explanation: 'Criterion-level formative guidance.',
             confidence: 0.8
         })),
@@ -112,6 +117,14 @@ describe('assignment-specific feedback validation', () => {
         expect(buildFeedbackSchema(rubric).safeParse(invalid).success).toBe(false);
     });
 
+    it('requires passage-specific revision guidance for each evidence item', () => {
+        const rubric = buildDefaultWritingRubric();
+        const invalid = feedbackFor(rubric);
+        delete (invalid.criteria[0].evidence[0] as { revisionGuidance?: string }).revisionGuidance;
+
+        expect(buildFeedbackSchema(rubric).safeParse(invalid).success).toBe(false);
+    });
+
     it('requires each rubric criterion exactly once', () => {
         const rubric = buildDefaultWritingRubric();
         const invalid = feedbackFor(rubric);
@@ -149,6 +162,17 @@ describe('assignment-specific feedback validation', () => {
 
         invalid.criteria[0].evidence[0].quote = 'a'.repeat(MAX_EVIDENCE_QUOTE_LENGTH);
         expect(buildFeedbackSchema(rubric).safeParse(invalid).success).toBe(true);
+    });
+
+    it('caps a criterion at three evidence items so annotations stay selective', () => {
+        const rubric = buildDefaultWritingRubric();
+        const feedback = feedbackFor(rubric);
+        const evidence = feedback.criteria[0].evidence[0];
+        feedback.criteria[0].evidence = [evidence, evidence, evidence];
+        expect(buildFeedbackSchema(rubric).safeParse(feedback).success).toBe(true);
+
+        feedback.criteria[0].evidence = [evidence, evidence, evidence, evidence];
+        expect(buildFeedbackSchema(rubric).safeParse(feedback).success).toBe(false);
     });
 
     it('blocks numeric grading without a complete instructor-approved mapping', () => {
@@ -199,5 +223,53 @@ describe('reconcileExactEvidence', () => {
     it('still rejects paraphrased evidence', () => {
         expect(() => reconcileExactEvidence(withQuote('The vehicle steers with handles.'), styledText))
             .toThrow('did not match');
+    });
+});
+
+describe('revisionGoals bounds', () => {
+    const rubric = buildDefaultWritingRubric('instructor-1', new Date('2026-01-01T00:00:00.000Z'));
+
+    it('rejects a result carrying no revision goals', () => {
+        // Goals are the student's next steps and the seed for the editable staff summary.
+        // Without a floor the model could return none and the section rendered empty.
+        const result = { ...feedbackFor(rubric), revisionGoals: [] };
+        expect(buildFeedbackSchema(rubric).safeParse(result).success).toBe(false);
+    });
+
+    it('accepts a result carrying one revision goal', () => {
+        expect(buildFeedbackSchema(rubric).safeParse(feedbackFor(rubric)).success).toBe(true);
+    });
+
+    it('still rejects more than three revision goals', () => {
+        const [goal] = feedbackFor(rubric).revisionGoals;
+        const result = { ...feedbackFor(rubric), revisionGoals: [goal, goal, goal, goal] };
+        expect(buildFeedbackSchema(rubric).safeParse(result).success).toBe(false);
+    });
+});
+
+describe('buildSummaryRedraftSchema', () => {
+    const rubric = buildDefaultWritingRubric('instructor-1', new Date('2026-01-01T00:00:00.000Z'));
+    const complete = () => ({
+        criteria: rubric.criteria.map((criterion) => ({
+            criterion: criterion.id, suggestedLevel: rubric.levels[0].id, explanation: 'Why.', confidence: 0.5
+        })),
+        strengths: ['One.'],
+        revisionGoals: [{ skillTag: 'x', goal: 'Goal.', guidedQuestion: 'Question?' }]
+    });
+
+    it('accepts a complete redraft', () => {
+        expect(buildSummaryRedraftSchema(rubric).safeParse(complete()).success).toBe(true);
+    });
+
+    it('rejects unknown ids, a missing criterion, too many strengths, and 0 or 4 goals', () => {
+        const schema = buildSummaryRedraftSchema(rubric);
+        const unknown = complete(); unknown.criteria[0].criterion = 'nope';
+        const missing = complete(); missing.criteria.pop();
+        const strengths = complete(); strengths.strengths = ['a', 'b', 'c'];
+        const noGoals = complete(); noGoals.revisionGoals = [];
+        const fourGoals = complete(); fourGoals.revisionGoals = Array(4).fill(complete().revisionGoals[0]);
+        for (const value of [unknown, missing, strengths, noGoals, fourGoals]) {
+            expect(schema.safeParse(value).success).toBe(false);
+        }
     });
 });

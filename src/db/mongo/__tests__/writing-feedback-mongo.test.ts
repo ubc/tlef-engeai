@@ -19,6 +19,7 @@ import type {
 } from '../../../writing-feedback/contracts';
 import {
     approveWritingRubricDraft,
+    chooseWritingAssignmentType,
     completeWritingJob,
     createCanvasWritingAssignment,
     createManualWritingAssignment,
@@ -28,8 +29,7 @@ import {
     getLatestWritingFeedbackRun,
     getLatestWritingRelease,
     normalizeWritingAssignment,
-    saveWritingRubricDraft,
-    setWritingAssignmentLabReport
+    saveWritingRubricDraft
 } from '../writing-feedback-mongo';
 import { buildLabReportRubric } from '../../../writing-feedback/lab-report-profile';
 
@@ -165,6 +165,34 @@ describe('Writing Feedback assignment persistence', () => {
         ]);
         expect(inserted.every((assignment) => assignment.canvasAssignmentId === undefined)).toBe(true);
         expect(new Set(inserted.map((assignment) => assignment.id)).size).toBe(2);
+        expect(inserted.every((assignment) => assignment.assignmentTypePending === true)).toBe(true);
+    });
+
+    it('creates a Canvas-imported assignment with its type still pending', async () => {
+        const inserted: WritingAssignment[] = [];
+        const assignmentCollection = {
+            listIndexes: jest.fn().mockReturnValue({ toArray: jest.fn().mockResolvedValue([]) }),
+            dropIndex: jest.fn().mockResolvedValue(undefined),
+            createIndex: jest.fn().mockResolvedValue('index-name'),
+            insertOne: jest.fn(async (assignment: WritingAssignment) => {
+                inserted.push(assignment);
+                return { acknowledged: true, insertedId: assignment.id };
+            })
+        };
+        const ctx = contextWithCollections({
+            'writing-assignments': assignmentCollection,
+            'writing-submissions': indexOnlyCollection(),
+            'writing-feedback-runs': indexOnlyCollection(),
+            'writing-releases': indexOnlyCollection(),
+            'writing-jobs': indexOnlyCollection(),
+            'writing-glossary-entries': indexOnlyCollection(),
+            'canvas-connections': indexOnlyCollection()
+        });
+
+        await createCanvasWritingAssignment(ctx, 'course-1', 'canvas-42', 'Lab 3', 'Measure the exchanger.');
+
+        expect(inserted).toHaveLength(1);
+        expect(inserted[0].assignmentTypePending).toBe(true);
     });
 });
 
@@ -417,28 +445,28 @@ describe('approveWritingRubricDraft lens routing', () => {
     });
 });
 
-describe('setWritingAssignmentLabReport', () => {
-    it('sets isLabReport with a course-scoped filter', async () => {
-        const assignmentCollection = mongoAssignmentCollection({
+describe('chooseWritingAssignmentType', () => {
+    it('chooses the assignment type only while it is pending, scoped to the course', async () => {
+        const collection = mongoAssignmentCollection({
             findOneAndUpdateResult: baseAssignment({ isLabReport: true })
         });
-        const ctx = contextWithCollections({ 'writing-assignments': assignmentCollection });
+        const ctx = contextWithCollections({ 'writing-assignments': collection });
 
-        const updated = await setWritingAssignmentLabReport(ctx, 'course-1', 'assignment-1', true);
+        const updated = await chooseWritingAssignmentType(ctx, 'course-1', 'assignment-1', true);
 
-        const [filter, update] = assignmentCollection.findOneAndUpdate.mock.calls[0];
-        expect(filter).toEqual({ id: 'assignment-1', courseId: 'course-1' });
+        const [filter, update] = collection.findOneAndUpdate.mock.calls[0];
+        expect(filter).toEqual({ id: 'assignment-1', courseId: 'course-1', assignmentTypePending: true });
         expect(update.$set.isLabReport).toBe(true);
+        expect(update.$set.updatedAt).toBeInstanceOf(Date);
+        expect(update.$unset).toEqual({ assignmentTypePending: '' });
         expect(updated?.isLabReport).toBe(true);
     });
 
-    it('returns null when no assignment matches the scoped filter', async () => {
-        const assignmentCollection = mongoAssignmentCollection({ findOneAndUpdateResult: null });
-        const ctx = contextWithCollections({ 'writing-assignments': assignmentCollection });
+    it('returns null when the type was already chosen', async () => {
+        const collection = mongoAssignmentCollection({ findOneAndUpdateResult: null });
+        const ctx = contextWithCollections({ 'writing-assignments': collection });
 
-        const result = await setWritingAssignmentLabReport(ctx, 'course-2', 'assignment-1', true);
-
-        expect(result).toBeNull();
+        await expect(chooseWritingAssignmentType(ctx, 'course-1', 'assignment-1', false)).resolves.toBeNull();
     });
 });
 

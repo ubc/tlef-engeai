@@ -35,6 +35,7 @@ Line counts are a rough guide to reading cost, not a target.
 | `course-material-mentions.ts` | 150 | Owns V2 Writing Feedback course-material retrieval and mention resolution. | — | retrieval or mention resolution changes |
 | `strip-nulls.ts` | 52 | Recursively omits null-valued object keys from a structured-output result. | `strip-nulls.test.ts` | structured-output normalisation changes |
 | `suggested-grading.ts` | 73 | Derives the staff-only suggested grading for one run. | `suggested-grading.test.ts` | staff-only suggestions change |
+| `summary-redraft-engine.ts` | 179 | Structured writer-only summary redraft from the final annotations (D-125). | `summary-redraft-engine.test.ts` | the redraft prompt or output changes |
 
 ### Rubric
 
@@ -49,6 +50,7 @@ Line counts are a rough guide to reading cost, not a target.
 | `default-rubric-profile.ts` | 216 | Builds neutral assignment and rubric defaults without course-specific assumptions. | `default-rubric-profile.test.ts` | assignment or rubric defaults change |
 | `lab-report-profile.ts` | 177 | Builds the editable lab-report technical rubric template. | `lab-report-profile.test.ts` | the technical rubric template changes |
 | `staff-final-assessment.ts` | 106 | Builds and validates the staff-final rubric assessment and its total. | `staff-final-assessment.test.ts` | grading maths change |
+| `assignment-type.ts` | 129 | Records the one-time writing / lab report choice and seeds the technical rubric (D-123). | `assignment-type.test.ts` | the assignment type flow changes |
 
 ### Review
 
@@ -56,6 +58,9 @@ Line counts are a rough guide to reading cost, not a target.
 | --- | ---: | --- | --- | --- |
 | `anchored-comments.ts` | 216 | Validates, seeds, and stale-checks exact UTF-16 comment anchors. | `anchored-comments.test.ts` | anchoring, seeding, or stale detection changes |
 | `document-extraction-service.ts` | 91 | Parses writing submissions locally and keeps scan intake staff-verified. | — | accepted upload types or extraction change |
+| `annotation-fingerprint.ts` | 56 | Order- and id-insensitive fingerprint of a lens's annotations; mirrored in the browser. | `annotation-fingerprint-parity.test.ts` | what counts as an annotation change |
+| `summary-sources.ts` | 223 | Resolves which annotations and staff edits a summary uses; builds redraft runs. | `summary-sources.test.ts` | detail, PDF, or release summary resolution changes |
+| `summary-edits.ts` | 49 | Validates staff summary edits and their binding to the latest run. | `summary-edits.test.ts` | editable summary fields change |
 
 ### Canvas import (read-only)
 
@@ -93,6 +98,11 @@ Line counts are a rough guide to reading cost, not a target.
 | `public/scripts/feature/writing-feedback-shared.ts` | 1144 | Frontend mirror of the shared API types, plus request helpers. | ANY API contract changes — it must mirror `src/types/shared.ts` |
 | `public/scripts/feature/writing-feedback-rubric-progress.ts` | 228 | Rubric completion progress indicator. | progress display changes |
 | `public/scripts/feature/writing-feedback-demo-mode.ts` | 57 | Demo-mode switch for synthetic courses. | demo behaviour changes |
+| `public/scripts/feature/writing-feedback-review-steps.ts` | 66 | DOM-free step bar state and Next decision for the two-step review. | the review steps change |
+| `public/scripts/feature/writing-feedback-summary-editor.ts` | 193 | Editable summary sections and edit detection per lens. | editable summary UI changes |
+| `public/scripts/feature/writing-feedback-annotation-fingerprint.ts` | 56 | Browser mirror of the annotation fingerprint. | what counts as an annotation change |
+| `public/scripts/feature/writing-feedback-assignment-type.ts` | 93 | The "What kind of assignment is this?" modal and save flow. | the assignment type modal changes |
+| `public/scripts/feature/writing-feedback-assignment-type-state.ts` | 45 | DOM-free labels and pending-assignment selection for that modal. | the modal labels change |
 | `public/styles/instructor-components/writing-feedback.css` | 2774 | Every Writing Feedback style. | the workspace, rubric, review, or release card is restyled |
 
 ## Tests

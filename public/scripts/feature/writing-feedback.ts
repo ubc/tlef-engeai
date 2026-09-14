@@ -57,6 +57,7 @@ import {
 import { openRubricPage } from './writing-feedback-rubric.js';
 import { openReview } from './writing-feedback-review.js';
 import { setWritingFeedbackDemoMode, assertNotWritingFeedbackDemoMode } from './writing-feedback-demo-mode.js';
+import { oldestPendingAssignment } from './writing-feedback-assignment-type-state.js';
 
 // ---------------------------------------------------------------------------
 // Landing view
@@ -70,6 +71,28 @@ async function loadLanding(): Promise<void> {
     list.replaceChildren(createText('p', 'Loading assignments…', 'wf-muted-note'));
     state.assignments = await request<Assignment[]>('/assignments');
     renderLanding();
+
+    // An assignment left without a type (the page was closed before staff answered) is asked
+    // about again here, oldest first, and then opened on its rubric page (D-123).
+    const pending = oldestPendingAssignment(state.assignments);
+    if (pending && state.workspace?.permissions.canManageRubric) {
+        await openNewAssignment(pending);
+    }
+}
+
+/**
+ * openNewAssignment - opens a new assignment's rubric page, which asks for its type.
+ *
+ * The question is asked from the rubric view rather than here: a lab report then waits on
+ * the auto-fill of its writing rubric, and that wait must show the rubric page loading,
+ * not the stale assignment list the import started from.
+ *
+ * @param assignment - Newly created or imported assignment, or one still pending
+ */
+async function openNewAssignment(assignment: Assignment): Promise<void> {
+    state.expandedAssignmentId = assignment.id;
+    state.assignments = await request<Assignment[]>('/assignments');
+    await openRubricPage(assignment.id);
 }
 
 function renderLanding(): void {
@@ -124,7 +147,11 @@ function renderAssignmentCard(assignment: Assignment): HTMLElement {
 
     const heading = document.createElement('div');
     heading.className = 'wf-assignment-title-group';
-    heading.append(createText('h2', assignment.title));
+    const title = createText('h2', assignment.title);
+    // The kind sits inside the heading so it trails the last word of a wrapped title. Writing
+    // is the default kind, so only the exception is labelled.
+    if (assignment.isLabReport) title.append(chip('Lab report', 'blue'));
+    heading.append(title);
     const meta = document.createElement('p');
     meta.className = 'wf-assignment-meta';
     // Provenance rides on the date rather than a separate badge: the record is created at the
@@ -145,37 +172,6 @@ function renderAssignmentCard(assignment: Assignment): HTMLElement {
     const controls = document.createElement('div');
     controls.className = 'wf-assignment-controls';
     const canManageRubric = Boolean(state.workspace?.permissions.canManageRubric);
-    if (canManageRubric) {
-        const labHint = createText('span', '', 'wf-help-text');
-        const labToggle = document.createElement('label');
-        labToggle.className = 'wf-lab-toggle';
-        const labInput = document.createElement('input');
-        labInput.type = 'checkbox';
-        labInput.checked = Boolean(assignment.isLabReport);
-        labInput.setAttribute('aria-label', `Mark "${assignment.title}" as a lab report`);
-        labInput.addEventListener('click', (event) => event.stopPropagation());
-        labInput.addEventListener('change', async (event) => {
-            event.stopPropagation();
-            const next = labInput.checked;
-            try {
-                const updated = await jsonRequest<Assignment>(
-                    `/assignments/${encodeURIComponent(assignment.id)}/lab-report`,
-                    'PATCH',
-                    { isLabReport: next }
-                );
-                Object.assign(assignment, updated);
-                labHint.textContent = next
-                    ? 'Technical rubric seeded. Open Rubric to review and approve it.'
-                    : '';
-            } catch (error) {
-                // Restore the control to server truth before surfacing the refusal.
-                labInput.checked = !next;
-                await handleActionError(error);
-            }
-        });
-        labToggle.append(labInput, document.createTextNode('Lab report'));
-        controls.append(labToggle, labHint);
-    }
     const rubricButton = createButton(
         canManageRubric ? 'Edit Rubric' : 'View Rubric',
         'chip',
@@ -464,8 +460,7 @@ async function showAddAssignment(): Promise<void> {
         });
         state.panelDirty = false;
         await closeActionPanel(false);
-        state.expandedAssignmentId = created.id;
-        await loadLanding();
+        await openNewAssignment(created);
         showSuccessToast('Assignment created. Review and approve its rubric before generating feedback.');
     });
     actions.append(submit, createButton('Cancel', 'quiet', async () => closeActionPanel()));
@@ -789,8 +784,13 @@ async function showCanvasImport(): Promise<void> {
                 canvasAssignmentId: selected.value
             });
             await closeActionPanel(false);
-            state.expandedAssignmentId = result.targetAssignment.id;
-            await loadLanding();
+            // Only a newly created assignment is pending; a re-import returns the existing one.
+            if (result.targetAssignment.assignmentTypePending) {
+                await openNewAssignment(result.targetAssignment);
+            } else {
+                state.expandedAssignmentId = result.targetAssignment.id;
+                await loadLanding();
+            }
 
             // One report of the outcome, in the toast the instructor is already
             // watching for. The counts ride along with it rather than in a second

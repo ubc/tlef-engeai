@@ -499,6 +499,11 @@
     line-height: 1.3;
 }
 
+.wf-assignment-title-group h2 .wf-chip {
+    margin-left: 8px;
+    vertical-align: middle;
+}
+
 .wf-assignment-meta {
     display: flex;
     align-items: center;
@@ -514,33 +519,6 @@
     align-items: center;
     flex-wrap: wrap;
     gap: 10px;
-}
-
-/*
- * The lab-report hint only speaks after the toggle is used. While empty it is still a flex
- * item, so the row spends a gap on either side of nothing — leaving twice the space between
- * the toggle and the buttons as between the buttons themselves.
- */
-.wf-assignment-controls .wf-help-text:empty {
-    display: none;
-}
-
-.wf-lab-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 8px;
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    color: var(--text-primary);
-    font-size: 12px;
-    font-weight: 500;
-    white-space: nowrap;
-    cursor: pointer;
-}
-
-.wf-lab-toggle input[type="checkbox"] {
-    margin: 0;
 }
 
 .wf-expand-icon {
@@ -2338,9 +2316,46 @@ mark.wf-anchor.is-filtered-out,
     font-weight: 600;
 }
 
+/* Two-step review bar (D-124): Back and Next of equal width around the step title. */
+.wf-panel-header.wf-step-bar {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+}
+
+.wf-step-bar__center {
+    text-align: center;
+}
+
+.wf-step-bar__center p {
+    margin: 0;
+}
+
+@media (max-width: 480px) {
+    .wf-panel-header.wf-step-bar {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .wf-step-bar__center {
+        grid-column: 1 / -1;
+        order: -1;
+    }
+}
+
+.wf-summary-strengths {
+    display: grid;
+    gap: 8px;
+}
+
 .wf-panel-tabs {
     display: flex;
     gap: 6px;
+}
+
+/* Technical / Writing switch for lab reports, inside the panel body on both review steps: spaced
+   from the filters and annotation cards below it. */
+.wf-lens-tabs {
+    margin-bottom: 16px;
 }
 
 .wf-tab-btn {
@@ -2375,6 +2390,11 @@ mark.wf-anchor.is-filtered-out,
 }
 
 .wf-panel-body[hidden] {
+    display: none;
+}
+
+/* Shown only on the Summary step (D-124); its flex display would otherwise beat [hidden]. */
+.wf-panel-footer[hidden] {
     display: none;
 }
 
