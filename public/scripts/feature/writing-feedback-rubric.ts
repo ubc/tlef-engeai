@@ -75,6 +75,7 @@ import {
     labelWithRequiredMarker,
     refreshIcons,
     request,
+    scrollingAncestor,
     setWorkspaceMessage,
     setQueryState,
     setView,
@@ -1327,25 +1328,6 @@ function renderProgressStrip(steps: StepState[]): HTMLElement {
 }
 
 /**
- * scrollingAncestor - the element that actually scrolls when this one moves
- *
- * The rubric page scrolls inside `.page-shell`, not the window, so a correction has to be
- * applied to whichever ancestor owns the scrollbar.
- *
- * @param element - Element whose scroll container is wanted
- * @returns Nearest ancestor that scrolls vertically, or the document's scroller
- */
-function scrollingAncestor(element: HTMLElement): HTMLElement {
-    for (let node = element.parentElement; node; node = node.parentElement) {
-        const overflowY = getComputedStyle(node).overflowY;
-        if ((overflowY === 'auto' || overflowY === 'scroll') && node.scrollHeight > node.clientHeight) {
-            return node;
-        }
-    }
-    return (document.scrollingElement as HTMLElement | null) ?? document.documentElement;
-}
-
-/**
  * holdInPlace - keeps an element at its current height on screen while the page around it
  * changes height
  *
@@ -1867,7 +1849,11 @@ function renderRubricPage(
     // What is still outstanding is the progress strip's job, once, at the top of the
     // page. Step 3 used to restate it in a notice of its own, which said the same
     // counts a second time and named no work the strip had not already named.
-    step3Body.append(approveRow);
+    //
+    // First, ahead of the save status and alerts appended above: those belong under the
+    // buttons they report on, and an always-present status line sitting above the row left
+    // a blank band at the top of the step whenever autosave had nothing to say.
+    step3Body.prepend(approveRow);
 
     step3.append(step3Header, step3Body);
     root.append(step3);

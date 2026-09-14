@@ -79,24 +79,10 @@ function renderLanding(): void {
     list.replaceChildren();
 
     if (!state.assignments.length) {
-        const empty = document.createElement('div');
-        empty.className = 'wf-card';
-        const canCreate = Boolean(state.workspace?.permissions.canManageRubric);
-        empty.append(createText(
-            'p',
-            canCreate
-                ? 'No assignments yet. Import writing assignments from Canvas, or create one manually with its assignment instructions.'
-                : 'No assignments yet. Import an available Canvas assignment, or ask an instructor to create a manual assignment.',
-            'wf-muted-note'
-        ));
-        const actions = document.createElement('div');
-        actions.className = 'wf-button-row';
-        actions.append(createButton('Import assignment from Canvas', 'primary', async () => showCanvasImport()));
-        if (canCreate) {
-            actions.append(createButton('Add assignment manually', 'secondary', async () => showAddAssignment()));
-        }
-        empty.append(actions);
-        list.append(empty);
+        // A plain line, the way the flags page reports an empty list. The box this replaces
+        // repeated the header's Import and Add buttons directly beneath them; the header
+        // already offers Import to every staff member and Add to those who can create one.
+        list.append(createText('p', 'No assignments yet.', 'wf-assignment-list-empty'));
         return;
     }
 
@@ -704,7 +690,7 @@ async function showCanvasImport(): Promise<void> {
     callout.className = 'wf-callout wf-callout--success';
     callout.append(createText(
         'span',
-        "This will import all of the assignment's submissions. Only assignments with at least one submission appear below."
+        "This will import all of the selected assignment's submissions. Only assignments with at least one submission appear below."
     ));
     content.append(callout);
 
@@ -818,7 +804,7 @@ async function showCanvasImport(): Promise<void> {
 
 function bindStaticActions(): void {
     // Routed through runButtonAction rather than a bare listener so the header control
-    // reports the same busy state as its empty-state twin while Canvas is being reached.
+    // shows a busy state while Canvas is being reached.
     const importCanvas = element<HTMLButtonElement>('wf-import-canvas');
     importCanvas.addEventListener('click', () => void runButtonAction(importCanvas, showCanvasImport));
     element<HTMLButtonElement>('wf-add-assignment').addEventListener('click', () => void showAddAssignment().catch(handleActionError));

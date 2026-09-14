@@ -36,6 +36,15 @@
     width: 100%;
 }
 
+/* The landing page with no assignments: a plain line rather than a card, matching how the
+   flags page reports an empty list (.flags-list-empty in flag-instructor.css, which this
+   page does not load). */
+.wf-assignment-list-empty {
+    margin: 0;
+    padding: 0.75rem 1rem;
+    color: var(--text-secondary);
+}
+
 /* Header — layout for left cluster and actions; bar chrome from .page-header */
 .wf-header {
     flex-wrap: wrap;
@@ -1439,14 +1448,19 @@
     color: var(--color-eng-red);
 }
 
-/* What autosave is doing, always on the page. Quiet, because it reports routine work; the
-   signed-out alert above keeps the red for the one state that needs acting on. */
+/* What autosave is doing, under step 3's buttons. Quiet, because it reports routine work; the
+   signed-out alert keeps the red for the one state that needs acting on. It takes no space
+   until autosave has something to say: sitting below the buttons, a line appearing moves
+   nothing staff are about to click. */
 .wf-save-status {
     margin: 12px 0 0;
-    min-height: 1.5em;
     font-size: 0.85rem;
     line-height: 1.5;
     color: var(--text-secondary);
+}
+
+.wf-save-status:empty {
+    display: none;
 }
 
 /* Step 3's approve and save-now actions are hidden with the attribute. A .wf-button sets its
@@ -2509,7 +2523,6 @@ mark.wf-anchor.is-filtered-out,
     min-height: 0;
     padding: 16px;
     overflow-y: auto;
-    overscroll-behavior: contain;
 }
 
 .wf-panel-body[hidden] {

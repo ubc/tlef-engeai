@@ -47,6 +47,7 @@ import {
     jsonRequest,
     refreshIcons,
     request,
+    scrollingAncestor,
     setQueryState,
     setView,
     state,
@@ -396,10 +397,33 @@ export async function openReview(submissionId: string): Promise<void> {
     }
 }
 
+/** Tab the next feedback pane render opens on; set only while a refresh rebuilds the view. */
+let pendingTabId: string | null = null;
+
 async function refreshReview(submissionId: string): Promise<void> {
     state.reviewDirty = false;
-    state.assignments = await request<Assignment[]>('/assignments');
-    await openReview(submissionId);
+    // A refresh rebuilds the whole view, so record where staff were before it is replaced.
+    const root = element<HTMLDivElement>('wf-view-review');
+    const selectedTab = root.querySelector<HTMLElement>('.wf-tab-btn[aria-selected="true"]');
+    const tabId = selectedTab ? selectedTab.id.replace(/^wf-tab-/, '') : null;
+    const panelScrollTop = tabId ? document.getElementById(`wf-tab-panel-${tabId}`)?.scrollTop ?? 0 : 0;
+    const scroller = scrollingAncestor(root);
+    const pageScrollTop = scroller.scrollTop;
+
+    pendingTabId = tabId;
+    try {
+        state.assignments = await request<Assignment[]>('/assignments');
+        await openReview(submissionId);
+    } finally {
+        pendingTabId = null;
+    }
+
+    // Restore after layout, once the reopened tab's annotations have rendered to full height.
+    requestAnimationFrame(() => {
+        const panel = tabId ? document.getElementById(`wf-tab-panel-${tabId}`) : null;
+        if (panel && !panel.hidden) panel.scrollTop = panelScrollTop;
+        scroller.scrollTop = pageScrollTop;
+    });
 }
 
 function delay(ms: number): Promise<void> {
@@ -807,6 +831,8 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
         { id: 'annotations', label: assignment?.isLabReport ? 'Writing' : 'Annotations', panel: annotationsBody, lens: 'linguistic' as const, listHost: annotationsListHost },
         { id: 'summary', label: 'Summary', panel: summaryBody }
     ];
+    // A refresh reopens the tab staff were on; a tab that no longer exists falls back to the first.
+    const initialTab = Math.max(0, tabs.findIndex((tab) => tab.id === pendingTabId));
     const buttons: HTMLButtonElement[] = [];
     const selectTab = (selected: number) => {
         // Keep ARIA selection and keyboard tab stops synchronized with panel
@@ -828,9 +854,9 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
         button.id = `wf-tab-${tab.id}`;
         button.textContent = tab.label;
         button.setAttribute('role', 'tab');
-        button.setAttribute('aria-selected', String(index === 0));
+        button.setAttribute('aria-selected', String(index === initialTab));
         button.setAttribute('aria-controls', tab.panel.id);
-        button.tabIndex = index === 0 ? 0 : -1;
+        button.tabIndex = index === initialTab ? 0 : -1;
         tab.panel.setAttribute('aria-labelledby', button.id);
         button.addEventListener('click', () => selectTab(index));
         button.addEventListener('keydown', (event) => {
@@ -862,8 +888,12 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
     // Defer the first render until the document and feedback hosts share the DOM;
     // selection geometry and focus-linked markers depend on both being connected.
     queueMicrotask(() => {
-        const first = tabs[0];
-        if (first.lens && first.listHost) renderLensAnnotations(first.lens, first.listHost);
+        selectTab(initialTab);
+        // The document pane is filled only by an annotating tab. Summary has no lens, so when a
+        // refresh reopens it, render the first annotating tab's lens or the pane stays empty.
+        if (tabs[initialTab].lens) return;
+        const lensTab = tabs.find((tab) => tab.lens && tab.listHost);
+        if (lensTab?.lens && lensTab.listHost) renderLensAnnotations(lensTab.lens, lensTab.listHost);
     });
 
     // Summary tab.

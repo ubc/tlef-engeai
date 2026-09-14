@@ -787,6 +787,25 @@ export function isLateSubmission(submission: Submission, assignment: Assignment 
 }
 
 /**
+ * scrollingAncestor - the element that actually scrolls when this one moves
+ *
+ * Workspace pages scroll inside `.page-shell`, not the window, so a scroll correction has to
+ * be applied to whichever ancestor owns the scrollbar.
+ *
+ * @param element - Element whose scroll container is wanted
+ * @returns Nearest ancestor that scrolls vertically, or the document's scroller
+ */
+export function scrollingAncestor(element: HTMLElement): HTMLElement {
+    for (let node = element.parentElement; node; node = node.parentElement) {
+        const overflowY = getComputedStyle(node).overflowY;
+        if ((overflowY === 'auto' || overflowY === 'scroll') && node.scrollHeight > node.clientHeight) {
+            return node;
+        }
+    }
+    return (document.scrollingElement as HTMLElement | null) ?? document.documentElement;
+}
+
+/**
  * createText - creates an element with text-only content
  *
  * Using `textContent` keeps student writing and server labels out of the HTML parser.
