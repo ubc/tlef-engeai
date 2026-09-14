@@ -2,8 +2,8 @@
  * Assignment type modal — asks once whether a new assignment is a lab report (D-123)
  *
  * Uses the app's standard modal with every dismissal path turned off. The answer is saved
- * through the one-time type route; a lab report then has its writing rubric auto-filled from
- * the assignment details. Callers open the rubric page afterwards.
+ * through the one-time type route. Neither type is auto-filled from the instructions; staff
+ * fill rubrics from the rubric page, which callers open afterwards.
  *
  * @author: @rdschrs
  * @date: 2026-09-13
@@ -64,30 +64,16 @@ export async function ensureAssignmentTypeChosen(assignment: Assignment): Promis
     for (;;) {
         const type = await askAssignmentType(assignment.title);
 
-        // Step 1: record the answer. Retry on failure; stop if someone else already answered.
+        // Record the answer. Retry on failure; stop if someone else already answered.
         try {
             Object.assign(assignment, await jsonRequest<Assignment>(`${base}/type`, 'PUT', { type }));
+            return assignment;
         } catch (error) {
             if (error instanceof Error && error.message.startsWith(TYPE_ALREADY_CHOSEN_MESSAGE)) {
                 assignment.assignmentTypePending = false;
                 return assignment;
             }
             await handleActionError(error);
-            continue;
         }
-
-        // Step 2: a lab report's writing rubric is filled from the assignment details. A
-        // failure is reported but never blocks the rubric page, which staff can fill by hand.
-        if (type === 'lab_report' && assignment.instructions?.trim()) {
-            try {
-                Object.assign(
-                    assignment,
-                    await jsonRequest<Assignment>(`${base}/rubric-draft/fill?lens=linguistic`, 'POST')
-                );
-            } catch (error) {
-                await handleActionError(error);
-            }
-        }
-        return assignment;
     }
 }

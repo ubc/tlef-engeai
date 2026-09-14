@@ -57,7 +57,6 @@ import {
 import { openRubricPage } from './writing-feedback-rubric.js';
 import { openReview } from './writing-feedback-review.js';
 import { setWritingFeedbackDemoMode, assertNotWritingFeedbackDemoMode } from './writing-feedback-demo-mode.js';
-import { ensureAssignmentTypeChosen } from './writing-feedback-assignment-type.js';
 import { oldestPendingAssignment } from './writing-feedback-assignment-type-state.js';
 
 // ---------------------------------------------------------------------------
@@ -82,12 +81,15 @@ async function loadLanding(): Promise<void> {
 }
 
 /**
- * openNewAssignment - asks for a new assignment's type, then opens its rubric page.
+ * openNewAssignment - opens a new assignment's rubric page, which asks for its type.
+ *
+ * The question is asked from the rubric view rather than here: a lab report then waits on
+ * the auto-fill of its writing rubric, and that wait must show the rubric page loading,
+ * not the stale assignment list the import started from.
  *
  * @param assignment - Newly created or imported assignment, or one still pending
  */
 async function openNewAssignment(assignment: Assignment): Promise<void> {
-    await ensureAssignmentTypeChosen(assignment);
     state.expandedAssignmentId = assignment.id;
     state.assignments = await request<Assignment[]>('/assignments');
     await openRubricPage(assignment.id);

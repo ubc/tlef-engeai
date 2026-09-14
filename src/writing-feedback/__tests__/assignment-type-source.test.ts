@@ -29,9 +29,9 @@ describe('assignment type modal source contract', () => {
         expect(state).toContain("'Lab report assignment'");
     });
 
-    it('saves through the one-time type route and fills the writing rubric for a lab report', () => {
+    it('saves through the one-time type route without auto-filling either rubric', () => {
         expect(modal).toContain('/type`');
-        expect(modal).toContain('/rubric-draft/fill?lens=linguistic');
+        expect(modal).not.toContain('/rubric-draft/fill');
     });
 });
 
@@ -39,8 +39,9 @@ describe('assignment list and rubric page source contract', () => {
     it('removes the Lab report checkbox from the assignment list', () => {
         const landing = feature('writing-feedback.ts');
         expect(landing).not.toContain('wf-lab-toggle');
-        expect(landing).toContain('ensureAssignmentTypeChosen');
         expect(landing).toContain('oldestPendingAssignment');
+        // The rubric page asks, so a lab report's auto-fill runs under its loading view.
+        expect(landing).not.toContain('ensureAssignmentTypeChosen');
     });
 
     it('asks for the type before the rubric page and never toggles the flag', () => {
