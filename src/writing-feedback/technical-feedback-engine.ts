@@ -16,6 +16,7 @@ import { LLMModule, type LLMOptions, type Message } from 'ubc-genai-toolkit-llm'
 import { isMockResponse } from '../helpers/mock-response';
 import {
     buildFeedbackSchema,
+    MAX_EVIDENCE_PER_CRITERION,
     MAX_EVIDENCE_QUOTE_LENGTH,
     reconcileExactEvidence,
     validateExactEvidence
@@ -30,7 +31,7 @@ import type {
 } from './contracts';
 
 /** Immutable provenance stamped on every technical run. */
-export const TECHNICAL_PROMPT_VERSION = 'lab-report-technical-v1';
+export const TECHNICAL_PROMPT_VERSION = 'lab-report-technical-v1.1.0';
 
 /**
  * The prime directive, stated before the rubric.
@@ -40,7 +41,7 @@ export const TECHNICAL_PROMPT_VERSION = 'lab-report-technical-v1';
  * than perfect data") and the instructor requirement that students must not be
  * penalized for results that differ from theory.
  */
-const PRIME_DIRECTIVE = [
+export const PRIME_DIRECTIVE = [
     'Do not judge whether the student\'s result agrees with theory or with literature values.',
     'Judge whether the argument is internally consistent, whether every claim is supported by data the student themself reports, and whether deviations from expected values are explained plausibly.',
     'A well-explained anomalous result is stronger work than an unexplained result that happens to match theory.'
@@ -94,7 +95,8 @@ function deterministicTechnicalFeedback(rubric: WritingRubricDefinition, text: s
             suggestedLevel: selectedLevel.id,
             evidence: [{
                 quote: evidence,
-                rationale: `This exact passage gives staff a starting point for reviewing ${criterion.label}.`
+                rationale: `This exact passage gives staff a starting point for reviewing ${criterion.label}.`,
+                revisionGuidance: `Revise this passage so the ${criterion.label} evidence is explicit and easy for the reader to verify.`
             }],
             explanation: `Review this passage against the approved ${criterion.label} description before releasing technical feedback.`,
             confidence: 0.5
@@ -132,7 +134,13 @@ export function buildTechnicalFeedbackSystemPrompt(assignment: WritingAssignment
         ...PROHIBITIONS.map((rule) => `- ${rule}`),
         'Every evidence.quote must be copied exactly from the verified text.',
         `Use the shortest exact clause or single sentence that supports each judgment; never quote a full paragraph or submission. Each evidence.quote must be at most ${MAX_EVIDENCE_QUOTE_LENGTH} characters.`,
-        'Return at most three revision goals, each phrased as an action or a question the student can act on.',
+        `Return at most ${MAX_EVIDENCE_PER_CRITERION} evidence items per criterion, and only passages that each earn their own annotation.`,
+        'Three is a ceiling, not a target. Every evidence item becomes one annotation the student reads, so cite one passage when one carries the point and never pad a criterion to reach the limit.',
+        'Each evidence.rationale must name the specific problem in that passage; do not restate the quote and do not repeat the criterion explanation.',
+        'Each evidence.revisionGuidance must give a concrete next revision action for that exact passage. It must not copy the criterion explanation, the rationale, or a full revision goal.',
+        'Never make the same point twice. Two evidence items anywhere in the result, including under different criteria, must not carry the same advice in different words; if a point is already made, choose different text or return fewer items.',
+        'Each explanation must synthesize that criterion\'s evidence as a whole — the pattern across its passages and why it sits at that level — not repeat any single rationale.',
+        'Return one to three revision goals, each phrased as an action or a question the student can act on.',
         `<approved_technical_rubric version="${rubric.version}">${JSON.stringify({
             assignmentTitle: assignment.title,
             title: rubric.title,

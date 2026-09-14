@@ -88,7 +88,8 @@ function releasePayload(input: CanvasReleaseInput): WritingReleasePayload {
         grade: input.finalAssessment?.totalPoints,
         studentFeedback: input.studentFeedback,
         technicalFeedbackRunId: input.technicalFeedbackRun?.id,
-        finalAssessment: input.finalAssessment
+        finalAssessment: input.finalAssessment,
+        summaryEdits: input.summaryEdits
     };
 }
 

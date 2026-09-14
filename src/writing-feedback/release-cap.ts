@@ -1,26 +1,24 @@
 /**
  * Release cap — how many times one submission's feedback may reach Canvas
  *
- * The first release is not final. Staff correct mistakes, and a rule that froze feedback at the
- * first push would turn a typo into an unfixable one, so a submission may be released again with
- * revised feedback.
- *
- * It is capped because each release adds a **new** Canvas submission comment rather than
- * replacing the previous one, and Canvas notifies the student every time. Five is enough for any
- * genuine correction and low enough that an accidental loop cannot bury a student in
- * notifications. The rubric and the grade do overwrite; only the comments accumulate.
+ * Once (D-128, supersedes the five-release cap of D-090). Course staff release feedback a single
+ * time: each release adds a **new** Canvas submission comment and notifies the student, and
+ * released feedback cannot be edited anyway, so a correction is a new attempt rather than a
+ * second comment on this one.
  *
  * The count is derived from the release records themselves, so nothing has to be kept in step.
+ * Attempts that never reached the student — a preview, a failure part-way — do not count, so a
+ * release that failed safely can still be retried.
  *
  * @author: EngE-AI Team
- * @version: 1.0.0
+ * @version: 1.1.0
  * @description: Counts a submission's completed releases and assigns the next revision number.
  */
 
 import type { WritingRelease } from './contracts';
 
 /** Completed releases allowed per submission. */
-export const MAX_SUBMISSION_RELEASES = 5;
+export const MAX_SUBMISSION_RELEASES = 1;
 
 /**
  * Statuses that mean feedback actually reached the student.
@@ -54,6 +52,6 @@ export function nextReleaseRevision(releases: ReadonlyArray<WritingRelease>): nu
 
 /** Staff-facing sentence for a submission that has used every revision. */
 export function releaseCapMessage(): string {
-    return `This submission's feedback has already been released ${MAX_SUBMISSION_RELEASES} times, `
-        + 'which is the limit. Releasing again would add another comment to the student\'s Canvas submission.';
+    return 'This submission\'s feedback has already been released to Canvas, and feedback can be released only once. '
+        + 'To send a correction, add or import a new attempt for this student.';
 }

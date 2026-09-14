@@ -144,6 +144,7 @@ export interface Assignment {
     rubric: RubricDefinition; // current rubric; new assignments begin with a draft
     rubricDraft?: RubricDefinition; // inactive staff draft, when one exists
     rubricHistory?: RubricDefinition[]; // immutable prior approved versions used for review labels
+    assignmentTypePending?: boolean; // true until staff answer "What kind of assignment is this?" (D-123)
     isLabReport?: boolean; // whether this assignment also receives technical (lab-report) feedback
     technicalRubric?: RubricDefinition; // approved technical rubric; absent until first approval
     technicalRubricDraft?: RubricDefinition; // editable staff draft of the technical rubric
@@ -160,6 +161,7 @@ export interface CriterionFeedback {
     evidence: Array<{
         quote: string;
         rationale: string;
+        revisionGuidance?: string;
         sflFindingIds?: string[];
         courseMaterialMention?: CourseMaterialMention;
         glossaryEntryId?: string;
@@ -191,6 +193,24 @@ export interface FeedbackRun {
      * otherwise read as one the student cannot open.
      */
     citableCourseMaterialMentionIds?: string[];
+    redraftOfRunId?: string; // run this summary was redrafted from (D-125)
+    sourceComments?: AnchoredComment[]; // annotations the redraft was drafted from; staff-only
+    annotationsFingerprint?: string; // fingerprint of sourceComments, compared on Next
+}
+
+/** Staff-edited summary sections for one lens, bound to the run they were edited against (D-126). */
+export interface StaffSummaryEdit {
+    lens: WritingFeedbackLens;
+    feedbackRunId: string; // run the edits were made against
+    strengths: string[]; // "What you did well", 0..5
+    criterionExplanations: Array<{ criterion: WritingCriterionId; explanation: string }>;
+    revisionGoalsText?: string; // technical lens only
+}
+
+/** Which run a lens's summary currently comes from, and the annotations it reflects. */
+export interface SummarySource {
+    runId: string;
+    annotationsFingerprint: string;
 }
 
 /** Server-resolved course material label safe for student-facing feedback. */
@@ -239,6 +259,12 @@ export type WfLevelTag = 'text' | 'section' | 'clause_word';
 export type WfPriority = 'high' | 'medium' | 'low';
 
 /** Exact verified-text annotation stored in model seeds and staff revision snapshots. */
+/** One published course material staff may name on an annotation. */
+export interface CourseMaterialTitle {
+    id: string; // stable material id from the course record
+    label: string; // "Topic · Item · Material", the same shape retrieval resolves
+}
+
 export interface AnchoredComment {
     id: string; // stable identity used to diff comments across review revisions
     /** Which rubric this comment is about. Server defaults an absent value to 'linguistic'. */
@@ -249,7 +275,9 @@ export interface AnchoredComment {
     endOffset: number; // exclusive UTF-16 offset paired with the exact quote
     comment: string; // feedback exposed to the student after approval/release
     howToImprove?: string; // optional concrete revision direction
-    courseMaterialLink?: string; // optional staff-selected learning resource
+    courseMaterialLink?: string; // legacy staff link; never rendered as a link to a student
+    courseMaterialTitle?: string; // staff-authored lecture/reading title shown to the student
+    courseMaterialId?: string; // id of the picked course material, when picked rather than typed
     courseMaterialMention?: CourseMaterialMention; // resolved course-material label preferred for V2
     glossaryDefinition?: { term: string; definition: string }; // optional disciplinary-language support
     glossaryEntryId?: string; // selected glossary entry id
@@ -293,6 +321,9 @@ export interface ReviewRevision {
     internalNote?: string; // staff-only note explicitly excluded from student output
     comments?: AnchoredComment[]; // complete annotation snapshot at save time
     finalAssessment?: StaffFinalAssessment; // complete human-authored rubric result
+    feedbackRunId?: string; // linguistic run the revision was saved against
+    technicalFeedbackRunId?: string; // technical run the technical summary edits were saved against
+    summaryEdits?: StaffSummaryEdit[]; // editable summary sections bound to their runs (D-126)
     createdAt: string; // server timestamp used to order immutable revisions
 }
 
@@ -313,7 +344,7 @@ export interface StaffFinalAssessment {
 }
 
 const DIFF_FIELDS: Array<keyof AnchoredComment> = [
-    'quote', 'comment', 'howToImprove', 'courseMaterialLink', 'courseMaterialMention',
+    'quote', 'comment', 'howToImprove', 'courseMaterialLink', 'courseMaterialTitle', 'courseMaterialId', 'courseMaterialMention',
     'glossaryDefinition', 'glossaryEntryId', 'glossarySnapshot', 'functionTag', 'levelTag', 'priority'
 ];
 
@@ -368,6 +399,10 @@ export interface SubmissionDetail {
     technicalFeedbackRun: FeedbackRun | null; // latest immutable technical (lab-report) model result, if generated
     comments: AnchoredComment[]; // newest saved staff comment snapshot
     seedComments: AnchoredComment[]; // model-derived fallback used before the first save
+    /** Annotation working set resolved per lens: newest of saved revision or redraft, else seeds. */
+    workingComments?: AnchoredComment[];
+    /** Per lens, the run the summary comes from and the fingerprint of annotations it reflects. */
+    summarySources?: Partial<Record<WritingFeedbackLens, SummarySource>>;
     release?: WritingReleaseSummary | null; // latest Canvas release/reconciliation state
     /** How many times this submission's feedback has reached the student in Canvas. */
     releaseCount?: number;

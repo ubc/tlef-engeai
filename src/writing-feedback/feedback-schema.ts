@@ -18,6 +18,9 @@ import type {
     WritingRubricDefinition
 } from './contracts';
 
+/** Maximum evidence items per criterion so a criterion seeds a selective annotation set. */
+export const MAX_EVIDENCE_PER_CRITERION = 3;
+
 /** Maximum model evidence span so seeded annotations stay clause- or sentence-focused. */
 export const MAX_EVIDENCE_QUOTE_LENGTH = 280;
 
@@ -58,6 +61,7 @@ const glossarySnapshotSchema: z.ZodType<WritingGlossarySnapshot> = z.object({
 const evidenceSchema = z.object({
     quote: z.string().min(1).max(MAX_EVIDENCE_QUOTE_LENGTH),
     rationale: z.string().min(1),
+    revisionGuidance: z.string().min(1),
     sflFindingIds: z.array(z.string().trim().min(1).max(80)).max(6).nullish(),
     courseMaterialMention: courseMaterialMentionSchema().nullish(),
     glossaryEntryId: z.string().trim().min(1).max(120).nullish(),
@@ -93,12 +97,16 @@ export function buildFeedbackSchema(rubric: WritingRubricDefinition) {
         criteria: z.array(z.object({
             criterion: z.string().refine((value) => allowedCriteria.has(value), 'Criterion is not part of the approved rubric'),
             suggestedLevel: z.string().refine((value) => allowedLevels.has(value), 'Performance level is not part of the approved rubric'),
-            evidence: z.array(evidenceSchema).min(1),
+            // Capped at three: every evidence item becomes one anchored annotation on the
+            // student PDF, and an unbounded list produced dense, repetitive commentary. A
+            // criterion that needs more than three passages to make its point is making
+            // more than one point, which belongs in the criterion explanation instead.
+            evidence: z.array(evidenceSchema).min(1).max(MAX_EVIDENCE_PER_CRITERION),
             explanation: z.string().min(1),
             confidence: z.number().min(0).max(1)
         })).length(criterionIds.length),
         strengths: z.array(z.string().min(1)).max(2),
-        revisionGoals: z.array(revisionGoalSchema).max(3),
+        revisionGoals: z.array(revisionGoalSchema).min(1).max(3),
         internalFlags: z.array(z.string()).max(8),
         courseMaterialMentions: z.array(courseMaterialMentionSchema()).max(5).nullish()
     }).superRefine((feedback, ctx) => {
@@ -107,6 +115,47 @@ export function buildFeedbackSchema(rubric: WritingRubricDefinition) {
             ctx.addIssue({
                 code: z.ZodIssueCode.custom,
                 message: 'Feedback must contain each approved criterion exactly once',
+                path: ['criteria']
+            });
+        }
+    });
+}
+
+/**
+ * buildSummaryRedraftSchema - structured output for a writer-only summary redraft (D-125).
+ *
+ * No evidence field: quotes come from staff annotations, so the model cannot invent any.
+ *
+ * @param rubric - Approved rubric for the lens being redrafted
+ * @returns Zod schema accepting one explanation and level per criterion, strengths, and goals
+ * @throws Error when the rubric has no criteria or levels
+ */
+export function buildSummaryRedraftSchema(rubric: WritingRubricDefinition) {
+    const criterionIds = rubric.criteria.map((criterion) => criterion.id);
+    const levelIds = rubric.levels.map((level) => level.id);
+    if (!criterionIds.length || !levelIds.length) {
+        throw new Error('An approved rubric requires criteria and performance levels');
+    }
+    const allowedCriteria = new Set(criterionIds);
+    const allowedLevels = new Set(levelIds);
+    return z.object({
+        criteria: z.array(z.object({
+            criterion: z.string().refine((value) => allowedCriteria.has(value), 'Criterion is not part of the approved rubric'),
+            suggestedLevel: z.string().refine((value) => allowedLevels.has(value), 'Performance level is not part of the approved rubric'),
+            explanation: z.string().min(1),
+            confidence: z.number().min(0).max(1)
+        })).length(criterionIds.length),
+        strengths: z.array(z.string().min(1)).max(2),
+        revisionGoals: z.array(z.object({
+            skillTag: z.string().min(1),
+            goal: z.string().min(1),
+            guidedQuestion: z.string().min(1)
+        })).min(1).max(3)
+    }).superRefine((redraft, ctx) => {
+        if (new Set(redraft.criteria.map((criterion) => criterion.criterion)).size !== criterionIds.length) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: 'Redraft must contain each approved criterion exactly once',
                 path: ['criteria']
             });
         }

@@ -24,6 +24,7 @@ import type {
 } from '../contracts';
 import { WritingFeedbackService } from '../writing-feedback-service';
 import type { EngEAI_MongoDB } from '../../db/enge-ai-mongodb';
+import { fingerprintAnnotations } from '../annotation-fingerprint';
 
 const result: WritingFeedbackResult = {
     criteria: [],
@@ -268,7 +269,11 @@ describe('WritingFeedbackService anchored comments', () => {
                 criteria: [{
                     criterion: 'organization',
                     suggestedLevel: 'proficient',
-                    evidence: [{ quote: 'Verified student text.', rationale: 'Anchors the description.' }],
+                    evidence: [{
+                        quote: 'Verified student text.',
+                        rationale: 'Anchors the description.',
+                        revisionGuidance: 'Make this sentence name the sequence before the detail.'
+                    }],
                     explanation: 'Sequencing is clear.',
                     confidence: 0.8
                 }],
@@ -310,6 +315,7 @@ describe('WritingFeedbackService anchored comments', () => {
         expect(detail.seedComments).toHaveLength(1);
         expect(detail.seedComments[0].origin).toBe('model_seed');
         expect(detail.seedComments[0].startOffset).toBe(0);
+        expect(detail.seedComments[0].howToImprove).toBe('Make this sentence name the sequence before the detail.');
     });
 
     it('detail prefers stored comments and stale-flags drifted anchors', async () => {
@@ -557,7 +563,7 @@ describe('two-lens generation', () => {
         const technicalRun = mongo.createWritingFeedbackRun.mock.calls
             .map(([input]: [{ lens: string; modelMetadata: { promptVersion: string } }]) => input)
             .find((input) => input.lens === 'technical');
-        expect(technicalRun?.modelMetadata.promptVersion).toBe('lab-report-technical-v1');
+        expect(technicalRun?.modelMetadata.promptVersion).toBe('lab-report-technical-v1.1.0');
     });
 });
 
@@ -643,5 +649,189 @@ describe('released feedback keeps the rubric version it was generated with', () 
         expect(pdfService.render).toHaveBeenCalledWith(expect.objectContaining({
             technicalRubric: expect.objectContaining({ version: 1 })
         }));
+    });
+});
+
+describe('WritingFeedbackService summary redraft', () => {
+    const verifiedText = 'The results clearly prove the claim. It is obvious that everyone agrees.';
+
+    function redraftFixture(options: { status?: WritingSubmission['status']; sourceFingerprint?: string } = {}) {
+        const assignment = approvedAssignment(1);
+        const criterionId = assignment.rubric.criteria[0].id;
+        const levelId = assignment.rubric.levels[0].id;
+        const generation: WritingFeedbackRun = {
+            ...feedbackRun('linguistic', 1),
+            id: 'run-gen',
+            result: {
+                criteria: assignment.rubric.criteria.map((criterion) => ({
+                    criterion: criterion.id, suggestedLevel: levelId,
+                    evidence: criterion.id === criterionId ? [{ quote: 'The results clearly prove the claim.', rationale: 'Overclaims.', revisionGuidance: 'Limit it.' }] : [],
+                    explanation: 'Model explanation.', confidence: 0.5
+                })),
+                strengths: ['Model strength.'],
+                revisionGoals: [{ skillTag: 'x', goal: 'Goal.', guidedQuestion: 'Question?' }],
+                internalFlags: []
+            },
+            ...(options.sourceFingerprint ? { annotationsFingerprint: options.sourceFingerprint, sourceComments: [] } : {})
+        };
+        const created: WritingFeedbackRun[] = [];
+        const mongo = {
+            getWritingSubmission: jest.fn(async () => ({ ...submission(options.status ?? 'draft_ready'), verifiedText, originalText: verifiedText })),
+            getWritingAssignment: jest.fn(async () => assignment),
+            getLatestWritingFeedbackRun: jest.fn(async (_s: string, lens: WritingFeedbackLens = 'linguistic') =>
+                lens === 'linguistic' ? (created[created.length - 1] ?? generation) : null),
+            createWritingFeedbackRun: jest.fn(async (input: Omit<WritingFeedbackRun, 'id' | 'createdAt'>) => {
+                const run = { ...input, id: `run-redraft-${created.length + 1}`, createdAt: new Date() } as WritingFeedbackRun;
+                created.push(run);
+                return run;
+            }),
+            getLatestWritingRelease: jest.fn(async () => null),
+            listWritingReleases: jest.fn(async () => [])
+        };
+        const redraftEngine = {
+            redraft: jest.fn(async () => ({
+                criteria: assignment.rubric.criteria.map((criterion) => ({ criterion: criterion.id, suggestedLevel: assignment.rubric.levels[1].id, explanation: 'Redrafted.', confidence: 0.7 })),
+                strengths: ['Redrafted strength.'],
+                revisionGoals: [{ skillTag: 'x', goal: 'New goal.', guidedQuestion: 'New question?' }]
+            }))
+        };
+        ModelSelectionService.getInstance().buildFeatureLlmCallOptions = jest.fn(async () => ({}));
+        const service = new WritingFeedbackService(
+            mongo as unknown as EngEAI_MongoDB,
+            { generate: jest.fn() },
+            { render: jest.fn(async () => Buffer.from('pdf')) } as never,
+            undefined,
+            undefined,
+            redraftEngine
+        );
+        const staffComment: AnchoredComment = {
+            id: 'c-staff', lens: 'linguistic', criterion: criterionId, quote: 'It is obvious that everyone agrees.',
+            startOffset: 37, endOffset: 72, comment: 'Certainty closes the argument.', origin: 'staff'
+        };
+        return { service, mongo, redraftEngine, created, generation, staffComment, criterionId };
+    }
+
+    it('redrafts a changed lens and stores a run carrying the annotations and fingerprint', async () => {
+        const { service, redraftEngine, created, staffComment } = redraftFixture();
+
+        const result = await service.redraftSummary('course-1', 'submission-1', { comments: [staffComment], lenses: ['linguistic'] });
+
+        expect(redraftEngine.redraft).toHaveBeenCalledTimes(1);
+        expect(result.redraftedLenses).toEqual(['linguistic']);
+        expect(created).toHaveLength(1);
+        expect(created[0].redraftOfRunId).toBe('run-gen');
+        expect(created[0].sourceComments).toEqual([staffComment]);
+        expect(created[0].annotationsFingerprint).toMatch(/^[0-9a-f]{8}$/);
+        expect(created[0].modelMetadata.promptVersion).toBe('summary-redraft-v1');
+        expect(result.detail.summarySources.linguistic?.runId).toBe(created[0].id);
+        expect(result.detail.workingComments.map((comment) => comment.id)).toEqual(['c-staff']);
+    });
+
+    it('skips a lens whose annotations match the summary it already has', async () => {
+        const probe = redraftFixture();
+        const { service, redraftEngine } = redraftFixture({ sourceFingerprint: fingerprintAnnotations([probe.staffComment]) });
+
+        const result = await service.redraftSummary('course-1', 'submission-1', { comments: [probe.staffComment], lenses: ['linguistic'] });
+
+        expect(redraftEngine.redraft).not.toHaveBeenCalled();
+        expect(result.redraftedLenses).toEqual([]);
+    });
+
+    it('refuses after approval', async () => {
+        const { service, staffComment } = redraftFixture({ status: 'approved' });
+        await expect(service.redraftSummary('course-1', 'submission-1', { comments: [staffComment], lenses: ['linguistic'] }))
+            .rejects.toThrow('The summary can only be redrafted before approval');
+    });
+
+    it('refuses annotations that no longer match the verified text', async () => {
+        const { service, staffComment } = redraftFixture();
+        await expect(service.redraftSummary('course-1', 'submission-1', { comments: [{ ...staffComment, quote: 'moved' }], lenses: ['linguistic'] }))
+            .rejects.toThrow('Feedback comments no longer match the verified text');
+    });
+
+    it('stores nothing and throws the fixed message when the model fails', async () => {
+        const { service, redraftEngine, created, staffComment } = redraftFixture();
+        redraftEngine.redraft.mockRejectedValueOnce(new Error('provider echoed: It is obvious that everyone agrees.'));
+
+        await expect(service.redraftSummary('course-1', 'submission-1', { comments: [staffComment], lenses: ['linguistic'] }))
+            .rejects.toThrow('The summary could not be updated from your annotations');
+        expect(created).toHaveLength(0);
+    });
+
+    it('detail fingerprints the generation seeds when no redraft exists', async () => {
+        const { service } = redraftFixture();
+        const detail = await service.detail('course-1', 'submission-1');
+        expect(detail.summarySources.linguistic?.runId).toBe('run-gen');
+        expect(detail.workingComments.length).toBeGreaterThan(0);
+        expect(detail.workingComments.every((comment) => comment.origin === 'model_seed')).toBe(true);
+    });
+});
+
+describe('WritingFeedbackService summary edits on review save', () => {
+    it('refuses edits written against a run that is no longer the latest', async () => {
+        const { service, mongo } = buildService();
+        const extra = Object.assign(mongo, {
+            appendWritingReview: jest.fn(),
+            getLatestWritingRelease: jest.fn(async () => null)
+        });
+
+        await expect(service.appendReview('course-1', 'submission-1', {
+            feedbackRunId: 'run-linguistic',
+            staffUserId: 'staff-1',
+            studentFeedback: 'Goals.',
+            summaryEdits: [{ lens: 'linguistic', feedbackRunId: 'stale-run', strengths: [], criterionExplanations: [] }]
+        })).rejects.toThrow('The summary changed since you opened it. Reload and try again.');
+        expect(extra.appendWritingReview).not.toHaveBeenCalled();
+    });
+});
+
+describe('WritingFeedbackService student PDF summary', () => {
+    it('renders bound edits and evidence from the saved annotations', async () => {
+        const { service, mongo, pdfService, assignment } = buildService();
+        const criterionId = assignment.rubric.criteria[0].id;
+        const runWithCriteria: WritingFeedbackRun = {
+            ...feedbackRun('linguistic', assignment.rubric.version),
+            id: 'run-linguistic',
+            result: {
+                criteria: [{ criterion: criterionId, suggestedLevel: assignment.rubric.levels[0].id, evidence: [{ quote: 'model', rationale: 'model' }], explanation: 'Model.', confidence: 0.5 }],
+                strengths: ['Model strength.'], revisionGoals: [], internalFlags: []
+            }
+        };
+        mongo.getLatestWritingFeedbackRun.mockImplementation(async (_s: string, lens: WritingFeedbackLens = 'linguistic') =>
+            lens === 'linguistic' ? runWithCriteria : null);
+        mongo.getWritingSubmission.mockResolvedValue({
+            ...submission('draft_ready'),
+            reviews: [{
+                id: 'rev', submissionId: 'submission-1', feedbackRunId: 'run-linguistic', staffUserId: 'u', studentFeedback: 'Staff goals.', createdAt: new Date(),
+                comments: [{ id: 'c', lens: 'linguistic', criterion: criterionId, quote: 'student text', startOffset: 9, endOffset: 21, comment: 'Staff note.', origin: 'staff' }],
+                summaryEdits: [{ lens: 'linguistic', feedbackRunId: 'run-linguistic', strengths: ['Edited strength.'], criterionExplanations: [{ criterion: criterionId, explanation: 'Edited explanation.' }] }]
+            }]
+        } as WritingSubmission);
+
+        await service.renderPdf('course-1', 'submission-1', 'both');
+
+        const input = (pdfService.render as jest.Mock).mock.calls[0][0];
+        expect(input.feedback.strengths).toEqual(['Edited strength.']);
+        expect(input.feedback.criteria[0].explanation).toBe('Edited explanation.');
+        expect(input.feedback.criteria[0].evidence).toEqual([{ quote: 'student text', rationale: 'Staff note.' }]);
+        expect(input.staffFeedback).toBe('Staff goals.');
+        expect(input.comments.map((comment: AnchoredComment) => comment.id)).toEqual(['c']);
+    });
+
+    it('ignores edits and staff goals written against an older run', async () => {
+        const { service, mongo, pdfService } = buildService();
+        mongo.getWritingSubmission.mockResolvedValue({
+            ...submission('draft_ready'),
+            reviews: [{
+                id: 'rev', submissionId: 'submission-1', feedbackRunId: 'older-run', staffUserId: 'u', studentFeedback: 'Old goals.', createdAt: new Date(),
+                summaryEdits: [{ lens: 'linguistic', feedbackRunId: 'older-run', strengths: ['Old.'], criterionExplanations: [] }]
+            }]
+        } as WritingSubmission);
+
+        await service.renderPdf('course-1', 'submission-1', 'general');
+
+        const input = (pdfService.render as jest.Mock).mock.calls[0][0];
+        expect(input.feedback.strengths).toEqual([]);
+        expect(input.staffFeedback).toBeUndefined();
     });
 });

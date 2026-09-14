@@ -258,13 +258,15 @@ export async function createManualWritingAssignment(
     dueAt?: Date
 ): Promise<WritingAssignment> {
     await ensureWritingFeedbackIndexes(ctx);
-    const assignment = {
+    const assignment: WritingAssignment = {
         ...buildDefaultWritingAssignment(
             courseId,
             randomUUID(),
             title.trim().slice(0, 200),
             instructions?.trim() || undefined
         ),
+        // Every new assignment waits for staff to choose its type (D-123).
+        assignmentTypePending: true,
         ...(dueAt ? { dueAt } : {})
     };
     await assignments(ctx).insertOne(assignment);
@@ -356,6 +358,9 @@ export async function createCanvasWritingAssignment(
     );
     const assignment: WritingAssignment = {
         ...base,
+        // Every new assignment waits for staff to choose its type (D-123). A concurrent import
+        // that loses the unique-index race returns the existing record unchanged below.
+        assignmentTypePending: true,
         ...(canvasRubric
             ? {
                   rubric: seedRubricForLens({ lens: 'linguistic', actorUserId: 'platform', canvasRubric, now }),
@@ -548,26 +553,27 @@ export async function approveWritingRubricDraft(
 }
 
 /**
- * setWritingAssignmentLabReport — marks or clears an assignment as a lab report.
+ * chooseWritingAssignmentType — records the one-time writing / lab report choice (D-123).
  *
- * Seeding and clearing rules live in the service; this delegate performs only the
- * course-scoped write.
+ * Succeeds only while `assignmentTypePending` is still true, so the first answer wins and a
+ * second request (another tab, another staff member) matches nothing and gets `null`. Rubric
+ * routing for a lab report is applied separately by the caller.
  *
  * @param ctx - Connected Mongo data-layer context
  * @param courseId - Owning course id
- * @param assignmentId - Assignment being marked
- * @param isLabReport - Whether the assignment receives technical feedback
- * @returns Updated assignment, or `null` when the scoped assignment is absent
+ * @param assignmentId - Assignment whose type is being chosen
+ * @param isLabReport - Whether the assignment is a lab report
+ * @returns Updated assignment, or `null` when it is absent or its type was already chosen
  */
-export async function setWritingAssignmentLabReport(
+export async function chooseWritingAssignmentType(
     ctx: MongoDalContext,
     courseId: string,
     assignmentId: string,
     isLabReport: boolean
 ): Promise<WritingAssignment | null> {
     const updated = await assignments(ctx).findOneAndUpdate(
-        { id: assignmentId, courseId },
-        { $set: { isLabReport, updatedAt: new Date() } },
+        { id: assignmentId, courseId, assignmentTypePending: true },
+        { $set: { isLabReport, updatedAt: new Date() }, $unset: { assignmentTypePending: '' } },
         { returnDocument: 'after' }
     );
     return updated ? normalizeWritingAssignment(updated) : null;

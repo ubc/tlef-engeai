@@ -20,6 +20,7 @@ import type {
     FeedbackPdfInclude,
     FeedbackPdfLens,
     StaffReviewRevision,
+    SummarySource,
     WritingAssignment,
     WritingFeedbackEngine,
     WritingFeedbackLens,
@@ -34,7 +35,7 @@ import type {
 import { RELEASE_LOCK_TTL_MS } from './contracts';
 import { computeReleaseFingerprint } from './canvas-release-service';
 import { seedCommentsFromRun, stampCommentAuthors, validateAnchoredComments, withStaleFlags, type AnchoredCommentWithState } from './anchored-comments';
-import { RubricWritingFeedbackEngine } from './feedback-engine';
+import { NO_REVISION_GOALS_MESSAGE, RubricWritingFeedbackEngine } from './feedback-engine';
 import { TECHNICAL_PROMPT_VERSION, TechnicalWritingFeedbackEngine } from './technical-feedback-engine';
 import { lensesForAssignment, selectRubric, rubricForVersion } from './rubric-lens';
 import { ModelSelectionService } from '../dashboard-setting/model-selection-service';
@@ -50,6 +51,18 @@ import { SanitizedJobError } from './job-runner';
 import { resolveQueuedReleaseService } from './queued-release-service';
 import { requireCompleteSflProfile } from './sfl-analysis';
 import { appLogger } from '../utils/logger';
+import { fingerprintAnnotations } from './annotation-fingerprint';
+import { assertSummaryEditsBound } from './summary-edits';
+import { LlmSummaryRedraftEngine, SUMMARY_REDRAFT_FAILED_MESSAGE, type SummaryRedraftEngine } from './summary-redraft-engine';
+import {
+    applySummaryToResult,
+    bindingStudentFeedback,
+    bindingSummaryEdit,
+    buildRedraftRun,
+    commentsForLens,
+    resolveLensComments,
+    rubricForRun
+} from './summary-sources';
 
 /**
  * Fixed, developer-authored error strings this codebase throws for known validation
@@ -83,7 +96,8 @@ const SAFE_TO_LOG_MESSAGES = new Set([
     'SFL analysis referenced an unknown rule id',
     'SFL analysis referenced an unknown source id',
     'SFL analysis duplicated a genre-staging finding',
-    'SFL analysis returned too many findings'
+    'SFL analysis returned too many findings',
+    NO_REVISION_GOALS_MESSAGE
 ]);
 
 /**
@@ -123,6 +137,9 @@ export function describeFailureSafely(error: unknown): string {
     return `${name} - ${message}${suffix}`;
 }
 
+/** Refusal for a redraft requested once the submission has left `draft_ready`. */
+export const REDRAFT_NOT_DRAFT_READY_MESSAGE = 'The summary can only be redrafted before approval';
+
 type GeneratedFeedbackWithTrace = WritingFeedbackResult & { runTrace?: WritingFeedbackRunTrace };
 
 type ReviewableSubmission = WritingSubmission & { reviews?: StaffReviewRevision[] };
@@ -137,6 +154,10 @@ export interface SubmissionDetail {
     comments: AnchoredCommentWithState[];
     /** Model-derived seeds; present only while no revision has stored comments yet. */
     seedComments: AnchoredComment[];
+    /** Annotation working set resolved per lens (newest of saved revision or redraft, else seeds). */
+    workingComments: AnchoredCommentWithState[];
+    /** Per lens, the run the summary comes from and the annotations fingerprint it reflects. */
+    summarySources: Partial<Record<WritingFeedbackLens, SummarySource>>;
     /** Latest persisted Canvas release state, including any reconciliation requirement. */
     release: WritingRelease | null;
     /** How many times this submission's feedback has reached the student in Canvas. */
@@ -154,6 +175,8 @@ export interface SubmissionDetail {
 export class WritingFeedbackService {
     /** Memoised technical engine; built at most once, and only if the technical lens ever runs. */
     private lazyTechnicalEngine?: WritingFeedbackEngine;
+    /** Memoised summary redraft engine, built only when a redraft actually runs. */
+    private lazyRedraftEngine?: SummaryRedraftEngine;
 
     /**
      * Creates the lifecycle service with injectable generation and PDF implementations.
@@ -177,8 +200,21 @@ export class WritingFeedbackService {
          * Injected so the queued path can be tested without Canvas configuration, tokens, or a
          * course link; production always passes through {@link resolveQueuedReleaseService}.
          */
-        private readonly resolveQueuedRelease = resolveQueuedReleaseService
+        private readonly resolveQueuedRelease = resolveQueuedReleaseService,
+        /** Summary redraft engine; a test double here always wins, production builds one lazily. */
+        private readonly redraftEngine?: SummaryRedraftEngine
     ) {}
+
+    /**
+     * Resolves the summary redraft engine, constructing the default implementation at most once.
+     *
+     * @returns The injected test double, or the lazily-built default redraft engine
+     */
+    private getRedraftEngine(): SummaryRedraftEngine {
+        if (this.redraftEngine) return this.redraftEngine;
+        if (!this.lazyRedraftEngine) this.lazyRedraftEngine = new LlmSummaryRedraftEngine();
+        return this.lazyRedraftEngine;
+    }
 
     /**
      * Resolves the technical engine, constructing the default implementation at most once.
@@ -353,22 +389,47 @@ export class WritingFeedbackService {
         const technicalFeedbackRun = await this.mongo.getLatestWritingFeedbackRun(submissionId, 'technical');
         const release = await this.mongo.getLatestWritingRelease(courseId, submissionId);
         const verifiedText = submission.verifiedText ?? '';
-        const assignment = feedbackRun
+        const assignment = feedbackRun || technicalFeedbackRun
             ? await this.requireAssignment(courseId, submission.assignmentId)
             : null;
-        const runRubric = feedbackRun && assignment
-            ? [assignment.rubric, ...(assignment.rubricHistory ?? [])]
-                .find((rubric) => rubric.version === feedbackRun.rubricVersion)
-            : undefined;
-        // The newest revision that snapshots comments is authoritative, even if newer prose exists.
+
+        // Step 1: the newest saved revision that snapshotted comments (legacy fields kept as before).
         const latestWithComments = [...(submission.reviews ?? [])].reverse().find((review) => review.comments);
-        const comments = latestWithComments?.comments
-            ? withStaleFlags(latestWithComments.comments, verifiedText)
-            : [];
-        // Model evidence remains transient until staff explicitly saves a first comment revision.
-        const seedComments = !latestWithComments && feedbackRun && verifiedText
-            ? seedCommentsFromRun(feedbackRun, verifiedText, runRubric)
-            : [];
+        const comments = latestWithComments?.comments ? withStaleFlags(latestWithComments.comments, verifiedText) : [];
+        const runsByLens: Record<WritingFeedbackLens, WritingFeedbackRun | null> = {
+            linguistic: feedbackRun,
+            technical: technicalFeedbackRun
+        };
+
+        // Step 2: per lens, seeds from its latest run, then the newest of revision or redraft wins.
+        // Seeds are transient until staff explicitly save a revision or a redraft stores them.
+        const workingComments: AnchoredCommentWithState[] = [];
+        const seedComments: AnchoredComment[] = [];
+        const summarySources: Partial<Record<WritingFeedbackLens, SummarySource>> = {};
+        for (const lens of ['technical', 'linguistic'] as const) {
+            // A run belongs to the lens it was generated for; a missing lens means linguistic.
+            const candidate = runsByLens[lens];
+            const run = candidate && (candidate.lens ?? 'linguistic') === lens ? candidate : null;
+            const seeds = run && assignment && verifiedText
+                ? seedCommentsFromRun(run, verifiedText, rubricForRun(assignment, run))
+                : [];
+            if (!latestWithComments) seedComments.push(...seeds);
+            const resolved = resolveLensComments(lens, {
+                revision: latestWithComments?.comments
+                    ? { comments: latestWithComments.comments, createdAt: latestWithComments.createdAt }
+                    : undefined,
+                run,
+                seeds
+            }, { includeSeeds: true });
+            workingComments.push(...withStaleFlags(resolved.comments, verifiedText));
+            if (run) {
+                summarySources[lens] = {
+                    runId: run.id,
+                    annotationsFingerprint: run.annotationsFingerprint ?? fingerprintAnnotations(seeds)
+                };
+            }
+        }
+
         // Release counts travel with the detail so the review page can say a submission has
         // been revised without fetching and counting its release history itself.
         const priorReleases = await this.mongo.listWritingReleases(courseId, submissionId);
@@ -378,10 +439,92 @@ export class WritingFeedbackService {
             technicalFeedbackRun,
             comments,
             seedComments,
+            workingComments,
+            summarySources,
             release,
             releaseCount: countCompletedReleases(priorReleases),
             maxReleases: MAX_SUBMISSION_RELEASES
         };
+    }
+
+    /**
+     * redraftSummary - rewrites the summary of every changed lens from its final annotations (D-125).
+     *
+     * Synchronous by design: the working annotations are unsaved student-derived text and a job
+     * payload may carry only ids. Each redraft is stored as a new immutable run, so suggested
+     * grading, approval, the PDF and release all read it as the latest run.
+     *
+     * @param courseId - Course authorization/persistence boundary
+     * @param submissionId - Draft-ready submission under review
+     * @param input - Complete working annotations and the lenses the page believes changed
+     * @returns Refreshed detail and the lenses actually redrafted
+     * @throws Error for a non-draft-ready submission, a release in flight, stale anchors, a stale
+     *   rubric, or `SUMMARY_REDRAFT_FAILED_MESSAGE` when the model call fails
+     */
+    async redraftSummary(
+        courseId: string,
+        submissionId: string,
+        input: { comments: AnchoredComment[]; lenses: WritingFeedbackLens[] }
+    ): Promise<{ detail: SubmissionDetail; redraftedLenses: WritingFeedbackLens[] }> {
+        // Step 1: state and anchor checks, before any model call.
+        const submission = await this.requireSubmission(courseId, submissionId);
+        if (submission.status !== 'draft_ready') throw new Error(REDRAFT_NOT_DRAFT_READY_MESSAGE);
+        await this.assertNoReleaseInFlight(courseId, submissionId);
+        const verifiedText = submission.verifiedText ?? '';
+        validateAnchoredComments(input.comments, verifiedText);
+        const assignment = await this.requireAssignment(courseId, submission.assignmentId);
+
+        // Step 2: plan only the lenses whose annotations differ from their current summary.
+        const allowed = lensesForAssignment(assignment);
+        const plans: Array<{
+            lens: WritingFeedbackLens;
+            run: WritingFeedbackRun;
+            rubric: WritingRubricDefinition;
+            comments: AnchoredComment[];
+            fingerprint: string;
+        }> = [];
+        for (const lens of [...new Set(input.lenses)].filter((item) => allowed.includes(item))) {
+            const run = await this.mongo.getLatestWritingFeedbackRun(submissionId, lens);
+            if (!run) continue;
+            const rubric = selectRubric(assignment, lens).approved;
+            this.assertCurrentRubricForLens(run.rubricVersion, rubric, lens);
+            const comments = commentsForLens(input.comments, lens);
+            const fingerprint = fingerprintAnnotations(comments);
+            const current = run.annotationsFingerprint
+                ?? fingerprintAnnotations(seedCommentsFromRun(run, verifiedText, rubricForRun(assignment, run)));
+            if (fingerprint === current) continue;
+            plans.push({ lens, run, rubric: rubric!, comments, fingerprint });
+        }
+
+        // Step 3: one structured call per lens, in parallel. Nothing is stored unless all succeed.
+        let outputs;
+        try {
+            const llmCallOptions = plans.length
+                ? await ModelSelectionService.getInstance().buildFeatureLlmCallOptions(courseId, 'writingFeedback')
+                : undefined;
+            outputs = await Promise.all(plans.map((plan) => this.getRedraftEngine().redraft({
+                assignment,
+                lens: plan.lens,
+                rubric: plan.rubric,
+                verifiedText,
+                previousResult: plan.run.result,
+                comments: plan.comments,
+                llmCallOptions
+            })));
+        } catch (error) {
+            // Model errors can echo the prompt, which carries student text: describe, never quote.
+            appLogger.log('[writing-feedback] summary redraft failed:', describeFailureSafely(error));
+            throw new Error(SUMMARY_REDRAFT_FAILED_MESSAGE);
+        }
+
+        // Step 4: persist immutable redraft runs.
+        const engineName = this.getRedraftEngine().constructor.name;
+        for (const [index, plan] of plans.entries()) {
+            await this.mongo.createWritingFeedbackRun(
+                buildRedraftRun(plan.run, outputs[index], plan.comments, plan.fingerprint, engineName)
+            );
+        }
+        return { detail: await this.detail(courseId, submissionId), redraftedLenses: plans.map((plan) => plan.lens) };
     }
 
     /**
@@ -407,6 +550,13 @@ export class WritingFeedbackService {
             throw new Error('Released feedback cannot be edited; create a new attempt for a revised release');
         }
         await this.assertNoReleaseInFlight(courseId, submissionId);
+        // Summary edits apply only to the runs staff were looking at (D-126).
+        if (revision.summaryEdits?.length) {
+            assertSummaryEditsBound(revision.summaryEdits, {
+                linguistic: await this.mongo.getLatestWritingFeedbackRun(submissionId),
+                technical: await this.mongo.getLatestWritingFeedbackRun(submissionId, 'technical')
+            });
+        }
         let comments = revision.comments;
         if (comments?.length) {
             // Attribution is server-derived: carried from the prior snapshot or stamped
@@ -513,27 +663,26 @@ export class WritingFeedbackService {
             this.assertCurrentRubric(run.rubricVersion, assignment);
             ({ technicalRun, technicalRubric } = await this.loadTechnicalLens(submissionId, assignment));
         }
-        // Narrative feedback comes from the latest revision; comments may come from the
-        // latest earlier revision that explicitly snapshotted the comment working set.
-        const latestReview = submission.reviews?.[submission.reviews.length - 1];
-        const latestWithComments = [...(submission.reviews ?? [])].reverse().find((review) => review.comments);
-        // Re-check checksums defensively so stale anchors never reach a student PDF.
-        const comments = (latestWithComments?.comments ?? [])
-            .filter((comment) => (submission.verifiedText ?? '').slice(comment.startOffset, comment.endOffset) === comment.quote);
+        // Step 2: assemble the student-safe feedback, staff text, and comments from the reviews.
+        const studentDocument = this.buildStudentDocument(submission, run, technicalRun);
         return this.pdfService.render({
             assignment: pdfAssignment,
             submission,
-            feedback: run.result,
-            grade: latestReview?.finalAssessment?.totalPoints,
-            staffFeedback: latestReview?.studentFeedback,
-            comments,
+            feedback: studentDocument.feedback,
+            grade: studentDocument.latestReview?.finalAssessment?.totalPoints,
+            staffFeedback: studentDocument.staffFeedback,
+            comments: studentDocument.comments,
             include,
             lens,
-            finalAssessment: latestReview?.finalAssessment,
+            finalAssessment: studentDocument.latestReview?.finalAssessment,
             // Approving staff name (user decision 2026-07-22); generic fallback pre-approval.
             annotationAuthor: submission.approvedByName,
-            ...(technicalRun && technicalRubric
-                ? { technicalFeedback: technicalRun.result, technicalRubric }
+            ...(technicalRun && technicalRubric && studentDocument.technicalFeedback
+                ? {
+                    technicalFeedback: studentDocument.technicalFeedback,
+                    technicalRubric,
+                    technicalStaffFeedback: studentDocument.technicalStaffFeedback
+                }
                 : {})
         });
     }
@@ -554,23 +703,8 @@ export class WritingFeedbackService {
         if (!feedbackRun) throw new Error('Generate feedback before a release preview');
         this.assertCurrentRubric(feedbackRun.rubricVersion, assignment);
         const { technicalRun, technicalRubric } = await this.loadTechnicalLens(submissionId, assignment);
-        const latestReview = submission.reviews?.[submission.reviews.length - 1];
-        // One document per submission. A lab report carries its technical feedback inside the
-        // same PDF, ahead of the writing feedback, rather than arriving as a second attachment
-        // a student has to open separately.
-        const completePdf = await this.pdfService.render({
-            assignment,
-            submission,
-            feedback: feedbackRun.result,
-            grade: latestReview?.finalAssessment?.totalPoints,
-            staffFeedback: latestReview?.studentFeedback,
-            finalAssessment: latestReview?.finalAssessment,
-            ...(technicalRun && technicalRubric
-                ? { technicalFeedback: technicalRun.result, technicalRubric }
-                : {}),
-            include: 'both',
-            lens: 'writing'
-        });
+        const completePdf = await this.renderReleasePdf(assignment, submission, feedbackRun, technicalRun, technicalRubric);
+        const studentDocument = this.buildStudentDocument(submission, feedbackRun, technicalRun);
         const artifacts: CanvasReleaseInput['artifacts'] = [
             { kind: 'writing', filename: 'writing-feedback-complete.pdf', data: completePdf }
         ];
@@ -586,10 +720,41 @@ export class WritingFeedbackService {
             artifacts,
             gradedRubric,
             revision,
-            finalAssessment: latestReview?.finalAssessment,
-            studentFeedback: latestReview?.studentFeedback,
+            finalAssessment: studentDocument.latestReview?.finalAssessment,
+            studentFeedback: studentDocument.staffFeedback,
+            summaryEdits: studentDocument.latestReview?.summaryEdits,
             ...(technicalRun ? { technicalFeedbackRun: technicalRun } : {})
         });
+    }
+
+    /**
+     * releaseToCanvas - releases approved feedback from one staff action (D-128).
+     *
+     * Staff no longer preview separately: this prepares the release preview (PDF render and Canvas
+     * preflight, no Canvas write) and queues the write in the same request. Feedback reaches Canvas
+     * once; the cap refuses a second release.
+     *
+     * @param courseId - Course authorization/persistence boundary
+     * @param submissionId - Approved submission to release
+     * @param releaseService - Canvas release coordinator resolved for this request
+     * @param queuedByUserId - `GlobalUser.userId` of the staff member releasing
+     * @returns The active or newly queued release job
+     * @throws Error with the staff-facing reason when the release cannot be attempted
+     */
+    async releaseToCanvas(
+        courseId: string,
+        submissionId: string,
+        releaseService: CanvasReleaseService,
+        queuedByUserId: string
+    ): Promise<WritingJob> {
+        // Step 1: refuse cheaply, before rendering a PDF or preflighting Canvas.
+        const submission = await this.requireSubmission(courseId, submissionId);
+        if (submission.status !== 'approved') throw new Error('Staff approval is required before Canvas release');
+        // Step 2: the dry-run preview staff no longer trigger separately. It is idempotent per payload,
+        // so pressing Release again reuses the same preview rather than creating another.
+        await this.previewRelease(courseId, submissionId, releaseService);
+        // Step 3: queue the write against the preview just prepared.
+        return this.enqueueRelease(courseId, submissionId, queuedByUserId);
     }
 
     /**
@@ -748,9 +913,10 @@ export class WritingFeedbackService {
             feedbackRunId: feedbackRun.id,
             rubricVersion: feedbackRun.rubricVersion,
             grade: latestReview?.finalAssessment?.totalPoints,
-            studentFeedback: latestReview?.studentFeedback,
+            studentFeedback: bindingStudentFeedback(latestReview, feedbackRun.id),
             technicalFeedbackRunId: technicalRun?.id,
-            finalAssessment: latestReview?.finalAssessment
+            finalAssessment: latestReview?.finalAssessment,
+            summaryEdits: latestReview?.summaryEdits
         });
     }
 
@@ -831,23 +997,8 @@ export class WritingFeedbackService {
         if (!feedbackRun) throw new Error('Generate feedback before release');
         this.assertCurrentRubric(feedbackRun.rubricVersion, assignment);
         const { technicalRun, technicalRubric } = await this.loadTechnicalLens(submissionId, assignment);
-        const latestReview = submission.reviews?.[submission.reviews.length - 1];
-        // One document per submission. A lab report carries its technical feedback inside the
-        // same PDF, ahead of the writing feedback, rather than arriving as a second attachment
-        // a student has to open separately.
-        const completePdf = await this.pdfService.render({
-            assignment,
-            submission,
-            feedback: feedbackRun.result,
-            grade: latestReview?.finalAssessment?.totalPoints,
-            staffFeedback: latestReview?.studentFeedback,
-            finalAssessment: latestReview?.finalAssessment,
-            ...(technicalRun && technicalRubric
-                ? { technicalFeedback: technicalRun.result, technicalRubric }
-                : {}),
-            include: 'both',
-            lens: 'writing'
-        });
+        const completePdf = await this.renderReleasePdf(assignment, submission, feedbackRun, technicalRun, technicalRubric);
+        const studentDocument = this.buildStudentDocument(submission, feedbackRun, technicalRun);
         const artifacts: CanvasReleaseInput['artifacts'] = [
             { kind: 'writing', filename: 'writing-feedback-complete.pdf', data: completePdf }
         ];
@@ -862,8 +1013,9 @@ export class WritingFeedbackService {
             artifacts,
             gradedRubric,
             revision,
-            finalAssessment: latestReview?.finalAssessment,
-            studentFeedback: latestReview?.studentFeedback,
+            finalAssessment: studentDocument.latestReview?.finalAssessment,
+            studentFeedback: studentDocument.staffFeedback,
+            summaryEdits: studentDocument.latestReview?.summaryEdits,
             ...(technicalRun ? { technicalFeedbackRun: technicalRun } : {})
         });
         // Mark local completion only after both the Canvas comment and async grade job are confirmed.
@@ -912,6 +1064,98 @@ export class WritingFeedbackService {
      * @returns The latest technical run (or null when none applies yet) and its rubric
      * @throws Error when a technical run exists but predates the currently-approved technical rubric
      */
+    /**
+     * buildStudentDocument - the student-facing content for one submission (D-126, D-127).
+     *
+     * Applies staff summary edits bound to the latest runs, takes evidence from the final
+     * annotations when any exist, and resolves the comments printed on the annotated pages.
+     *
+     * @param submission - Submission with its review history
+     * @param feedbackRun - Latest linguistic run
+     * @param technicalRun - Latest technical run, when the assignment has one
+     * @returns Render-ready feedback, staff goals, comments and the latest revision
+     */
+    private buildStudentDocument(
+        submission: ReviewableSubmission,
+        feedbackRun: WritingFeedbackRun,
+        technicalRun: WritingFeedbackRun | null
+    ) {
+        const verifiedText = submission.verifiedText ?? '';
+        const latestReview = submission.reviews?.[submission.reviews.length - 1];
+        const latestWithComments = [...(submission.reviews ?? [])].reverse().find((review) => review.comments);
+        const revision = latestWithComments?.comments
+            ? { comments: latestWithComments.comments, createdAt: latestWithComments.createdAt }
+            : undefined;
+        // Re-check checksums defensively so stale anchors never reach a student PDF.
+        const anchored = (comments: AnchoredComment[]) =>
+            comments.filter((comment) => verifiedText.slice(comment.startOffset, comment.endOffset) === comment.quote);
+
+        const linguistic = resolveLensComments('linguistic', { revision, run: feedbackRun, seeds: [] }, { includeSeeds: false });
+        const technical = technicalRun
+            ? resolveLensComments('technical', { revision, run: technicalRun, seeds: [] }, { includeSeeds: false })
+            : { comments: [], origin: 'none' as const };
+        const linguisticComments = anchored(linguistic.comments);
+        const technicalComments = anchored(technical.comments);
+
+        return {
+            latestReview,
+            // Technical first, so a lab report's annotated pages lead with the graded rubric.
+            comments: [...technicalComments, ...linguisticComments],
+            feedback: applySummaryToResult(feedbackRun.result, {
+                ...(linguistic.origin === 'none' ? {} : { comments: linguisticComments }),
+                edit: bindingSummaryEdit(latestReview, 'linguistic', feedbackRun.id)
+            }),
+            staffFeedback: bindingStudentFeedback(latestReview, feedbackRun.id),
+            ...(technicalRun
+                ? {
+                    technicalFeedback: applySummaryToResult(technicalRun.result, {
+                        ...(technical.origin === 'none' ? {} : { comments: technicalComments }),
+                        edit: bindingSummaryEdit(latestReview, 'technical', technicalRun.id)
+                    }),
+                    technicalStaffFeedback: bindingSummaryEdit(latestReview, 'technical', technicalRun.id)?.revisionGoalsText
+                }
+                : {})
+        };
+    }
+
+    /**
+     * renderReleasePdf - the single complete PDF a Canvas release attaches.
+     *
+     * One document per submission: a lab report carries its technical feedback ahead of the
+     * writing feedback. The annotated pages print the final annotations (user decision
+     * 2026-09-13); before this, released PDFs passed no comments and printed none.
+     *
+     * @returns Complete PDF bytes
+     */
+    private async renderReleasePdf(
+        assignment: WritingAssignment,
+        submission: ReviewableSubmission,
+        feedbackRun: WritingFeedbackRun,
+        technicalRun: WritingFeedbackRun | null,
+        technicalRubric: WritingRubricDefinition | undefined
+    ): Promise<Buffer> {
+        const studentDocument = this.buildStudentDocument(submission, feedbackRun, technicalRun);
+        return this.pdfService.render({
+            assignment,
+            submission,
+            feedback: studentDocument.feedback,
+            grade: studentDocument.latestReview?.finalAssessment?.totalPoints,
+            staffFeedback: studentDocument.staffFeedback,
+            finalAssessment: studentDocument.latestReview?.finalAssessment,
+            comments: studentDocument.comments,
+            annotationAuthor: submission.approvedByName,
+            ...(technicalRun && technicalRubric && studentDocument.technicalFeedback
+                ? {
+                    technicalFeedback: studentDocument.technicalFeedback,
+                    technicalRubric,
+                    technicalStaffFeedback: studentDocument.technicalStaffFeedback
+                }
+                : {}),
+            include: 'both',
+            lens: 'writing'
+        });
+    }
+
     private async loadTechnicalLens(
         submissionId: string,
         assignment: WritingAssignment

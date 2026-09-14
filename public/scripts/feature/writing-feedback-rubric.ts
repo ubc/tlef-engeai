@@ -25,6 +25,7 @@ import { showConfirmModal } from '../ui/modal-overlay.js';
 import { showSuccessToast } from '../ui/toast-notification.js';
 import { AutosaveSignedOutError, createAutosave } from './writing-feedback-autosave.js';
 import type { Autosave } from './writing-feedback-autosave.js';
+import { ensureAssignmentTypeChosen } from './writing-feedback-assignment-type.js';
 import {
     MIN_RATINGS_PER_CRITERION,
     deriveGenreState,
@@ -1234,6 +1235,10 @@ export async function openRubricPage(assignmentId: string): Promise<void> {
     if (!state.assignments.length) state.assignments = await request<Assignment[]>('/assignments');
     let assignment = state.assignments.find((item) => item.id === assignmentId);
     if (!assignment) throw new Error('Writing assignment not found');
+    // A deep link or Edit Rubric on a pending assignment asks for its type first (D-123).
+    if (assignment.assignmentTypePending) {
+        assignment = await ensureAssignmentTypeChosen(assignment);
+    }
     let linguisticData = await request<RubricResponse>(`/assignments/${encodeURIComponent(assignmentId)}/rubric?lens=linguistic`);
     let technicalData = assignment.isLabReport
         ? await request<RubricResponse>(`/assignments/${encodeURIComponent(assignmentId)}/rubric?lens=technical`)
@@ -1457,6 +1462,7 @@ function renderRubricPage(
     meta.className = 'wf-assignment-meta';
     const canEditAny = linguisticData.permissions.canEdit;
     meta.append(
+        ...(isLabReport ? [chip('Lab report', 'blue')] : []),
         createText('span', assignmentOriginText(assignment)),
         // The writing rubric's approval state belongs beside the assignment title;
         // a lab report's second rubric carries its own state in its section header.
@@ -2392,9 +2398,8 @@ async function saveAssignmentRubrics(context: RubricPageContext): Promise<void> 
     // staff did not ask for - the explicit re-seed action still owns that.
     if (context.technicalMissing && labContext) {
         const seededAssignment = await jsonRequest<Assignment>(
-            `/assignments/${encodeURIComponent(context.assignment.id)}/lab-report`,
-            'PATCH',
-            { isLabReport: true }
+            `/assignments/${encodeURIComponent(context.assignment.id)}/technical-rubric/seed`,
+            'POST'
         );
         const seededSource = seededAssignment.technicalRubricDraft ?? seededAssignment.technicalRubric;
         if (!seededSource) {
@@ -2411,7 +2416,7 @@ async function saveAssignmentRubrics(context: RubricPageContext): Promise<void> 
         // state, and several paths leave the page standing after a successful seed
         // (an approval the user then cancels, or a later rubric failing validation).
         // Clearing it here would strand the handout field with no send path again on
-        // the next save. Re-seeding is harmless: PATCH .../lab-report is idempotent
+        // the next save. Re-seeding is harmless: POST .../technical-rubric/seed is idempotent
         // and returns the draft that already exists.
     }
 
@@ -2518,7 +2523,7 @@ async function autosaveAssignmentRubrics(context: RubricPageContext): Promise<vo
  * empty state, since the writing template always seeds one)
  *
  * @param assignment - Parent assignment; re-seeding reuses the same
- * `PATCH .../lab-report` route the "Lab report" toggle already calls
+ * `POST .../technical-rubric/seed` route, which never resets the writing rubric
  * @returns Detached callout with a re-seed action for staff who can manage the rubric
  */
 /**
@@ -2555,9 +2560,8 @@ function renderMissingTechnicalRubric(assignment: Assignment): HTMLElement {
     if (canManageRubric) {
         status.append(createButton('Re-seed technical rubric', 'secondary', async () => {
             const updated = await jsonRequest<Assignment>(
-                `/assignments/${encodeURIComponent(assignment.id)}/lab-report`,
-                'PATCH',
-                { isLabReport: true }
+                `/assignments/${encodeURIComponent(assignment.id)}/technical-rubric/seed`,
+                'POST'
             );
             Object.assign(assignment, updated);
             showSuccessToast('Technical rubric seeded.');

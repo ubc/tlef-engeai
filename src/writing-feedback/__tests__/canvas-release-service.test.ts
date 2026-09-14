@@ -149,3 +149,18 @@ function buildRecordingService(): { service: SafeCanvasReleaseService; records: 
     );
     return { service, records, get saves() { return state.saves; } };
 }
+
+describe('computeReleaseFingerprint summary edits', () => {
+    const payload = { submissionId: 's', feedbackRunId: 'r', rubricVersion: 1, studentFeedback: 'x' };
+
+    it('keeps existing fingerprints when there are no summary edits', () => {
+        expect(computeReleaseFingerprint({ ...payload, summaryEdits: [] })).toBe(computeReleaseFingerprint(payload));
+    });
+
+    it('changes when a summary edit changes', () => {
+        const edit = { lens: 'linguistic' as const, feedbackRunId: 'r', strengths: ['A.'], criterionExplanations: [] };
+        const first = computeReleaseFingerprint({ ...payload, summaryEdits: [edit] });
+        expect(first).not.toBe(computeReleaseFingerprint(payload));
+        expect(computeReleaseFingerprint({ ...payload, summaryEdits: [{ ...edit, strengths: ['B.'] }] })).not.toBe(first);
+    });
+});

@@ -16,7 +16,7 @@
 
 import { zodResponseFormat } from 'openai/helpers/zod';
 import type { ZodType } from 'zod';
-import { buildFeedbackSchema } from '../feedback-schema';
+import { buildFeedbackSchema, buildSummaryRedraftSchema } from '../feedback-schema';
 import { sflAnalysisSchema } from '../sfl-analysis';
 import { autofillProposalSchema } from '../rubric-autofill';
 import { describeFailureSafely } from '../writing-feedback-service';
@@ -84,6 +84,12 @@ describe('structured-output JSON schemas', () => {
 
     it('emits no self-referential definition for the feedback writer schema', () => {
         const schema = generatedSchema(buildFeedbackSchema(rubric) as ZodType<unknown>, 'writing_feedback_v2');
+        expect(findSelfReferences(schema)).toEqual([]);
+    });
+
+    it('emits no typeless `not` node or self-reference for the summary redraft schema', () => {
+        const schema = generatedSchema(buildSummaryRedraftSchema(rubric) as unknown as ZodType<unknown>, 'writing_summary_redraft');
+        expect(findNotNodes(schema)).toEqual([]);
         expect(findSelfReferences(schema)).toEqual([]);
     });
 

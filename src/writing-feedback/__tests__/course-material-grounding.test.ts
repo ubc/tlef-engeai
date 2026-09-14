@@ -260,7 +260,7 @@ describe('excerpt budgeting', () => {
 
 describe('prompt contract versions move with the contract', () => {
     it('names the grounded writer and resolver versions', () => {
-        expect(SFL_WRITER_PROMPT_VERSION).toBe('sfl-feedback-writer-v2.1.0');
+        expect(SFL_WRITER_PROMPT_VERSION).toBe('sfl-feedback-writer-v2.2.0');
         expect(COURSE_MATERIAL_RESOLVER_VERSION).toBe('course-material-mentions-v2.0.0');
     });
 });
@@ -306,10 +306,12 @@ describe('student-facing source list', () => {
             'utf8'
         );
         const section = report.match(/function renderCourseMaterialSources[\s\S]*?\n}/)?.[0] ?? '';
-        expect(section).toContain('Course materials this feedback draws on');
+        expect(section).toContain('Useful readings');
         expect(section).toContain('mention.label');
         expect(section).not.toContain('mention.id');
         expect(section).not.toContain('score');
+        // A title, never a URL: the student may be reading the PDF on paper.
+        expect(section).not.toContain('courseMaterialLink');
     });
 });
 

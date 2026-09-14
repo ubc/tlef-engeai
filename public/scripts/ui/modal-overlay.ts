@@ -57,7 +57,7 @@ export interface ContentInputSubmitResult {
     successMessage?: string;
     /** If true, do not show {@link showSuccessModal} after close */
     skipSuccessModal?: boolean;
-    /** Runs after upload success modal closes */
+    /** Runs after the success modal closes, or straight away when `skipSuccessModal` is set */
     afterSuccess?: () => void | Promise<void>;
 }
 
@@ -1654,18 +1654,17 @@ export async function openContentInputModal(options: ContentInputModalOptions): 
                     (result as ContentInputSubmitResult).success;
                 if (success) {
                     const r = result as ContentInputSubmitResult;
-                    if (r.skipSuccessModal) {
-                        return;
-                    }
-                    const title =
-                        r.successTitle ??
-                        (r.chunksGenerated !== undefined ? 'Upload Success' : 'Success');
-                    let message = r.successMessage;
-                    if (!message && r.chunksGenerated !== undefined) {
-                        message = `Document uploaded successfully! Generated ${r.chunksGenerated} searchable chunks.`;
-                    }
-                    if (message) {
-                        await showSuccessModal(message, title);
+                    if (!r.skipSuccessModal) {
+                        const title =
+                            r.successTitle ??
+                            (r.chunksGenerated !== undefined ? 'Upload Success' : 'Success');
+                        let message = r.successMessage;
+                        if (!message && r.chunksGenerated !== undefined) {
+                            message = `Document uploaded successfully! Generated ${r.chunksGenerated} searchable chunks.`;
+                        }
+                        if (message) {
+                            await showSuccessModal(message, title);
+                        }
                     }
                     if (r.afterSuccess) {
                         await r.afterSuccess();
@@ -1861,6 +1860,8 @@ export async function openUploadModal(
               success: boolean;
               chunksGenerated?: number;
               generatedStruggleTopics?: InstructorStruggleTopic[];
+              /** Set when `afterSuccess` reports the upload itself, replacing the generic success modal. */
+              skipSuccessModal?: boolean;
               afterSuccess?: () => void | Promise<void>;
           }
         | void
@@ -1899,6 +1900,7 @@ export async function openUploadModal(
             if (result && (result as { success?: boolean }).success) {
                 const uploadResult = result as {
                     chunksGenerated?: number;
+                    skipSuccessModal?: boolean;
                     afterSuccess?: () => void | Promise<void>;
                 };
                 const chunksGenerated = uploadResult.chunksGenerated ?? 0;
@@ -1907,6 +1909,7 @@ export async function openUploadModal(
                     chunksGenerated,
                     successTitle: 'Upload Success',
                     successMessage: `Document uploaded successfully! Generated ${chunksGenerated} searchable chunks.`,
+                    skipSuccessModal: uploadResult.skipSuccessModal,
                     afterSuccess: uploadResult.afterSuccess,
                 };
             }

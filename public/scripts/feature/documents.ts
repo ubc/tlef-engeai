@@ -659,8 +659,12 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         await modalPromise;
     }
 
-    async function openPublishDraftModal(tw: TopicOrWeekInstance, wrapper: HTMLElement): Promise<void> {
-        let schedulePanelOpen = getScheduledDate(tw) !== null;
+    async function openPublishDraftModal(
+        tw: TopicOrWeekInstance,
+        wrapper: HTMLElement,
+        options: { openSchedulePanel?: boolean } = {}
+    ): Promise<void> {
+        let schedulePanelOpen = options.openSchedulePanel === true || getScheduledDate(tw) !== null;
 
         const bodyWrap = document.createElement('div');
         bodyWrap.className = 'publish-draft-modal-body';
@@ -818,6 +822,85 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             return;
         }
         await openPublishDraftModal(tw, wrapper);
+    }
+
+    /**
+     * Reports a finished upload and, when its topic/week is still a draft, asks whether to keep it
+     * as a draft, publish now, or schedule a publish. Students' chat only draws on published
+     * topic/weeks, so without this prompt new material silently stays unused.
+     *
+     * Publish state belongs to the whole topic/week, so the prompt names it rather than the file.
+     *
+     * @param tw - Topic/week the material was uploaded into
+     * @param materialName - Title the instructor gave the uploaded material
+     * @param chunksGenerated - Searchable chunks stored for the material
+     */
+    async function promptPublishAfterUpload(
+        tw: TopicOrWeekInstance,
+        materialName: string,
+        chunksGenerated: number
+    ): Promise<void> {
+        const uploadedLine = `"${materialName}" was uploaded.`;
+        const header = document.querySelector(
+            `.topic-or-week-header[data-topic-or-week-instance="${CSS.escape(tw.id)}"]`
+        );
+        const wrapper = header?.closest('.topic-or-week-instance') as HTMLElement | null;
+
+        // 1. Already live or already scheduled: nothing to decide, so confirm without interrupting.
+        if (tw.published) {
+            showSuccessToast(`${uploadedLine} "${tw.title}" is published, so students can use it now.`);
+            return;
+        }
+        const sched = getScheduledDate(tw);
+        if (sched) {
+            showSuccessToast(`${uploadedLine} It will reach students when "${tw.title}" publishes ${formatScheduleLine(sched)}.`);
+            return;
+        }
+
+        // 2. Draft: ask. Closing the modal any other way keeps the draft, the same as "Keep as draft".
+        const body = document.createElement('div');
+        body.style.lineHeight = '1.5';
+        const uploaded = document.createElement('p');
+        uploaded.style.marginBottom = '0.75rem';
+        uploaded.textContent = uploadedLine;
+        body.appendChild(uploaded);
+        const draftNote = document.createElement('p');
+        draftNote.style.margin = '0';
+        draftNote.textContent =
+            `"${tw.title}" is a draft, so EngE-AI can't reference its materials in chats yet. ` +
+            'Click "Publish now" to make all sections in ' + 
+            `"${tw.title}" visible, including "${materialName}".`;
+        body.appendChild(draftNote);
+
+        const result = await showCustomModal({
+            type: 'success',
+            title: 'Upload complete',
+            content: body,
+            maxWidth: '520px',
+            buttons: [
+                { text: 'Keep as draft', type: 'secondary', closeOnClick: true },
+                { text: 'Publish later', type: 'secondary', closeOnClick: true },
+                { text: 'Publish now', type: 'primary', closeOnClick: true }
+            ]
+        });
+
+        if (result.action === 'publish-later') {
+            if (!wrapper) return;
+            await openPublishDraftModal(tw, wrapper, { openSchedulePanel: true });
+            return;
+        }
+        if (result.action !== 'publish-now') return;
+
+        const r = await patchTopicPublished(tw, true);
+        if (!r.ok) {
+            await showSimpleErrorModal(r.error || 'Failed to publish.', 'Publish');
+            return;
+        }
+        if (wrapper) {
+            syncTopicOrWeekPublishHeader(wrapper, tw);
+            renderFeatherIcons();
+        }
+        showToast(`Published "${tw.title}"`, 3000, 'top-right');
     }
 
     function prefersReducedMotion(): boolean {
@@ -1701,6 +1784,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         success: boolean;
         chunksGenerated?: number;
         generatedStruggleTopics?: InstructorStruggleTopic[];
+        skipSuccessModal?: boolean;
         afterSuccess?: () => void | Promise<void>;
     } | void> {
     // console.log('🔍 HANDLE UPLOAD MATERIAL CALLED - FUNCTION STARTED'); // 🟢 MEDIUM: Function start logging
@@ -1792,14 +1876,9 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             const reviewTopicOrWeekId = topicOrWeekId;
             const reviewItemId = material.itemId;
 
-            // Return success info; review modal only when Memory Agent is on and topics were generated
-            return {
-                success: true,
-                chunksGenerated: uploadResult.chunksGenerated,
-                generatedStruggleTopics: uploadResult.generatedStruggleTopics,
-                afterSuccess:
-                    memoryAgentOn && generatedCount > 0 && courseId
-                        ? async () => {
+            const reviewStruggleTopics =
+                memoryAgentOn && generatedCount > 0 && courseId
+                    ? async () => {
                               await loadStruggleTopics(reviewTopicOrWeekId, reviewItemId);
                               const refreshedTopics =
                                   courseData
@@ -1819,9 +1898,25 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                                   },
                               });
                           }
-                        : undefined,
+                    : undefined;
+            const uploadedMaterialName = uploadResult.document.name || material.name;
+            const chunksGenerated = uploadResult.chunksGenerated ?? 0;
+
+            // The publish prompt reports the upload itself, so it replaces the generic success modal.
+            // Struggle-topic review follows only when Memory Agent is on and topics were generated.
+            return {
+                success: true,
+                chunksGenerated: uploadResult.chunksGenerated,
+                generatedStruggleTopics: uploadResult.generatedStruggleTopics,
+                skipSuccessModal: true,
+                afterSuccess: async () => {
+                    await promptPublishAfterUpload(instance_topicOrWeek, uploadedMaterialName, chunksGenerated);
+                    if (reviewStruggleTopics) {
+                        await reviewStruggleTopics();
+                    }
+                },
             };
-            
+
         } catch (error) {
             console.error('Error in upload process:', error);
             await showSimpleErrorModal('An error occurred during upload. Please try again.', 'Upload Error');

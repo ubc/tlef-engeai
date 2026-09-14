@@ -671,15 +671,15 @@ export class EngEAI_MongoDB {
         WritingFeedbackMongo.deleteWritingAssignment(this.ctx(), courseId, assignmentId);
 
     /**
-     * setWritingAssignmentLabReport — marks or clears an assignment as a lab report.
+     * chooseWritingAssignmentType — records the one-time writing / lab report choice (D-123).
      *
      * @param courseId - Owning course id
-     * @param assignmentId - Assignment being marked
-     * @param isLabReport - Whether the assignment receives technical feedback
-     * @returns Updated assignment or `null`
+     * @param assignmentId - Assignment whose type is being chosen
+     * @param isLabReport - Whether the assignment is a lab report
+     * @returns Updated assignment, or `null` when absent or already chosen
      */
-    public setWritingAssignmentLabReport = async (courseId: string, assignmentId: string, isLabReport: boolean) =>
-        WritingFeedbackMongo.setWritingAssignmentLabReport(this.ctx(), courseId, assignmentId, isLabReport);
+    public chooseWritingAssignmentType = async (courseId: string, assignmentId: string, isLabReport: boolean) =>
+        WritingFeedbackMongo.chooseWritingAssignmentType(this.ctx(), courseId, assignmentId, isLabReport);
 
     /**
      * deleteWritingSubmission — removes a scoped submission and dependent workflow records.
