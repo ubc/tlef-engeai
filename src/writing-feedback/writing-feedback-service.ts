@@ -40,7 +40,15 @@ import { TECHNICAL_PROMPT_VERSION, TechnicalWritingFeedbackEngine } from './tech
 import { lensesForAssignment, selectRubric, rubricForVersion } from './rubric-lens';
 import { ModelSelectionService } from '../dashboard-setting/model-selection-service';
 import { StudentWritingFeedbackPdfService } from '../report-generation/writing-feedback-report';
-import { buildStaffFinalAssessment, gradedLensFor, type StaffFinalAssessmentInput } from './staff-final-assessment';
+import {
+    APPROVAL_REQUIRES_GRADE_MESSAGE,
+    buildStaffAssessmentDraft,
+    buildStaffFinalAssessment,
+    gradedLensFor,
+    rubricSupportsStaffAssessment,
+    type StaffAssessmentDraftInput,
+    type StaffFinalAssessmentInput
+} from './staff-final-assessment';
 import {
     MAX_SUBMISSION_RELEASES,
     countCompletedReleases,
@@ -540,8 +548,9 @@ export class WritingFeedbackService {
     async appendReview(
         courseId: string,
         submissionId: string,
-        revision: Omit<StaffReviewRevision, 'id' | 'createdAt' | 'submissionId' | 'finalAssessment'> & {
+        revision: Omit<StaffReviewRevision, 'id' | 'createdAt' | 'submissionId' | 'finalAssessment' | 'assessmentDraft'> & {
             finalAssessment?: StaffFinalAssessmentInput;
+            assessmentDraft?: StaffAssessmentDraftInput;
         },
         staffName?: string
     ): Promise<StaffReviewRevision> {
@@ -566,9 +575,13 @@ export class WritingFeedbackService {
             // Validate offsets against the current verified text immediately before persistence.
             validateAnchoredComments(comments, submission.verifiedText ?? '');
         }
-        const { finalAssessment: finalAssessmentInput, ...reviewFields } = revision;
+        const { finalAssessment: finalAssessmentInput, assessmentDraft: draftInput, ...reviewFields } = revision;
+        if (finalAssessmentInput && draftInput) {
+            throw new Error('Send either a complete final grade or a partial one, not both');
+        }
         let finalAssessment;
-        if (finalAssessmentInput) {
+        let assessmentDraft;
+        if (finalAssessmentInput || draftInput) {
             const assignment = await this.requireAssignment(courseId, submission.assignmentId);
             // A lab report is graded on its technical rubric, not its writing one, so the
             // grade is validated against the lens that actually carries it.
@@ -577,12 +590,14 @@ export class WritingFeedbackService {
             if (!gradedRubric) {
                 throw new Error('Approve the rubric this assignment is graded on before saving a final grade');
             }
-            finalAssessment = buildStaffFinalAssessment(finalAssessmentInput, gradedRubric, lens);
+            if (finalAssessmentInput) finalAssessment = buildStaffFinalAssessment(finalAssessmentInput, gradedRubric, lens);
+            else assessmentDraft = buildStaffAssessmentDraft(draftInput!, gradedRubric, lens);
         }
         return this.mongo.appendWritingReview(courseId, submissionId, {
             ...reviewFields,
             comments,
-            ...(finalAssessment ? { finalAssessment } : {})
+            ...(finalAssessment ? { finalAssessment } : {}),
+            ...(assessmentDraft ? { assessmentDraft } : {})
         });
     }
 
@@ -612,6 +627,16 @@ export class WritingFeedbackService {
                     : 'Generate feedback before staff approval');
             }
             this.assertCurrentRubricForLens(run.rubricVersion, rubric, lens);
+        }
+
+        // Approval vouches for the grade Release will send, so a gradable rubric needs a
+        // complete one, saved in the latest revision against the rubric version now in force.
+        const gradedRubric = selectRubric(assignment, gradedLensFor(assignment)).approved;
+        if (gradedRubric && rubricSupportsStaffAssessment(gradedRubric)) {
+            const saved = submission.reviews?.[submission.reviews.length - 1]?.finalAssessment;
+            if (!saved || saved.rubricVersion !== gradedRubric.version) {
+                throw new Error(APPROVAL_REQUIRES_GRADE_MESSAGE);
+            }
         }
 
         const approved = await this.mongo.approveWritingSubmission(courseId, submissionId, staffUserId, staffName);

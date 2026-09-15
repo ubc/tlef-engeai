@@ -91,19 +91,21 @@ Line counts are a rough guide to reading cost, not a target.
 | `src/db/enge-ai-mongodb.ts` | 1481 | The façade every handler goes through to reach the delegates above. | a new delegate is exposed |
 | `src/report-generation/writing-feedback-report.ts` | 525 | Renders the student-safe PDF, including annotations and the lab-report technical section. | anything a student sees in the PDF changes |
 | `public/scripts/feature/writing-feedback.ts` | 852 | The workspace shell: assignment list, intake, and navigation. | the workspace layout or intake changes |
-| `public/scripts/feature/writing-feedback-review.ts` | 1387 | The review page: draft, comments, staff-final grade, release card. | review or release UI changes |
+| `public/scripts/feature/writing-feedback-review.ts` | 1562 | The three-step review page: annotations, feedback with a grade per criterion, then review, approve and release. | review or release UI changes |
+| `public/scripts/feature/writing-feedback-grade-entry.ts` | 377 | Final grade controls on each criterion card (level buttons, points box, status chip) and the read-only rubric grid. | how staff enter or see grades changes |
+| `public/scripts/feature/writing-feedback-grade-progress.ts` | 104 | DOM-free grading progress and the sentence explaining why Approve is blocked. | what counts as graded, or the approval blocker wording |
 | `public/scripts/feature/writing-feedback-rubric.ts` | 2104 | The rubric editor and its approval flow. | rubric editing changes |
 | `public/scripts/feature/writing-feedback-grid.ts` | 913 | The marking grid rendering and interaction. | the grid changes |
 | `public/scripts/feature/writing-feedback-anchors.ts` | 714 | Selection, highlighting, and anchored-comment interaction in the browser. | anchoring UX changes |
 | `public/scripts/feature/writing-feedback-shared.ts` | 1144 | Frontend mirror of the shared API types, plus request helpers. | ANY API contract changes — it must mirror `src/types/shared.ts` |
 | `public/scripts/feature/writing-feedback-rubric-progress.ts` | 228 | Rubric completion progress indicator. | progress display changes |
 | `public/scripts/feature/writing-feedback-demo-mode.ts` | 57 | Demo-mode switch for synthetic courses. | demo behaviour changes |
-| `public/scripts/feature/writing-feedback-review-steps.ts` | 66 | DOM-free step bar state and Next decision for the two-step review. | the review steps change |
+| `public/scripts/feature/writing-feedback-review-steps.ts` | 72 | DOM-free step bar state and Next decision for the three-step review. | the review steps change |
 | `public/scripts/feature/writing-feedback-summary-editor.ts` | 193 | Editable summary sections and edit detection per lens. | editable summary UI changes |
 | `public/scripts/feature/writing-feedback-annotation-fingerprint.ts` | 56 | Browser mirror of the annotation fingerprint. | what counts as an annotation change |
 | `public/scripts/feature/writing-feedback-assignment-type.ts` | 93 | The "What kind of assignment is this?" modal and save flow. | the assignment type modal changes |
 | `public/scripts/feature/writing-feedback-assignment-type-state.ts` | 45 | DOM-free labels and pending-assignment selection for that modal. | the modal labels change |
-| `public/styles/instructor-components/writing-feedback.css` | 2774 | Every Writing Feedback style. | the workspace, rubric, review, or release card is restyled |
+| `public/styles/instructor-components/writing-feedback.css` | 3567 | Every Writing Feedback style. | the workspace, rubric, review, or release step is restyled |
 
 ## Tests
 
@@ -119,9 +121,9 @@ Line counts are a rough guide to reading cost, not a target.
 
 The files a first-time reviewer will struggle with, largest first:
 
-- `public/styles/instructor-components/writing-feedback.css` (2774 lines)
+- `public/styles/instructor-components/writing-feedback.css` (3567 lines)
 - `public/scripts/feature/writing-feedback-rubric.ts` (2104 lines)
-- `public/scripts/feature/writing-feedback-review.ts` (1387 lines)
+- `public/scripts/feature/writing-feedback-review.ts` (1562 lines)
 - `src/db/mongo/writing-feedback-mongo.ts` (1312 lines)
 - `public/scripts/feature/writing-feedback-shared.ts` (1144 lines)
 - `src/routes/route-writing-feedback.ts` (1043 lines)

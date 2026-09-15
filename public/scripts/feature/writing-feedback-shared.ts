@@ -321,6 +321,7 @@ export interface ReviewRevision {
     internalNote?: string; // staff-only note explicitly excluded from student output
     comments?: AnchoredComment[]; // complete annotation snapshot at save time
     finalAssessment?: StaffFinalAssessment; // complete human-authored rubric result
+    assessmentDraft?: StaffAssessmentDraft; // grades saved before every criterion had one
     feedbackRunId?: string; // linguistic run the revision was saved against
     technicalFeedbackRunId?: string; // technical run the technical summary edits were saved against
     summaryEdits?: StaffSummaryEdit[]; // editable summary sections bound to their runs (D-126)
@@ -341,6 +342,13 @@ export interface StaffFinalAssessment {
     criteria: StaffCriterionAssessment[];
     totalPoints: number;
     maxPoints: number;
+}
+
+/** Staff-entered points for some criteria, saved while grading is unfinished; never approved or released. */
+export interface StaffAssessmentDraft {
+    lens?: WritingFeedbackLens;
+    rubricVersion: number;
+    criteria: StaffCriterionAssessment[];
 }
 
 const DIFF_FIELDS: Array<keyof AnchoredComment> = [

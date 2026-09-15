@@ -4,11 +4,14 @@
  * Model-selected levels remain a suggestion. This module accepts the points a
  * staff reviewer actually entered, binds them to the immutable rubric version,
  * and computes totals on the server so neither the browser nor Canvas can
- * redefine the grading contract.
+ * redefine the grading contract. A partial set of points may be saved as a draft
+ * while grading is under way; only a complete assessment can be approved or released.
  */
 
 import { z } from 'zod';
 import type {
+    StaffAssessmentDraft,
+    StaffCriterionAssessment,
     StaffFinalAssessment,
     WritingAssignment,
     WritingFeedbackLens,
@@ -33,6 +36,14 @@ export const staffFinalAssessmentInputSchema = z.object({
 
 export type StaffFinalAssessmentInput = z.infer<typeof staffFinalAssessmentInputSchema>;
 
+/** Browser payload for grades saved before every criterion has one. Same shape; fewer criteria allowed. */
+export const staffAssessmentDraftInputSchema = staffFinalAssessmentInputSchema;
+
+export type StaffAssessmentDraftInput = z.infer<typeof staffAssessmentDraftInputSchema>;
+
+/** Why approval was refused for a gradable rubric without a complete, current grade. */
+export const APPROVAL_REQUIRES_GRADE_MESSAGE = 'Enter and save a final grade for every rubric criterion before approval';
+
 /**
  * gradedLensFor - which of an assignment's rubrics carries its grade.
  *
@@ -55,16 +66,15 @@ export function rubricSupportsStaffAssessment(rubric: WritingRubricDefinition): 
 }
 
 /**
- * Validates one complete assessment and returns server-computed totals.
+ * readScores - validates entered points against one rubric version, without requiring all of them.
  *
- * Every weighted criterion appears exactly once. Scores may be fractional but
- * are rounded to two decimals to keep PDF and Canvas values stable.
+ * @param input - Criterion points as entered
+ * @param rubric - Rubric version the points were entered against
+ * @returns Rounded points by criterion id, only for criteria the input names
+ * @throws Error for an ungradable rubric, a stale version, a duplicate or unknown criterion,
+ *   or points above a criterion's maximum
  */
-export function buildStaffFinalAssessment(
-    input: StaffFinalAssessmentInput,
-    rubric: WritingRubricDefinition,
-    lens: WritingFeedbackLens = 'linguistic'
-): StaffFinalAssessment {
+function readScores(input: StaffFinalAssessmentInput, rubric: WritingRubricDefinition): Map<string, number> {
     if (!rubricSupportsStaffAssessment(rubric)) {
         throw new Error('Final grading requires points on every rubric criterion');
     }
@@ -77,23 +87,37 @@ export function buildStaffFinalAssessment(
         if (received.has(entry.criterionId)) {
             throw new Error('Final grading contains a duplicate rubric criterion');
         }
-        received.set(entry.criterionId, entry.points);
+        const criterion = rubric.criteria.find((item) => item.id === entry.criterionId);
+        if (!criterion) {
+            throw new Error('Final grading contains a criterion outside the approved rubric');
+        }
+        if (entry.points > criterion.points!) {
+            throw new Error(`Final grade for "${criterion.label}" exceeds its ${criterion.points}-point maximum`);
+        }
+        received.set(entry.criterionId, Math.round(entry.points * 100) / 100);
     }
+    return received;
+}
 
-    const criteria = rubric.criteria.map((criterion) => {
+/**
+ * Validates one complete assessment and returns server-computed totals.
+ *
+ * Every weighted criterion appears exactly once. Scores may be fractional but
+ * are rounded to two decimals to keep PDF and Canvas values stable.
+ */
+export function buildStaffFinalAssessment(
+    input: StaffFinalAssessmentInput,
+    rubric: WritingRubricDefinition,
+    lens: WritingFeedbackLens = 'linguistic'
+): StaffFinalAssessment {
+    const received = readScores(input, rubric);
+    const criteria: StaffCriterionAssessment[] = rubric.criteria.map((criterion) => {
         const points = received.get(criterion.id);
         if (points === undefined) {
             throw new Error('Final grading requires a score for every rubric criterion');
         }
-        if (points > criterion.points!) {
-            throw new Error(`Final grade for "${criterion.label}" exceeds its ${criterion.points}-point maximum`);
-        }
-        return { criterionId: criterion.id, points: Math.round(points * 100) / 100 };
+        return { criterionId: criterion.id, points };
     });
-
-    if (received.size !== criteria.length) {
-        throw new Error('Final grading contains a criterion outside the approved rubric');
-    }
 
     return {
         lens,
@@ -104,3 +128,29 @@ export function buildStaffFinalAssessment(
     };
 }
 
+/**
+ * buildStaffAssessmentDraft - validates grades saved partway through grading.
+ *
+ * Each score is held to the same rules as a final assessment, but criteria may be missing.
+ * A draft carries no totals and is never read by approval, the PDF or release.
+ *
+ * @param input - Points for the criteria graded so far
+ * @param rubric - Rubric version the points were entered against
+ * @param lens - Lens that rubric belongs to
+ * @returns The draft, in rubric criterion order
+ * @throws Error under the same conditions as {@link buildStaffFinalAssessment}, except a missing criterion
+ */
+export function buildStaffAssessmentDraft(
+    input: StaffAssessmentDraftInput,
+    rubric: WritingRubricDefinition,
+    lens: WritingFeedbackLens = 'linguistic'
+): StaffAssessmentDraft {
+    const received = readScores(input, rubric);
+    return {
+        lens,
+        rubricVersion: rubric.version,
+        criteria: rubric.criteria
+            .filter((criterion) => received.has(criterion.id))
+            .map((criterion) => ({ criterionId: criterion.id, points: received.get(criterion.id)! }))
+    };
+}

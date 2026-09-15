@@ -132,8 +132,19 @@ describe('two-step review source contract', () => {
         expect(source).toContain("'Next →'");
     });
 
-    it('renders the footer only on the summary step', () => {
-        expect(source).toMatch(/footer\.hidden = step !== 'summary'/);
+    it('renders the footer on the summary and review steps, never on annotations', () => {
+        expect(source).toMatch(/footer\.hidden = step === 'annotations'/);
+    });
+
+    it('offers Approve and Release only on the review step', () => {
+        expect(source).toMatch(/approveButton\.hidden = !onReview/);
+        expect(source).toMatch(/releaseButton\.hidden = !onReview/);
+    });
+
+    it('saves unsaved edits before approving instead of discarding them', () => {
+        const approve = source.match(/async function approve\(\)[\s\S]*?\n    }\n/)?.[0] ?? '';
+        expect(approve).toContain('if (savedFirst) await saveRevision();');
+        expect(approve.indexOf('saveRevision')).toBeLessThan(approve.indexOf('/approve`'));
     });
 
     it('re-reads annotation evidence whenever the summary step opens', () => {

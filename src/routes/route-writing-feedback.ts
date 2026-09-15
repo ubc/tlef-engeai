@@ -35,7 +35,7 @@ import type { CanvasReleaseService } from '../writing-feedback/contracts';
 import { canvasConfig, resolveUserKey } from '../lms/canvas-config';
 import { canvas as canvasProvider } from '@ubc/ubc-genai-toolkit-lms-integration';
 import { anchoredCommentsInputSchema } from '../writing-feedback/anchored-comments';
-import { staffFinalAssessmentInputSchema } from '../writing-feedback/staff-final-assessment';
+import { staffAssessmentDraftInputSchema, staffFinalAssessmentInputSchema } from '../writing-feedback/staff-final-assessment';
 import {
     approveRubricDraft,
     assertRetiredIdsNotReused,
@@ -925,6 +925,17 @@ router.post('/:courseId/writing-feedback/submissions/:submissionId/reviews', asy
             }
             finalAssessment = parsedAssessment.data;
         }
+        let assessmentDraft;
+        if (req.body?.assessmentDraft !== undefined) {
+            const parsedDraft = staffAssessmentDraftInputSchema.safeParse(req.body.assessmentDraft);
+            if (!parsedDraft.success) {
+                return res.status(400).json({
+                    success: false,
+                    error: `Final grading failed validation: ${parsedDraft.error.issues[0]?.message ?? 'check the criterion scores'}`
+                });
+            }
+            assessmentDraft = parsedDraft.data;
+        }
         let summaryEdits;
         if (req.body?.summaryEdits !== undefined) {
             const parsedEdits = summaryEditsInputSchema.safeParse(req.body.summaryEdits);
@@ -945,6 +956,7 @@ router.post('/:courseId/writing-feedback/submissions/:submissionId/reviews', asy
             internalNote: typeof req.body?.internalNote === 'string' ? req.body.internalNote.slice(0, 4000) : undefined,
             comments,
             finalAssessment,
+            assessmentDraft,
             summaryEdits,
             technicalFeedbackRunId: typeof req.body?.technicalFeedbackRunId === 'string'
                 ? req.body.technicalFeedbackRunId.slice(0, 64)

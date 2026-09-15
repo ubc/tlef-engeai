@@ -658,6 +658,8 @@ export interface StaffReviewRevision {
     comments?: AnchoredComment[];
     /** Human-authored rubric result. Model suggestions remain separate and staff-only. */
     finalAssessment?: StaffFinalAssessment;
+    /** Grades saved before every criterion had one; replaced by `finalAssessment` once complete. */
+    assessmentDraft?: StaffAssessmentDraft;
     /** Technical run the technical summary edits were made against, for a lab report. */
     technicalFeedbackRunId?: string;
     /** Editable summary sections per lens (D-126). */
@@ -683,6 +685,13 @@ export interface StaffFinalAssessment {
     criteria: StaffCriterionAssessment[]; // exactly one score per weighted criterion
     totalPoints: number; // server-computed sum of awarded points
     maxPoints: number; // server-computed rubric total
+}
+
+/** Staff-entered points for some criteria, saved while grading is unfinished. Never approved or released. */
+export interface StaffAssessmentDraft {
+    lens?: WritingFeedbackLens; // rubric the points were entered against
+    rubricVersion: number; // rubric version whose criteria and weights were graded
+    criteria: StaffCriterionAssessment[]; // at most one score per criterion, in rubric order
 }
 
 /** Persisted preview or completed Canvas release keyed by a payload fingerprint. */
