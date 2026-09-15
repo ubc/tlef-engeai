@@ -187,4 +187,10 @@ describe('single release source contract', () => {
         expect(source).toContain('connectUrlReturningTo(connectUrl, releaseReturnPath())');
         expect(source).toContain('const returningToRelease = consumeReleaseReturn();');
     });
+
+    it('offers to connect again when Canvas refuses the connected account as someone else’s', () => {
+        // The refused connection still exists, so the usual "not connected" prompt never appears.
+        expect(source).toContain('error instanceof CanvasAccountMismatchError');
+        expect(source).toContain('canvasReconnectUrl: error.connectUrl');
+    });
 });

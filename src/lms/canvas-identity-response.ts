@@ -10,6 +10,7 @@
  */
 
 import type { Request, Response } from 'express';
+import { CANVAS_BASE_PATH } from './canvas-config';
 import { CanvasIdentityError } from './canvas-course-sync';
 import { appLogger } from '../utils/logger';
 
@@ -22,14 +23,18 @@ import { appLogger } from '../utils/logger';
  * sync, which runs under the importing instructor's token for every course they imported, after
  * a single wrong-account request.
  *
+ * A `mismatch` also carries `connectUrl`. Connecting again with the right account is the fix, and
+ * because the refused connection still exists, the workspace's usual "not connected" prompt would
+ * never appear without it. The other reasons are not fixed by reconnecting, so they carry no link.
+ *
  * @param error - Anything a Canvas-backed handler threw
- * @param _req - Request carrying the signed-in user; unused
+ * @param req - Request whose URL the connect link returns to
  * @param res - Response to answer on
  * @returns `true` when the error was handled and a response has been sent.
  */
 export async function handleCanvasIdentityError(
     error: unknown,
-    _req: Request,
+    req: Request,
     res: Response
 ): Promise<boolean> {
     if (!(error instanceof CanvasIdentityError)) {
@@ -39,6 +44,12 @@ export async function handleCanvasIdentityError(
     // `reason` only — the message names no identifier, and the values behind this decision are
     // PUIDs that must not reach logs.
     appLogger.log(`[LMS] Canvas identity check refused: ${error.reason}`);
-    res.status(403).json({ error: error.message, reason: error.reason });
+    res.status(403).json({
+        error: error.message,
+        reason: error.reason,
+        ...(error.reason === 'mismatch'
+            ? { connectUrl: `${CANVAS_BASE_PATH}/login?returnTo=${encodeURIComponent(req.originalUrl)}` }
+            : {}),
+    });
     return true;
 }

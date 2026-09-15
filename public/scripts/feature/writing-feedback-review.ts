@@ -22,7 +22,7 @@ import { showErrorToast, showSuccessToast, showToast } from '../ui/toast-notific
 import {
     AnchoredComment,
     Assignment,
-    CanvasStatus,
+    CanvasAccountMismatchError,
     CriterionFeedback,
     FeedbackRun,
     FUNCTION_TAG_LABELS,
@@ -34,7 +34,6 @@ import {
     Submission,
     SubmissionDetail,
     WritingFeedbackLens,
-    WritingFeedbackRequestError,
     baseUrl,
     chip,
     confirmDiscardDirty,
@@ -132,6 +131,8 @@ interface PendingReviewState {
     internalNote?: string;
     /** Valid grades entered so far, carried across a summary redraft. */
     grades?: StaffAssessmentDraft;
+    /** Connect link offered after Canvas refused the connected account as someone else's. */
+    canvasReconnectUrl?: string;
 }
 
 let pendingReviewState: PendingReviewState | null = null;
@@ -783,7 +784,10 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
     // Release uses each staff member's own Canvas authorization. When that is what is missing,
     // it is offered here, returning to this step, rather than only inside the import panel.
     const canvasStatus = state.workspace?.canvas;
-    const connectUrl = !isReleased && canvasStatus && !canvasStatus.canImport ? canvasStatus.connectUrl : undefined;
+    // After a refused release the connection still exists, so the link comes from that refusal.
+    const reconnectUrl = !isReleased ? preserved?.canvasReconnectUrl : undefined;
+    const connectUrl = reconnectUrl
+        ?? (!isReleased && canvasStatus && !canvasStatus.canImport ? canvasStatus.connectUrl : undefined);
     const connectCallout = document.createElement('div');
     connectCallout.className = 'wf-callout wf-callout--warning';
     connectCallout.hidden = !connectUrl;
@@ -797,7 +801,9 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
             window.location.assign(connectUrlReturningTo(connectUrl, releaseReturnPath()));
         }));
         connectCallout.append(
-            createText('strong', 'Connect your Canvas account to be able to release student feedback and grades:'),
+            createText('strong', reconnectUrl
+                ? 'The connected Canvas account is not yours. Sign out of Canvas, then connect your own account to release student feedback and grades:'
+                : 'Connect your Canvas account to be able to release student feedback and grades:'),
             // createText('span', 'Release uses your own Canvas account. Connect it once and you will come straight back to this step.'),
             connectRow
         );
@@ -908,11 +914,13 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
             }
         } else if (submission.status === 'approved') {
             const readiness = releaseReadiness(submission, detail);
-            releaseButton.disabled = Boolean(releaseInFlight) || state.reviewDirty || !readiness.ready;
+            releaseButton.disabled = Boolean(releaseInFlight) || state.reviewDirty || Boolean(reconnectUrl) || !readiness.ready;
             message = releaseInFlight
                 || (state.reviewDirty
                     ? 'You have unsaved changes. Saving them withdraws approval, so approve again before releasing.'
-                    : releaseError || readiness.message);
+                    : reconnectUrl
+                        ? 'Connect your own Canvas account to release this feedback.'
+                        : releaseError || readiness.message);
         } else {
             const blocker = approvalBlocker();
             approveButton.disabled = submission.status !== 'draft_ready' || Boolean(blocker);
@@ -1072,11 +1080,10 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
                 'POST'
             );
         } catch (error) {
-            // A refused Canvas account check may have removed the connection: re-read Canvas status
-            // so this step offers Connect Canvas again, then report the refusal.
-            if ((error as WritingFeedbackRequestError).status === 403 && state.workspace) {
-                state.workspace.canvas = await request<CanvasStatus>('/canvas/status');
-                pendingReviewState = { submissionId: submission.id, step: 'review' };
+            // Canvas refused the connected account as someone else's: reopen this step offering to
+            // connect again, then report the refusal.
+            if (error instanceof CanvasAccountMismatchError) {
+                pendingReviewState = { submissionId: submission.id, step: 'review', canvasReconnectUrl: error.connectUrl };
                 await refreshReview(submission.id);
             }
             throw error;

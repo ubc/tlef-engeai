@@ -147,8 +147,9 @@
 linked LMS course reported. Distinct from `course-roster-mongo.ts`, which mutates EngE-AI's
 own course roles (student ↔ TA) on the catalog document and is unrelated.
 
-- **No PUID at rest.** Each entry is `{ puidHash, lmsUserId }` — a keyed HMAC-SHA256 digest
-  of the roster row's `integration_id` plus the LMS's own user id. No names, no
+- **No PUID at rest.** Each entry is `{ puidHash, lmsUserId, role }` — a keyed HMAC-SHA256 digest
+  of the roster row's `integration_id`, the LMS's own user id, and `role` (`student` or `ta`;
+  entries synced before TAs were read have no role and count as students; no migration). No names, no
   `integration_id`, no `sis_user_id`, no `login_id`. `active-users` remains the only
   collection holding an institutional identifier in the clear. See `src/utils/roster-identity.ts`.
 - **`ROSTER_HASH_SALT` is load-bearing state, not a tunable.** Every stored digest is only

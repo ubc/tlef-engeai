@@ -364,11 +364,12 @@ export interface CourseLmsLink {
 }
 
 /**
- * One student on an imported course's LMS roster.
+ * One student or TA on an imported course's LMS roster.
  *
  * Deliberately carries no name and no raw identifier. The roster is stored to answer one
- * question — "is the person signing in enrolled in this course?" — which needs equality and
- * nothing else. See `src/utils/roster-identity.ts` for why the identifier is keyed and one-way.
+ * question — "is the person signing in enrolled in this course, and as what?" — which needs
+ * equality and nothing else. See `src/utils/roster-identity.ts` for why the identifier is keyed
+ * and one-way.
  */
 export interface CourseRosterEntry {
     /** Keyed digest of the roster row's PUID. Comparable only to hashes made under the same salt. */
@@ -381,6 +382,11 @@ export interface CourseRosterEntry {
      * EngE-AI user id and never compare it across providers.
      */
     lmsUserId: string;
+    /**
+     * The LMS enrollment the row came from. A `ta` match grants the TA role at sign-in. Absent on
+     * entries synced before TAs were read, which were all students.
+     */
+    role?: 'student' | 'ta';
 }
 
 /**
@@ -431,7 +437,7 @@ export interface CourseRosterSnapshot {
      * starts failing, this is the only thing that says whose reconnection would fix it.
      */
     syncCredentialUserId: string;
-    /** `GlobalUser.userId` who pressed sync; absent when the scheduled job ran it. */
+    /** `GlobalUser.userId` who pressed sync; absent when no person triggered it. */
     triggeredBy?: string;
     status: RosterSyncStatus;
     /** Roster rows Canvas returned, before the identifier filter. */

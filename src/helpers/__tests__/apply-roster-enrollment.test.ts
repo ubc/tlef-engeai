@@ -37,14 +37,17 @@ function makeUser(overrides: Partial<GlobalUser> = {}): GlobalUser {
 }
 
 function makeMongo(options: {
-    matches?: Array<{ courseId: string; lmsUserId: string }>;
+    matches?: Array<{ courseId: string; lmsUserId: string; role?: 'student' | 'ta' }>;
     courses?: Record<string, Partial<activeCourse> | null>;
 } = {}) {
     const courses = options.courses ?? {};
     return {
-        findCoursesByRosterIdentity: jest.fn().mockResolvedValue(options.matches ?? []),
+        findCoursesByRosterIdentity: jest.fn().mockResolvedValue(
+            (options.matches ?? []).map((match) => ({ role: 'student', ...match }))
+        ),
         getActiveCourse: jest.fn(async (id: string) => (courses[id] ?? null) as activeCourse | null),
         enrollUserInCourse: jest.fn().mockResolvedValue(undefined),
+        promoteStudentToTA: jest.fn().mockResolvedValue(undefined),
         findGlobalUserByPUID: jest.fn(async () => makeUser({ coursesEnrolled: ['course-1'] })),
     } as unknown as EngEAI_MongoDB & Record<string, jest.Mock>;
 }
@@ -136,6 +139,84 @@ describe('applyRosterEnrollment', () => {
         const user = makeUser({ puid: '' });
         await expect(applyRosterEnrollment(mongo, user)).resolves.toBe(user);
         expect(mongo.findCoursesByRosterIdentity).not.toHaveBeenCalled();
+    });
+
+    describe('TA matches', () => {
+        const setUpCourse = { id: 'course-1', courseSetup: true, instructors: [], teachingAssistants: [] };
+
+        it('adds the course, then grants the TA role', async () => {
+            const mongo = makeMongo({
+                matches: [{ courseId: 'course-1', lmsUserId: '21', role: 'ta' }],
+                courses: { 'course-1': setUpCourse },
+            });
+            const user = makeUser();
+
+            await applyRosterEnrollment(mongo, user);
+
+            expect(mongo.enrollUserInCourse).toHaveBeenCalledWith(user, 'course-1', 'student');
+            expect(mongo.promoteStudentToTA).toHaveBeenCalledWith(
+                expect.objectContaining({ id: 'course-1' }),
+                'user-1',
+                'Test Student'
+            );
+            // Promotion requires a course member, so membership comes first.
+            expect((mongo.enrollUserInCourse as jest.Mock).mock.invocationCallOrder[0])
+                .toBeLessThan((mongo.promoteStudentToTA as jest.Mock).mock.invocationCallOrder[0]);
+        });
+
+        it('grants the TA role to a user who already joined with the course code', async () => {
+            const mongo = makeMongo({
+                matches: [{ courseId: 'course-1', lmsUserId: '21', role: 'ta' }],
+                courses: { 'course-1': setUpCourse },
+            });
+
+            await applyRosterEnrollment(mongo, makeUser({ coursesEnrolled: ['course-1'] }));
+
+            expect(mongo.enrollUserInCourse).not.toHaveBeenCalled();
+            expect(mongo.promoteStudentToTA).toHaveBeenCalled();
+        });
+
+        it('leaves a user who already holds staff access as they are', async () => {
+            const mongo = makeMongo({
+                matches: [{ courseId: 'course-1', lmsUserId: '21', role: 'ta' }],
+                courses: { 'course-1': { ...setUpCourse, teachingAssistants: [{ userId: 'user-1', name: 'Test Student' }] } },
+            });
+
+            const user = makeUser({ coursesEnrolled: ['course-1'] });
+            await expect(applyRosterEnrollment(mongo, user)).resolves.toBe(user);
+            expect(mongo.enrollUserInCourse).not.toHaveBeenCalled();
+            expect(mongo.promoteStudentToTA).not.toHaveBeenCalled();
+        });
+
+        it('grants nothing in a course still in setup', async () => {
+            const mongo = makeMongo({
+                matches: [{ courseId: 'course-1', lmsUserId: '21', role: 'ta' }],
+                courses: { 'course-1': { ...setUpCourse, courseSetup: false } },
+            });
+
+            await applyRosterEnrollment(mongo, makeUser());
+
+            expect(mongo.enrollUserInCourse).not.toHaveBeenCalled();
+            expect(mongo.promoteStudentToTA).not.toHaveBeenCalled();
+        });
+
+        it('keeps going when one course refuses the TA role', async () => {
+            const mongo = makeMongo({
+                matches: [
+                    { courseId: 'course-1', lmsUserId: '21', role: 'ta' },
+                    { courseId: 'course-2', lmsUserId: '22', role: 'student' },
+                ],
+                courses: {
+                    'course-1': setUpCourse,
+                    'course-2': { id: 'course-2', courseSetup: true },
+                },
+            });
+            (mongo.promoteStudentToTA as jest.Mock).mockRejectedValue(new Error('Only students can be promoted to TA'));
+
+            await applyRosterEnrollment(mongo, makeUser());
+
+            expect(mongo.enrollUserInCourse).toHaveBeenCalledWith(expect.anything(), 'course-2', 'student');
+        });
     });
 
     it('does not re-read the user when nothing was granted', async () => {

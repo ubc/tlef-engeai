@@ -184,6 +184,7 @@ async function verifyConnectedCanvasAccount(req: Request, res: Response, next: N
             api: (req as any).canvasApi,
             mongo,
             userKey: await resolveUserKey(req),
+            courseId: courseId(req),
             // isLiveCanvasCourse already found the link, so the course id is present.
             canvasCourseId: (await resolveCanvasCourseId(mongo, courseId(req)))!
         });

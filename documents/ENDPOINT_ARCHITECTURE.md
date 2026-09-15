@@ -247,7 +247,7 @@ Canvas endpoints report their integration mode honestly. `demo` with `integratio
 | POST | `/submissions/:submissionId/release` | One staff action (D-128): prepares the dry-run release preview (PDF render and Canvas preflight, no Canvas write) and then queues the release, returning `202` with `{ status: 'queued', jobId, submissionId }`; the Canvas write happens in the worker. Records the queuing staff member's `GlobalUser.userId` on the release record, because the job acts with their stored Canvas credential. Refuses up front what can be refused cheaply: no preview, not approved, awaiting reconciliation, already released, five releases already spent, a preview the payload has since moved on from, or a release another request already holds the lock on (that caller is handed the winning job) Feedback can be released once per submission; a second release is refused. Runs behind `withCanvasClientWhenLinked`. |
 | GET | `/submissions/:submissionId/release-status` | Latest release record — including `releaseLockedAt` while a queued job is carrying it — plus the newest release job's state, and its sanitized error when that job failed. Clients poll this until the record reads `released`/`reconciled`, the job fails, or `reconciliation_required` appears |
 
-Every route behind `withCanvasClientWhenLinked` (Canvas assignments, preview, import, release preview, release) also confirms that the connected Canvas account belongs to the caller before using it, at most once per connection (`src/lms/canvas-identity-once.ts`): the connected account's roster row among the course's teachers and TAs must carry the caller's PUID as `integration_id`. The Canvas user id that passed is remembered in `active-users.canvasVerifiedUserId`, so later requests on the same connection make no roster call; a connection naming a different Canvas user is checked again. A refusal answers `403 { error, reason }` (`mismatch`, `identifiers_withheld`, `no_puid`, `self_not_on_roster`), and the stored connection is kept for every reason, since roster sync runs under it. The LMS connect route `GET /api/lms/canvas/auth/login` adds `force_login=1` to the Canvas authorize redirect so Canvas asks who is signing in rather than reusing its browser session.
+Every route behind `withCanvasClientWhenLinked` (Canvas assignments, preview, import, release preview, release) also confirms that the connected Canvas account belongs to the caller before using it, at most once per connection (`src/lms/canvas-identity-once.ts`): the connected account's roster row among the course's teachers and TAs must carry the caller's PUID as `integration_id`. The Canvas user id that passed is remembered in `active-users.canvasVerifiedUserId`, so later requests on the same connection make no roster call; a connection naming a different Canvas user is checked again. A refusal answers `403 { error, reason }` (`mismatch`, `identifiers_withheld`, `no_puid`, `self_not_on_roster`), and the stored connection is kept for every reason, since roster sync runs under it. A `mismatch` also carries `connectUrl`, so the workspace can offer Connect Canvas even though a connection exists. Before asking Canvas, the check looks the connected Canvas user up in the course's synced roster: a `ta` entry whose `puidHash` matches the caller verifies without any Canvas call (so a TA without "SIS Data – read" is not blocked), and an entry whose hash belongs to someone else is a `mismatch`. When the live lookup reports `identifiers_withheld`, the message tells a TA to ask an instructor to sync the roster. The LMS connect route `GET /api/lms/canvas/auth/login` adds `force_login=1` to the Canvas authorize redirect so Canvas asks who is signing in rather than reusing its browser session.
 
 `POST /canvas/import` reads a selected source and writes local writing records only. It creates or reuses one writing assignment per Canvas assignment mapping, carries the source description into local assignment instructions when available, and seeds an unapproved EngE-AI rubric draft from a representable Canvas rubric. Import does not approve a rubric, generate feedback, or call a Canvas write endpoint. Repeating the same assignment/student/attempt import is idempotent and is returned as skipped/reconciled rather than duplicated.
 
@@ -730,7 +730,7 @@ provided by `@ubc/ubc-genai-toolkit-lms-integration`. Implemented in
 | POST | `/api/lms/canvas/connect-course` | Faculty/admin + Canvas connection | Import one Canvas course, or join the EngE-AI course a co-instructor already imported; body `{ canvasCourseId, academicPeriodId? }`. On import the term comes from step 3 of the connect flow; an unknown or absent id falls back to the default period. `403` + `reason: student_path_removed` for a student |
 | GET | `/api/lms/canvas/courses` | Instructor + Canvas connection | Raw Canvas course list including provider `raw`; diagnostics only |
 | GET | `/api/lms/canvas/courses/:courseId/roster-status` | Course staff | When this course's roster last synced and how it went, as a `CourseRosterSyncSummary` with an empty `message`; `summary: null` when it has never synced. Projects counts and status only — roster entries are never returned |
-| POST | `/api/lms/canvas/courses/:courseId/sync-roster` | Roster manage (course instructor or platform admin; TAs excluded) | Re-reads the linked Canvas course's **student** roster into stored matchable identities. Returns `200` with a `CourseRosterSyncSummary` even when the sync produced nothing usable; `409` when the course has no Canvas link, `503` when `ROSTER_HASH_SALT` is unset. Notably does **not** require the caller to have a Canvas connection — see below |
+| POST | `/api/lms/canvas/courses/:courseId/sync-roster` | Roster manage (course instructor or platform admin; TAs excluded) | Re-reads the linked Canvas course's **student and TA** rosters (two Canvas reads) into stored matchable identities, each carrying its role. Returns `200` with a `CourseRosterSyncSummary` even when the sync produced nothing usable; `409` when the course has no Canvas link, `503` when `ROSTER_HASH_SALT` is unset. Notably does **not** require the caller to have a Canvas connection — see below |
 | POST | `/api/lms/moodle/auth/connect` | Instructor | Validate and store a pasted `wstoken` (body `{ token }`) |
 | POST | `/api/lms/moodle/auth/disconnect` | Instructor | Delete the stored Moodle token (does not revoke it in Moodle) |
 | GET | `/api/lms/moodle/courses` | Instructor + Moodle connection | Moodle courses the user is enrolled in |
@@ -755,8 +755,8 @@ provided by `@ubc/ubc-genai-toolkit-lms-integration`. Implemented in
 
 **Roster-based enrollment**
 
-- An instructor's roster sync reads the linked Canvas course's student roster and stores
-  one keyed digest per enrolled student in `course-lms-rosters`. At login, the signing-in
+- An instructor's roster sync reads the linked Canvas course's student and TA rosters and stores
+  one keyed digest per enrolled person, with their role (`student` or `ta`), in `course-lms-rosters`. At login, the signing-in
   user's PUID is hashed the same way and matched against those snapshots, so **a student
   never authorizes Canvas at all**. A student's own token could not read SIS identifiers
   anyway (Canvas grants `read_sis` through a *teacher* enrollment), and requiring one is
@@ -764,14 +764,14 @@ provided by `@ubc/ubc-genai-toolkit-lms-integration`. Implemented in
   that person's courses.
 - **The roster read runs under the course's credential, never the caller's.**
   `lmsLink.linkedBy` names the importing instructor, and their stored token is used
-  whether an instructor pressed sync, a platform admin did, or the scheduled job ran. A
+  whether an instructor pressed sync or a platform admin did. A
   platform admin holds no Canvas enrollment, so any design keyed on the caller's token
   would work for instructors and fail confusingly for admins. Authorization to *trigger*
   a sync and the credential it *runs under* are separate questions; the route decides
   only the first.
-- `assertInstructorIdentity` does not run on this path and cannot: there is no signed-in
-  user to compare a PUID against on the scheduled path. Identity was proven once, at
-  import, by the instructor who created the link.
+- `assertInstructorIdentity` does not run on this path and cannot: the person pressing sync
+  may be a platform admin with no Canvas account in the course to check. Identity was proven
+  once, at import, by the instructor who created the link.
 - **An empty roster triggers a publish-state check.** An unpublished Canvas course reports no
   students whoever is enrolled — Canvas holds their enrollments in `creation_pending` until the
   course is published, and the roster read asks for `active` and `invited` only. That returns
@@ -789,6 +789,11 @@ provided by `@ubc/ubc-genai-toolkit-lms-integration`. Implemented in
   courses still in setup (`courseSetup !== true`). There is deliberately no student-facing
   "refresh courses" button: a student holds no credential that could reach Canvas, so it
   could only re-read a snapshot that only staff can refresh.
+- **A TA match grants the TA role.** The login check adds the course (as a student, which
+  promotion requires) and then adds the user to `teachingAssistants`, unless they already hold
+  staff access there (instructor, platform admin, or TA). The role is never removed when a TA
+  leaves the Canvas roster — an instructor demotes by hand — and courses still in setup are
+  skipped for TAs as for students. Someone on both rosters is stored once, as a TA.
 - There is deliberately **no scheduled roster job**. It would run under a stored instructor
   credential unobserved, and its failure mode is silent — a revoked token means the roster
   quietly stops updating until a student complains. A student who enrolls after the last sync

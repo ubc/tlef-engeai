@@ -20,6 +20,7 @@ import {
     Assignment,
     assignmentOriginText,
     CanvasAssignment,
+    CanvasAccountMismatchError,
     CanvasAuthRequiredError,
     CanvasImportResult,
     CanvasStatus,
@@ -729,6 +730,18 @@ async function showCanvasImport(): Promise<void> {
     try {
         canvasAssignments = await request<CanvasAssignment[]>('/canvas/assignments');
     } catch (error) {
+        // A connection refused as someone else's still exists, so offer connecting again instead.
+        if (error instanceof CanvasAccountMismatchError) {
+            const connectRow = document.createElement('div');
+            connectRow.className = 'wf-button-row';
+            const connect = document.createElement('a');
+            connect.className = 'wf-button wf-button--primary';
+            connect.href = connectUrlReturningTo(error.connectUrl, canvasImportReturnPath());
+            connect.textContent = 'Connect Canvas';
+            connectRow.append(connect);
+            content.append(createText('p', error.message, 'wf-panel-intro'), connectRow);
+            return;
+        }
         // A credential revoked between the status check and this call lands here.
         if (error instanceof CanvasAuthRequiredError) {
             const connectRow = document.createElement('div');

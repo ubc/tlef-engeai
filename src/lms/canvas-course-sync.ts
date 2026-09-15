@@ -478,13 +478,14 @@ export async function assertInstructorIdentity(
         );
     }
 
-    throw new CanvasIdentityError(
-        'The Canvas account connected to EngE-AI belongs to someone else, so EngE-AI will not ' +
-            'use it. Sign out of Canvas in this browser, then connect again with your own ' +
-            'Canvas account.',
-        'mismatch'
-    );
+    throw new CanvasIdentityError(CANVAS_ACCOUNT_MISMATCH_MESSAGE, 'mismatch');
 }
+
+/** What staff are told when the connected Canvas account is proven to be someone else's. */
+export const CANVAS_ACCOUNT_MISMATCH_MESSAGE =
+    'The Canvas account connected to EngE-AI belongs to someone else, so EngE-AI will not ' +
+    'use it. Sign out of Canvas in this browser, then connect again with your own ' +
+    'Canvas account.';
 
 /**
  * resolveImportedCourseName — the EngE-AI course name for an imported Canvas course.

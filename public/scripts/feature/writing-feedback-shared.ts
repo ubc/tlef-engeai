@@ -685,6 +685,22 @@ export class CanvasAuthRequiredError extends Error {
     }
 }
 
+/**
+ * Raised when Canvas refuses the connected account because it belongs to someone else.
+ *
+ * Carries the server's message and a connect link. Connecting again with the right account is
+ * the fix, and the refused connection still exists, so the usual "not connected" prompt would
+ * never appear on its own.
+ */
+export class CanvasAccountMismatchError extends Error {
+    readonly status = 403;
+
+    constructor(message: string, readonly connectUrl: string) {
+        super(message);
+        this.name = 'CanvasAccountMismatchError';
+    }
+}
+
 /** A failed request, carrying the HTTP status alongside the server's message. */
 export interface WritingFeedbackRequestError extends Error {
     status?: number;
@@ -697,6 +713,10 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
     // so this must be recognised before the generic failure path swallows it.
     if (response.status === 401 && typeof body.connectUrl === 'string') {
         throw new CanvasAuthRequiredError(body.connectUrl);
+    }
+    // Only a refusal of someone else's Canvas account carries a connect link with its 403.
+    if (response.status === 403 && typeof body.connectUrl === 'string') {
+        throw new CanvasAccountMismatchError(body.error || 'The connected Canvas account is not yours.', body.connectUrl);
     }
     if (!response.ok || !body.success) {
         // The status rides along with the message: an expired session reads
