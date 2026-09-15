@@ -957,6 +957,10 @@ export interface GlobalUser {
     isAdmin?: boolean;
     /** Per-user instructor tutorial progress; see {@link InstructorOnboardingProgress}. Backfilled by OB-002. */
     instructorOnboarding?: InstructorOnboardingProgress;
+    /** Canvas user id of the connected account proven to be this person; see `src/lms/canvas-identity-once.ts`. */
+    canvasVerifiedUserId?: string;
+    /** When that Canvas account was verified. */
+    canvasVerifiedAt?: Date;
 }
 
 /**

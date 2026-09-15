@@ -22,6 +22,7 @@ import { showErrorToast, showSuccessToast, showToast } from '../ui/toast-notific
 import {
     AnchoredComment,
     Assignment,
+    CanvasStatus,
     CriterionFeedback,
     FeedbackRun,
     FUNCTION_TAG_LABELS,
@@ -33,6 +34,7 @@ import {
     Submission,
     SubmissionDetail,
     WritingFeedbackLens,
+    WritingFeedbackRequestError,
     baseUrl,
     chip,
     confirmDiscardDirty,
@@ -56,6 +58,7 @@ import {
     views
 } from './writing-feedback-shared.js';
 import { getWorkingComments, initAnchorWorkingSet, renderAnnotations } from './writing-feedback-anchors.js';
+import { connectUrlReturningTo } from './writing-feedback-canvas-connect.js';
 import { GradeEntry } from './writing-feedback-grade-entry.js';
 import { describeApprovalBlocker, type GradeProgress } from './writing-feedback-grade-progress.js';
 import { changedLenses, decideNextAction, stepBarState, type ReviewStep } from './writing-feedback-review-steps.js';
@@ -154,6 +157,34 @@ function savedGrades(
     return candidates.find((grades) => grades?.rubricVersion === rubric.version);
 }
 
+/** Query marker on the Canvas authorization return address that reopens the Review and release step. */
+const RELEASE_RETURN_PARAM = 'wfReviewStep';
+
+/**
+ * The review page staff are on, as the same-site path Canvas authorization should return to.
+ *
+ * Carries {@link RELEASE_RETURN_PARAM} so the review reopens on step 3: staff connected Canvas
+ * in order to release, and would otherwise land back on the annotations step.
+ */
+function releaseReturnPath(): string {
+    const url = new URL(window.location.href);
+    url.searchParams.set(RELEASE_RETURN_PARAM, 'review');
+    return `${url.pathname}${url.search}${url.hash}`;
+}
+
+/**
+ * Removes the release-return marker from the address bar and reports whether it was there.
+ *
+ * Removed before the review renders so a refresh or a copied link opens on the usual first step.
+ */
+function consumeReleaseReturn(): boolean {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get(RELEASE_RETURN_PARAM) !== 'review') return false;
+    url.searchParams.delete(RELEASE_RETURN_PARAM);
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    return true;
+}
+
 /**
  * openReview - opens one submission in the staff review workspace
  *
@@ -169,6 +200,7 @@ export async function openReview(submissionId: string): Promise<void> {
     // current review DOM, so "Keep editing" leaves the existing view intact.
     if (!(await confirmDiscardDirty('review'))) return;
     state.reviewDirty = false;
+    const returningToRelease = consumeReleaseReturn();
     setQueryState({ wfSubmission: submissionId, wfView: null });
     setView('review');
     const root = element<HTMLDivElement>('wf-view-review');
@@ -181,6 +213,7 @@ export async function openReview(submissionId: string): Promise<void> {
         state.currentAssignment = state.assignments.find((item) => item.id === detail.submission.assignmentId) ?? null;
         state.expandedAssignmentId = detail.submission.assignmentId;
         initAnchorWorkingSet(detail);
+        if (returningToRelease) pendingReviewState = { submissionId, step: 'review' };
         renderReviewView(root, detail);
         refreshIcons();
     } catch (error) {
@@ -747,6 +780,29 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
     reviewNotice.hidden = !notice;
     if (notice) reviewNotice.append(createText('strong', notice.title), createText('span', notice.body));
 
+    // Release uses each staff member's own Canvas authorization. When that is what is missing,
+    // it is offered here, returning to this step, rather than only inside the import panel.
+    const canvasStatus = state.workspace?.canvas;
+    const connectUrl = !isReleased && canvasStatus && !canvasStatus.canImport ? canvasStatus.connectUrl : undefined;
+    const connectCallout = document.createElement('div');
+    connectCallout.className = 'wf-callout wf-callout--warning';
+    connectCallout.hidden = !connectUrl;
+    if (connectUrl) {
+        const connectRow = document.createElement('div');
+        connectRow.className = 'wf-button-row';
+        connectRow.append(createButton('Connect Canvas', 'primary', async () => {
+            // Connecting leaves the page, so unsaved edits get the usual warning first.
+            if (!(await confirmDiscardDirty('review'))) return;
+            state.reviewDirty = false;
+            window.location.assign(connectUrlReturningTo(connectUrl, releaseReturnPath()));
+        }));
+        connectCallout.append(
+            createText('strong', 'Connect your Canvas account to be able to release student feedback and grades:'),
+            // createText('span', 'Release uses your own Canvas account. Connect it once and you will come straight back to this step.'),
+            connectRow
+        );
+    }
+
     const gradeSection = document.createElement('section');
     gradeSection.className = 'wf-feedback-section';
     const gradeHeaderChip = document.createElement('span');
@@ -773,7 +829,8 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
         }));
     }
     checks.append(renderDownloadMenu(submission, detail));
-    reviewBody.append(reviewNotice, gradeSection, checks, ...shared.children);
+    // The connect prompt comes last, directly above the footer's disabled Release button it unblocks.
+    reviewBody.append(reviewNotice, gradeSection, checks, ...shared.children, connectCallout);
 
     panel.append(annotationsBody, summaryBody, reviewBody);
 
@@ -974,15 +1031,8 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
     async function approve(): Promise<void> {
         const blocker = approvalBlocker();
         if (blocker) throw new Error(blocker);
-        // Approval is a separate, confirmed transition and deliberately does
-        // not imply PDF delivery or any Canvas write.
-        const confirmation = await showConfirmModal(
-            'Approve this feedback?',
-            'Approval confirms that a staff member reviewed the rubric evidence, guiding questions, annotations, and grades. It will not release anything automatically.',
-            'Approve feedback',
-            'Keep reviewing'
-        );
-        if (confirmation.action !== 'approve-feedback') return;
+        // No confirmation: approval writes nothing to Canvas and can be withdrawn by saving again.
+        // Release, the external step, keeps its own confirmation.
         // Approval covers what is on screen, so unsaved edits are saved first rather than discarded.
         const savedFirst = state.reviewDirty;
         if (savedFirst) await saveRevision();
@@ -1016,10 +1066,21 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
         releaseError = '';
         // The server queues the release and returns immediately; the write itself happens in
         // the worker, so this waits on the record rather than on one long request.
-        await jsonRequest<{ status: string; jobId: string }>(
-            `/submissions/${encodeURIComponent(submission.id)}/release`,
-            'POST'
-        );
+        try {
+            await jsonRequest<{ status: string; jobId: string }>(
+                `/submissions/${encodeURIComponent(submission.id)}/release`,
+                'POST'
+            );
+        } catch (error) {
+            // A refused Canvas account check may have removed the connection: re-read Canvas status
+            // so this step offers Connect Canvas again, then report the refusal.
+            if ((error as WritingFeedbackRequestError).status === 403 && state.workspace) {
+                state.workspace.canvas = await request<CanvasStatus>('/canvas/status');
+                pendingReviewState = { submissionId: submission.id, step: 'review' };
+                await refreshReview(submission.id);
+            }
+            throw error;
+        }
         releaseInFlight = isDemo ? 'Simulating the release…' : 'Sending the feedback files and grade to Canvas…';
         refreshActions();
         let released: ReleaseStatus;
@@ -1495,11 +1556,11 @@ function releaseHistoryLine(counts: { released: number; max: number }): string {
 }
 
 /**
- * reviewStatusNotice - the callout at the top of the Review step once feedback is approved or sent.
+ * reviewStatusNotice - the callout at the top of the Review step once feedback has gone to Canvas.
  *
  * @param submission - Submission under review
  * @param detail - Detail payload carrying the latest release record and counts
- * @returns Title and sentence, or null while the feedback is still a draft
+ * @returns Title and sentence, or null until a release has been attempted
  */
 function reviewStatusNotice(submission: Submission, detail: SubmissionDetail): { title: string; body: string } | null {
     const release = detail.release;
@@ -1520,9 +1581,6 @@ function reviewStatusNotice(submission: Submission, detail: SubmissionDetail): {
             title: 'Canvas reconciliation required',
             body: 'Canvas returned an uncertain result during release. Check this student’s submission and grade in Canvas before any retry; automatic retry is disabled to prevent duplicate feedback.'
         };
-    }
-    if (submission.status === 'approved') {
-        return { title: 'Approved, not yet sent to the student.', body: 'Nothing reaches Canvas until you release it.' };
     }
     return null;
 }
@@ -1547,7 +1605,9 @@ function releaseReadiness(submission: Submission, detail: SubmissionDetail): { r
     let message: string;
     if (capReached) message = releaseHistoryLine(counts);
     else if (!hasFinalAssessment) message = 'Release is blocked until a complete staff-final rubric grade is saved.';
-    else if (!workspace.canvas.canImport) message = workspace.canvas.message;
+    else if (!workspace.canvas.canImport) {
+        message = workspace.canvas.connectUrl ? 'Connect Canvas to release this feedback.' : workspace.canvas.message;
+    }
     else if (submission.status !== 'approved') message = 'Approve the staff-reviewed feedback before release.';
     else if (priorRelease?.releaseLockedAt) message = 'A release is already on its way to Canvas for this submission.';
     else if (priorRelease?.status === 'failed') message = priorRelease.sanitizedError || 'The prior Canvas release failed safely and may be retried.';

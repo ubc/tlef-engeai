@@ -212,12 +212,11 @@ describe('instructor gating', () => {
     });
 });
 
-describe('identity failure handling — which reasons discard the credential', () => {
+describe('identity failure handling — the credential is never discarded', () => {
     /**
-     * A mismatched token is the reported failure mode: two EngE-AI users on one browser, Canvas
-     * still signed in as the first, so the second's connect silently re-authorizes the first
-     * person's Canvas account. Leaving that token on file traps the second user — every retry
-     * reaches the same wrong account and "reconnect" changes nothing.
+     * Roster sync runs under the importing instructor's stored token. Deleting it on a refused
+     * check silently broke roster sync for every course they imported; reconnecting overwrites
+     * the token anyway, so the refusal alone is enough.
      */
     function handlerFor() {
         jest.resetModules();
@@ -260,25 +259,7 @@ describe('identity failure handling — which reasons discard the credential', (
         collectionStub.deleteOne.mockClear();
     });
 
-    it('deletes the stored token on a genuine mismatch', async () => {
-        const handle = handlerFor();
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const { CanvasIdentityError } = require('../../lms/canvas-course-sync');
-        const res = responseSpy();
-
-        const handled = await handle(
-            new CanvasIdentityError('not you', 'mismatch'),
-            requestFor({ puid: PUID }),
-            res
-        );
-
-        expect(handled).toBe(true);
-        expect(res.statusCode).toBe(403);
-        // Keyed by internal userId, never the PUID — the same invariant as every other write.
-        expect(collectionStub.deleteOne).toHaveBeenCalledWith({ userKey: USER_ID });
-    });
-
-    it.each([['identifiers_withheld'], ['no_puid'], ['self_not_on_roster']])(
+    it.each([['mismatch'], ['identifiers_withheld'], ['no_puid'], ['self_not_on_roster']])(
         'keeps the token when the reason is %s',
         async (reason) => {
             const handle = handlerFor();
@@ -294,7 +275,6 @@ describe('identity failure handling — which reasons discard the credential', (
 
             expect(handled).toBe(true);
             expect(res.statusCode).toBe(403);
-            // The credential may be entirely correct; only Canvas's answer was incomplete.
             expect(collectionStub.deleteOne).not.toHaveBeenCalled();
         }
     );

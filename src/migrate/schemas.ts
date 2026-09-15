@@ -247,6 +247,8 @@ export const globalUserSchema: FieldSpec[] = [
     { key: 'instructorOnboardingCompleted', optional: true },
     { key: 'studentOnboardingCompleted', optional: true },
     { key: 'isAdmin', optional: true },
+    { key: 'canvasVerifiedUserId', optional: true },
+    { key: 'canvasVerifiedAt', optional: true },
 ];
 
 export const academicPeriodSchema: FieldSpec[] = [

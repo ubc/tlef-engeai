@@ -167,6 +167,30 @@ export async function updateGlobalUser(
 }
 
 /**
+ * recordVerifiedCanvasAccount
+ *
+ * Remembers the Canvas account proven to belong to this user, so later Canvas requests on the same
+ * connection skip the roster check (`src/lms/canvas-identity-once.ts`). Stores the Canvas user id
+ * only — never an SIS identifier read from Canvas.
+ *
+ * @param ctx - MongoDalContext
+ * @param userId - Internal user id; the PUID is never used as a key here
+ * @param canvasUserId - Canvas user id of the verified account
+ */
+export async function recordVerifiedCanvasAccount(
+    ctx: MongoDalContext,
+    userId: string,
+    canvasUserId: string
+): Promise<void> {
+    const collection = activeUsersMongoCollection(ctx.db);
+    const now = new Date();
+    await collection.updateOne(
+        { userId },
+        { $set: { canvasVerifiedUserId: canvasUserId, canvasVerifiedAt: now, updatedAt: now } }
+    );
+}
+
+/**
  * completeInstructorOnboardingStage
  *
  * Marks one instructor tutorial stage complete for the user located by `puid`.

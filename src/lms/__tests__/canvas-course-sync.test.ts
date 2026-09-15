@@ -36,6 +36,7 @@ jest.mock('../../utils/logger', () => ({
 
 import { canvas } from '@ubc/ubc-genai-toolkit-lms-integration';
 import {
+    assertInstructorIdentity,
     CanvasStudentPathRemovedError,
     connectCanvasCourse,
     listCanvasCourseOptions,
@@ -324,10 +325,9 @@ describe('connectCanvasCourse — instructor identity verification', () => {
         expect(mongoDB.enrollUserInCourse).not.toHaveBeenCalled();
     });
 
-    it('tags each failure with a reason, so only a mismatch discards the credential', async () => {
-        // The route deletes the stored token on `mismatch` alone. A withheld identifier may sit
-        // behind a perfectly correct credential, and throwing it away would punish the instructor
-        // for an account permission they do not control.
+    it('tags each failure with a reason, so the route can tell a mismatch apart', async () => {
+        // A withheld identifier may sit behind a perfectly correct credential; the instructor
+        // needs a different message from the one that tells them to reconnect.
         getCourseUsers.mockResolvedValue([
             { id: '11', name: 'Ada Byron', integrationId: undefined, raw: {} },
         ]);
@@ -384,6 +384,22 @@ describe('connectCanvasCourse — instructor identity verification', () => {
                 message: expect.not.stringContaining('PUID_SOMEONE_ELSE'),
             }) as Error
         );
+    });
+
+    it('reads the teacher roster alone unless told otherwise, and returns the confirmed account', async () => {
+        getCourseUsers.mockResolvedValue(MATCHING_TEACHER_ROSTER);
+
+        await expect(assertInstructorIdentity(api, '742', instructor)).resolves.toBe('11');
+        expect(getCourseUsers).toHaveBeenCalledWith(api, '742', { enrollmentTypes: ['teacher'] });
+    });
+
+    it('confirms a TA when the caller widens the roster to the teaching team', async () => {
+        // Writing Feedback gives TAs full parity (D-049), so a TA's connected account must pass.
+        connectedAs(21);
+        getCourseUsers.mockResolvedValue([{ id: '21', name: 'Tee Ay', integrationId: 'PUID_INSTRUCTOR', raw: {} }]);
+
+        await expect(assertInstructorIdentity(api, '742', instructor, ['teacher', 'ta'])).resolves.toBe('21');
+        expect(getCourseUsers).toHaveBeenCalledWith(api, '742', { enrollmentTypes: ['teacher', 'ta'] });
     });
 
 });

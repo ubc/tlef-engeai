@@ -181,4 +181,10 @@ describe('single release source contract', () => {
         expect(source).toContain("'Release to Canvas'");
         expect(source).toContain('Feedback can be released only once.');
     });
+
+    it('offers Canvas authorization on the review step and returns to that step', () => {
+        expect(source).toContain("createButton('Connect Canvas', 'primary'");
+        expect(source).toContain('connectUrlReturningTo(connectUrl, releaseReturnPath())');
+        expect(source).toContain('const returningToRelease = consumeReleaseReturn();');
+    });
 });

@@ -86,9 +86,9 @@ export type CanvasIdentityFailure =
 /**
  * Raised when the connected Canvas account cannot be confirmed as the signed-in user.
  *
- * Carries {@link CanvasIdentityFailure} because callers act on the distinction: only a genuine
- * `mismatch` justifies discarding the stored credential. Matching on the message text instead
- * would couple the route's behaviour to wording that exists to be read by humans and changed.
+ * Carries {@link CanvasIdentityFailure} because callers act on the distinction, which the 403
+ * body reports. Matching on the message text instead would couple the route's behaviour to
+ * wording that exists to be read by humans and changed.
  */
 export class CanvasIdentityError extends Error {
     constructor(
@@ -401,11 +401,12 @@ async function resolveAcademicPeriodId(
  * `TeacherEnrollment` on a *course*, so the identifier is only readable in a course roster —
  * hence both calls.
  *
- * Reads the **teacher** roster only. `getCourseUsers` defaults to students, so `enrollmentTypes`
- * is passed explicitly; a student roster is never fetched anywhere in this module. The values are
- * compared in memory and discarded — none is returned, persisted, or logged, because the roster
- * carries other instructors' PUIDs and `active-users` is the only collection permitted to hold
- * one at rest.
+ * Reads the **teacher** roster by default. Writing Feedback, where TAs operate with full parity,
+ * widens it to teachers and TAs. `getCourseUsers` defaults to students, so `enrollmentTypes` is
+ * always passed explicitly; a student roster is never fetched anywhere in this module. The values
+ * are compared in memory and discarded — none is persisted or logged, because the roster carries
+ * other staff members' PUIDs and `active-users` is the only collection permitted to hold one at
+ * rest. Only the connected account's Canvas user id is returned.
  *
  * Comparison is trimmed and case-insensitive. Both sides are institutional identifiers for the
  * same person from the same institution, so the only differences worth tolerating are transport
@@ -414,6 +415,8 @@ async function resolveAcademicPeriodId(
  * @param api - authenticated Canvas client
  * @param canvasCourseId - the course being imported; also the context that grants `read_sis`
  * @param globalUser - the signed-in instructor, whose `puid` is the expected value
+ * @param enrollmentTypes - roster enrolments the connected account may hold; teachers unless widened
+ * @returns The Canvas user id of the connected account, once confirmed to be this person
  *
  * @throws {CanvasIdentityError} Tagged with a {@link CanvasIdentityFailure} the caller branches on;
  * only `mismatch` means the credential is someone else's.
@@ -421,8 +424,9 @@ async function resolveAcademicPeriodId(
 export async function assertInstructorIdentity(
     api: CanvasApi,
     canvasCourseId: string,
-    globalUser: GlobalUser
-): Promise<void> {
+    globalUser: GlobalUser,
+    enrollmentTypes: readonly string[] = ['teacher']
+): Promise<string> {
     const expectedPuid = (globalUser.puid ?? '').trim().toLowerCase();
     if (!expectedPuid) {
         throw new CanvasIdentityError(
@@ -439,7 +443,7 @@ export async function assertInstructorIdentity(
 
     // 2. That account's own roster row is the only one whose identifier means anything here.
     const teachers = await canvas.getCourseUsers(api, canvasCourseId, {
-        enrollmentTypes: ['teacher'],
+        enrollmentTypes: [...enrollmentTypes],
     });
     const connectedTeacher = teachers.find((teacher) => teacher.id === connectedCanvasUserId);
 
@@ -447,15 +451,16 @@ export async function assertInstructorIdentity(
         // Canvas listed the course under this account's teacher enrollments, yet the account is
         // absent from the teacher roster — a concluded or otherwise restricted enrollment. No
         // identifier to read, and no evidence of impersonation, so the credential is kept.
+        const includesTas = enrollmentTypes.includes('ta');
         throw new CanvasIdentityError(
-            'EngE-AI could not confirm your Canvas account against this course’s instructor list. ' +
-                'Check that your Canvas instructor enrolment for this course is active.',
+            `EngE-AI could not confirm your Canvas account against this course’s ${includesTas ? 'teaching team' : 'instructor list'}. ` +
+                `Check that your Canvas ${includesTas ? 'instructor or TA' : 'instructor'} enrolment for this course is active.`,
             'self_not_on_roster'
         );
     }
 
     if ((connectedTeacher.integrationId ?? '').trim().toLowerCase() === expectedPuid) {
-        return;
+        return connectedCanvasUserId;
     }
 
     // A roster where nobody carried an integration_id is Canvas declining to serialize the field,
@@ -474,8 +479,8 @@ export async function assertInstructorIdentity(
     }
 
     throw new CanvasIdentityError(
-        'The Canvas account connected to EngE-AI belongs to someone else, so it has been ' +
-            'disconnected. Sign out of Canvas in this browser, then connect again with your own ' +
+        'The Canvas account connected to EngE-AI belongs to someone else, so EngE-AI will not ' +
+            'use it. Sign out of Canvas in this browser, then connect again with your own ' +
             'Canvas account.',
         'mismatch'
     );

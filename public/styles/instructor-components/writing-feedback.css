@@ -476,6 +476,10 @@
     margin-bottom: 2px;
 }
 
+.wf-callout .wf-button-row {
+    margin-top: 10px;
+}
+
 /* Landing — assignment accordion (documents .topic-or-week-instance pattern) */
 
 .wf-assignment-list {
