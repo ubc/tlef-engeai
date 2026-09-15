@@ -2,8 +2,8 @@ import { changedLenses, decideNextAction, stepBarState } from '../writing-feedba
 
 describe('stepBarState', () => {
     it('enables only the usable direction', () => {
-        expect(stepBarState('annotations')).toEqual({ title: 'Annotations', position: 'Step 1 of 2', backDisabled: true, nextDisabled: false });
-        expect(stepBarState('summary')).toEqual({ title: 'Summary', position: 'Step 2 of 2', backDisabled: false, nextDisabled: true });
+        expect(stepBarState('annotations')).toEqual({ title: 'Review annotations', position: 'Step 1 of 2', backDisabled: true, nextDisabled: false });
+        expect(stepBarState('summary')).toEqual({ title: 'Review feedback and grades', position: 'Step 2 of 2', backDisabled: false, nextDisabled: true });
     });
 });
 

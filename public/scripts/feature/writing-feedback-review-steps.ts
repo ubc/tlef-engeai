@@ -31,8 +31,8 @@ export type NextAction = { kind: 'advance' } | { kind: 'redraft'; lenses: Lens[]
  */
 export function stepBarState(step: ReviewStep): StepBarState {
     return step === 'annotations'
-        ? { title: 'Annotations', position: 'Step 1 of 2', backDisabled: true, nextDisabled: false }
-        : { title: 'Summary', position: 'Step 2 of 2', backDisabled: false, nextDisabled: true };
+        ? { title: 'Review annotations', position: 'Step 1 of 2', backDisabled: true, nextDisabled: false }
+        : { title: 'Review feedback and grades', position: 'Step 2 of 2', backDisabled: false, nextDisabled: true };
 }
 
 /**

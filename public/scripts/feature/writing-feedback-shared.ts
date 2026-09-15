@@ -1139,6 +1139,41 @@ export function textAreaControl(value = '', rows = 4): HTMLTextAreaElement {
 }
 
 /**
+ * autoGrow - keeps a textarea exactly as tall as the text in it
+ *
+ * A fixed row count either clips long text (staff see it stop mid-word with no
+ * affordance but the resize handle) or leaves short text in an oversized box.
+ *
+ * Height is cleared before it is measured, because scrollHeight of an element that
+ * is already tall enough reports the height it was given, not the height it needs.
+ * The first measurement is deferred: the control is not in the document when this
+ * is called, and a detached element has no scrollHeight.
+ *
+ * A control rendered inside a collapsed step has no layout at all and reports a
+ * scrollHeight of 0. Measuring it there would pin it to its row floor for the life of
+ * the page, so the measurement is skipped until the control is on screen and repeated then.
+ *
+ * @param control - Textarea to keep sized to its content
+ */
+export function autoGrow(control: HTMLTextAreaElement): void {
+    const fit = (): void => {
+        // offsetParent is null exactly when the control (or an ancestor) is display:none
+        // or hidden — the collapsed-step case, where there is nothing to measure.
+        if (!control.isConnected || control.offsetParent === null) return;
+        control.style.height = 'auto';
+        // scrollHeight excludes the border, which a border-box height must include.
+        control.style.height = `${control.scrollHeight + control.offsetHeight - control.clientHeight}px`;
+    };
+    control.addEventListener('input', fit);
+    // Fires when the step is expanded and again when the control scrolls into view, which
+    // is the first moment it has a height worth reading.
+    new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) fit();
+    }).observe(control);
+    requestAnimationFrame(fit);
+}
+
+/**
  * confirmDiscardDirty - protects unsaved review or setup state before navigation
  *
  * @param kind - Dirty flag and user-facing edit category to inspect

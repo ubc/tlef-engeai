@@ -26,6 +26,7 @@ import {
     RubricCriterion,
     RubricDefinition,
     RubricLevel,
+    autoGrow,
     createButton,
     createIconButton,
     createText,
@@ -404,42 +405,6 @@ function bandsDisagreeAt(criterion: RubricCriterion): number | undefined {
     return highest === criterion.points ? undefined : highest;
 }
 
-/**
- * autoGrow - keeps a textarea tall enough to show everything in it
- *
- * A rubric descriptor may run to 400 characters inside a control that was two rows
- * tall, so most descriptors stopped mid-word with no affordance but the resize
- * handle. Staff could not read their own rubric.
- *
- * Height is cleared before it is measured, because scrollHeight of an element that
- * is already tall enough reports the height it was given, not the height it needs.
- * The first measurement is deferred: the control is not in the document when this
- * is called, and a detached element has no scrollHeight.
- *
- * A grid rendered inside a collapsed step has no layout at all, and an unlaid-out
- * control reports a scrollHeight of 0. Measuring it there would pin every descriptor
- * to the two-row floor for the life of the page, clipping the rest of the text with
- * no way to reach it, so the measurement is skipped until the control is on screen
- * and repeated then.
- *
- * @param control - Textarea to keep sized to its content
- */
-function autoGrow(control: HTMLTextAreaElement): void {
-    const fit = (): void => {
-        // offsetParent is null exactly when the control (or an ancestor) is display:none
-        // or hidden — the collapsed-step case, where there is nothing to measure.
-        if (!control.isConnected || control.offsetParent === null) return;
-        control.style.height = 'auto';
-        control.style.height = `${control.scrollHeight}px`;
-    };
-    control.addEventListener('input', fit);
-    // Fires when the step is expanded and again when the cell scrolls into view, which
-    // is the first moment the control has a height worth reading.
-    new IntersectionObserver((entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) fit();
-    }).observe(control);
-    requestAnimationFrame(fit);
-}
 
 /**
  * renderRubricGrid - draws one rubric as a single criteria-by-levels table

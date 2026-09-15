@@ -2473,6 +2473,7 @@ mark.wf-anchor.is-filtered-out,
     display: grid;
     grid-template-columns: 1fr auto 1fr;
     align-items: center;
+    background: var(--background-2);
 }
 
 .wf-step-bar__center {
@@ -2497,6 +2498,20 @@ mark.wf-anchor.is-filtered-out,
 .wf-summary-strengths {
     display: grid;
     gap: 8px;
+}
+
+.wf-summary-strength-control {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 8px;
+}
+
+/* Sized to its text by autoGrow, so the shared 96px field floor would only add empty space. */
+.wf-field .wf-summary-strength-control textarea {
+    min-height: 0;
+    overflow: hidden;
+    resize: none;
 }
 
 .wf-panel-tabs {
