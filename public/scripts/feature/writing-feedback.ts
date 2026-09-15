@@ -59,6 +59,7 @@ import { openRubricPage } from './writing-feedback-rubric.js';
 import { openReview } from './writing-feedback-review.js';
 import { setWritingFeedbackDemoMode, assertNotWritingFeedbackDemoMode } from './writing-feedback-demo-mode.js';
 import { oldestPendingAssignment } from './writing-feedback-assignment-type-state.js';
+import { connectUrlReturningTo } from './writing-feedback-canvas-connect.js';
 
 // ---------------------------------------------------------------------------
 // Landing view
@@ -619,6 +620,35 @@ function createAssignmentListPlaceholder(): HTMLElement {
     return placeholder;
 }
 
+/** Query marker on the Canvas authorization return address that reopens the import panel. */
+const CANVAS_IMPORT_RETURN_PARAM = 'wfImport';
+
+/**
+ * The page staff are on, as the same-site path Canvas authorization should return to.
+ *
+ * Carries {@link CANVAS_IMPORT_RETURN_PARAM} so the workspace reopens the import panel on
+ * arrival: staff connected Canvas in order to import, and would otherwise have to find the
+ * button again.
+ */
+function canvasImportReturnPath(): string {
+    const url = new URL(window.location.href);
+    url.searchParams.set(CANVAS_IMPORT_RETURN_PARAM, 'canvas');
+    return `${url.pathname}${url.search}${url.hash}`;
+}
+
+/**
+ * Removes the import-return marker from the address bar and reports whether it was there.
+ *
+ * Removed before anything renders so a refresh or a copied link does not reopen the panel.
+ */
+function consumeCanvasImportReturn(): boolean {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get(CANVAS_IMPORT_RETURN_PARAM) !== 'canvas') return false;
+    url.searchParams.delete(CANVAS_IMPORT_RETURN_PARAM);
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    return true;
+}
+
 /**
  * showCanvasImport - opens the assignment chooser for the active Canvas adapter
  *
@@ -661,7 +691,7 @@ async function showCanvasImport(): Promise<void> {
             connectRow.className = 'wf-button-row';
             const connect = document.createElement('a');
             connect.className = 'wf-button wf-button--primary';
-            connect.href = status.connectUrl;
+            connect.href = connectUrlReturningTo(status.connectUrl, canvasImportReturnPath());
             connect.textContent = 'Connect Canvas';
             connectRow.append(connect);
             content.append(connectRow);
@@ -705,7 +735,7 @@ async function showCanvasImport(): Promise<void> {
             connectRow.className = 'wf-button-row';
             const connect = document.createElement('a');
             connect.className = 'wf-button wf-button--primary';
-            connect.href = error.connectUrl;
+            connect.href = connectUrlReturningTo(error.connectUrl, canvasImportReturnPath());
             connect.textContent = 'Connect Canvas';
             connectRow.append(connect);
             content.append(createText('p', error.message, 'wf-panel-intro'), connectRow);
@@ -717,11 +747,20 @@ async function showCanvasImport(): Promise<void> {
     }
 
     if (canvasAssignments.length === 0) {
+        if (!isLive) {
+            content.append(createText('p', 'No assignments are available to import.', 'wf-muted-note'));
+            return;
+        }
         content.append(createText(
             'p',
-            isLive
-                ? 'No assignments in this Canvas course currently accept text or file submissions, have any submissions yet, or are outside anonymous grading.'
-                : 'No assignments are available to import.',
+            'No assignments in this Canvas course can be imported. An assignment appears only if it accepts text entry or file uploads, has at least one submission, and is not anonymously graded.',
+            'wf-muted-note'
+        ));
+        // Canvas answers an invited-but-unaccepted enrollment with an empty assignment list, not
+        // an error, so from here it is indistinguishable from a course with nothing to import.
+        content.append(createText(
+            'p',
+            'If you were recently added to this Canvas course, accept the course invitation in Canvas first. Until you do, Canvas shows you no assignments.',
             'wf-muted-note'
         ));
         return;
@@ -833,6 +872,7 @@ export async function initializeWritingFeedback(currentClass: activeCourse): Pro
     state.course = currentClass;
     state.assignments = [];
     state.expandedAssignmentId = queryState('wfAssignment');
+    const returningFromCanvasConnect = consumeCanvasImportReturn();
     state.currentAssignment = null;
     state.reviewDirty = false;
     state.panelDirty = false;
@@ -860,6 +900,12 @@ export async function initializeWritingFeedback(currentClass: activeCourse): Pro
             await openRubricPage(state.expandedAssignmentId);
         } else {
             await loadLanding();
+            if (returningFromCanvasConnect) {
+                // Through the button's own action wrapper, so a Canvas failure is reported
+                // the way a click would report it rather than as "workspace unavailable".
+                const importCanvas = element<HTMLButtonElement>('wf-import-canvas');
+                void runButtonAction(importCanvas, showCanvasImport);
+            }
         }
     } catch (error) {
         // Keep the component mounted with a durable, non-sensitive error state;
