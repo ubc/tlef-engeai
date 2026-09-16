@@ -31,6 +31,7 @@ import {
     resolveCanvasImportStatus
 } from '../writing-feedback/canvas-import-resolver';
 import { LiveCanvasReleaseService } from '../writing-feedback/live-canvas-release-service';
+import { REPLACEMENT_CONFLICTS, REPLACEMENT_ERRORS, SubmissionReplacementService } from '../writing-feedback/submission-replacement';
 import type { CanvasReleaseService } from '../writing-feedback/contracts';
 import { canvasConfig, resolveUserKey } from '../lms/canvas-config';
 import { ensureCanvasIdentityVerified } from '../lms/canvas-identity-once';
@@ -104,6 +105,13 @@ function isDuplicateKey(error: unknown): boolean {
         && 'code' in error
         && (error as { code?: unknown }).code === 11000;
 }
+/** Shown when manual intake would give a student a second submission for one assignment. */
+const DUPLICATE_STUDENT_SUBMISSION = 'This student already has a submission for this assignment';
+
+function isDuplicateKeyError(error: unknown): boolean {
+    return typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 11000;
+}
+
 function safeError(error: unknown): string {
     const message = error instanceof Error ? error.message : 'Writing feedback request failed';
     const safePrefixes = [
@@ -140,7 +148,9 @@ function safeError(error: unknown): string {
         'The assignment type has already been chosen', 'Only a lab report has a technical rubric',
         'Choose the assignment type before approving',
         'The summary can only be redrafted before approval', 'The summary changed since you opened it',
-        'Summary edits failed validation', 'The summary could not be updated from your annotations'
+        'Summary edits failed validation', 'The summary could not be updated from your annotations',
+        'This assignment is not linked to Canvas', DUPLICATE_STUDENT_SUBMISSION, 'decision must be',
+        ...Object.values(REPLACEMENT_ERRORS)
     ];
     return safePrefixes.some((prefix) => message.startsWith(prefix))
         ? message
@@ -473,6 +483,57 @@ router.post('/:courseId/writing-feedback/canvas/import', withCanvasClientWhenLin
     }
 }));
 
+
+/**
+ * Imports submissions added in Canvas since the assignment was last imported.
+ *
+ * New students are added to the queue. A newer attempt from a student who already has a
+ * submission is held beside it until staff choose which to keep, so the response reports
+ * `heldCount` separately. Reads Canvas only; nothing is written back.
+ */
+router.post('/:courseId/writing-feedback/assignments/:assignmentId/canvas-sync', withCanvasClientWhenLinked, asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const mongo = await EngEAI_MongoDB.getInstance();
+        const assignment = await mongo.getWritingAssignment(courseId(req), String(req.params.assignmentId));
+        if (!assignment) return res.status(404).json({ success: false, error: 'Writing assignment not found' });
+        if (!assignment.canvasAssignmentId) throw new Error('This assignment is not linked to Canvas');
+        const service = await resolveCanvasImportService(req, mongo, courseId(req));
+        const result = await service.importAssignment({
+            courseId: courseId(req),
+            targetAssignmentId: assignment.id,
+            canvasAssignmentId: assignment.canvasAssignmentId
+        });
+        res.json({ success: true, data: result });
+    } catch (error) {
+        res.status(400).json({ success: false, error: safeError(error) });
+    }
+}));
+
+/**
+ * Applies the staff choice between a submission and the newer Canvas attempt held beside it.
+ *
+ * Body: `{ decision: 'use_newer' | 'keep_current' }`. Returns the student's active submission.
+ * Answers 409 while the choice cannot apply yet (generation or release running, or the rows
+ * changed); the workspace shows the confirmation before calling this.
+ */
+router.post('/:courseId/writing-feedback/submissions/:submissionId/replacement', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const decision = req.body?.decision;
+        if (decision !== 'use_newer' && decision !== 'keep_current') {
+            throw new Error('decision must be use_newer or keep_current');
+        }
+        const mongo = await EngEAI_MongoDB.getInstance();
+        const submission = await new SubmissionReplacementService(mongo)
+            .resolve(courseId(req), String(req.params.submissionId), decision);
+        res.json({ success: true, data: submission });
+    } catch (error) {
+        const message = safeError(error);
+        const status = message === REPLACEMENT_ERRORS.notFound ? 404
+            : REPLACEMENT_CONFLICTS.includes(message) ? 409
+                : 400;
+        res.status(status).json({ success: false, error: message });
+    }
+}));
 
 router.get('/:courseId/writing-feedback/assignments/:assignmentId/rubric', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     let lens: WritingFeedbackLens;
@@ -823,8 +884,8 @@ router.post('/:courseId/writing-feedback/submissions', asyncHandlerWithAuth(asyn
         });
         res.status(201).json({ success: true, data: submission });
     } catch (error) {
-        const message = safeError(error);
-        res.status(message.includes('duplicate') ? 409 : 400).json({ success: false, error: message });
+        if (isDuplicateKeyError(error)) return res.status(409).json({ success: false, error: DUPLICATE_STUDENT_SUBMISSION });
+        res.status(400).json({ success: false, error: safeError(error) });
     }
 }));
 
@@ -851,6 +912,7 @@ router.post('/:courseId/writing-feedback/submissions/file', upload.single('file'
         });
         res.status(201).json({ success: true, data: submission });
     } catch (error) {
+        if (isDuplicateKeyError(error)) return res.status(409).json({ success: false, error: DUPLICATE_STUDENT_SUBMISSION });
         res.status(400).json({ success: false, error: safeError(error) });
     }
 }));

@@ -401,6 +401,29 @@ export interface Submission {
     status: SubmissionStatus; // server lifecycle state controlling available actions
     reviews?: ReviewRevision[]; // append-only staff revision audit history
     createdAt: string; // import timestamp used for queue ordering; not when the student submitted
+    /** A newer Canvas attempt from the same student, waiting for staff to choose between them. */
+    pendingReplacement?: PendingReplacement;
+}
+
+/** Queue summary of a held newer attempt; mirrors `WritingPendingReplacement`. */
+export interface PendingReplacement {
+    submissionId: string;
+    attempt: number;
+    submittedAt?: string;
+    sourceType: Submission['sourceType'];
+}
+
+/** Staff choice between a submission and its held newer attempt. */
+export type ReplacementDecision = 'use_newer' | 'keep_current';
+
+/** Result of syncing one linked assignment with Canvas. */
+export interface CanvasSyncResult {
+    importedCount: number; // new students added to the queue
+    heldCount: number; // resubmissions waiting for staff to choose
+    skippedCount: number; // attempts already handled
+    unsupportedCount: number; // submissions with no extractable text, or text past the limit
+    failedCount: number; // downloads or parses that failed and can be retried
+    integration: 'mock_canvas' | 'canvas';
 }
 
 /** Complete review payload combining a submission, model run, and annotation sources. */
@@ -500,6 +523,7 @@ export interface CanvasImportResult {
     targetAssignment: Assignment; // local assignment created or reused by import
     importedCount: number; // new local attempts created
     skippedCount: number; // unchanged attempts omitted by idempotency checks
+    heldCount: number; // resubmissions waiting beside an existing submission for staff to choose
     unsupportedCount: number; // submissions with no extractable text, or text past the 30,000-character limit
     failedCount: number; // submissions whose download or parse failed and can be retried
     submissions: Submission[]; // resulting local submission summaries

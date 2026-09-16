@@ -24,6 +24,7 @@ import {
     CanvasAuthRequiredError,
     CanvasImportResult,
     CanvasStatus,
+    CanvasSyncResult,
     STATUS_LABELS,
     STATUS_TONES,
     Submission,
@@ -61,6 +62,7 @@ import { openReview } from './writing-feedback-review.js';
 import { setWritingFeedbackDemoMode, assertNotWritingFeedbackDemoMode } from './writing-feedback-demo-mode.js';
 import { oldestPendingAssignment } from './writing-feedback-assignment-type-state.js';
 import { connectUrlReturningTo } from './writing-feedback-canvas-connect.js';
+import { renderReplacementNotice } from './writing-feedback-replacement.js';
 
 // ---------------------------------------------------------------------------
 // Landing view
@@ -162,13 +164,20 @@ function renderAssignmentCard(assignment: Assignment): HTMLElement {
     controls.className = 'wf-assignment-controls';
     const canManageRubric = Boolean(state.workspace?.permissions.canManageRubric);
     const rubricButton = createButton(
-        canManageRubric ? 'Edit Rubric' : 'View Rubric',
+        canManageRubric ? 'Edit rubric' : 'View rubric',
         'chip',
         async () => openRubricPage(assignment.id),
         false,
         canManageRubric ? 'edit-3' : 'eye'
     );
     rubricButton.addEventListener('click', (event) => event.stopPropagation());
+    // Only a Canvas-linked assignment has somewhere to pull late submissions from.
+    if (assignment.canvasAssignmentId) {
+        const syncButton = createButton('Sync submissions', 'chip', async () => syncAssignment(assignment), false, 'refresh-cw');
+        syncButton.title = 'Import submissions added or resubmitted in Canvas since the last import';
+        syncButton.addEventListener('click', (event) => event.stopPropagation());
+        controls.append(syncButton);
+    }
     controls.append(rubricButton);
     const deleteButton = createIconButton('trash-2', `Delete assignment "${assignment.title}"`, 'danger', async () => {
         const result = await showDeleteConfirmationModal('assignment', assignment.title);
@@ -328,6 +337,15 @@ async function expandAssignment(assignmentId: string): Promise<void> {
         actions.append(openIcon);
         row.append(info, actions);
         panel.append(row);
+        // A sibling rather than a child: the row is itself a button, and these are separate controls.
+        if (submission.pendingReplacement) {
+            panel.append(renderReplacementNotice(submission, {
+                onResolved: async () => {
+                    state.expandedAssignmentId = assignmentId;
+                    await loadLanding();
+                }
+            }));
+        }
     });
 
     const footer = document.createElement('div');
@@ -337,6 +355,55 @@ async function expandAssignment(assignmentId: string): Promise<void> {
     panel.setAttribute('aria-busy', 'false');
     refreshIcons();
     await expandDisclosure(panel);
+}
+
+/**
+ * canvasOutcomeNotes - the per-count sentences shared by the import and sync toasts
+ *
+ * @param result - Counts from an import or sync
+ * @returns Sentences for the counts worth mentioning
+ */
+function canvasOutcomeNotes(result: Pick<CanvasSyncResult, 'heldCount' | 'unsupportedCount' | 'failedCount'>): string[] {
+    const notes: string[] = [];
+    if (result.heldCount > 0) {
+        notes.push(`${result.heldCount} resubmission${result.heldCount === 1 ? '' : 's'} waiting for you to choose which attempt to review`);
+    }
+    if (result.unsupportedCount > 0) notes.push(`${result.unsupportedCount} had no readable text or exceeded the 30,000-character review limit`);
+    if (result.failedCount > 0) notes.push(`${result.failedCount} could not be read and can be retried by syncing again`);
+    return notes;
+}
+
+/**
+ * syncAssignment - imports submissions added or resubmitted in Canvas since the last import
+ *
+ * New students join the queue. A resubmission from a student already in the queue is held
+ * beside their submission, and the queue row asks staff which attempt to keep.
+ *
+ * @param assignment - Canvas-linked assignment to sync
+ */
+async function syncAssignment(assignment: Assignment): Promise<void> {
+    let result: CanvasSyncResult;
+    try {
+        result = await jsonRequest<CanvasSyncResult>(`/assignments/${encodeURIComponent(assignment.id)}/canvas-sync`, 'POST', {});
+    } catch (error) {
+        // Canvas authorization is fixed by a link, not a retry, so offer it directly.
+        if (error instanceof CanvasAuthRequiredError || error instanceof CanvasAccountMismatchError) {
+            const choice = await showConfirmModal('Connect Canvas', `${error.message} Connect Canvas, then sync again.`, 'Connect Canvas', 'Cancel');
+            if (choice.action === 'connect-canvas') {
+                const here = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+                window.location.href = connectUrlReturningTo(error.connectUrl, here);
+            }
+            return;
+        }
+        throw error;
+    }
+
+    state.expandedAssignmentId = assignment.id;
+    await loadLanding();
+    const notes = [`${result.importedCount} new submission${result.importedCount === 1 ? '' : 's'} imported`, ...canvasOutcomeNotes(result)];
+    const summary = `${notes.join('; ')}.`;
+    if (result.failedCount > 0) showToast(summary, 8000, 'top-right', 'error');
+    else showSuccessToast(summary, 6000);
 }
 
 // ---------------------------------------------------------------------------
@@ -716,7 +783,7 @@ async function showCanvasImport(): Promise<void> {
     callout.className = 'wf-callout wf-callout--success';
     callout.append(createText(
         'span',
-        "This will import all of the selected assignment's submissions. Only assignments with at least one submission appear below."
+        "This will import all of the selected assignment's submissions. Only assignments with at least one submission appear below. To pick up late submissions later, use Sync submissions on the assignment."
     ));
     content.append(callout);
 
@@ -836,10 +903,9 @@ async function showCanvasImport(): Promise<void> {
             // banner that would outlive the action that produced it.
             const notes = [
                 `${result.importedCount} submissions imported${isDemo ? ' from the Canvas demo' : ''}`,
-                `${result.skippedCount} unchanged attempts skipped`
+                `${result.skippedCount} unchanged attempts skipped`,
+                ...canvasOutcomeNotes(result)
             ];
-            if (result.unsupportedCount > 0) notes.push(`${result.unsupportedCount} had no readable text or exceeded the 30,000-character review limit`);
-            if (result.failedCount > 0) notes.push(`${result.failedCount} could not be read and can be retried by importing again`);
             const summary = `${notes.join('; ')}. No feedback was generated automatically.`;
             // Longer than the 3s default: the count list takes longer to read, and
             // a partial failure is the case the instructor most needs to catch.

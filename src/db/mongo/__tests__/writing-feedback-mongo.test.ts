@@ -29,7 +29,9 @@ import {
     finalizeWritingRelease,
     getLatestWritingFeedbackRun,
     getLatestWritingRelease,
+    listWritingSubmissions,
     normalizeWritingAssignment,
+    replaceWritingSubmission,
     saveWritingRubricDraft
 } from '../writing-feedback-mongo';
 import { buildLabReportRubric } from '../../../writing-feedback/lab-report-profile';
@@ -667,5 +669,74 @@ describe('countFeedbackStaleOnApproval', () => {
     it('returns 0 when no unreleased feedback used the approved version', async () => {
         const ctx = contextWithCollections({ 'writing-feedback-runs': runsWithAggregate([]) });
         await expect(countFeedbackStaleOnApproval(ctx, 'course-1', 'assignment-1', 'technical', 4)).resolves.toBe(0);
+    });
+});
+
+describe('one active submission per student', () => {
+    function submissionRows(rows: unknown[]) {
+        const toArray = jest.fn().mockResolvedValue(rows);
+        const sort = jest.fn().mockReturnValue({ toArray });
+        return { find: jest.fn().mockReturnValue({ sort }) };
+    }
+
+    it('lists active rows only, folding each held attempt onto the row it would replace', async () => {
+        const rows = [
+            { id: 'held', slot: 'held', replacesSubmissionId: 'current', attempt: 2, sourceType: 'canvas_text', originalText: 'secret' },
+            { id: 'current', slot: 'active', attempt: 1 },
+            { id: 'legacy', attempt: 1 },
+            { id: 'old', slot: 'superseded', attempt: 1 }
+        ];
+        const ctx = contextWithCollections({ 'writing-submissions': submissionRows(rows) });
+
+        const queue = await listWritingSubmissions(ctx, 'course-1', 'assignment-1');
+
+        expect(queue.map((row) => row.id)).toEqual(['current', 'legacy']);
+        expect(queue[0].pendingReplacement).toEqual({ submissionId: 'held', attempt: 2, submittedAt: undefined, sourceType: 'canvas_text' });
+        expect(JSON.stringify(queue)).not.toContain('secret');
+    });
+
+    it('returns every slot, unannotated, when import asks for inactive rows', async () => {
+        const rows = [{ id: 'held', slot: 'held', replacesSubmissionId: 'current' }, { id: 'current', slot: 'active' }];
+        const ctx = contextWithCollections({ 'writing-submissions': submissionRows(rows) });
+
+        const all = await listWritingSubmissions(ctx, 'course-1', 'assignment-1', { includeInactive: true });
+
+        expect(all).toEqual(rows);
+    });
+
+    it('restores the current submission when the held attempt cannot be promoted', async () => {
+        const vacated = { id: 'current', updatedAt: new Date('2026-10-01T00:00:00.000Z') };
+        const collection = {
+            findOneAndUpdate: jest.fn().mockResolvedValueOnce(vacated).mockResolvedValueOnce(null),
+            updateOne: jest.fn().mockResolvedValue({}),
+            deleteOne: jest.fn()
+        };
+        const ctx = contextWithCollections({ 'writing-submissions': collection });
+
+        const result = await replaceWritingSubmission(ctx, 'course-1', 'current', 'held', false);
+
+        expect(result).toBeNull();
+        expect(collection.findOneAndUpdate.mock.calls[0][0]).toMatchObject({ id: 'current', status: { $ne: 'generating' } });
+        expect(collection.updateOne).toHaveBeenCalledWith(
+            { id: 'current', courseId: 'course-1' },
+            { $set: { slot: 'active', updatedAt: vacated.updatedAt }, $unset: { supersededAt: '' } }
+        );
+        expect(collection.deleteOne).not.toHaveBeenCalled();
+    });
+
+    it('keeps a released submission superseded instead of deleting it', async () => {
+        const collection = {
+            findOneAndUpdate: jest.fn()
+                .mockResolvedValueOnce({ id: 'current' })
+                .mockResolvedValueOnce({ id: 'held', slot: 'active' }),
+            deleteOne: jest.fn()
+        };
+        const ctx = contextWithCollections({ 'writing-submissions': collection });
+
+        const result = await replaceWritingSubmission(ctx, 'course-1', 'current', 'held', true);
+
+        expect(result).toMatchObject({ id: 'held', slot: 'active' });
+        expect(collection.findOneAndUpdate.mock.calls[0][1]).toMatchObject({ $set: { slot: 'superseded' } });
+        expect(collection.deleteOne).not.toHaveBeenCalled();
     });
 });

@@ -306,6 +306,7 @@ describe('WritingFeedbackService anchored comments', () => {
             getWritingAssignment: jest.fn(async () => assignment),
             getLatestWritingFeedbackRun: jest.fn(async () => runFor(sub)),
             getLatestWritingRelease: jest.fn(async () => null),
+            getHeldWritingReplacement: jest.fn(async () => null),
             listWritingReleases: jest.fn(async () => [])
         } as unknown as EngEAI_MongoDB;
 
@@ -316,6 +317,27 @@ describe('WritingFeedbackService anchored comments', () => {
         expect(detail.seedComments[0].origin).toBe('model_seed');
         expect(detail.seedComments[0].startOffset).toBe(0);
         expect(detail.seedComments[0].howToImprove).toBe('Make this sentence name the sequence before the detail.');
+    });
+
+    it('detail summarizes a held newer attempt without its text, and hides held rows themselves', async () => {
+        const sub = submission('imported');
+        const held = { ...submission('imported'), id: 'held-1', attempt: 2, slot: 'held' as const, originalText: 'Newer secret text.' };
+        const mongo = {
+            getWritingSubmission: jest.fn(async (_courseId: string, id: string) => (id === 'held-1' ? held : sub)),
+            getLatestWritingFeedbackRun: jest.fn(async () => null),
+            getLatestWritingRelease: jest.fn(async () => null),
+            getHeldWritingReplacement: jest.fn(async () => held),
+            listWritingReleases: jest.fn(async () => [])
+        } as unknown as EngEAI_MongoDB;
+        const service = new WritingFeedbackService(mongo, engine);
+
+        const detail = await service.detail('course-1', 'submission-1');
+
+        expect(detail.submission.pendingReplacement).toEqual({
+            submissionId: 'held-1', attempt: 2, submittedAt: held.submittedAt, sourceType: held.sourceType
+        });
+        expect(JSON.stringify(detail.submission.pendingReplacement)).not.toContain('secret');
+        await expect(service.detail('course-1', 'held-1')).rejects.toThrow('Writing submission not found');
     });
 
     it('detail prefers stored comments and stale-flags drifted anchors', async () => {
@@ -330,6 +352,7 @@ describe('WritingFeedbackService anchored comments', () => {
             getWritingAssignment: jest.fn(async () => assignment),
             getLatestWritingFeedbackRun: jest.fn(async () => runFor(sub)),
             getLatestWritingRelease: jest.fn(async () => null),
+            getHeldWritingReplacement: jest.fn(async () => null),
             listWritingReleases: jest.fn(async () => [])
         } as unknown as EngEAI_MongoDB;
 
@@ -824,6 +847,7 @@ describe('WritingFeedbackService summary redraft', () => {
                 return run;
             }),
             getLatestWritingRelease: jest.fn(async () => null),
+            getHeldWritingReplacement: jest.fn(async () => null),
             listWritingReleases: jest.fn(async () => [])
         };
         const redraftEngine = {

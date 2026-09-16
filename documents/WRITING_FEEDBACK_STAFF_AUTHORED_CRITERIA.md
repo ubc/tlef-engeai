@@ -177,7 +177,7 @@ matching row. That is exactly the hook.
 
 | File | Change |
 |---|---|
-| `writing-feedback-review.ts:1327` | Branch on `definition?.assessedBy === 'staff'` before the missing-feedback branch. Render the criterion card with the grade control plus `summaryEditor.explanationField(...)` seeded from the saved edit, and a short help line ("The AI does not draft this criterion. Write the student's feedback here.") |
+| `writing-feedback-review.ts:1327` | Branch on `definition?.assessedBy === 'staff'` before the missing-feedback branch. Render the criterion card with the grade control plus `summaryEditor.explanationField(...)` seeded from the saved edit, and a short help line ("EngE-AI is not able to evaluate this criterion. Please provide your feedback manually.") |
 | `writing-feedback-review.ts` | Keep the existing muted note for the genuinely-missing case — a criterion the model should have covered but did not is still an error worth surfacing |
 | `writing-feedback-summary-editor.ts:134` | `explanationField` works as-is; no change expected |
 | `writing-feedback-review-steps.ts` | Step readiness: the Summary step is not complete while a staff-assessed criterion has an empty explanation |

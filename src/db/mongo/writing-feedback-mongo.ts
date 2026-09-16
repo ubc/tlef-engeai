@@ -26,6 +26,7 @@ import type {
     WritingFeedbackRun,
     WritingGlossaryEntry,
     WritingJob,
+    WritingPendingReplacement,
     WritingRelease,
     WritingRubricDefinition,
     WritingSubmission,
@@ -68,6 +69,20 @@ let indexesEnsured = false;
  * what still holds if a second process ever inserts a job without going through it.
  */
 export const ACTIVE_RELEASE_JOB_INDEX = 'active_release_job';
+
+/**
+ * Names the partial unique index that allows one active submission per student and assignment.
+ *
+ * Held and superseded attempts sit outside it, so a newer Canvas attempt can wait beside the
+ * active one until staff choose. Rows written before `slot` existed are not indexed.
+ */
+export const ACTIVE_SUBMISSION_INDEX = 'active_submission_per_student';
+
+/** Matches rows in the queue, including rows written before `slot` existed. */
+const ACTIVE_SLOT_FILTER = { slot: { $in: ['active', null] } } as Filter<WritingSubmission>;
+
+/** Release states that mean a Canvas write for the submission has started but not settled. */
+const UNSETTLED_RELEASE_STATUSES: ReadonlyArray<WritingRelease['status']> = ['feedback_attached', 'grade_queued', 'reconciliation_required'];
 
 function isNamespaceMissing(error: unknown): boolean {
     return typeof error === 'object' && error !== null
@@ -167,6 +182,10 @@ export async function ensureWritingFeedbackIndexes(ctx: MongoDalContext): Promis
     await Promise.all([
         assignments(ctx).createIndex({ courseId: 1, profileVersion: 1 }),
         submissions(ctx).createIndex({ courseId: 1, assignmentId: 1, studentId: 1, attempt: 1 }, { unique: true }),
+        submissions(ctx).createIndex(
+            { courseId: 1, assignmentId: 1, studentId: 1 },
+            { name: ACTIVE_SUBMISSION_INDEX, unique: true, partialFilterExpression: { slot: 'active' } }
+        ),
         submissions(ctx).createIndex({ courseId: 1, assignmentId: 1, status: 1, updatedAt: -1 }),
         submissions(ctx).createIndex({ retentionAt: 1 }, { expireAfterSeconds: 0, sparse: true }),
         runs(ctx).createIndex({ submissionId: 1, createdAt: -1 }),
@@ -285,7 +304,7 @@ export async function countWritingSubmissionsByAssignment(
     courseId: string
 ): Promise<Record<string, number>> {
     const rows = await submissions(ctx).aggregate<{ _id: string; count: number }>([
-        { $match: { courseId } },
+        { $match: { courseId, ...ACTIVE_SLOT_FILTER } },
         { $group: { _id: '$assignmentId', count: { $sum: 1 } } }
     ]).toArray();
     return Object.fromEntries(rows.map((row) => [row._id, row.count]));
@@ -304,13 +323,21 @@ export async function deleteWritingAssignment(
     courseId: string,
     assignmentId: string
 ): Promise<{ deleted: boolean; submissionCount: number }> {
-    // Refuse assignment deletion until staff explicitly removes every child submission.
-    const submissionCount = await submissions(ctx).countDocuments({ courseId, assignmentId });
+    // Refuse assignment deletion until staff explicitly removes every submission in the queue.
+    const submissionCount = await submissions(ctx).countDocuments({ courseId, assignmentId, ...ACTIVE_SLOT_FILTER });
     if (submissionCount > 0) {
         return { deleted: false, submissionCount };
     }
     const result = await assignments(ctx).deleteOne({ id: assignmentId, courseId });
-    return { deleted: result.deletedCount === 1, submissionCount: 0 };
+    if (result.deletedCount !== 1) return { deleted: false, submissionCount: 0 };
+
+    // Held and superseded attempts are not shown in the queue, so staff cannot delete them
+    // one by one; they go with the assignment.
+    const leftovers = await submissions(ctx).find({ courseId, assignmentId }, { projection: { id: 1 } }).toArray();
+    for (const leftover of leftovers) {
+        await deleteWritingSubmission(ctx, courseId, leftover.id);
+    }
+    return { deleted: true, submissionCount: 0 };
 }
 
 /**
@@ -655,12 +682,14 @@ export async function saveCanvasAssignmentDetails(
  * createWritingSubmission — appends a course-scoped review submission.
  *
  * The unique assignment/student/attempt index makes duplicate intake fail
- * explicitly; submission text remains in this restricted Writing Feedback path.
+ * explicitly, and a second active submission for the same student fails the same way.
+ * Rows are active unless the input says otherwise. Submission text remains in this
+ * restricted Writing Feedback path.
  *
  * @param ctx - Connected Mongo data-layer context
  * @param input - Validated submission fields excluding server provenance
  * @returns Newly persisted submission with generated id and timestamps
- * @throws MongoDB duplicate-key error for repeated student attempts
+ * @throws MongoDB duplicate-key error for a repeated attempt or a second active submission
  */
 export async function createWritingSubmission(
     ctx: MongoDalContext,
@@ -668,7 +697,7 @@ export async function createWritingSubmission(
 ): Promise<WritingSubmission> {
     await ensureWritingFeedbackIndexes(ctx);
     const now = new Date();
-    const submission: WritingSubmission = { ...input, id: randomUUID(), createdAt: now, updatedAt: now };
+    const submission: WritingSubmission = { slot: 'active', ...input, id: randomUUID(), createdAt: now, updatedAt: now };
     await submissions(ctx).insertOne(submission);
     return submission;
 }
@@ -689,7 +718,8 @@ export async function getWritingSubmission(ctx: MongoDalContext, courseId: strin
  * deleteWritingSubmission — deletes a scoped submission and its dependent workflow records.
  *
  * Deletion is allowed at any status. Child cleanup starts only after the
- * course-scoped parent delete succeeds, preventing cross-course cascades.
+ * course-scoped parent delete succeeds, preventing cross-course cascades. A held
+ * newer attempt waiting to replace the deleted submission is deleted with it.
  *
  * @param ctx - Connected Mongo data-layer context
  * @param courseId - Owning course id
@@ -708,25 +738,183 @@ export async function deleteWritingSubmission(
     await Promise.all([
         runs(ctx).deleteMany({ submissionId }),
         releases(ctx).deleteMany({ submissionId }),
-        jobs(ctx).deleteMany({ 'payload.submissionId': submissionId })
+        jobs(ctx).deleteMany({ 'payload.submissionId': submissionId }),
+        // A held attempt has no runs, releases, or jobs of its own to cascade.
+        submissions(ctx).deleteMany({ courseId, slot: 'held', replacesSubmissionId: submissionId })
     ]);
     return true;
 }
 
+/** A queue row, with the newer attempt waiting to replace it when there is one. */
+export type WritingQueueSubmission = WritingSubmission & {
+    reviews?: StaffReviewRevision[];
+    approvedAt?: Date;
+    approvedBy?: string;
+    pendingReplacement?: WritingPendingReplacement;
+};
+
 /**
  * listWritingSubmissions — returns an assignment's review queue, newest first.
+ *
+ * By default only active submissions are returned, each carrying a summary of any held newer
+ * attempt. With `includeInactive`, held and superseded rows are returned too, unannotated;
+ * import uses that to avoid storing an attempt twice.
  *
  * @param ctx - Connected Mongo data-layer context
  * @param courseId - Owning course id
  * @param assignmentId - Assignment whose queue is requested
+ * @param options - `includeInactive` returns every slot
  * @returns Course- and assignment-scoped submissions with embedded review history
  */
 export async function listWritingSubmissions(
     ctx: MongoDalContext,
     courseId: string,
-    assignmentId: string
-): Promise<Array<WritingSubmission & { reviews?: StaffReviewRevision[]; approvedAt?: Date; approvedBy?: string }>> {
-    return submissions(ctx).find({ courseId, assignmentId }).sort({ updatedAt: -1 }).toArray();
+    assignmentId: string,
+    options: { includeInactive?: boolean } = {}
+): Promise<WritingQueueSubmission[]> {
+    const rows = await submissions(ctx).find({ courseId, assignmentId }).sort({ updatedAt: -1 }).toArray();
+    if (options.includeInactive) return rows;
+
+    // Fold each held attempt onto the submission it would replace; never expose its text.
+    const heldByTarget = new Map<string, WritingPendingReplacement>();
+    for (const row of rows) {
+        if (row.slot !== 'held' || !row.replacesSubmissionId) continue;
+        heldByTarget.set(row.replacesSubmissionId, {
+            submissionId: row.id,
+            attempt: row.attempt,
+            submittedAt: row.submittedAt,
+            sourceType: row.sourceType
+        });
+    }
+    return rows
+        .filter((row) => (row.slot ?? 'active') === 'active')
+        .map((row) => {
+            const pendingReplacement = heldByTarget.get(row.id);
+            return pendingReplacement ? { ...row, pendingReplacement } : row;
+        });
+}
+
+/**
+ * getHeldWritingReplacement — finds the held newer attempt waiting to replace a submission.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param submissionId - Active submission the held attempt would replace
+ * @returns The held row, or `null` when none is waiting
+ */
+export async function getHeldWritingReplacement(
+    ctx: MongoDalContext,
+    courseId: string,
+    submissionId: string
+): Promise<WritingSubmission | null> {
+    return submissions(ctx).findOne({ courseId, slot: 'held', replacesSubmissionId: submissionId });
+}
+
+/**
+ * hasUnsettledWritingWork — reports queued or running jobs and half-finished Canvas releases.
+ *
+ * Replacing a submission while either is in progress would leave a worker writing to a row
+ * that is no longer in the queue, or leave Canvas partly updated for the old attempt.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param submissionId - Submission to check
+ * @returns `true` when work for the submission has not settled
+ */
+export async function hasUnsettledWritingWork(
+    ctx: MongoDalContext,
+    courseId: string,
+    submissionId: string
+): Promise<boolean> {
+    const [job, release] = await Promise.all([
+        jobs(ctx).findOne({ courseId, 'payload.submissionId': submissionId, state: { $in: ['queued', 'leased'] } }, { projection: { id: 1 } }),
+        releases(ctx).findOne({
+            courseId,
+            submissionId,
+            $or: [
+                { status: { $in: [...UNSETTLED_RELEASE_STATUSES] } },
+                { releaseLockedAt: { $gt: new Date(Date.now() - RELEASE_LOCK_TTL_MS) } }
+            ]
+        }, { projection: { id: 1 } })
+    ]);
+    return Boolean(job || release);
+}
+
+/**
+ * replaceWritingSubmission — makes a held attempt the student's active submission.
+ *
+ * The current row is moved out of the active slot first, so the one-active-per-student index
+ * accepts the promotion; if promotion fails the current row is restored. The replaced row is
+ * then deleted with its runs and releases, unless `keepReplaced` is set, in which case it is
+ * kept `superseded` (used when its feedback already reached Canvas).
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param currentId - Active submission being replaced
+ * @param heldId - Held attempt that replaces it
+ * @param keepReplaced - Keep the replaced row as superseded instead of deleting it
+ * @returns The promoted submission, or `null` when either row changed underneath the call
+ */
+export async function replaceWritingSubmission(
+    ctx: MongoDalContext,
+    courseId: string,
+    currentId: string,
+    heldId: string,
+    keepReplaced: boolean
+): Promise<WritingSubmission | null> {
+    const now = new Date();
+    // Step 1: vacate the active slot, refusing a row that started generating meanwhile.
+    const vacated = await submissions(ctx).findOneAndUpdate(
+        { id: currentId, courseId, status: { $ne: 'generating' }, ...ACTIVE_SLOT_FILTER },
+        { $set: { slot: 'superseded', supersededAt: now, updatedAt: now } }
+    );
+    if (!vacated) return null;
+
+    // Step 2: promote the held attempt; restore the current row if it is gone.
+    const promoted = await submissions(ctx).findOneAndUpdate(
+        { id: heldId, courseId, slot: 'held', replacesSubmissionId: currentId },
+        { $set: { slot: 'active', updatedAt: now }, $unset: { replacesSubmissionId: '' } },
+        { returnDocument: 'after' }
+    );
+    if (!promoted) {
+        await submissions(ctx).updateOne(
+            { id: currentId, courseId },
+            { $set: { slot: 'active', updatedAt: vacated.updatedAt }, $unset: { supersededAt: '' } }
+        );
+        return null;
+    }
+
+    // Step 3: drop the replaced row unless its release history must be kept.
+    if (!keepReplaced) await deleteWritingSubmission(ctx, courseId, currentId);
+    return promoted;
+}
+
+/**
+ * declineWritingReplacement — keeps the current submission and discards a held attempt.
+ *
+ * The declined attempt number is remembered on the current row so the next sync does not
+ * import it again.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param currentId - Active submission being kept
+ * @param held - Held attempt being discarded
+ * @returns The kept submission, or `null` when it is no longer active
+ */
+export async function declineWritingReplacement(
+    ctx: MongoDalContext,
+    courseId: string,
+    currentId: string,
+    held: Pick<WritingSubmission, 'id' | 'attempt'>
+): Promise<WritingSubmission | null> {
+    const kept = await submissions(ctx).findOneAndUpdate(
+        { id: currentId, courseId, ...ACTIVE_SLOT_FILTER },
+        { $addToSet: { declinedAttempts: held.attempt } },
+        { returnDocument: 'after' }
+    );
+    if (!kept) return null;
+    await submissions(ctx).deleteOne({ id: held.id, courseId, slot: 'held', replacesSubmissionId: currentId });
+    return kept;
 }
 
 /**
@@ -748,7 +936,7 @@ export async function updateVerifiedWritingText(
     verifiedText: string
 ) {
     return submissions(ctx).findOneAndUpdate(
-        { id: submissionId, courseId },
+        { id: submissionId, courseId, ...ACTIVE_SLOT_FILTER },
         { $set: { verifiedText, requiresVerification: false, status: 'imported', updatedAt: new Date() } },
         { returnDocument: 'after' }
     );

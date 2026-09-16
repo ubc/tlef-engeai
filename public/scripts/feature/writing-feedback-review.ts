@@ -58,6 +58,7 @@ import {
 } from './writing-feedback-shared.js';
 import { getWorkingComments, initAnchorWorkingSet, renderAnnotations } from './writing-feedback-anchors.js';
 import { connectUrlReturningTo } from './writing-feedback-canvas-connect.js';
+import { renderReplacementNotice } from './writing-feedback-replacement.js';
 import { GradeEntry } from './writing-feedback-grade-entry.js';
 import { describeApprovalBlocker, type GradeProgress } from './writing-feedback-grade-progress.js';
 import { changedLenses, decideNextAction, stepBarState, type ReviewStep } from './writing-feedback-review-steps.js';
@@ -335,6 +336,24 @@ function renderReviewView(root: HTMLDivElement, detail: SubmissionDetail): void 
     );
     topbar.append(left, meta);
     root.append(topbar);
+
+    // First thing below the header: a newer attempt changes whether any work here is worth doing.
+    if (submission.pendingReplacement) {
+        const notice = renderReplacementNotice(submission, {
+            beforeUseNewer: () => confirmDiscardDirty('review'),
+            onResolved: async (decision, active) => {
+                if (decision === 'keep_current') {
+                    // Nothing on this page changed, so unsaved edits stay where they are.
+                    notice.remove();
+                    return;
+                }
+                state.reviewDirty = false;
+                await openReview(active.id);
+            }
+        });
+        notice.classList.add('wf-replacement-notice--page');
+        root.append(notice);
+    }
 
     // A run is reviewable only against the rubric version that produced it.
     // Version drift blocks annotation display, approval, and release until regeneration --
@@ -1356,7 +1375,7 @@ function renderSummaryLens(input: {
         if (definition?.assessedBy === 'staff') {
             item.append(createText(
                 'p',
-                'The AI does not draft this criterion. Write the feedback the student will receive.',
+                'EngE-AI is not able to evaluate this criterion. Please provide your feedback manually.',
                 'wf-muted-note'
             ));
             const staffText = edit?.criterionExplanations.find((entry) => entry.criterion === criterionId)?.explanation ?? '';

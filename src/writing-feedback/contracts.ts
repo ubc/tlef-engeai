@@ -32,6 +32,27 @@ export type WritingSubmissionStatus =
     | 'released'
     | 'failed';
 
+/**
+ * Whether a submission is the one a student has in the queue.
+ *
+ * A student holds at most one `active` submission per assignment. A newer Canvas attempt for a
+ * student who already has one arrives `held` until staff choose between them, and a replaced
+ * submission whose feedback already reached Canvas is kept `superseded` for its release history.
+ * Rows written before this field existed carry no value and are treated as active.
+ */
+export type WritingSubmissionSlot = 'active' | 'held' | 'superseded';
+
+/** Staff choice between a student's current submission and a held newer attempt. */
+export type WritingReplacementDecision = 'use_newer' | 'keep_current';
+
+/** What the queue shows about a held newer attempt; never includes its text. */
+export interface WritingPendingReplacement {
+    submissionId: string; // held row, addressed only through the replacement route
+    attempt: number;
+    submittedAt?: Date;
+    sourceType: WritingSourceType;
+}
+
 /** Supported intake provenance; scan sources require explicit staff verification. */
 export type WritingSourceType = 'manual' | 'canvas_text' | 'digital_file' | 'paper_scan';
 
@@ -241,8 +262,16 @@ export interface WritingSubmission {
     id: string; // internal submission identity
     courseId: string; // authorization and persistence boundary
     assignmentId: string; // owning rubric/assignment relationship
-    /** Internal operational identifier, never an institutional PUID. */
+    /** Internal per-student identifier, stable across attempts; never an institutional PUID. */
     studentId: string;
+    /** Queue slot; absent on rows that predate it, which count as `active`. */
+    slot?: WritingSubmissionSlot;
+    /** On a `held` row: the active submission it would replace. */
+    replacesSubmissionId?: string;
+    /** On an active row: newer Canvas attempts staff chose not to use, so sync skips them. */
+    declinedAttempts?: number[];
+    /** On a `superseded` row: when staff replaced it. */
+    supersededAt?: Date;
     /** Staff-visible label; never returned to students. */
     studentLabel?: string;
     attempt: number; // distinguishes repeat attempts by the same student for idempotent import/release

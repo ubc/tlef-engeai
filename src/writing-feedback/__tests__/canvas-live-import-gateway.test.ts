@@ -38,6 +38,13 @@ class MemoryStore implements CanvasImportStore {
         this.submissions.push(stored);
         return stored;
     }
+
+    async deleteWritingSubmission(courseId: string, submissionId: string): Promise<boolean> {
+        const index = this.submissions.findIndex((item) => item.courseId === courseId && item.id === submissionId);
+        if (index < 0) return false;
+        this.submissions.splice(index, 1);
+        return true;
+    }
 }
 
 /** Records every call so the tests can assert on what was and was not asked of Canvas. */

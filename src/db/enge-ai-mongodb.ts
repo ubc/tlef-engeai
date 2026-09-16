@@ -396,12 +396,59 @@ export class EngEAI_MongoDB {
     /**
      * listWritingSubmissions — returns an assignment review queue newest first.
      *
+     * Active submissions only, each with any held newer attempt summarized, unless
+     * `includeInactive` asks for every slot.
+     *
      * @param courseId - Owning course id
      * @param assignmentId - Assignment whose queue is requested
+     * @param options - `includeInactive` returns held and superseded rows too
      * @returns Scoped submission list
      */
-    public listWritingSubmissions = async (courseId: string, assignmentId: string) =>
-        WritingFeedbackMongo.listWritingSubmissions(this.ctx(), courseId, assignmentId);
+    public listWritingSubmissions = async (courseId: string, assignmentId: string, options?: { includeInactive?: boolean }) =>
+        WritingFeedbackMongo.listWritingSubmissions(this.ctx(), courseId, assignmentId, options);
+
+    /**
+     * getHeldWritingReplacement — finds the held newer attempt waiting to replace a submission.
+     *
+     * @param courseId - Owning course id
+     * @param submissionId - Active submission
+     * @returns Held row or `null`
+     */
+    public getHeldWritingReplacement = async (courseId: string, submissionId: string) =>
+        WritingFeedbackMongo.getHeldWritingReplacement(this.ctx(), courseId, submissionId);
+
+    /**
+     * hasUnsettledWritingWork — reports running jobs or a half-finished Canvas release.
+     *
+     * @param courseId - Owning course id
+     * @param submissionId - Submission to check
+     * @returns `true` while work for the submission is in progress
+     */
+    public hasUnsettledWritingWork = async (courseId: string, submissionId: string) =>
+        WritingFeedbackMongo.hasUnsettledWritingWork(this.ctx(), courseId, submissionId);
+
+    /**
+     * replaceWritingSubmission — promotes a held attempt over the student's active submission.
+     *
+     * @param courseId - Owning course id
+     * @param currentId - Active submission being replaced
+     * @param heldId - Held attempt replacing it
+     * @param keepReplaced - Keep the replaced row as superseded instead of deleting it
+     * @returns Promoted submission, or `null` when either row changed meanwhile
+     */
+    public replaceWritingSubmission = async (courseId: string, currentId: string, heldId: string, keepReplaced: boolean) =>
+        WritingFeedbackMongo.replaceWritingSubmission(this.ctx(), courseId, currentId, heldId, keepReplaced);
+
+    /**
+     * declineWritingReplacement — keeps the active submission and discards the held attempt.
+     *
+     * @param courseId - Owning course id
+     * @param currentId - Active submission being kept
+     * @param held - Held attempt being discarded
+     * @returns Kept submission, or `null` when it is no longer active
+     */
+    public declineWritingReplacement = async (courseId: string, currentId: string, held: { id: string; attempt: number }) =>
+        WritingFeedbackMongo.declineWritingReplacement(this.ctx(), courseId, currentId, held);
 
     /**
      * updateVerifiedWritingText — stores staff-confirmed extraction text.

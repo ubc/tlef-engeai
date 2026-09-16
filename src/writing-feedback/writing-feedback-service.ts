@@ -30,6 +30,7 @@ import type {
     WritingJob,
     WritingRubricDefinition,
     WritingRelease,
+    WritingPendingReplacement,
     WritingSubmission
 } from './contracts';
 import { RELEASE_LOCK_TTL_MS } from './contracts';
@@ -153,9 +154,12 @@ type GeneratedFeedbackWithTrace = WritingFeedbackResult & { runTrace?: WritingFe
 
 type ReviewableSubmission = WritingSubmission & { reviews?: StaffReviewRevision[] };
 
+/** Detail submission, with the newer Canvas attempt waiting to replace it when there is one. */
+type DetailSubmission = ReviewableSubmission & { pendingReplacement?: WritingPendingReplacement };
+
 /** Staff detail payload combining persistent state with safe read-time comment derivations. */
 export interface SubmissionDetail {
-    submission: ReviewableSubmission; // submission plus append-only review history
+    submission: DetailSubmission; // submission plus append-only review history and any held newer attempt
     feedbackRun: WritingFeedbackRun | null; // latest immutable linguistic model draft
     /** Latest immutable technical draft; null for assignments without the technical lens. */
     technicalFeedbackRun: WritingFeedbackRun | null;
@@ -442,8 +446,20 @@ export class WritingFeedbackService {
         // Release counts travel with the detail so the review page can say a submission has
         // been revised without fetching and counting its release history itself.
         const priorReleases = await this.mongo.listWritingReleases(courseId, submissionId);
+        // Summarize a held newer attempt so the review page can offer the same choice as the queue.
+        const held = await this.mongo.getHeldWritingReplacement(courseId, submissionId);
         return {
-            submission,
+            submission: held
+                ? {
+                    ...submission,
+                    pendingReplacement: {
+                        submissionId: held.id,
+                        attempt: held.attempt,
+                        submittedAt: held.submittedAt,
+                        sourceType: held.sourceType
+                    }
+                }
+                : submission,
             feedbackRun,
             technicalFeedbackRun,
             comments,
@@ -1063,7 +1079,8 @@ export class WritingFeedbackService {
 
     private async requireSubmission(courseId: string, submissionId: string): Promise<ReviewableSubmission> {
         const submission = await this.mongo.getWritingSubmission(courseId, submissionId);
-        if (!submission) throw new Error('Writing submission not found');
+        // Held and superseded attempts are outside the queue; only the replacement route acts on them.
+        if (!submission || (submission.slot ?? 'active') !== 'active') throw new Error('Writing submission not found');
         return submission;
     }
 

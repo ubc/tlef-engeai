@@ -669,6 +669,33 @@
     font-weight: 600;
 }
 
+/* Sits under the row it concerns, sharing its surface so the two read as one entry. */
+.wf-replacement-notice {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px 15px;
+    padding: 10px 20px 15px;
+    background: rgba(230, 126, 34, 0.1);
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-primary);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.wf-replacement-notice .wf-button-row {
+    margin: 0;
+}
+
+/* On the review page the notice stands alone between the header and the document. */
+.wf-replacement-notice--page {
+    margin-bottom: 20px;
+    padding: 10px 16px;
+    border: 1px solid color-mix(in srgb, var(--color-eng-red) 60%, var(--color-chbe-green));
+    border-radius: 8px;
+}
+
 .wf-add-submission-row {
     display: flex;
     justify-content: flex-end;

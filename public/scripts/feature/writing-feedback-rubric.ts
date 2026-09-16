@@ -1250,7 +1250,7 @@ export async function openRubricPage(assignmentId: string): Promise<void> {
     if (!state.assignments.length) state.assignments = await request<Assignment[]>('/assignments');
     let assignment = state.assignments.find((item) => item.id === assignmentId);
     if (!assignment) throw new Error('Writing assignment not found');
-    // A deep link or Edit Rubric on a pending assignment asks for its type first (D-123).
+    // A deep link or Edit rubric on a pending assignment asks for its type first (D-123).
     if (assignment.assignmentTypePending) {
         assignment = await ensureAssignmentTypeChosen(assignment);
     }
