@@ -371,10 +371,79 @@ export interface RubricGridOptions {
     notice?: () => HTMLElement;
 }
 
-function named<T extends HTMLInputElement | HTMLTextAreaElement>(control: T, name: string, label: string): T {
+function named<T extends HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
+    control: T,
+    name: string,
+    label: string
+): T {
     control.name = name;
     control.setAttribute('aria-label', label);
     return control;
+}
+
+/**
+ * authorshipControl - who writes this criterion's feedback.
+ *
+ * Extraction yields verified text alone, so a criterion resting on how the document
+ * looks -- fonts, margins, spacing, the file itself -- has no evidence the model can
+ * reach. Marked "Teaching team", it is withheld from generation and staff write it
+ * during review instead.
+ *
+ * A two-option segmented control rather than a select: the default is the common case,
+ * and a collapsed select showing it reads as a status label rather than a choice, so an
+ * instructor scanning the grid would never learn the alternative exists. Both options
+ * stay on screen, under a visible label naming the question.
+ *
+ * @param criterion - Criterion the row renders
+ * @param rowIndex - Row position supplying the shared radio name
+ * @param gridId - Grid identity, so each row's label can be referenced by id
+ * @param canEdit - Whether this rubric is editable
+ * @param onChange - Dirty-marking callback shared by every grid control
+ * @returns The labelled radio group, ready to append to the row head
+ */
+function authorshipControl(
+    criterion: RubricCriterion,
+    rowIndex: number,
+    gridId: string,
+    canEdit: boolean,
+    onChange: () => void
+): HTMLElement {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'wf-grid-authorship';
+
+    const labelId = `${gridId}-authorship-${rowIndex}`;
+    const caption = createText('span', 'Feedback written by', 'wf-grid-authorship__label');
+    caption.id = labelId;
+
+    const group = document.createElement('div');
+    group.className = 'wf-grid-seg';
+    group.setAttribute('role', 'radiogroup');
+    group.setAttribute('aria-labelledby', labelId);
+
+    // Absent means model, the same default the server applies.
+    const selected = criterion.assessedBy === 'staff' ? 'staff' : 'model';
+    ([
+        ['model', 'EngE-AI'],
+        ['staff', 'Course staff']
+    ] as const).forEach(([value, text]) => {
+        const option = document.createElement('label');
+        // The hue is per option, not per state, so a row's answer is legible at a glance
+        // down a grid of ten: green where EngE-AI drafts, blue where course staff write.
+        option.className = `wf-grid-seg__option wf-grid-seg__option--${value}`;
+        const input = document.createElement('input');
+        input.type = 'radio';
+        input.className = 'wf-grid-seg__input';
+        input.name = `criterion.${rowIndex}.assessedBy`;
+        input.value = value;
+        input.checked = value === selected;
+        input.disabled = !canEdit;
+        input.addEventListener('change', onChange);
+        option.append(input, createText('span', text, 'wf-grid-seg__text'));
+        group.append(option);
+    });
+
+    wrapper.append(caption, group);
+    return wrapper;
 }
 
 /**
@@ -600,7 +669,19 @@ export function renderRubricGrid(
             'wf-grid-band-hint'
         );
         bandHint.id = `${gridId}-band-hint`;
-        container.append(bandHint);
+
+        // The reason behind the per-row choice, stated once. Repeating it on every row
+        // would crowd the grid, and without it the control says what it does but never
+        // why an instructor would reach for it.
+        const authorshipHint = createText(
+            'p',
+            'The AI only receives the text of a submission. For a criterion that depends on how '
+            + 'the document looks \u2014 font, spacing, margins, the file itself \u2014 choose '
+            + '"Course staff" and write that feedback yourself during review.',
+            'wf-grid-band-hint'
+        );
+        authorshipHint.id = `${gridId}-authorship-hint`;
+        container.append(bandHint, authorshipHint);
     }
 
     /* Table --------------------------------------------------------------- */
@@ -807,7 +888,7 @@ export function renderRubricGrid(
         description.className = 'wf-grid-text';
         autoGrow(description);
         description.addEventListener('input', onChange);
-        rowHead.append(bar, description);
+        rowHead.append(bar, description, authorshipControl(criterion, rowIndex, gridId, canEdit, onChange));
 
         row.append(rowHead);
 

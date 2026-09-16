@@ -82,6 +82,8 @@ The linguistic rubric/profile cannot govern generation until course staff review
 
 Course staff may shape 1–10 criteria and 2–8 ranked levels, including optional criteria from the library. Criterion/level ids are unique slugs. Criteria and levels may be added or removed after approval because every feedback run records the `rubricVersion` that produced it and resolves its criteria against that saved version through `rubricHistory`; removing a criterion never breaks an existing run. Reuse of a retired id is refused because `AnchoredComment.criterion` carries a bare id with no version, so reuse would silently retag old comments.
 
+A criterion also records *who writes its feedback*. `assessedBy` is `'model'` (the default, and what an absent field means) or `'staff'`. The `'staff'` value exists because extraction yields verified text alone: a criterion about fonts, margins, spacing, or the submitted file has no evidence anywhere in the pipeline, and a schema that required an answer for it produced the same non-answer on every submission. A staff-assessed criterion is withheld from every prompt and both structured-output schemas, written by staff in the review workspace, graded through the ordinary staff-final assessment, and merged back into the released document by `applySummaryToResult` in rubric order — the student cannot tell which criteria the model drafted. A rubric with no model-assessed criterion is refused at approval, and a staff-assessed criterion with no written feedback is refused at submission approval.
+
 Rubric provenance is recorded per lens, because a lab report's two grids can come from different places:
 
 | Field | Lens | Values | Consequence |

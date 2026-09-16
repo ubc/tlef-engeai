@@ -155,6 +155,23 @@ export class SummaryEditor {
         return { wrapper: field(labelText, textarea, help), textarea };
     }
 
+    /**
+     * writtenCriteria - criterion ids whose feedback box currently holds text.
+     *
+     * Reads the live controls rather than the saved edit, so the approval blocker clears
+     * as staff type rather than only after a save.
+     *
+     * @param lens - Lens to read
+     * @returns Ids with non-blank text
+     */
+    writtenCriteria(lens: WritingFeedbackLens): Set<string> {
+        const written = new Set<string>();
+        this.controls(lens).explanations.forEach((textarea, criterion) => {
+            if (textarea.value.trim()) written.add(criterion);
+        });
+        return written;
+    }
+
     private strengths(lens: WritingFeedbackLens): string[] {
         return [...(this.controls(lens).strengthList?.querySelectorAll('textarea') ?? [])]
             .map((textarea) => textarea.value.trim())

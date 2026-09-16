@@ -610,7 +610,10 @@ function optionalFunctionTag(value: string): WfFunctionTag | undefined {
  * @returns The trimmed value, or undefined when this grid renders no such control
  */
 function optionalControlValue(form: HTMLFormElement, name: string): string | undefined {
-    const control = form.elements.namedItem(name) as RubricControl | null;
+    // A radio group resolves to a RadioNodeList rather than one control; its `value` is
+    // the checked option's, or '' when nothing is checked. Named explicitly because the
+    // shared RubricControl union does not cover it, and a cast would only hide that.
+    const control = form.elements.namedItem(name) as RubricControl | RadioNodeList | null;
     return control ? control.value.trim() : undefined;
 }
 
@@ -679,6 +682,12 @@ function syncStructuredValues(form: HTMLFormElement, working: RubricDefinition):
             : (rawPoints ? Number(rawPoints) : undefined);
         const cellsRendered = form.elements.namedItem(`criterion.${index}.cell.0.band`) !== null;
         const cells = cellsRendered ? readCellControls(form, index, levelIds) : criterion.cells;
+        // Only 'staff' is stored: absent is the model default, and writing it out would
+        // put a value on every criterion of every rubric that has never needed one.
+        const rawAssessedBy = optionalControlValue(form, `criterion.${index}.assessedBy`);
+        const assessedBy = rawAssessedBy === undefined
+            ? criterion.assessedBy
+            : (rawAssessedBy === 'staff' ? 'staff' as const : undefined);
         return {
             id: criterion.id,
             label: optionalControlValue(form, `criterion.${index}.label`) ?? criterion.label,
@@ -686,7 +695,8 @@ function syncStructuredValues(form: HTMLFormElement, working: RubricDefinition):
             ...(functionTag ? { functionTag } : {}),
             ...(sflDimension ? { sflDimension } : {}),
             ...(points !== undefined ? { points } : {}),
-            ...(cells ? { cells } : {})
+            ...(cells ? { cells } : {}),
+            ...(assessedBy ? { assessedBy } : {})
         };
     });
     working.levels = working.levels.map((level, index) => {
@@ -1061,6 +1071,11 @@ function collectRubricStructure(
     }
     if (working.criteria.some((criterion) => !criterion.label || !criterion.description)) {
         fail('Every criterion needs a label and a description.');
+    }
+    // The server refuses this at approval; saying so here keeps the answer next to the
+    // control that caused it, rather than several steps later.
+    if (working.criteria.every((criterion) => criterion.assessedBy === 'staff')) {
+        fail('At least one criterion must be AI-drafted. Set one to "Feedback: AI draft".');
     }
     if (working.levels.some((level) => !level.label || !level.description)) {
         fail('Every performance level needs a label and a description.');

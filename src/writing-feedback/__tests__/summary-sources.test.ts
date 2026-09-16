@@ -6,7 +6,46 @@ import {
     evidenceFromComments,
     resolveLensComments
 } from '../summary-sources';
-import type { AnchoredComment, StaffReviewRevision, WritingFeedbackRun } from '../contracts';
+import type {
+    AnchoredComment,
+    StaffReviewRevision,
+    WritingFeedbackRun,
+    WritingRubricDefinition
+} from '../contracts';
+
+/**
+ * rubric - the two-criterion rubric `run()` was generated against.
+ *
+ * `staff` adds a third, staff-assessed criterion carrying a 0-10 band per level, which is
+ * what `applySummaryToResult` reads to turn entered points into a rating.
+ */
+function rubric(staff = false): WritingRubricDefinition {
+    const levels = [
+        { id: 'developing', label: 'Developing', description: 'd', rank: 1 },
+        { id: 'proficient', label: 'Proficient', description: 'd', rank: 2 }
+    ];
+    return {
+        version: 2,
+        status: 'approved',
+        title: 't', task: 't', audience: 't', purpose: 't',
+        constraints: [], learningOutcomes: [], gradingIntent: 'g',
+        criteria: [
+            { id: 'content', label: 'Content', description: 'd', points: 10 },
+            { id: 'organization', label: 'Organization', description: 'd', points: 10 },
+            ...(staff ? [{
+                id: 'formatting',
+                label: 'Presentation and Formatting',
+                description: 'd',
+                points: 10,
+                assessedBy: 'staff' as const,
+                cells: { developing: { min: 0, max: 5 }, proficient: { min: 6, max: 10 } }
+            }] : [])
+        ],
+        levels,
+        updatedAt: new Date('2026-09-13T10:00:00.000Z'),
+        updatedBy: 'u'
+    };
+}
 
 function comment(overrides: Partial<AnchoredComment>): AnchoredComment {
     return {
@@ -94,7 +133,8 @@ describe('applySummaryToResult', () => {
         ];
         const applied = applySummaryToResult(run().result, {
             comments,
-            edit: { lens: 'linguistic', feedbackRunId: 'run-1', strengths: ['Staff strength.'], criterionExplanations: [{ criterion: 'content', explanation: 'Staff explanation.' }] }
+            edit: { lens: 'linguistic', feedbackRunId: 'run-1', strengths: ['Staff strength.'], criterionExplanations: [{ criterion: 'content', explanation: 'Staff explanation.' }] },
+            rubric: rubric()
         });
 
         expect(applied.strengths).toEqual(['Staff strength.']);
@@ -110,7 +150,73 @@ describe('applySummaryToResult', () => {
     });
 
     it('keeps model evidence when no comments are supplied', () => {
-        expect(applySummaryToResult(run().result, {}).criteria[0].evidence[0].quote).toBe('model quote');
+        expect(applySummaryToResult(run().result, { rubric: rubric() }).criteria[0].evidence[0].quote).toBe('model quote');
+    });
+
+    it('renders a staff-assessed criterion the run never carried', () => {
+        const applied = applySummaryToResult(run().result, {
+            edit: {
+                lens: 'linguistic', feedbackRunId: 'run-1', strengths: [],
+                criterionExplanations: [{ criterion: 'formatting', explanation: 'Margins and spacing follow the handout.' }]
+            },
+            rubric: rubric(true),
+            assessment: { criteria: [{ criterionId: 'formatting', points: 9 }] }
+        });
+
+        const formatting = applied.criteria.find((item) => item.criterion === 'formatting')!;
+        expect(formatting.explanation).toBe('Margins and spacing follow the handout.');
+        // The staff grade is the level: 9 of 10 falls in the proficient band.
+        expect(formatting.suggestedLevel).toBe('proficient');
+        expect(formatting.evidence).toEqual([]);
+        // Rubric order, not run order, and the model rows are untouched.
+        expect(applied.criteria.map((item) => item.criterion)).toEqual(['content', 'organization', 'formatting']);
+    });
+
+    it('renders a staff-assessed criterion with no rating on a lens that carries no grade', () => {
+        // A lab report is graded on its technical rubric, so a staff-assessed criterion on
+        // its writing rubric has written feedback and no points to name a level with.
+        // Approval requires that feedback, so dropping the row would discard staff work.
+        const applied = applySummaryToResult(run().result, {
+            edit: {
+                lens: 'linguistic', feedbackRunId: 'run-1', strengths: [],
+                criterionExplanations: [{ criterion: 'formatting', explanation: 'Margins follow the handout.' }]
+            },
+            rubric: rubric(true)
+        });
+
+        const formatting = applied.criteria.find((item) => item.criterion === 'formatting');
+        expect(formatting?.explanation).toBe('Margins follow the handout.');
+        expect(formatting?.suggestedLevel).toBeUndefined();
+    });
+
+    it('omits a staff-assessed criterion staff have not finished', () => {
+        const ids = (input: Parameters<typeof applySummaryToResult>[1]) =>
+            applySummaryToResult(run().result, input).criteria.map((item) => item.criterion);
+        const explained = {
+            lens: 'linguistic' as const, feedbackRunId: 'run-1', strengths: [],
+            criterionExplanations: [{ criterion: 'formatting', explanation: 'Written.' }]
+        };
+
+        // Unwritten is the only state that omits the row: with no explanation there is
+        // nothing to show, with or without a grade. A written one always renders, with a
+        // rating where the lens carries a grade and without where it does not.
+        expect(ids({ rubric: rubric(true) })).not.toContain('formatting');
+        expect(ids({ rubric: rubric(true), assessment: { criteria: [{ criterionId: 'formatting', points: 9 }] } }))
+            .not.toContain('formatting');
+        expect(ids({ rubric: rubric(true), edit: explained })).toContain('formatting');
+    });
+
+    it('keeps a criterion the current rubric no longer lists', () => {
+        const retired = { ...rubric(), criteria: rubric().criteria.filter((item) => item.id !== 'organization') };
+        const applied = applySummaryToResult(run().result, { rubric: retired });
+
+        expect(applied.criteria.map((item) => item.criterion)).toEqual(['content', 'organization']);
+    });
+
+    it('falls back to run order when the rubric version is no longer stored', () => {
+        const applied = applySummaryToResult(run().result, { rubric: undefined });
+
+        expect(applied.criteria.map((item) => item.criterion)).toEqual(['content', 'organization']);
     });
 
     it('evidenceFromComments carries material and glossary fields', () => {
@@ -145,7 +251,7 @@ describe('buildRedraftRun', () => {
         expect(built.rubricVersion).toBe(2);
         expect(built.lens).toBe('linguistic');
         expect(built.sflAnalysis).toEqual(previous.sflAnalysis);
-        expect(built.modelMetadata).toEqual({ engine: 'LlmSummaryRedraftEngine', promptVersion: 'summary-redraft-v1' });
+        expect(built.modelMetadata).toEqual({ engine: 'LlmSummaryRedraftEngine', promptVersion: 'summary-redraft-v1.1.0' });
         expect(built.result.criteria[0]).toEqual({
             criterion: 'content', suggestedLevel: 'proficient', explanation: 'Redrafted.', confidence: 0.8,
             evidence: [{ quote: 'A quoted passage', rationale: 'Name the claim.' }]

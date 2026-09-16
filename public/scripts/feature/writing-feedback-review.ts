@@ -956,7 +956,31 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
 
     /** Why Approve is unavailable, or nothing when grading does not stand in the way. */
     function approvalBlocker(): string | undefined {
-        return grading ? describeApprovalBlocker(grading.progress()) : undefined;
+        return staffCriteriaBlocker() ?? (grading ? describeApprovalBlocker(grading.progress()) : undefined);
+    }
+
+    /**
+     * staffCriteriaBlocker - why Approve is unavailable while staff feedback is unwritten.
+     *
+     * The server refuses the same case. Naming it here keeps staff from reaching Approve
+     * only to be turned back, and names the criteria rather than the rule.
+     *
+     * @returns The sentence, or `undefined` when every staff-assessed criterion is written
+     */
+    function staffCriteriaBlocker(): string | undefined {
+        const blank: string[] = [];
+        lenses.forEach((lens) => {
+            const run = lensRuns[lens];
+            if (!run) return;
+            const written = editor.writtenCriteria(lens);
+            (rubricForRun(assignment, run, lens)?.criteria ?? [])
+                .filter((criterion) => criterion.assessedBy === 'staff' && !written.has(criterion.id))
+                .forEach((criterion) => blank.push(criterion.label));
+        });
+        if (!blank.length) return undefined;
+        return blank.length <= 3
+            ? `Write the feedback for ${blank.join(', ')} in Step 2 to approve.`
+            : `Write the feedback for the ${blank.length} criteria the teaching team assesses in Step 2 to approve.`;
     }
 
     /** Opens the Summary step on one criterion's grade, switching to the graded lens if needed. */
@@ -1318,12 +1342,28 @@ function renderSummaryLens(input: {
         // A graded card states whether it has a grade; the suggested level is marked on its buttons instead.
         const gradeControl = gradeEntry?.control(criterionId) ?? null;
         if (gradeEntry && gradeControl) criterionHeader.append(gradeEntry.statusChip(criterionId));
-        else if (criterion) criterionHeader.append(chip(levelLabel(rubric, criterion.criterion, criterion.suggestedLevel), 'neutral'));
+        // No chip without a level: a criterion course staff assess on an ungraded lens has none.
+        else if (criterion?.suggestedLevel !== undefined) {
+            criterionHeader.append(chip(levelLabel(rubric, criterion.criterion, criterion.suggestedLevel), 'neutral'));
+        }
         item.append(criterionHeader);
         const sflLabel = definition?.sflDimension
             ?? (definition?.functionTag ? `${FUNCTION_TAG_LABELS[definition.functionTag]} function` : undefined);
         if (sflLabel) item.append(createText('p', sflLabel, 'wf-sfl-label'));
         if (gradeControl) item.append(gradeControl);
+        // A staff-assessed criterion is never generated, so the run carries no row for it.
+        // The card is the same card; only the seed text and the note above it differ.
+        if (definition?.assessedBy === 'staff') {
+            item.append(createText(
+                'p',
+                'The AI does not draft this criterion. Write the feedback the student will receive.',
+                'wf-muted-note'
+            ));
+            const staffText = edit?.criterionExplanations.find((entry) => entry.criterion === criterionId)?.explanation ?? '';
+            item.append(editor.explanationField(lens, criterionId, staffText));
+            criterionList.append(item);
+            return;
+        }
         if (!criterion) {
             item.append(createText('p', 'No stored feedback was found for this rubric criterion.', 'wf-muted-note'));
             criterionList.append(item);

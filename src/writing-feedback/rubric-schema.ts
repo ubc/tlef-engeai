@@ -17,6 +17,7 @@ import type {
     WritingRubricDefinition
 } from './contracts';
 import { resolveBand } from './rubric-bands';
+import { modelAssessedCriteria } from './criterion-assessment';
 
 const compactText = z.string().trim().min(1).max(1200);
 const optionalCompactText = z.string().trim().max(1200).optional();
@@ -91,7 +92,8 @@ export const writingRubricDraftInputSchema = z.object({
         functionTag: z.enum(['content', 'interpersonal', 'organizational']).optional(),
         sflDimension: optionalCompactText,
         points: z.number().finite().min(0).max(1000).optional(),
-        cells: z.record(rubricCell).optional()
+        cells: z.record(rubricCell).optional(),
+        assessedBy: z.enum(['model', 'staff']).optional()
     })).min(1).max(10),
     levels: z.array(z.object({
         id: slug,
@@ -235,6 +237,14 @@ export function assertRetiredIdsNotReused(
  *         carrying a rating with no description
  */
 export function requireCompleteRubricCells(draft: WritingRubricDefinition): void {
+    // A rubric the model is asked nothing about has no run to produce, and every later
+    // stage -- schema, prompts, review -- would fail further from the cause than here.
+    if (modelAssessedCriteria(draft).length === 0) {
+        throw new Error(
+            'At least one criterion must be AI-drafted before approving. This rubric leaves every criterion to the teaching team.'
+        );
+    }
+
     const unweighted = draft.criteria.filter(
         (criterion) => criterion.points === undefined || criterion.points <= 0
     );

@@ -119,6 +119,17 @@ export interface WritingRubricCriterion {
      * has columns is represented.
      */
     cells?: Record<WritingLevelId, WritingRubricCell>;
+    /**
+     * Who writes this criterion's feedback. Absent means `'model'`, which is what every
+     * rubric authored before this field carried.
+     *
+     * `'staff'` marks a criterion the model has no evidence for -- formatting, file naming,
+     * anything resting on how the document looks rather than what it says, since extraction
+     * yields text alone. The generator is not asked about such a criterion at all: made to
+     * answer, it can only report the absence, which is how every submission came to carry the
+     * same sentence about fonts and margins. Staff write it in review instead.
+     */
+    assessedBy?: 'model' | 'staff';
 }
 
 /** One allowed ordinal level, optionally carrying an instructor-approved numeric value. */
@@ -406,7 +417,14 @@ export interface RubricEvidence {
 /** Internal model draft for one rubric criterion; staff reviews it before release. */
 export interface CriterionFeedback {
     criterion: WritingCriterionId; // assignment-rubric key
-    suggestedLevel: WritingLevelId; // non-final model suggestion
+    /**
+     * Non-final model suggestion. Always present on a stored run: both output schemas
+     * require it. Absent only on a composed result, for a staff-assessed criterion on a
+     * lens that carries no grade -- a lab report's writing rubric -- where the staff
+     * points that would name the level do not exist. Renderers show the criterion
+     * without a rating rather than inventing one.
+     */
+    suggestedLevel?: WritingLevelId;
     evidence: RubricEvidence[]; // exact verified-text support for the suggestion
     explanation: string; // formative criterion-level guidance
     confidence: number; // staff-only model signal, excluded from student PDF

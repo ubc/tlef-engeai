@@ -44,6 +44,7 @@ import {
     sflFoundationPromptResource
 } from './sfl-foundation';
 import { resolveBand } from './rubric-bands';
+import { modelAssessedCriteria } from './criterion-assessment';
 import { sflAnalysisSchema, requireCompleteSflProfile, validateSflAnalysis } from './sfl-analysis';
 import { stripNulls } from './strip-nulls';
 import {
@@ -160,9 +161,13 @@ function deterministicFeedback(
     const selectedLevel = orderedLevels[Math.floor((orderedLevels.length - 1) / 2)];
     if (!selectedLevel) throw new Error('An approved rubric requires performance levels');
 
+    // The mock has to satisfy the same schema a live run does, which covers only the
+    // criteria the model is asked about.
+    const generated = modelAssessedCriteria(assignment.rubric);
+
     return {
         schemaVersion: WRITING_FEEDBACK_SCHEMA_V2,
-        criteria: assignment.rubric.criteria.map((criterion) => ({
+        criteria: generated.map((criterion) => ({
             criterion: criterion.id,
             suggestedLevel: selectedLevel.id,
             evidence: [{
@@ -183,7 +188,7 @@ function deterministicFeedback(
             confidence: 0.5
         })),
         strengths: [],
-        revisionGoals: assignment.rubric.criteria.slice(0, 3).map((criterion) => ({
+        revisionGoals: generated.slice(0, 3).map((criterion) => ({
             skillTag: criterion.id,
             goal: `Revise the passage or section that most affects ${criterion.label}.`,
             guidedQuestion: `What exact change would make ${criterion.label.toLowerCase()} fit the assignment purpose and reader?`
@@ -210,7 +215,7 @@ export function buildWritingFeedbackSystemPrompt(assignment: WritingAssignment):
         'Never present excerpt text to the student as if it were their own writing, and never quote an excerpt as evidence.',
         'If no excerpt genuinely applies to a finding, abstain from citing rather than stretching a document to fit.',
         'Do not use course materials as hidden criteria or to judge disciplinary technical correctness.',
-        `Assess every approved criterion exactly once. Use only these criterion ids: ${rubric.criteria.map((criterion) => criterion.id).join(', ')}.`,
+        `Assess every criterion below exactly once. Use only these criterion ids: ${modelAssessedCriteria(rubric).map((criterion) => criterion.id).join(', ')}.`,
         `Use only these performance-level ids: ${rubric.levels.map((level) => level.id).join(', ')}.`,
         'Every evidence.quote must be copied exactly from one validated SFL evidence span.',
         `Use the shortest exact clause or single sentence available; never quote a full paragraph or submission. Each evidence.quote must be at most ${MAX_EVIDENCE_QUOTE_LENGTH} characters.`,
@@ -229,6 +234,7 @@ export function buildWritingFeedbackSystemPrompt(assignment: WritingAssignment):
         'Do not write or rewrite sentences, paragraphs, or model answers for the student.',
         'Never invent numeric weights or grades. Flag uncertainty internally.',
         'Never state a confidence level, certainty, or how sure you are anywhere in prose — not in explanation, strengths, or revision goals. Confidence belongs only in the separate confidence field.',
+        'Never tell the student what you did not assess, could not assess, or were not asked to assess. A scope limit, a feature of the document you cannot see, and anything outside this criterion go in internalFlags, never in explanation, strengths, or revision goals.',
         `<approved_rubric version="${rubric.version}">${JSON.stringify({
             assignmentTitle: assignment.title,
             assignmentInstructions: assignment.instructions,
@@ -244,7 +250,9 @@ export function buildWritingFeedbackSystemPrompt(assignment: WritingAssignment):
             // than the widest one, and a rating is named per criterion, so what a level
             // means cannot be stated once for the whole grid -- which is what the levels
             // list used to claim, using one row's wording for every row.
-            criteria: rubric.criteria.map((criterion) => ({
+            // Staff-assessed criteria are withheld: naming one invites the model to say it
+            // could not judge it, which is exactly the prose this exclusion exists to stop.
+            criteria: modelAssessedCriteria(rubric).map((criterion) => ({
                 id: criterion.id,
                 label: criterion.label,
                 description: criterion.description,
@@ -294,7 +302,7 @@ export function buildSflAnalyzerSystemPrompt(assignment: WritingAssignment): str
             instructions: assignment.instructions,
             rubricVersion: rubric.version,
             sflContext: rubric.sflContext,
-            criteria: rubric.criteria.map(({ id, label, description, functionTag, sflDimension }) => ({
+            criteria: modelAssessedCriteria(rubric).map(({ id, label, description, functionTag, sflDimension }) => ({
                 id, label, description, functionTag, sflDimension
             }))
         })}</approved_assignment_profile>`

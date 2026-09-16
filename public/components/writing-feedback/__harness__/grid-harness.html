@@ -51,7 +51,14 @@ const draft = {
             developing: { min: 15, max: 30, label: 'Partial', descriptor: 'Some claims are backed, others are asserted.' },
             proficient: { min: 31, max: 45, label: 'Complete', descriptor: 'Every claim is backed by something a reader can check.' }
           } },
-        { id: 'interpersonal_positioning', label: 'Interpersonal Positioning', description: 'How the writing addresses the person reading it.', points: 25, cells: {} }
+        { id: 'interpersonal_positioning', label: 'Interpersonal Positioning', description: 'How the writing addresses the person reading it.', points: 25, cells: {} },
+        // Staff-assessed: extraction yields text alone, so nothing about how the document
+        // looks reaches the model. Shows the row's "Feedback: teaching team" state.
+        { id: 'presentation_formatting', label: 'Presentation and Formatting', description: 'Font, spacing, margins, and the submitted file itself.', points: 10, assessedBy: 'staff',
+          cells: {
+            weak: { min: 0, max: 4, label: 'Weak', descriptor: 'Formatting ignores the handout.' },
+            proficient: { min: 5, max: 10, label: 'Proficient', descriptor: 'Formatting follows the handout.' }
+          } }
     ],
     levels: [
         { id: 'weak', label: 'Weak', description: 'Not yet meeting the criterion.', rank: 1 },

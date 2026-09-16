@@ -49,6 +49,9 @@ export function deriveSuggestedGrading(
     run.result.criteria.forEach((feedback) => {
         const definition = rubric.criteria.find((criterion) => criterion.id === feedback.criterion);
         if (!definition) return; // retired in a later version; the run still renders elsewhere
+        // Stored runs always carry a level; only a composed result can omit one, and this
+        // reads a run. Guarded rather than asserted so the type change cannot bite here.
+        if (feedback.suggestedLevel === undefined) return;
         const band = resolveBand(definition, feedback.suggestedLevel, rubric.levels);
         if (!band) return; // ordinal-only criterion: no points to suggest
         const level = rubric.levels.find((entry) => entry.id === feedback.suggestedLevel);

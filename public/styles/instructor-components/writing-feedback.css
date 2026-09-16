@@ -1899,6 +1899,106 @@
     outline-offset: 1px;
 }
 
+/* Who writes this criterion's feedback. Both options stay visible: the default is the
+   common case, so a collapsed control showing it would read as a status label and the
+   alternative would never be discovered. Inset to the same gutter as the criterion name
+   and description above it, so the row head reads as one column. */
+.wf-grid-authorship {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 10px;
+    padding-inline: var(--wf-cell-inset);
+}
+
+.wf-grid-authorship__label {
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+
+.wf-grid-seg {
+    display: inline-flex;
+    align-self: start;
+    max-width: 100%;
+    padding: 2px;
+    gap: 2px;
+    background: var(--hover-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+}
+
+.wf-grid-seg__option {
+    position: relative;
+    display: inline-flex;
+    min-width: 0;
+}
+
+/* Visually hidden, not display:none -- the radio still has to take focus and be read. */
+.wf-grid-seg__input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    padding: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.wf-grid-seg__text {
+    display: block;
+    padding: 3px 10px;
+    border-radius: 999px;
+    /* Mixed toward --text-primary because --text-secondary alone reaches only 4.08:1 on
+       the track, leaving the unselected option -- a real, clickable choice -- under the
+       4.5:1 floor at 12px. This lands at 5.45:1, and stays a token rather than a literal. */
+    color: color-mix(in srgb, var(--text-secondary) 70%, var(--text-primary));
+    font-size: 12px;
+    line-height: 1.4;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color 120ms ease, color 120ms ease;
+}
+
+/* The selected option carries its own hue: green where EngE-AI drafts the feedback, blue
+   where course staff write it. Colour is the answer, not the state, so a grid of ten rows
+   can be read down the column without stopping on each one. */
+.wf-grid-seg__option--model .wf-grid-seg__input:checked + .wf-grid-seg__text {
+    background: var(--color-chbe-green);
+    color: white;
+    font-weight: 600;
+}
+
+.wf-grid-seg__option--staff .wf-grid-seg__input:checked + .wf-grid-seg__text {
+    background: var(--color-ubc-blue);
+    color: white;
+    font-weight: 600;
+}
+
+/* Hover previews the shape the choice would take rather than tinting it: the rubric page
+   retired a green wash over the grid, and reintroducing one here would put it back a rule
+   at a time. The pill lifts to the selected geometry, and the colour arrives on click. */
+.wf-grid-seg__option:hover .wf-grid-seg__input:not(:checked):not(:disabled) + .wf-grid-seg__text {
+    background: white;
+    color: var(--text-primary);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 8%);
+}
+
+.wf-grid-seg__input:focus-visible + .wf-grid-seg__text {
+    outline: 2px solid var(--color-chbe-green);
+    outline-offset: 2px;
+}
+
+/* Read-only rubric: the answer keeps its colour, the choice is no longer offered. */
+.wf-grid-seg__input:disabled + .wf-grid-seg__text {
+    cursor: default;
+}
+
+.wf-grid-seg__input:disabled:not(:checked) + .wf-grid-seg__text {
+    opacity: 0.5;
+}
+
 .wf-grid-text {
     display: block;
     width: 100%;

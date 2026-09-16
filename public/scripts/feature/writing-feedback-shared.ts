@@ -98,6 +98,8 @@ export interface RubricCriterion {
     sflDimension?: string; // optional instructor-authored linguistic lens
     points?: number; // maximum points this criterion contributes
     cells?: Record<string, RubricCell>; // sparse per-level bands, keyed by level id
+    /** Who writes this criterion's feedback; absent means 'model'. Staff-assessed criteria are never generated. */
+    assessedBy?: 'model' | 'staff';
 }
 
 /** One ordinal performance level, optionally carrying rubric point metadata. */
@@ -157,7 +159,8 @@ export interface Assignment {
 /** Structured model judgment for one supported rubric criterion. */
 export interface CriterionFeedback {
     criterion: WritingCriterionId; // joins the result to the approved rubric criterion
-    suggestedLevel: WritingLevelId; // model draft level requiring human review
+    /** Model draft level requiring human review. Absent on a staff-assessed criterion on a lens that carries no grade. */
+    suggestedLevel?: WritingLevelId;
     evidence: Array<{
         quote: string;
         rationale: string;

@@ -563,7 +563,7 @@ describe('two-lens generation', () => {
         const technicalRun = mongo.createWritingFeedbackRun.mock.calls
             .map(([input]: [{ lens: string; modelMetadata: { promptVersion: string } }]) => input)
             .find((input) => input.lens === 'technical');
-        expect(technicalRun?.modelMetadata.promptVersion).toBe('lab-report-technical-v1.1.0');
+        expect(technicalRun?.modelMetadata.promptVersion).toBe('lab-report-technical-v1.2.0');
     });
 });
 
@@ -637,6 +637,69 @@ describe('approval requires the grade Release will send', () => {
         mongo.getWritingSubmission.mockResolvedValue(gradedSubmission(assignment.rubric.version));
         await expect(service.approve('course-1', 'submission-1', 'user-1')).resolves.toBeDefined();
         expect(mongo.approveWritingSubmission).toHaveBeenCalled();
+    });
+});
+
+describe('approval requires staff-assessed criteria to be written', () => {
+    /**
+     * staffAssessed - marks one criterion staff-assessed on the service's approved rubric.
+     *
+     * Mutates the assignment `buildService` already handed to the mongo double, so the
+     * service reads the same object back.
+     */
+    function staffAssessed(assignment: WritingAssignment, criterionId: string): void {
+        assignment.rubric.criteria = assignment.rubric.criteria.map((criterion) => (
+            criterion.id === criterionId ? { ...criterion, assessedBy: 'staff' as const } : criterion
+        ));
+    }
+
+    it('refuses when the staff criterion has no saved explanation', async () => {
+        const { service, mongo, assignment } = buildService();
+        staffAssessed(assignment, assignment.rubric.criteria[0].id);
+        mongo.getWritingSubmission.mockResolvedValue(gradedSubmission(assignment.rubric.version));
+
+        await expect(service.approve('course-1', 'submission-1', 'user-1'))
+            .rejects.toThrow(/Write feedback for every criterion the teaching team assesses/);
+        expect(mongo.approveWritingSubmission).not.toHaveBeenCalled();
+    });
+
+    it('approves once the explanation is saved against the latest run', async () => {
+        const { service, mongo, assignment } = buildService();
+        const criterionId = assignment.rubric.criteria[0].id;
+        staffAssessed(assignment, criterionId);
+        const graded = gradedSubmission(assignment.rubric.version);
+        graded.reviews[0] = {
+            ...graded.reviews[0],
+            summaryEdits: [{
+                lens: 'linguistic',
+                feedbackRunId: 'run-linguistic',
+                strengths: [],
+                criterionExplanations: [{ criterion: criterionId, explanation: 'Margins follow the handout.' }]
+            }]
+        };
+        mongo.getWritingSubmission.mockResolvedValue(graded);
+
+        await expect(service.approve('course-1', 'submission-1', 'user-1')).resolves.toBeDefined();
+    });
+
+    it('refuses an explanation bound to an older run', async () => {
+        const { service, mongo, assignment } = buildService();
+        const criterionId = assignment.rubric.criteria[0].id;
+        staffAssessed(assignment, criterionId);
+        const graded = gradedSubmission(assignment.rubric.version);
+        graded.reviews[0] = {
+            ...graded.reviews[0],
+            summaryEdits: [{
+                lens: 'linguistic',
+                feedbackRunId: 'run-from-before-a-redraft',
+                strengths: [],
+                criterionExplanations: [{ criterion: criterionId, explanation: 'Stale.' }]
+            }]
+        };
+        mongo.getWritingSubmission.mockResolvedValue(graded);
+
+        await expect(service.approve('course-1', 'submission-1', 'user-1'))
+            .rejects.toThrow(/Write feedback for every criterion the teaching team assesses/);
     });
 });
 
@@ -797,7 +860,7 @@ describe('WritingFeedbackService summary redraft', () => {
         expect(created[0].redraftOfRunId).toBe('run-gen');
         expect(created[0].sourceComments).toEqual([staffComment]);
         expect(created[0].annotationsFingerprint).toMatch(/^[0-9a-f]{8}$/);
-        expect(created[0].modelMetadata.promptVersion).toBe('summary-redraft-v1');
+        expect(created[0].modelMetadata.promptVersion).toBe('summary-redraft-v1.1.0');
         expect(result.detail.summarySources.linguistic?.runId).toBe(created[0].id);
         expect(result.detail.workingComments.map((comment) => comment.id)).toEqual(['c-staff']);
     });

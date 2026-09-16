@@ -426,6 +426,25 @@ describe('requireCompleteRubricCells', () => {
         };
     }
 
+    it('rejects a rubric that leaves every criterion to staff', () => {
+        // Nothing to generate: the run would fail at schema build, further from the cause.
+        const draft = draftWith({ weak: { min: 0, max: 5, descriptor: 'd' }, strong: { min: 6, max: 10, descriptor: 'd' } });
+        draft.criteria = draft.criteria.map((criterion) => ({ ...criterion, assessedBy: 'staff' as const }));
+
+        expect(() => requireCompleteRubricCells(draft)).toThrow(/At least one criterion must be AI-drafted/);
+    });
+
+    it('approves a rubric mixing staff-assessed and AI-drafted criteria', () => {
+        const cells = { weak: { min: 0, max: 5, descriptor: 'd' }, strong: { min: 6, max: 10, descriptor: 'd' } };
+        const draft = draftWith(cells);
+        draft.criteria = [
+            { ...draft.criteria[0], assessedBy: 'staff' as const },
+            { id: 'other', label: 'Other', description: 'd', points: 10, cells }
+        ];
+
+        expect(() => requireCompleteRubricCells(draft)).not.toThrow();
+    });
+
     it('rejects a criterion offering fewer ratings than can separate any work', () => {
         // One rating is not a scale: every submission earns it. A short row is allowed,
         // but not shorter than the two the rubric schema requires of the grid itself.

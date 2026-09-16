@@ -156,6 +156,24 @@ describe('StudentWritingFeedbackPdfService', () => {
         expect(text).toContain('Advanced');
     });
 
+    it('prints a criterion with no rating as its own heading', async () => {
+        // A criterion course staff assess on a lens that carries no grade has written
+        // feedback and no points to name a level with. It must not trail "undefined".
+        const unrated = feedback([assignment.rubric.criteria[0]]);
+        delete unrated.criteria[0].suggestedLevel;
+        const pdf = await service.render({
+            assignment,
+            submission: submission(),
+            feedback: unrated,
+            include: 'general'
+        });
+        const text = searchableText(pdf);
+
+        expect(text).toContain(assignment.rubric.criteria[0].label);
+        expect(text).not.toContain('undefined');
+        expect(text).not.toContain(`${assignment.rubric.criteria[0].label} \u2014`);
+    });
+
     it('renders unknown criterion and level ids as their raw slugs', async () => {
         const unknownCriterion: WritingRubricCriterion = {
             id: 'unexpected_criterion_slug',
