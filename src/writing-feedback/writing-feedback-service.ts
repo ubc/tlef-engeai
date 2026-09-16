@@ -40,7 +40,15 @@ import { TECHNICAL_PROMPT_VERSION, TechnicalWritingFeedbackEngine } from './tech
 import { lensesForAssignment, selectRubric, rubricForVersion } from './rubric-lens';
 import { ModelSelectionService } from '../dashboard-setting/model-selection-service';
 import { StudentWritingFeedbackPdfService } from '../report-generation/writing-feedback-report';
-import { buildStaffFinalAssessment, gradedLensFor, type StaffFinalAssessmentInput } from './staff-final-assessment';
+import {
+    APPROVAL_REQUIRES_GRADE_MESSAGE,
+    buildStaffAssessmentDraft,
+    buildStaffFinalAssessment,
+    gradedLensFor,
+    rubricSupportsStaffAssessment,
+    type StaffAssessmentDraftInput,
+    type StaffFinalAssessmentInput
+} from './staff-final-assessment';
 import {
     MAX_SUBMISSION_RELEASES,
     countCompletedReleases,
@@ -53,6 +61,7 @@ import { requireCompleteSflProfile } from './sfl-analysis';
 import { appLogger } from '../utils/logger';
 import { fingerprintAnnotations } from './annotation-fingerprint';
 import { assertSummaryEditsBound } from './summary-edits';
+import { assertStaffCriteriaWritten } from './criterion-assessment';
 import { LlmSummaryRedraftEngine, SUMMARY_REDRAFT_FAILED_MESSAGE, type SummaryRedraftEngine } from './summary-redraft-engine';
 import {
     applySummaryToResult,
@@ -540,8 +549,9 @@ export class WritingFeedbackService {
     async appendReview(
         courseId: string,
         submissionId: string,
-        revision: Omit<StaffReviewRevision, 'id' | 'createdAt' | 'submissionId' | 'finalAssessment'> & {
+        revision: Omit<StaffReviewRevision, 'id' | 'createdAt' | 'submissionId' | 'finalAssessment' | 'assessmentDraft'> & {
             finalAssessment?: StaffFinalAssessmentInput;
+            assessmentDraft?: StaffAssessmentDraftInput;
         },
         staffName?: string
     ): Promise<StaffReviewRevision> {
@@ -555,7 +565,7 @@ export class WritingFeedbackService {
             assertSummaryEditsBound(revision.summaryEdits, {
                 linguistic: await this.mongo.getLatestWritingFeedbackRun(submissionId),
                 technical: await this.mongo.getLatestWritingFeedbackRun(submissionId, 'technical')
-            });
+            }, await this.requireAssignment(courseId, submission.assignmentId));
         }
         let comments = revision.comments;
         if (comments?.length) {
@@ -566,9 +576,13 @@ export class WritingFeedbackService {
             // Validate offsets against the current verified text immediately before persistence.
             validateAnchoredComments(comments, submission.verifiedText ?? '');
         }
-        const { finalAssessment: finalAssessmentInput, ...reviewFields } = revision;
+        const { finalAssessment: finalAssessmentInput, assessmentDraft: draftInput, ...reviewFields } = revision;
+        if (finalAssessmentInput && draftInput) {
+            throw new Error('Send either a complete final grade or a partial one, not both');
+        }
         let finalAssessment;
-        if (finalAssessmentInput) {
+        let assessmentDraft;
+        if (finalAssessmentInput || draftInput) {
             const assignment = await this.requireAssignment(courseId, submission.assignmentId);
             // A lab report is graded on its technical rubric, not its writing one, so the
             // grade is validated against the lens that actually carries it.
@@ -577,12 +591,14 @@ export class WritingFeedbackService {
             if (!gradedRubric) {
                 throw new Error('Approve the rubric this assignment is graded on before saving a final grade');
             }
-            finalAssessment = buildStaffFinalAssessment(finalAssessmentInput, gradedRubric, lens);
+            if (finalAssessmentInput) finalAssessment = buildStaffFinalAssessment(finalAssessmentInput, gradedRubric, lens);
+            else assessmentDraft = buildStaffAssessmentDraft(draftInput!, gradedRubric, lens);
         }
         return this.mongo.appendWritingReview(courseId, submissionId, {
             ...reviewFields,
             comments,
-            ...(finalAssessment ? { finalAssessment } : {})
+            ...(finalAssessment ? { finalAssessment } : {}),
+            ...(assessmentDraft ? { assessmentDraft } : {})
         });
     }
 
@@ -601,6 +617,7 @@ export class WritingFeedbackService {
         const submission = await this.requireSubmission(courseId, submissionId);
         const assignment = await this.requireAssignment(courseId, submission.assignmentId);
 
+        const latestReview = submission.reviews?.[submission.reviews.length - 1];
         for (const lens of lensesForAssignment(assignment)) {
             const rubric = selectRubric(assignment, lens).approved;
             // A lab report whose technical rubric was never approved cannot owe a technical run.
@@ -612,6 +629,19 @@ export class WritingFeedbackService {
                     : 'Generate feedback before staff approval');
             }
             this.assertCurrentRubricForLens(run.rubricVersion, rubric, lens);
+            // Nothing generates a staff-assessed criterion, so nothing else would notice it
+            // was left blank: it is simply absent from the student's document.
+            assertStaffCriteriaWritten(rubric, bindingSummaryEdit(latestReview, lens, run.id));
+        }
+
+        // Approval vouches for the grade Release will send, so a gradable rubric needs a
+        // complete one, saved in the latest revision against the rubric version now in force.
+        const gradedRubric = selectRubric(assignment, gradedLensFor(assignment)).approved;
+        if (gradedRubric && rubricSupportsStaffAssessment(gradedRubric)) {
+            const saved = latestReview?.finalAssessment;
+            if (!saved || saved.rubricVersion !== gradedRubric.version) {
+                throw new Error(APPROVAL_REQUIRES_GRADE_MESSAGE);
+            }
         }
 
         const approved = await this.mongo.approveWritingSubmission(courseId, submissionId, staffUserId, staffName);
@@ -664,7 +694,7 @@ export class WritingFeedbackService {
             ({ technicalRun, technicalRubric } = await this.loadTechnicalLens(submissionId, assignment));
         }
         // Step 2: assemble the student-safe feedback, staff text, and comments from the reviews.
-        const studentDocument = this.buildStudentDocument(submission, run, technicalRun);
+        const studentDocument = this.buildStudentDocument(submission, run, technicalRun, assignment);
         return this.pdfService.render({
             assignment: pdfAssignment,
             submission,
@@ -704,7 +734,7 @@ export class WritingFeedbackService {
         this.assertCurrentRubric(feedbackRun.rubricVersion, assignment);
         const { technicalRun, technicalRubric } = await this.loadTechnicalLens(submissionId, assignment);
         const completePdf = await this.renderReleasePdf(assignment, submission, feedbackRun, technicalRun, technicalRubric);
-        const studentDocument = this.buildStudentDocument(submission, feedbackRun, technicalRun);
+        const studentDocument = this.buildStudentDocument(submission, feedbackRun, technicalRun, assignment);
         const artifacts: CanvasReleaseInput['artifacts'] = [
             { kind: 'writing', filename: 'writing-feedback-complete.pdf', data: completePdf }
         ];
@@ -998,7 +1028,7 @@ export class WritingFeedbackService {
         this.assertCurrentRubric(feedbackRun.rubricVersion, assignment);
         const { technicalRun, technicalRubric } = await this.loadTechnicalLens(submissionId, assignment);
         const completePdf = await this.renderReleasePdf(assignment, submission, feedbackRun, technicalRun, technicalRubric);
-        const studentDocument = this.buildStudentDocument(submission, feedbackRun, technicalRun);
+        const studentDocument = this.buildStudentDocument(submission, feedbackRun, technicalRun, assignment);
         const artifacts: CanvasReleaseInput['artifacts'] = [
             { kind: 'writing', filename: 'writing-feedback-complete.pdf', data: completePdf }
         ];
@@ -1078,7 +1108,8 @@ export class WritingFeedbackService {
     private buildStudentDocument(
         submission: ReviewableSubmission,
         feedbackRun: WritingFeedbackRun,
-        technicalRun: WritingFeedbackRun | null
+        technicalRun: WritingFeedbackRun | null,
+        assignment: WritingAssignment
     ) {
         const verifiedText = submission.verifiedText ?? '';
         const latestReview = submission.reviews?.[submission.reviews.length - 1];
@@ -1097,20 +1128,30 @@ export class WritingFeedbackService {
         const linguisticComments = anchored(linguistic.comments);
         const technicalComments = anchored(technical.comments);
 
+        // The grade belongs to one lens, so it supplies staff-assessed levels only there.
+        // A draft grade is deliberately not read: a preview shows what release would send.
+        const assessment = latestReview?.finalAssessment;
+        const assessmentFor = (lens: WritingFeedbackLens) =>
+            assessment && (assessment.lens ?? 'linguistic') === lens ? { assessment } : {};
+
         return {
             latestReview,
             // Technical first, so a lab report's annotated pages lead with the graded rubric.
             comments: [...technicalComments, ...linguisticComments],
             feedback: applySummaryToResult(feedbackRun.result, {
                 ...(linguistic.origin === 'none' ? {} : { comments: linguisticComments }),
-                edit: bindingSummaryEdit(latestReview, 'linguistic', feedbackRun.id)
+                edit: bindingSummaryEdit(latestReview, 'linguistic', feedbackRun.id),
+                rubric: rubricForRun(assignment, feedbackRun),
+                ...assessmentFor('linguistic')
             }),
             staffFeedback: bindingStudentFeedback(latestReview, feedbackRun.id),
             ...(technicalRun
                 ? {
                     technicalFeedback: applySummaryToResult(technicalRun.result, {
                         ...(technical.origin === 'none' ? {} : { comments: technicalComments }),
-                        edit: bindingSummaryEdit(latestReview, 'technical', technicalRun.id)
+                        edit: bindingSummaryEdit(latestReview, 'technical', technicalRun.id),
+                        rubric: rubricForRun(assignment, technicalRun),
+                        ...assessmentFor('technical')
                     }),
                     technicalStaffFeedback: bindingSummaryEdit(latestReview, 'technical', technicalRun.id)?.revisionGoalsText
                 }
@@ -1134,7 +1175,7 @@ export class WritingFeedbackService {
         technicalRun: WritingFeedbackRun | null,
         technicalRubric: WritingRubricDefinition | undefined
     ): Promise<Buffer> {
-        const studentDocument = this.buildStudentDocument(submission, feedbackRun, technicalRun);
+        const studentDocument = this.buildStudentDocument(submission, feedbackRun, technicalRun, assignment);
         return this.pdfService.render({
             assignment,
             submission,

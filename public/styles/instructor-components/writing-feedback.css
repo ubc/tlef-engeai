@@ -476,6 +476,10 @@
     margin-bottom: 2px;
 }
 
+.wf-callout .wf-button-row {
+    margin-top: 10px;
+}
+
 /* Landing — assignment accordion (documents .topic-or-week-instance pattern) */
 
 .wf-assignment-list {
@@ -1895,6 +1899,106 @@
     outline-offset: 1px;
 }
 
+/* Who writes this criterion's feedback. Both options stay visible: the default is the
+   common case, so a collapsed control showing it would read as a status label and the
+   alternative would never be discovered. Inset to the same gutter as the criterion name
+   and description above it, so the row head reads as one column. */
+.wf-grid-authorship {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 10px;
+    padding-inline: var(--wf-cell-inset);
+}
+
+.wf-grid-authorship__label {
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+
+.wf-grid-seg {
+    display: inline-flex;
+    align-self: start;
+    max-width: 100%;
+    padding: 2px;
+    gap: 2px;
+    background: var(--hover-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+}
+
+.wf-grid-seg__option {
+    position: relative;
+    display: inline-flex;
+    min-width: 0;
+}
+
+/* Visually hidden, not display:none -- the radio still has to take focus and be read. */
+.wf-grid-seg__input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    padding: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.wf-grid-seg__text {
+    display: block;
+    padding: 3px 10px;
+    border-radius: 999px;
+    /* Mixed toward --text-primary because --text-secondary alone reaches only 4.08:1 on
+       the track, leaving the unselected option -- a real, clickable choice -- under the
+       4.5:1 floor at 12px. This lands at 5.45:1, and stays a token rather than a literal. */
+    color: color-mix(in srgb, var(--text-secondary) 70%, var(--text-primary));
+    font-size: 12px;
+    line-height: 1.4;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color 120ms ease, color 120ms ease;
+}
+
+/* The selected option carries its own hue: green where EngE-AI drafts the feedback, blue
+   where course staff write it. Colour is the answer, not the state, so a grid of ten rows
+   can be read down the column without stopping on each one. */
+.wf-grid-seg__option--model .wf-grid-seg__input:checked + .wf-grid-seg__text {
+    background: var(--color-chbe-green);
+    color: white;
+    font-weight: 600;
+}
+
+.wf-grid-seg__option--staff .wf-grid-seg__input:checked + .wf-grid-seg__text {
+    background: var(--color-ubc-blue);
+    color: white;
+    font-weight: 600;
+}
+
+/* Hover previews the shape the choice would take rather than tinting it: the rubric page
+   retired a green wash over the grid, and reintroducing one here would put it back a rule
+   at a time. The pill lifts to the selected geometry, and the colour arrives on click. */
+.wf-grid-seg__option:hover .wf-grid-seg__input:not(:checked):not(:disabled) + .wf-grid-seg__text {
+    background: white;
+    color: var(--text-primary);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 8%);
+}
+
+.wf-grid-seg__input:focus-visible + .wf-grid-seg__text {
+    outline: 2px solid var(--color-chbe-green);
+    outline-offset: 2px;
+}
+
+/* Read-only rubric: the answer keeps its colour, the choice is no longer offered. */
+.wf-grid-seg__input:disabled + .wf-grid-seg__text {
+    cursor: default;
+}
+
+.wf-grid-seg__input:disabled:not(:checked) + .wf-grid-seg__text {
+    opacity: 0.5;
+}
+
 .wf-grid-text {
     display: block;
     width: 100%;
@@ -2473,6 +2577,7 @@ mark.wf-anchor.is-filtered-out,
     display: grid;
     grid-template-columns: 1fr auto 1fr;
     align-items: center;
+    background: var(--background-2);
 }
 
 .wf-step-bar__center {
@@ -2497,6 +2602,20 @@ mark.wf-anchor.is-filtered-out,
 .wf-summary-strengths {
     display: grid;
     gap: 8px;
+}
+
+.wf-summary-strength-control {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 8px;
+}
+
+/* Sized to its text by autoGrow, so the shared 96px field floor would only add empty space. */
+.wf-field .wf-summary-strength-control textarea {
+    min-height: 0;
+    overflow: hidden;
+    resize: none;
 }
 
 .wf-panel-tabs {
@@ -2549,14 +2668,40 @@ mark.wf-anchor.is-filtered-out,
     display: none;
 }
 
+/* Steps 2 and 3: the sentence saying what can happen next, above Save draft and the one primary action. */
 .wf-panel-footer {
     display: flex;
-    align-items: center;
-    flex-wrap: wrap;
+    flex-direction: column;
     gap: 8px;
     padding: 12px 16px;
     border-top: 1px solid var(--border-color);
     background: var(--chat-bg);
+}
+
+.wf-panel-footer__state {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.wf-panel-footer__state[hidden] {
+    display: none;
+}
+
+.wf-panel-footer__actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.wf-panel-footer__actions .wf-button {
+    min-height: 44px;
+}
+
+.wf-panel-footer__primary {
+    margin-left: auto;
 }
 
 .wf-download-menu {
@@ -2746,17 +2891,6 @@ mark.wf-anchor.is-filtered-out,
     border-bottom: 1px solid var(--border-color);
 }
 
-.wf-suggested-grading__header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 12px;
-}
-
-.wf-suggested-grading__header h3 {
-    margin-bottom: 4px;
-}
-
 .wf-suggested-grading__scroll {
     overflow-x: auto;
     scrollbar-gutter: stable;
@@ -2853,10 +2987,228 @@ mark.wf-anchor.is-filtered-out,
     font-weight: 700;
 }
 
-.wf-final-grade-input {
+/* Final grade on each criterion card: level buttons and a points box that stay in step. */
+
+.wf-grade-entry {
+    min-width: 0;
+    margin: 10px 0 12px;
+    padding: 0;
+    border: 0;
+}
+
+.wf-grade-entry__legend {
+    margin-bottom: 8px;
+    padding: 0;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.wf-grade-levels {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.wf-grade-level {
+    flex: 1 1 96px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+    min-height: 44px;
+    padding: 6px 10px;
+    background: white;
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.wf-grade-level:hover {
+    background: var(--hover-bg);
+}
+
+.wf-grade-level:focus-visible {
+    outline: 2px solid var(--color-chbe-green);
+    outline-offset: 2px;
+}
+
+/* The model's suggestion: the same inset edge the rubric grid uses for it. */
+.wf-grade-level--suggested {
+    box-shadow: inset 3px 0 0 var(--color-chbe-green);
+}
+
+/* The level the staff grade falls in: the grid's filled "earned" cell. */
+.wf-grade-level[aria-pressed="true"] {
+    background: var(--gingham-color);
+    border-color: var(--color-chbe-green);
+    box-shadow: inset 0 0 0 2px var(--color-chbe-green);
+}
+
+.wf-grade-level--suggested[aria-pressed="true"] {
+    box-shadow: inset 0 0 0 2px var(--color-chbe-green), inset 3px 0 0 var(--color-chbe-green);
+}
+
+.wf-grade-level__name {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.wf-grade-level__band {
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.wf-grade-level__tag {
+    color: var(--color-chbe-green);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.wf-grade-points {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+}
+
+.wf-grade-points .wf-help-text {
+    flex: 1 1 160px;
+    margin: 0;
+}
+
+.wf-grade-points .wf-help-text--error {
+    color: var(--color-eng-red);
+}
+
+.wf-grade-points__entry {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.wf-grade-points__entry input {
     width: 78px;
-    min-width: 68px;
-    padding: 6px 8px;
+    min-height: 40px;
+    padding: 8px 10px;
+    background: white;
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font: inherit;
+    font-size: 14px;
+}
+
+.wf-grade-points__entry input:focus-visible {
+    outline: none;
+    border-color: var(--color-chbe-green);
+    box-shadow: 0 0 0 1px var(--color-chbe-green);
+}
+
+.wf-grade-points__entry input[aria-invalid="true"] {
+    border-color: var(--color-eng-red);
+    box-shadow: 0 0 0 1px var(--color-eng-red);
+}
+
+.wf-grade-points__max {
+    color: var(--text-secondary);
+    font-weight: 400;
+}
+
+/* Pinned to the top of the Summary step's scroll area; the negative margins undo the body padding. */
+.wf-grade-progress {
+    position: sticky;
+    top: -16px;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    margin: -16px -16px 16px;
+    padding: 6px 16px;
+    background: var(--chat-bg);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.wf-grade-progress__text {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 13px;
+}
+
+.wf-grade-progress .wf-button[hidden] {
+    display: none;
+}
+
+/* Review and release step: the grade summary. */
+
+.wf-grade-summary__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.wf-feedback-section .wf-grade-summary__header h3 {
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.wf-grade-summary {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.wf-grade-summary__row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
+    align-items: center;
+    gap: 6px 10px;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--hover-bg);
+    color: var(--text-primary);
+    font-size: 14px;
+}
+
+.wf-grade-summary__points {
+    font-weight: 700;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.wf-grade-summary__row .wf-button {
+    min-height: 44px;
+}
+
+.wf-grade-summary__total {
+    margin: 10px 0 0;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 700;
+    text-align: right;
+}
+
+.wf-review-checks {
+    margin-bottom: 20px;
+}
+
+.wf-review-checks .wf-download-menu {
+    margin-left: 0;
 }
 
 .wf-strength-list {
@@ -2996,27 +3348,6 @@ mark.wf-anchor.is-filtered-out,
     border: none;
     color: color-mix(in srgb, var(--color-eng-red) 65%, var(--text-primary));
     padding-bottom: 0;
-}
-
-.wf-release-card {
-    background: white;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    padding: 12px 14px;
-}
-
-.wf-release-card h3 {
-    margin: 0 0 6px;
-    color: var(--text-primary);
-    font-size: 14px;
-    font-weight: 600;
-}
-
-.wf-release-card p {
-    margin: 0 0 8px;
-    color: var(--text-secondary);
-    font-size: 13px;
-    line-height: 1.5;
 }
 
 /* Focus visibility */

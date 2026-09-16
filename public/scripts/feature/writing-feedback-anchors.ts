@@ -555,7 +555,7 @@ function renderCardEditor(
     rerender: () => void
 ): void {
     // Controls update the isolated working copy immediately and mark the parent
-    // review dirty; persistence still occurs only through "Save staff revision".
+    // review dirty; persistence still occurs only through "Save draft" or "Approve".
     const commentText = document.createElement('textarea');
     commentText.value = comment.comment;
     commentText.rows = 3;

@@ -36,6 +36,10 @@ These hold everywhere. A change that breaks one is wrong regardless of how conve
 8. **Import is read-only.** Reading Canvas never creates a Canvas comment, rubric, or grade.
 9. **Course-scoped RBAC on every endpoint.** Once the capability is enabled, instructors, admins,
    and TAs have workspace parity (D-049).
+10. **The model is asked only about criteria it has evidence for.** A criterion marked
+   `assessedBy: 'staff'` is withheld from generation, written by staff in review, and released
+   looking exactly like a model-drafted one. It is never generated and never redrafted — a
+   redraft would overwrite what staff wrote. Its level comes from the staff grade.
 
 ## Status glossary
 

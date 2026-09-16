@@ -162,6 +162,8 @@ export interface RosterEnrollmentMatch {
     courseId: string;
     /** The matched row's LMS user id — the address for later writeback to the LMS. */
     lmsUserId: string;
+    /** The enrollment the matched row came from; rows stored before TAs were synced are students. */
+    role: 'student' | 'ta';
 }
 
 /**
@@ -202,6 +204,7 @@ export async function findCoursesByRosterIdentity(
         .map((doc) => ({
             courseId: doc.courseId as string,
             lmsUserId: String(doc.entries[0].lmsUserId ?? ''),
+            role: doc.entries[0].role === 'ta' ? 'ta' : 'student',
         }));
 }
 

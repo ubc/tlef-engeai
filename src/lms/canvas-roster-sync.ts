@@ -2,7 +2,7 @@
 /**
  * canvas-roster-sync.ts
  *
- * Reads an imported course's Canvas student roster and stores it as matchable identities.
+ * Reads an imported course's Canvas student and TA rosters and stores them as matchable identities.
  *
  * This is the half of enrollment that runs on staff action. Its counterpart runs at login: a
  * student signs in, their PUID is hashed, and the snapshot this module wrote tells EngE-AI which
@@ -14,18 +14,26 @@
  * ## Whose credential this runs under
  *
  * The course's, never the caller's. `lmsLink.linkedBy` names the instructor who imported the
- * course, and their stored token is what reads the roster whether an instructor pressed sync, an
- * admin did, or the scheduled job ran. An EngE-AI admin holds no Canvas enrollment, so any design
- * that used the caller's token would work for instructors and fail confusingly for admins.
+ * course, and their stored token is what reads the roster whether an instructor pressed sync or an
+ * admin did. An EngE-AI admin holds no Canvas enrollment, so any design that used the caller's
+ * token would work for instructors and fail confusingly for admins.
  *
  * One consequence is worth stating plainly: `assertInstructorIdentity` does **not** run here. It
- * cannot — there is no signed-in user to compare a PUID against on the scheduled path. Identity
- * was proven once, at import, by the instructor who created the link; this module inherits that
- * proof rather than re-establishing it.
+ * cannot — the person pressing sync may be an admin with no Canvas account in the course to check.
+ * Identity was proven once, at import, by the instructor who created the link; this module
+ * inherits that proof rather than re-establishing it.
+ *
+ * ## Students and TAs
+ *
+ * Both rosters are read, separately, because Canvas labels no roster row with the enrollment it
+ * came from and the role decides what a match grants: a student match adds the course at sign-in,
+ * and a TA match also grants the TA role (`apply-roster-enrollment.ts`). A TA's stored entry is
+ * also how Writing Feedback confirms a TA's own Canvas connection without needing that TA to read
+ * SIS identifiers (`canvas-identity-once.ts`).
  *
  * ## What is stored
  *
- * Only a keyed digest of each student's PUID and their Canvas user id — no names, no
+ * Only a keyed digest of each person's PUID, their Canvas user id, and their role — no names, no
  * `integration_id`, no `sis_user_id`, no `login_id`. Recognizing someone and addressing them are
  * different problems and this module solves only the first. Writing feedback or a grade back to
  * Canvas addresses a student through the `canvasUserId` stamped on their imported *submission*,
@@ -51,7 +59,7 @@
  *
  * @author: EngE-AI Team
  * @version: 1.0.0
- * @description: Reads a linked Canvas course's student roster into matchable stored identities.
+ * @description: Reads a linked Canvas course's student and TA rosters into matchable stored identities.
  */
 
 import { canvas, rosterFieldCoverage } from '@ubc/ubc-genai-toolkit-lms-integration';
@@ -93,8 +101,10 @@ export class RosterSyncUnavailableError extends Error {
 export interface RosterSyncDeps {
     /** Resolves the course's stored Canvas credential. Defaults to the real token store. */
     resolveApi?: (userKey: string) => Promise<CanvasApiClient | null>;
-    /** Reads one course's roster. Defaults to the package's paginated `getCourseUsers`. */
+    /** Reads one course's student roster. Defaults to the package's paginated `getCourseUsers`. */
     fetchRoster?: (api: CanvasApiClient, lmsCourseId: string) => Promise<LmsRosterUser[]>;
+    /** Reads one course's TA roster. Defaults to the package's paginated `getCourseUsers`. */
+    fetchTaRoster?: (api: CanvasApiClient, lmsCourseId: string) => Promise<LmsRosterUser[]>;
     /** Reads one course's publish state. Defaults to a direct `/courses/:id` read. */
     fetchWorkflowState?: (api: CanvasApiClient, lmsCourseId: string) => Promise<string | null>;
 }
@@ -136,7 +146,17 @@ async function fetchStudentRoster(api: CanvasApiClient, lmsCourseId: string): Pr
 }
 
 /**
- * syncCanvasCourseRoster — reads and stores one course's Canvas student roster.
+ * fetchTeachingAssistantRoster — the course's active TA roster.
+ *
+ * Its own read rather than a widened student read, because the rows do not say which enrollment
+ * they came from and a TA must never be stored as a student or the reverse.
+ */
+async function fetchTeachingAssistantRoster(api: CanvasApiClient, lmsCourseId: string): Promise<LmsRosterUser[]> {
+    return canvas.getCourseUsers(api, lmsCourseId, { enrollmentTypes: ['ta'] });
+}
+
+/**
+ * syncCanvasCourseRoster — reads and stores one course's Canvas student and TA rosters.
  *
  * Never throws for an ordinary bad outcome. A revoked credential, a withheld identifier, or a
  * Canvas outage each produce a summary whose `status` says what happened and leave the previous
@@ -145,7 +165,7 @@ async function fetchStudentRoster(api: CanvasApiClient, lmsCourseId: string): Pr
  *
  * @param mongoDB - connected `EngEAI_MongoDB` singleton
  * @param course - the EngE-AI course to sync; must carry an `lmsLink`
- * @param triggeredBy - `GlobalUser.userId` who pressed sync; omit for the scheduled job
+ * @param triggeredBy - `GlobalUser.userId` who pressed sync; omit when no person triggered it
  * @param deps - test seams; production callers pass nothing
  *
  * @returns A staff-safe summary carrying counts and a message, never roster contents.
@@ -187,11 +207,14 @@ export async function syncCanvasCourseRoster(
                 'it needs to reconnect Canvas before the roster can sync.');
     }
 
-    // 3. Read the roster.
+    // 3. Read the rosters: students and TAs separately, since Canvas labels no row with its role.
     const fetchRoster = deps.fetchRoster ?? fetchStudentRoster;
-    let roster: LmsRosterUser[];
+    const fetchTaRoster = deps.fetchTaRoster ?? fetchTeachingAssistantRoster;
+    let students: LmsRosterUser[];
+    let teachingAssistants: LmsRosterUser[];
     try {
-        roster = await fetchRoster(api, link.courseId);
+        students = await fetchRoster(api, link.courseId);
+        teachingAssistants = await fetchTaRoster(api, link.courseId);
     } catch (error) {
         // The message, never the payload: a Canvas error body can echo roster rows back.
         const reason = error instanceof Error ? error.message : 'Unknown error';
@@ -200,6 +223,7 @@ export async function syncCanvasCourseRoster(
         return summarize(course.id, 'failed', 0, 0,
             'Canvas could not be reached for this course. The previous roster is still in use.');
     }
+    const roster = [...students, ...teachingAssistants];
 
     // 4. An empty roster is ambiguous, and the likeliest cause has a one-line fix: an unpublished
     //    Canvas course reports no students no matter who is enrolled in it, because Canvas holds
@@ -223,12 +247,12 @@ export async function syncCanvasCourseRoster(
         // real result: a course with no students yet is a legitimate state, not an error.
         await mongoDB.saveCourseLmsRosterSnapshot(emptySnapshot(course.id, link.courseId, link.linkedBy, triggeredBy));
         return summarize(course.id, 'ok', 0, 0,
-            'Canvas reports no students enrolled in this course yet.');
+            'Canvas reports no students or TAs enrolled in this course yet.');
     }
 
     // 5. The coverage guard. A roster with rows but no identifiers is a Canvas permission gap, and
     //    must not be written as though the class were empty.
-    const identified = roster.filter((row) => (row.integrationId ?? '').trim() !== '');
+    const identified = roster.filter(hasIdentifier);
     if (roster.length > 0 && identified.length === 0) {
         const coverage = rosterFieldCoverage(roster);
         appLogger.warn(
@@ -237,7 +261,7 @@ export async function syncCanvasCourseRoster(
         );
         await mongoDB.recordLmsRosterSyncOutcome(course.id, 'identifiers_withheld');
         return summarize(course.id, 'identifiers_withheld', roster.length, 0,
-            `Canvas returned ${roster.length} students but no SIS identifiers, so none could be ` +
+            `Canvas returned ${roster.length} students and TAs but no SIS identifiers, so none could be ` +
                 'matched. Ask your Canvas administrator to grant the "SIS Data - read" permission ' +
                 'for instructors. The previous roster is still in use.');
     }
@@ -245,16 +269,16 @@ export async function syncCanvasCourseRoster(
     // 6. Reduce each identified row to what matching needs and nothing else. Rows without an
     //    identifier are dropped rather than stored address-only: nothing consumes them, since
     //    writeback addresses a student through their submission's own Canvas user id.
-    const entries: CourseRosterEntry[] = identified.map((row) => ({
-        puidHash: hashRosterPuid(row.integrationId!),
-        lmsUserId: row.id,
-    }));
+    const entries = dedupeByHash([
+        ...students.filter(hasIdentifier).map((row) => toEntry(row, 'student')),
+        ...teachingAssistants.filter(hasIdentifier).map((row) => toEntry(row, 'ta')),
+    ]);
 
     const snapshot: CourseRosterSnapshot = {
         courseId: course.id,
         provider: PROVIDER,
         lmsCourseId: link.courseId,
-        entries: dedupeByHash(entries),
+        entries,
         syncedAt: new Date(),
         syncCredentialUserId: link.linkedBy,
         ...(triggeredBy ? { triggeredBy } : {}),
@@ -266,11 +290,28 @@ export async function syncCanvasCourseRoster(
     await mongoDB.saveCourseLmsRosterSnapshot(snapshot);
 
     const unmatched = roster.length - identified.length;
+    const taCount = entries.filter((entry) => entry.role === 'ta').length;
+    const synced = `${countOf(entries.length - taCount, 'student')} and ${countOf(taCount, 'TA')}`;
     return summarize(course.id, 'ok', roster.length, identified.length,
         unmatched > 0
-            ? `Synced ${identified.length} of ${roster.length} students. ${unmatched} had no SIS ` +
+            ? `Synced ${synced} from Canvas. ${countOf(unmatched, 'person', 'people')} had no SIS ` +
               'identifier in Canvas and will need to join with the course code.'
-            : `Synced ${identified.length} students from Canvas.`);
+            : `Synced ${synced} from Canvas.`);
+}
+
+/** Whether a roster row carries the identifier matching needs. */
+function hasIdentifier(row: LmsRosterUser): boolean {
+    return (row.integrationId ?? '').trim() !== '';
+}
+
+/** Reduces one identified roster row to what matching needs, and nothing else. */
+function toEntry(row: LmsRosterUser, role: NonNullable<CourseRosterEntry['role']>): CourseRosterEntry {
+    return { puidHash: hashRosterPuid(row.integrationId!), lmsUserId: row.id, role };
+}
+
+/** `1 student`, `2 students`: counts in staff-facing sync messages. */
+function countOf(count: number, singular: string, plural = `${singular}s`): string {
+    return `${count} ${count === 1 ? singular : plural}`;
 }
 
 /**
@@ -279,13 +320,15 @@ export async function syncCanvasCourseRoster(
  * Canvas returns one row per *enrollment*, so a student in two sections of a cross-listed course
  * appears twice. Left alone they would both match at login, and the login path would read the
  * first row's `lmsUserId` — arbitrary, though harmless here since both rows describe one person.
- * Collapsing keeps the stored count meaning "students" rather than "enrollments", which is what
- * the number shown to an instructor claims to be.
+ * Collapsing keeps the stored count meaning "people" rather than "enrollments", which is what
+ * the number shown to an instructor claims to be. Someone enrolled as both a student and a TA
+ * keeps the TA entry, since that is the role they hold in the course.
  */
 function dedupeByHash(entries: CourseRosterEntry[]): CourseRosterEntry[] {
     const seen = new Map<string, CourseRosterEntry>();
     for (const entry of entries) {
-        if (!seen.has(entry.puidHash)) {
+        const existing = seen.get(entry.puidHash);
+        if (!existing || (existing.role !== 'ta' && entry.role === 'ta')) {
             seen.set(entry.puidHash, entry);
         }
     }

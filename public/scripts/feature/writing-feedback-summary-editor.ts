@@ -14,9 +14,12 @@
 import {
     type StaffSummaryEdit,
     type WritingFeedbackLens,
+    autoGrow,
     createButton,
+    createIconButton,
     createText,
     field,
+    refreshIcons,
     textAreaControl
 } from './writing-feedback-shared.js';
 
@@ -84,21 +87,30 @@ export class SummaryEditor {
         list.className = 'wf-summary-strengths';
         this.controls(lens).strengthList = list;
 
-        const addButton = createButton('+ Add strength', 'quiet', async () => {
+        const addButton = createButton('+ Add strength', 'outline', async () => {
             addStrength('');
+            refreshIcons();
             this.markDirty();
         });
         const renumber = () => {
-            list.querySelectorAll<HTMLLabelElement>(':scope > .wf-field > label').forEach((label, index) => {
-                label.textContent = `Strength ${index + 1}`;
+            list.querySelectorAll<HTMLElement>(':scope > .wf-field').forEach((row, index) => {
+                row.querySelector('label')!.textContent = `Strength ${index + 1}`;
+                const remove = row.querySelector<HTMLButtonElement>('.wf-icon-button');
+                remove?.setAttribute('aria-label', `Remove strength ${index + 1}`);
+                if (remove) remove.title = `Remove strength ${index + 1}`;
             });
             addButton.disabled = list.children.length >= MAX_STAFF_STRENGTHS;
         };
         const addStrength = (value: string) => {
-            const textarea = textAreaControl(value, 2);
+            const textarea = textAreaControl(value, 1);
             textarea.addEventListener('input', this.markDirty);
+            autoGrow(textarea);
             const row = field(`Strength ${list.children.length + 1}`, textarea);
-            row.append(createButton('Remove', 'quiet', async () => {
+            // The delete sits beside the textarea rather than the label, so it lines up with the box.
+            const control = document.createElement('div');
+            control.className = 'wf-summary-strength-control';
+            textarea.replaceWith(control);
+            control.append(textarea, createIconButton('trash-2', 'Remove strength', 'danger', async () => {
                 row.remove();
                 renumber();
                 this.markDirty();
@@ -141,6 +153,23 @@ export class SummaryEditor {
         textarea.addEventListener('input', this.markDirty);
         this.controls(lens).goals = textarea;
         return { wrapper: field(labelText, textarea, help), textarea };
+    }
+
+    /**
+     * writtenCriteria - criterion ids whose feedback box currently holds text.
+     *
+     * Reads the live controls rather than the saved edit, so the approval blocker clears
+     * as staff type rather than only after a save.
+     *
+     * @param lens - Lens to read
+     * @returns Ids with non-blank text
+     */
+    writtenCriteria(lens: WritingFeedbackLens): Set<string> {
+        const written = new Set<string>();
+        this.controls(lens).explanations.forEach((textarea, criterion) => {
+            if (textarea.value.trim()) written.add(criterion);
+        });
+        return written;
     }
 
     private strengths(lens: WritingFeedbackLens): string[] {

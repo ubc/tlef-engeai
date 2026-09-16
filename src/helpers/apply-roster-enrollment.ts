@@ -2,11 +2,11 @@
 /**
  * apply-roster-enrollment.ts
  *
- * Grants a signing-in user the courses whose stored LMS roster names them.
+ * Grants a signing-in user the courses — and, for TAs, the TA role — whose stored LMS roster names them.
  *
  * This is the login half of Canvas enrollment. An instructor's roster sync writes keyed digests
- * of each enrolled student's PUID (`canvas-roster-sync.ts`); this hashes the PUID CWL just
- * authenticated and enrolls the user in whatever it matches. The student authorizes nothing and
+ * of each enrolled student's and TA's PUID (`canvas-roster-sync.ts`); this hashes the PUID CWL just
+ * authenticated and enrolls the user in whatever it matches. The user authorizes nothing and
  * never sees Canvas — which is the whole reason the design exists, since a student's own Canvas
  * token can neither read SIS identifiers nor be proven to belong to them.
  *
@@ -17,37 +17,34 @@
  *
  * Runs on **every** sign-in rather than behind a "refresh" button. It is one indexed query
  * against `course-lms-rosters`, with no LMS call — the expensive half is the roster fetch, which
- * only staff and the scheduled job trigger. A student-facing refresh button would also be
- * misleading: a student holds no credential that could reach Canvas, so it could only ever
- * re-read a snapshot that only staff can refresh.
+ * only staff trigger. A student-facing refresh button would also be misleading: a student holds no
+ * credential that could reach Canvas, so it could only ever re-read a snapshot that only staff can
+ * refresh.
  *
  * @author: EngE-AI Team
- * @version: 1.0.0
- * @description: Login-time enrollment from stored LMS roster snapshots.
+ * @version: 1.1.0
+ * @description: Login-time enrollment and TA role from stored LMS roster snapshots.
  */
 
 import type { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import type { GlobalUser } from '../types/shared';
+import { isCourseStaff } from '../utils/course-staff';
 import { hashRosterPuid, isRosterIdentityConfigured } from '../utils/roster-identity';
 import { appLogger } from '../utils/logger';
 
 /**
  * applyRosterEnrollment — enrolls the signed-in user in every course whose roster lists them.
  *
- * Idempotent. Courses the user already has are skipped, and `enrollUserInCourse` is itself
- * idempotent, so repeating this on every login converges rather than accumulating.
+ * Idempotent. Nothing already granted is granted again, so repeating this on every login
+ * converges rather than accumulating.
  *
- * Two categories are deliberately skipped:
- *
- * - **Courses the user already has.** Re-enrolling would be a no-op, but skipping avoids a
- *   course read per already-known course on every single login.
- * - **Courses still in setup (`courseSetup === false`).** An imported course exists before its
- *   instructor has configured it. Surfacing it to students at that point shows them a course
- *   with no content and no prompts. They are picked up on a later login once setup completes.
- *
- * Enrollment is granted as `'student'` because the snapshot is built from the LMS's *student*
- * roster. Course staff reach their courses through `instructors[]` and the existing entry paths,
- * not through this one.
+ * - **Student match:** the course is added as `'student'`, unless the user already has it.
+ * - **TA match:** the course is added as `'student'` if needed — promotion requires a course
+ *   member — then the TA role is granted, unless the user already holds staff access there
+ *   (instructor, platform admin, or TA). The role is never removed when a TA leaves the LMS
+ *   roster; an instructor demotes by hand, matching how enrollment only ever accrues.
+ * - **Courses still in setup (`courseSetup === false`)** are skipped for both. An imported course
+ *   exists before its instructor has configured it. They are picked up on a later login.
  *
  * @param mongoDB - connected `EngEAI_MongoDB` singleton
  * @param globalUser - the user who has just authenticated
@@ -73,7 +70,10 @@ export async function applyRosterEnrollment(
 
         let granted = 0;
         for (const match of matches) {
-            if (globalUser.coursesEnrolled.includes(match.courseId)) {
+            const alreadyEnrolled = globalUser.coursesEnrolled.includes(match.courseId);
+            const isTa = match.role === 'ta';
+            // A student match the user already has needs nothing, and costs no course read.
+            if (alreadyEnrolled && !isTa) {
                 continue;
             }
 
@@ -86,8 +86,25 @@ export async function applyRosterEnrollment(
                 continue;
             }
 
-            await mongoDB.enrollUserInCourse(globalUser, match.courseId, 'student');
-            granted += 1;
+            // Step 1: course membership, as a student — the TA role is granted on top of it.
+            if (!alreadyEnrolled) {
+                await mongoDB.enrollUserInCourse(globalUser, match.courseId, 'student');
+                granted += 1;
+            }
+
+            // Step 2: the TA role, for a TA match whose user holds no staff access here yet.
+            if (isTa && !isCourseStaff(course, globalUser)) {
+                try {
+                    await mongoDB.promoteStudentToTA(course, globalUser.userId, globalUser.name);
+                    granted += 1;
+                } catch (error) {
+                    // One course refusing the role must not stop the others, or the login.
+                    appLogger.warn(
+                        '[roster-enrollment] Could not grant the TA role from the LMS roster:',
+                        error instanceof Error ? error.message : error
+                    );
+                }
+            }
         }
 
         if (granted === 0) {
@@ -96,7 +113,7 @@ export async function applyRosterEnrollment(
 
         // Counts only: this line names a course-less number precisely because the surrounding
         // login logs already identify the person.
-        appLogger.log(`[roster-enrollment] Granted ${granted} course(s) from LMS roster match`);
+        appLogger.log(`[roster-enrollment] Granted ${granted} enrollment(s) or role(s) from LMS roster match`);
 
         // Re-read so the session carries the enrollment the caller is about to store. Returning
         // the stale argument would leave `coursesEnrolled` short until the next login.

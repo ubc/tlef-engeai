@@ -129,7 +129,12 @@ describe('technical engine generation', () => {
         });
     });
 
+    it('forbids narrating what the model did not assess', () => {
+        expect(buildTechnicalFeedbackSystemPrompt(labAssignment()))
+            .toContain('Never tell the student what you did not assess');
+    });
+
     it('exposes a stable prompt version', () => {
-        expect(TECHNICAL_PROMPT_VERSION).toBe('lab-report-technical-v1.1.0');
+        expect(TECHNICAL_PROMPT_VERSION).toBe('lab-report-technical-v1.2.0');
     });
 });

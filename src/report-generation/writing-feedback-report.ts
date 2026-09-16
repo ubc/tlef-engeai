@@ -288,10 +288,14 @@ function renderCriteriaEvidence(
     feedback.criteria.forEach((criterion, index) => {
         const label = rubric.criteria.find((item) => item.id === criterion.criterion)?.label
             ?? criterion.criterion;
-        const level = rubric.levels.find((item) => item.id === criterion.suggestedLevel)?.label
-            ?? criterion.suggestedLevel;
+        // A criterion may carry no rating: one the course staff assess on a lens that
+        // holds no grade has written feedback and nothing to name a level with. It prints
+        // as its own heading rather than trailing an em dash and the word "undefined".
+        const level = criterion.suggestedLevel === undefined
+            ? undefined
+            : (rubric.levels.find((item) => item.id === criterion.suggestedLevel)?.label ?? criterion.suggestedLevel);
         if (index > 0) doc.moveDown(0.6);
-        doc.font(BOLD_FONT).fontSize(11.5).fillColor(TEXT_COLOR).text(`${label} — ${level}`);
+        doc.font(BOLD_FONT).fontSize(11.5).fillColor(TEXT_COLOR).text(level ? `${label} — ${level}` : label);
         if (criterion.explanation?.trim()) {
             doc.moveDown(0.15);
             body(doc).text(criterion.explanation.trim(), { lineGap: 2 });

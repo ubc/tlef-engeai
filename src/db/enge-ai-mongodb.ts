@@ -1260,6 +1260,10 @@ export class EngEAI_MongoDB {
     public updateGlobalUser = async (puid: string, updateData: Partial<GlobalUser>) =>
         GlobalUserMongo.updateGlobalUser(this.ctx(), puid, updateData);
 
+    /** Remembers the Canvas account proven to belong to this user (Canvas user id only). */
+    public recordVerifiedCanvasAccount = async (userId: string, canvasUserId: string) =>
+        GlobalUserMongo.recordVerifiedCanvasAccount(this.ctx(), userId, canvasUserId);
+
     /** Marks one instructor tutorial stage complete without clobbering its siblings. */
     public completeInstructorOnboardingStage = async (
         puid: string,

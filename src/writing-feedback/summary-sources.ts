@@ -12,20 +12,25 @@
 
 import type {
     AnchoredComment,
+    CriterionFeedback,
     RevisionGoal,
     RubricEvidence,
+    StaffFinalAssessment,
     StaffReviewRevision,
     StaffSummaryEdit,
     WritingAssignment,
     WritingFeedbackLens,
     WritingFeedbackResult,
     WritingFeedbackRun,
+    WritingRubricCriterion,
     WritingRubricDefinition
 } from './contracts';
 import { selectRubric } from './rubric-lens';
+import { earnedLevelFor } from './rubric-bands';
+import { isStaffAssessed } from './criterion-assessment';
 
 /** Prompt version stamped on every redraft run. */
-export const SUMMARY_REDRAFT_PROMPT_VERSION = 'summary-redraft-v1';
+export const SUMMARY_REDRAFT_PROMPT_VERSION = 'summary-redraft-v1.1.0';
 
 /** Validated writer-only redraft output for one lens. */
 export interface SummaryRedraftOutput {
@@ -131,27 +136,112 @@ export function evidenceFromComments(comments: AnchoredComment[], criterion: str
 }
 
 /**
+ * staffAuthoredCriterion - the rendered row for a criterion the model never saw.
+ *
+ * A staff-assessed criterion is absent from the run, so there is no row to overlay the
+ * staff explanation onto. It is built here instead, from the three things staff supply:
+ * the explanation they wrote, the points they entered, and any passages they annotated.
+ *
+ * Returns nothing until staff have written the explanation -- the honest state of a
+ * criterion nobody has assessed yet, and what keeps a half-finished row out of the staff
+ * preview. The level is separate: it comes from the staff points, which exist only on the
+ * lens that carries the grade. A lab report's writing rubric is generated but graded on
+ * its technical rubric, so a staff-assessed criterion there has written feedback and no
+ * points to name a rating with. It renders without one rather than disappearing, which is
+ * what it used to do while approval still required staff to write it.
+ *
+ * @param criterion - Staff-assessed criterion from the run's rubric
+ * @param rubric - Rubric version the run was generated against
+ * @param explanation - Staff-written feedback for this criterion, if any
+ * @param points - Staff-entered points for this criterion, if any
+ * @param comments - Final annotations for the lens, when they govern evidence
+ * @returns The rendered row, or undefined while staff have not finished it
+ */
+function staffAuthoredCriterion(
+    criterion: WritingRubricCriterion,
+    rubric: WritingRubricDefinition,
+    explanation: string | undefined,
+    points: number | undefined,
+    comments: AnchoredComment[] | undefined
+): CriterionFeedback | undefined {
+    if (!explanation?.trim()) return undefined;
+    const level = points === undefined ? undefined : earnedLevelFor(criterion, rubric.levels, points);
+    return {
+        criterion: criterion.id,
+        ...(level ? { suggestedLevel: level.id } : {}),
+        evidence: comments ? evidenceFromComments(comments, criterion.id) : [],
+        explanation: explanation.trim(),
+        // Inert for a staff row: nothing here is a model draft. Never student-facing.
+        confidence: 1
+    };
+}
+
+/**
  * applySummaryToResult - the result a student document is rendered from.
  *
+ * Iterates the rubric rather than the run, because the two no longer hold the same
+ * criteria: a staff-assessed criterion is excluded from generation, so mapping the run
+ * alone would drop it from the student's document without failing anywhere. Rows the
+ * rubric no longer carries are kept at the end, so feedback generated against an earlier
+ * version still renders in full.
+ *
  * @param result - Latest run result for the lens
- * @param input - Final comments for the lens (omit to keep model evidence) and a bound edit
+ * @param input - Final comments for the lens (omit to keep model evidence), a bound edit,
+ *   the rubric the run was generated against (pass `undefined` only when that version is
+ *   no longer stored), and the staff grade supplying staff-assessed levels
  * @returns A new result; the stored run is never mutated
  */
 export function applySummaryToResult(
     result: WritingFeedbackResult,
-    input: { comments?: AnchoredComment[]; edit?: StaffSummaryEdit }
+    input: {
+        comments?: AnchoredComment[];
+        edit?: StaffSummaryEdit;
+        rubric: WritingRubricDefinition | undefined;
+        assessment?: Pick<StaffFinalAssessment, 'criteria'>;
+    }
 ): WritingFeedbackResult {
     const explanations = new Map(
         (input.edit?.criterionExplanations ?? []).map((item) => [item.criterion, item.explanation])
     );
+    const points = new Map(
+        (input.assessment?.criteria ?? []).map((item) => [item.criterionId, item.points])
+    );
+    const fromRun = (criterion: CriterionFeedback): CriterionFeedback => ({
+        ...criterion,
+        explanation: explanations.get(criterion.criterion) ?? criterion.explanation,
+        evidence: input.comments ? evidenceFromComments(input.comments, criterion.criterion) : criterion.evidence
+    });
+
+    const criteria: CriterionFeedback[] = [];
+    if (input.rubric) {
+        const rubric = input.rubric;
+        rubric.criteria.forEach((criterion) => {
+            if (isStaffAssessed(criterion)) {
+                const authored = staffAuthoredCriterion(
+                    criterion,
+                    rubric,
+                    explanations.get(criterion.id),
+                    points.get(criterion.id),
+                    input.comments
+                );
+                if (authored) criteria.push(authored);
+                return;
+            }
+            const generated = result.criteria.find((item) => item.criterion === criterion.id);
+            if (generated) criteria.push(fromRun(generated));
+        });
+    }
+    // Criteria the rubric no longer lists, and every criterion when the rubric version is
+    // gone, keeping this a superset of what mapping the run alone produced.
+    const rendered = new Set(criteria.map((criterion) => criterion.criterion));
+    result.criteria.forEach((criterion) => {
+        if (!rendered.has(criterion.criterion)) criteria.push(fromRun(criterion));
+    });
+
     return {
         ...result,
         strengths: input.edit ? [...input.edit.strengths] : result.strengths,
-        criteria: result.criteria.map((criterion) => ({
-            ...criterion,
-            explanation: explanations.get(criterion.criterion) ?? criterion.explanation,
-            evidence: input.comments ? evidenceFromComments(input.comments, criterion.criterion) : criterion.evidence
-        }))
+        criteria
     };
 }
 

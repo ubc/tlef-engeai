@@ -60,6 +60,8 @@ import {
     listCanvasCourseOptions,
 } from '../lms/canvas-course-sync';
 import { RosterSyncUnavailableError, syncCanvasCourseRoster } from '../lms/canvas-roster-sync';
+import { forceCanvasLogin } from '../lms/canvas-force-login';
+import { handleCanvasIdentityError } from '../lms/canvas-identity-response';
 import type { CourseRosterSyncSummary, GlobalUser } from '../types/shared';
 import { appLogger } from '../utils/logger';
 
@@ -81,47 +83,11 @@ const moodleConfig = hasEnv(MOODLE_REQUIRED_ENV)
     : null;
 
 /**
- * handleCanvasIdentityError — shared response for a failed Canvas identity check.
- *
- * On a genuine `mismatch` the stored token is deleted before responding. Keeping it would trap
- * the user: every retry hits the same wrong Canvas account, and "reconnect" cannot help while
- * the bad credential is still on file. Deleting it makes the next attempt a real re-authorization.
- *
- * The other two reasons deliberately keep the token. `identifiers_withheld` means Canvas declined
- * to serialize `integration_id` — the credential may be perfectly correct, and discarding it would
- * punish an instructor for an account permission they do not control. `no_puid` is an EngE-AI-side
- * gap that reconnecting cannot fix either.
- *
- * Exported for testing: which reasons discard a credential is the security-relevant decision in
- * this module, and it is not otherwise reachable without standing up the whole OAuth flow.
- *
- * @returns `true` when the error was handled and a response has been sent.
+ * Re-exported for testing: how a refused identity check is answered, and that it never discards
+ * the stored credential, lives in `lms/canvas-identity-response.ts` so the Writing Feedback
+ * routes apply the same rule.
  */
-export async function handleCanvasIdentityError(
-    error: unknown,
-    req: Request,
-    res: Response
-): Promise<boolean> {
-    if (!(error instanceof CanvasIdentityError)) {
-        return false;
-    }
-
-    if (error.reason === 'mismatch' && canvasConfig) {
-        try {
-            await canvasConfig.tokenStore.delete(await resolveUserKey(req));
-        } catch (deleteError) {
-            // The user still needs the 403 explaining what went wrong; a failed cleanup makes
-            // their next attempt repeat, it does not make this response less correct.
-            appLogger.error('[LMS] Failed to clear mismatched Canvas token:', deleteError);
-        }
-    }
-
-    // `reason` only — the message names no identifier, and the values behind this decision are
-    // PUIDs that must not reach logs.
-    appLogger.log(`[LMS] Canvas identity check refused: ${error.reason}`);
-    res.status(403).json({ error: error.message, reason: error.reason });
-    return true;
-}
+export { handleCanvasIdentityError };
 
 const router: Router = express.Router();
 
@@ -166,6 +132,8 @@ if (canvasConfig) {
      * own course enrollment. What each may then *do* differs, and is enforced per
      * route below rather than at the connection.
      */
+    // Connecting makes Canvas ask who is signing in instead of reusing the browser's Canvas session.
+    router.get('/canvas/auth/login', forceCanvasLogin);
     router.use('/canvas/auth', requireAuthAPI, canvas.createAuthRouter(canvasConfig));
 
     /**

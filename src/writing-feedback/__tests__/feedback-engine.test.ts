@@ -17,9 +17,10 @@ import { buildDefaultWritingAssignment } from '../default-rubric-profile';
 import {
     NO_REVISION_GOALS_MESSAGE,
     RubricWritingFeedbackEngine,
+    buildSflAnalyzerSystemPrompt,
     buildWritingFeedbackSystemPrompt
 } from '../feedback-engine';
-import { buildFeedbackSchema, MAX_EVIDENCE_PER_CRITERION } from '../feedback-schema';
+import { NO_MODEL_CRITERIA_MESSAGE, buildFeedbackSchema, MAX_EVIDENCE_PER_CRITERION } from '../feedback-schema';
 import { approveRubricDraft } from '../rubric-schema';
 import type { LLMModule } from 'ubc-genai-toolkit-llm';
 
@@ -124,6 +125,7 @@ describe('RubricWritingFeedbackEngine generic rubric contract', () => {
 
         expect(prompt).not.toMatch(/LLED\s*200|Assignment\s*2|\bA2\b/i);
         expect(prompt).toContain('Never state a confidence level, certainty, or how sure you are anywhere in prose');
+        expect(prompt).toContain('Never tell the student what you did not assess');
         for (const criterion of dynamicCriteria) {
             expect(prompt).toContain(criterion.id);
             expect(prompt).toContain(criterion.label);
@@ -223,7 +225,7 @@ describe('RubricWritingFeedbackEngine generic rubric contract', () => {
             expect(generated.schemaVersion).toBe('writing-feedback-v2');
             expect(generated.courseMaterialMentions?.[0].label).toBe('Week 4 · Lecture 2 · Information flow');
             expect(generated.runTrace?.sflAnalysis?.findings[0].id).toBe('finding-1');
-            expect(generated.runTrace?.writerPromptVersion).toBe('sfl-feedback-writer-v2.2.0');
+            expect(generated.runTrace?.writerPromptVersion).toBe('sfl-feedback-writer-v2.3.0');
         } finally {
             process.env.MOCK_RESPONSE = 'true';
         }
@@ -376,5 +378,98 @@ describe('RubricWritingFeedbackEngine generic rubric contract', () => {
             if (priorMockResponse === undefined) delete process.env.MOCK_RESPONSE;
             else process.env.MOCK_RESPONSE = priorMockResponse;
         }
+    });
+});
+
+describe('staff-assessed criteria are withheld from generation', () => {
+    const originalMockResponse = process.env.MOCK_RESPONSE;
+
+    beforeAll(() => {
+        process.env.MOCK_RESPONSE = 'true';
+    });
+
+    afterAll(() => {
+        if (originalMockResponse === undefined) delete process.env.MOCK_RESPONSE;
+        else process.env.MOCK_RESPONSE = originalMockResponse;
+    });
+
+    /** The dynamic assignment with "Reader Orientation" left to the teaching team. */
+    function withStaffCriterion(): WritingAssignment {
+        const assignment = dynamicAssignment();
+        assignment.rubric = {
+            ...assignment.rubric,
+            criteria: assignment.rubric.criteria.map((criterion) => (
+                criterion.id === 'reader_orientation' ? { ...criterion, assessedBy: 'staff' as const } : criterion
+            ))
+        };
+        return assignment;
+    }
+
+    it('names neither the criterion nor its label in the writer prompt', () => {
+        const prompt = buildWritingFeedbackSystemPrompt(withStaffCriterion());
+        expect(prompt).not.toContain('reader_orientation');
+        expect(prompt).not.toContain('Reader Orientation');
+        expect(prompt).toContain('method_traceability');
+        expect(prompt).toContain('claim_calibration');
+    });
+
+    it('names neither the criterion nor its label in the analyzer prompt', () => {
+        const prompt = buildSflAnalyzerSystemPrompt(withStaffCriterion());
+        expect(prompt).not.toContain('reader_orientation');
+        expect(prompt).not.toContain('Reader Orientation');
+        expect(prompt).toContain('method_traceability');
+    });
+
+    it('builds a schema one row shorter that refuses the staff criterion', () => {
+        const assignment = withStaffCriterion();
+        const schema = buildFeedbackSchema(assignment.rubric);
+        const modelRows = assignment.rubric.criteria
+            .filter((criterion) => criterion.assessedBy !== 'staff')
+            .map((criterion) => ({
+                criterion: criterion.id,
+                suggestedLevel: 'established',
+                evidence: [{ quote: 'A verified clause.', rationale: 'Why.', revisionGuidance: 'Do this.' }],
+                explanation: 'Synthesis.',
+                confidence: 0.5
+            }));
+        const result = {
+            criteria: modelRows,
+            strengths: [],
+            revisionGoals: [{ skillTag: 'x', goal: 'Revise.', guidedQuestion: 'Which passage?' }],
+            internalFlags: []
+        };
+
+        expect(schema.safeParse(result).success).toBe(true);
+        expect(schema.safeParse({
+            ...result,
+            criteria: [...modelRows, {
+                criterion: 'reader_orientation',
+                suggestedLevel: 'established',
+                evidence: [{ quote: 'A verified clause.', rationale: 'Why.', revisionGuidance: 'Do this.' }],
+                explanation: 'Synthesis.',
+                confidence: 0.5
+            }]
+        }).success).toBe(false);
+    });
+
+    it('omits the staff criterion from generated output', async () => {
+        const assignment = withStaffCriterion();
+        const generated = await new RubricWritingFeedbackEngine().generate({
+            assignment,
+            verifiedText: 'The measured outlet temperature increased steadily during the synthetic trial.'
+        });
+
+        expect(generated.criteria.map((criterion) => criterion.criterion)).not.toContain('reader_orientation');
+        expect(generated.criteria).toHaveLength(assignment.rubric.criteria.length - 1);
+    });
+
+    it('refuses to build a schema when no criterion is model-assessed', () => {
+        const assignment = dynamicAssignment();
+        assignment.rubric = {
+            ...assignment.rubric,
+            criteria: assignment.rubric.criteria.map((criterion) => ({ ...criterion, assessedBy: 'staff' as const }))
+        };
+
+        expect(() => buildFeedbackSchema(assignment.rubric)).toThrow(NO_MODEL_CRITERIA_MESSAGE);
     });
 });

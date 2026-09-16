@@ -1,16 +1,18 @@
 /**
- * Review steps — DOM-free rules for the two-step review (D-124, D-125)
+ * Review steps — DOM-free rules for the three-step review (D-124, D-125)
+ *
+ * Annotations, then feedback with a grade per criterion, then review and release.
  *
  * @author: @rdschrs
  * @date: 2026-09-13
- * @version: 1.0.0
+ * @version: 1.1.0
  * @description: Step bar state and the Next decision (advance, redraft, or confirm first).
  */
 
 type Lens = 'linguistic' | 'technical';
 
-/** The two review steps. */
-export type ReviewStep = 'annotations' | 'summary';
+/** The three review steps. */
+export type ReviewStep = 'annotations' | 'summary' | 'review';
 
 /** What the step bar shows and enables. */
 export interface StepBarState {
@@ -30,9 +32,13 @@ export type NextAction = { kind: 'advance' } | { kind: 'redraft'; lenses: Lens[]
  * @returns Title, position text, and which button is disabled
  */
 export function stepBarState(step: ReviewStep): StepBarState {
-    return step === 'annotations'
-        ? { title: 'Annotations', position: 'Step 1 of 2', backDisabled: true, nextDisabled: false }
-        : { title: 'Summary', position: 'Step 2 of 2', backDisabled: false, nextDisabled: true };
+    if (step === 'annotations') {
+        return { title: 'Review annotations', position: 'Step 1 of 3', backDisabled: true, nextDisabled: false };
+    }
+    if (step === 'summary') {
+        return { title: 'Review feedback and grades', position: 'Step 2 of 3', backDisabled: false, nextDisabled: false };
+    }
+    return { title: 'Review and release', position: 'Step 3 of 3', backDisabled: false, nextDisabled: true };
 }
 
 /**

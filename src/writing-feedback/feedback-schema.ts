@@ -12,6 +12,7 @@
  */
 
 import { z } from 'zod';
+import { modelAssessedCriteria } from './criterion-assessment';
 import type {
     WritingFeedbackResult,
     WritingGlossarySnapshot,
@@ -74,22 +75,29 @@ const revisionGoalSchema = z.object({
     guidedQuestion: z.string().min(1)
 });
 
+/** Why a schema cannot be built for a rubric the model is asked nothing about. */
+export const NO_MODEL_CRITERIA_MESSAGE =
+    'This rubric has no criteria for the model to assess. Mark at least one criterion as AI-drafted.';
+
 /**
  * buildFeedbackSchema - builds structured output validation from one approved rubric.
  *
- * Allowed criterion and level ids come only from the assignment rubric. Output
- * order is flexible, but every criterion must appear exactly once.
+ * Allowed criterion and level ids come only from the assignment rubric, and only from
+ * the criteria the model is asked about: a staff-assessed criterion is absent from the
+ * schema, so the model can neither fill it nor be refused for omitting it. Output order
+ * is flexible, but every model-assessed criterion must appear exactly once.
  *
  * @param rubric - Assignment rubric governing the pending generation run
- * @returns Zod schema accepting only a complete result for that rubric
- * @throws Error when a rubric has no criteria or levels
+ * @returns Zod schema accepting only a complete result for that rubric's model criteria
+ * @throws Error when a rubric has no levels, no criteria, or none the model assesses
  */
 export function buildFeedbackSchema(rubric: WritingRubricDefinition) {
-    const criterionIds = rubric.criteria.map((criterion) => criterion.id);
+    const criterionIds = modelAssessedCriteria(rubric).map((criterion) => criterion.id);
     const levelIds = rubric.levels.map((level) => level.id);
-    if (!criterionIds.length || !levelIds.length) {
+    if (!rubric.criteria.length || !levelIds.length) {
         throw new Error('An approved rubric requires criteria and performance levels');
     }
+    if (!criterionIds.length) throw new Error(NO_MODEL_CRITERIA_MESSAGE);
     const allowedCriteria = new Set(criterionIds);
     const allowedLevels = new Set(levelIds);
     return z.object({
@@ -125,17 +133,21 @@ export function buildFeedbackSchema(rubric: WritingRubricDefinition) {
  * buildSummaryRedraftSchema - structured output for a writer-only summary redraft (D-125).
  *
  * No evidence field: quotes come from staff annotations, so the model cannot invent any.
+ * Staff-assessed criteria are excluded here for the same reason they are excluded from
+ * generation: a redraft must not overwrite what staff wrote themselves.
  *
  * @param rubric - Approved rubric for the lens being redrafted
- * @returns Zod schema accepting one explanation and level per criterion, strengths, and goals
- * @throws Error when the rubric has no criteria or levels
+ * @returns Zod schema accepting one explanation and level per model-assessed criterion,
+ *          strengths, and goals
+ * @throws Error when the rubric has no levels, no criteria, or none the model assesses
  */
 export function buildSummaryRedraftSchema(rubric: WritingRubricDefinition) {
-    const criterionIds = rubric.criteria.map((criterion) => criterion.id);
+    const criterionIds = modelAssessedCriteria(rubric).map((criterion) => criterion.id);
     const levelIds = rubric.levels.map((level) => level.id);
-    if (!criterionIds.length || !levelIds.length) {
+    if (!rubric.criteria.length || !levelIds.length) {
         throw new Error('An approved rubric requires criteria and performance levels');
     }
+    if (!criterionIds.length) throw new Error(NO_MODEL_CRITERIA_MESSAGE);
     const allowedCriteria = new Set(criterionIds);
     const allowedLevels = new Set(levelIds);
     return z.object({
@@ -318,9 +330,12 @@ export function resolveNumericGrade(
     result: WritingFeedbackResult,
     gradeMapping: Record<string, number> | undefined
 ): number | undefined {
-    if (!gradeMapping || result.criteria.some((criterion) => gradeMapping[criterion.suggestedLevel] === undefined)) {
+    // A criterion with no level cannot be mapped to points, and averaging the rest would
+    // quietly report a grade for a rubric only partly assessed.
+    if (!gradeMapping || result.criteria.some((criterion) =>
+        criterion.suggestedLevel === undefined || gradeMapping[criterion.suggestedLevel] === undefined)) {
         return undefined;
     }
-    const points = result.criteria.map((criterion) => gradeMapping[criterion.suggestedLevel]!);
+    const points = result.criteria.map((criterion) => gradeMapping[criterion.suggestedLevel!]!);
     return Math.round((points.reduce((sum, point) => sum + point, 0) / points.length) * 100) / 100;
 }

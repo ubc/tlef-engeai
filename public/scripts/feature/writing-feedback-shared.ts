@@ -98,6 +98,8 @@ export interface RubricCriterion {
     sflDimension?: string; // optional instructor-authored linguistic lens
     points?: number; // maximum points this criterion contributes
     cells?: Record<string, RubricCell>; // sparse per-level bands, keyed by level id
+    /** Who writes this criterion's feedback; absent means 'model'. Staff-assessed criteria are never generated. */
+    assessedBy?: 'model' | 'staff';
 }
 
 /** One ordinal performance level, optionally carrying rubric point metadata. */
@@ -157,7 +159,8 @@ export interface Assignment {
 /** Structured model judgment for one supported rubric criterion. */
 export interface CriterionFeedback {
     criterion: WritingCriterionId; // joins the result to the approved rubric criterion
-    suggestedLevel: WritingLevelId; // model draft level requiring human review
+    /** Model draft level requiring human review. Absent on a staff-assessed criterion on a lens that carries no grade. */
+    suggestedLevel?: WritingLevelId;
     evidence: Array<{
         quote: string;
         rationale: string;
@@ -321,6 +324,7 @@ export interface ReviewRevision {
     internalNote?: string; // staff-only note explicitly excluded from student output
     comments?: AnchoredComment[]; // complete annotation snapshot at save time
     finalAssessment?: StaffFinalAssessment; // complete human-authored rubric result
+    assessmentDraft?: StaffAssessmentDraft; // grades saved before every criterion had one
     feedbackRunId?: string; // linguistic run the revision was saved against
     technicalFeedbackRunId?: string; // technical run the technical summary edits were saved against
     summaryEdits?: StaffSummaryEdit[]; // editable summary sections bound to their runs (D-126)
@@ -341,6 +345,13 @@ export interface StaffFinalAssessment {
     criteria: StaffCriterionAssessment[];
     totalPoints: number;
     maxPoints: number;
+}
+
+/** Staff-entered points for some criteria, saved while grading is unfinished; never approved or released. */
+export interface StaffAssessmentDraft {
+    lens?: WritingFeedbackLens;
+    rubricVersion: number;
+    criteria: StaffCriterionAssessment[];
 }
 
 const DIFF_FIELDS: Array<keyof AnchoredComment> = [
@@ -677,6 +688,22 @@ export class CanvasAuthRequiredError extends Error {
     }
 }
 
+/**
+ * Raised when Canvas refuses the connected account because it belongs to someone else.
+ *
+ * Carries the server's message and a connect link. Connecting again with the right account is
+ * the fix, and the refused connection still exists, so the usual "not connected" prompt would
+ * never appear on its own.
+ */
+export class CanvasAccountMismatchError extends Error {
+    readonly status = 403;
+
+    constructor(message: string, readonly connectUrl: string) {
+        super(message);
+        this.name = 'CanvasAccountMismatchError';
+    }
+}
+
 /** A failed request, carrying the HTTP status alongside the server's message. */
 export interface WritingFeedbackRequestError extends Error {
     status?: number;
@@ -689,6 +716,10 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
     // so this must be recognised before the generic failure path swallows it.
     if (response.status === 401 && typeof body.connectUrl === 'string') {
         throw new CanvasAuthRequiredError(body.connectUrl);
+    }
+    // Only a refusal of someone else's Canvas account carries a connect link with its 403.
+    if (response.status === 403 && typeof body.connectUrl === 'string') {
+        throw new CanvasAccountMismatchError(body.error || 'The connected Canvas account is not yours.', body.connectUrl);
     }
     if (!response.ok || !body.success) {
         // The status rides along with the message: an expired session reads
@@ -1136,6 +1167,41 @@ export function textAreaControl(value = '', rows = 4): HTMLTextAreaElement {
     textarea.value = value;
     textarea.rows = rows;
     return textarea;
+}
+
+/**
+ * autoGrow - keeps a textarea exactly as tall as the text in it
+ *
+ * A fixed row count either clips long text (staff see it stop mid-word with no
+ * affordance but the resize handle) or leaves short text in an oversized box.
+ *
+ * Height is cleared before it is measured, because scrollHeight of an element that
+ * is already tall enough reports the height it was given, not the height it needs.
+ * The first measurement is deferred: the control is not in the document when this
+ * is called, and a detached element has no scrollHeight.
+ *
+ * A control rendered inside a collapsed step has no layout at all and reports a
+ * scrollHeight of 0. Measuring it there would pin it to its row floor for the life of
+ * the page, so the measurement is skipped until the control is on screen and repeated then.
+ *
+ * @param control - Textarea to keep sized to its content
+ */
+export function autoGrow(control: HTMLTextAreaElement): void {
+    const fit = (): void => {
+        // offsetParent is null exactly when the control (or an ancestor) is display:none
+        // or hidden — the collapsed-step case, where there is nothing to measure.
+        if (!control.isConnected || control.offsetParent === null) return;
+        control.style.height = 'auto';
+        // scrollHeight excludes the border, which a border-box height must include.
+        control.style.height = `${control.scrollHeight + control.offsetHeight - control.clientHeight}px`;
+    };
+    control.addEventListener('input', fit);
+    // Fires when the step is expanded and again when the control scrolls into view, which
+    // is the first moment it has a height worth reading.
+    new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) fit();
+    }).observe(control);
+    requestAnimationFrame(fit);
 }
 
 /**

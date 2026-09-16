@@ -132,8 +132,19 @@ describe('two-step review source contract', () => {
         expect(source).toContain("'Next →'");
     });
 
-    it('renders the footer only on the summary step', () => {
-        expect(source).toMatch(/footer\.hidden = step !== 'summary'/);
+    it('renders the footer on the summary and review steps, never on annotations', () => {
+        expect(source).toMatch(/footer\.hidden = step === 'annotations'/);
+    });
+
+    it('offers Approve and Release only on the review step', () => {
+        expect(source).toMatch(/approveButton\.hidden = !onReview/);
+        expect(source).toMatch(/releaseButton\.hidden = !onReview/);
+    });
+
+    it('saves unsaved edits before approving instead of discarding them', () => {
+        const approve = source.match(/async function approve\(\)[\s\S]*?\n    }\n/)?.[0] ?? '';
+        expect(approve).toContain('if (savedFirst) await saveRevision();');
+        expect(approve.indexOf('saveRevision')).toBeLessThan(approve.indexOf('/approve`'));
     });
 
     it('re-reads annotation evidence whenever the summary step opens', () => {
@@ -169,5 +180,17 @@ describe('single release source contract', () => {
         expect(source).not.toContain('/release-preview');
         expect(source).toContain("'Release to Canvas'");
         expect(source).toContain('Feedback can be released only once.');
+    });
+
+    it('offers Canvas authorization on the review step and returns to that step', () => {
+        expect(source).toContain("createButton('Connect Canvas', 'primary'");
+        expect(source).toContain('connectUrlReturningTo(connectUrl, releaseReturnPath())');
+        expect(source).toContain('const returningToRelease = consumeReleaseReturn();');
+    });
+
+    it('offers to connect again when Canvas refuses the connected account as someone else’s', () => {
+        // The refused connection still exists, so the usual "not connected" prompt never appears.
+        expect(source).toContain('error instanceof CanvasAccountMismatchError');
+        expect(source).toContain('canvasReconnectUrl: error.connectUrl');
     });
 });

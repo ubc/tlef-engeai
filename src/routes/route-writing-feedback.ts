@@ -33,9 +33,11 @@ import {
 import { LiveCanvasReleaseService } from '../writing-feedback/live-canvas-release-service';
 import type { CanvasReleaseService } from '../writing-feedback/contracts';
 import { canvasConfig, resolveUserKey } from '../lms/canvas-config';
+import { ensureCanvasIdentityVerified } from '../lms/canvas-identity-once';
+import { handleCanvasIdentityError } from '../lms/canvas-identity-response';
 import { canvas as canvasProvider } from '@ubc/ubc-genai-toolkit-lms-integration';
 import { anchoredCommentsInputSchema } from '../writing-feedback/anchored-comments';
-import { staffFinalAssessmentInputSchema } from '../writing-feedback/staff-final-assessment';
+import { staffAssessmentDraftInputSchema, staffFinalAssessmentInputSchema } from '../writing-feedback/staff-final-assessment';
 import {
     approveRubricDraft,
     assertRetiredIdsNotReused,
@@ -154,6 +156,11 @@ function safeError(error: unknown): string {
  * `connectUrl` the workspace turns into a "Connect Canvas" action — deliberately not a silent
  * fallback to synthetic data, which would look like the course's real submissions.
  *
+ * Once the client is attached, the connected Canvas account must be the signed-in staff member's.
+ * That is checked at most once per connection (`lms/canvas-identity-once.ts`); a refusal answers
+ * `403` with its reason. The stored connection is kept even on a mismatch, because roster sync
+ * for courses this person imported runs under it; reconnecting replaces it.
+ *
  * Uses the plain `asyncHandler`, not the auth variant: the router-level guards below already
  * establish staff access, and the auth variant would re-run the scheduled-publish sweep on
  * every Canvas call in the workspace.
@@ -164,8 +171,29 @@ const withCanvasClientWhenLinked = asyncHandler(async (req: Request, res: Respon
     if (!requireCanvasAuth || !(await isLiveCanvasCourse(mongo, courseId(req)))) {
         return next();
     }
-    return requireCanvasAuth(req, res, next);
+    return requireCanvasAuth(req, res, ((error?: unknown) => {
+        if (error) return next(error);
+        void verifyConnectedCanvasAccount(req, res, next, mongo);
+    }) as NextFunction);
 });
+
+/** Runs the once-per-connection Canvas identity check, answering a refusal itself. */
+async function verifyConnectedCanvasAccount(req: Request, res: Response, next: NextFunction, mongo: EngEAI_MongoDB): Promise<void> {
+    try {
+        await ensureCanvasIdentityVerified({
+            api: (req as any).canvasApi,
+            mongo,
+            userKey: await resolveUserKey(req),
+            courseId: courseId(req),
+            // isLiveCanvasCourse already found the link, so the course id is present.
+            canvasCourseId: (await resolveCanvasCourseId(mongo, courseId(req)))!
+        });
+        next();
+    } catch (error) {
+        if (await handleCanvasIdentityError(error, req, res)) return;
+        next(error);
+    }
+}
 
 // Authorize course staff before checking capability state; feature flags never grant access.
 //
@@ -925,6 +953,17 @@ router.post('/:courseId/writing-feedback/submissions/:submissionId/reviews', asy
             }
             finalAssessment = parsedAssessment.data;
         }
+        let assessmentDraft;
+        if (req.body?.assessmentDraft !== undefined) {
+            const parsedDraft = staffAssessmentDraftInputSchema.safeParse(req.body.assessmentDraft);
+            if (!parsedDraft.success) {
+                return res.status(400).json({
+                    success: false,
+                    error: `Final grading failed validation: ${parsedDraft.error.issues[0]?.message ?? 'check the criterion scores'}`
+                });
+            }
+            assessmentDraft = parsedDraft.data;
+        }
         let summaryEdits;
         if (req.body?.summaryEdits !== undefined) {
             const parsedEdits = summaryEditsInputSchema.safeParse(req.body.summaryEdits);
@@ -945,6 +984,7 @@ router.post('/:courseId/writing-feedback/submissions/:submissionId/reviews', asy
             internalNote: typeof req.body?.internalNote === 'string' ? req.body.internalNote.slice(0, 4000) : undefined,
             comments,
             finalAssessment,
+            assessmentDraft,
             summaryEdits,
             technicalFeedbackRunId: typeof req.body?.technicalFeedbackRunId === 'string'
                 ? req.body.technicalFeedbackRunId.slice(0, 64)

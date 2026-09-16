@@ -563,7 +563,7 @@ describe('two-lens generation', () => {
         const technicalRun = mongo.createWritingFeedbackRun.mock.calls
             .map(([input]: [{ lens: string; modelMetadata: { promptVersion: string } }]) => input)
             .find((input) => input.lens === 'technical');
-        expect(technicalRun?.modelMetadata.promptVersion).toBe('lab-report-technical-v1.1.0');
+        expect(technicalRun?.modelMetadata.promptVersion).toBe('lab-report-technical-v1.2.0');
     });
 });
 
@@ -585,9 +585,147 @@ describe('two-lens approval', () => {
             .rejects.toThrow('Technical rubric changed after feedback generation');
     });
 
-    it('approves when both lenses are current', async () => {
-        const { service } = buildService({ isLabReport: true, technicalApproved: true });
+    it('approves when both lenses are current and the technical grade is saved', async () => {
+        const { service, mongo, assignment } = buildService({ isLabReport: true, technicalApproved: true });
+        mongo.getWritingSubmission.mockResolvedValue(gradedSubmission(assignment.technicalRubric!.version));
         await expect(service.approve('course-1', 'submission-1', 'user-1')).resolves.toBeDefined();
+    });
+});
+
+/** A draft-ready submission whose latest revision carries a complete grade against the given rubric version. */
+function gradedSubmission(rubricVersion: number, criteriaIds: string[] = ['criterion_1']): WritingSubmission & { reviews: StaffReviewRevision[] } {
+    const revision: StaffReviewRevision = {
+        id: 'revision-1',
+        submissionId: 'submission-1',
+        feedbackRunId: 'run-linguistic',
+        staffUserId: 'staff-1',
+        studentFeedback: '',
+        finalAssessment: {
+            rubricVersion,
+            criteria: criteriaIds.map((criterionId) => ({ criterionId, points: 1 })),
+            totalPoints: criteriaIds.length,
+            maxPoints: criteriaIds.length
+        },
+        createdAt: new Date()
+    };
+    return { ...submission('draft_ready'), reviews: [revision] };
+}
+
+describe('approval requires the grade Release will send', () => {
+    it('refuses a gradable rubric with no saved grade', async () => {
+        const { service, mongo } = buildService();
+        await expect(service.approve('course-1', 'submission-1', 'user-1')).rejects.toThrow('final grade for every rubric criterion');
+        expect(mongo.approveWritingSubmission).not.toHaveBeenCalled();
+    });
+
+    it('refuses when only a partial draft grade was saved', async () => {
+        const { service, mongo, assignment } = buildService();
+        const partial = gradedSubmission(assignment.rubric.version);
+        partial.reviews[0] = { ...partial.reviews[0], finalAssessment: undefined, assessmentDraft: { rubricVersion: assignment.rubric.version, criteria: [] } };
+        mongo.getWritingSubmission.mockResolvedValue(partial);
+        await expect(service.approve('course-1', 'submission-1', 'user-1')).rejects.toThrow('final grade for every rubric criterion');
+    });
+
+    it('refuses a grade saved against an older rubric version', async () => {
+        const { service, mongo, assignment } = buildService();
+        mongo.getWritingSubmission.mockResolvedValue(gradedSubmission(assignment.rubric.version - 1 || 99));
+        await expect(service.approve('course-1', 'submission-1', 'user-1')).rejects.toThrow('final grade for every rubric criterion');
+    });
+
+    it('approves with a complete grade on the current rubric', async () => {
+        const { service, mongo, assignment } = buildService();
+        mongo.getWritingSubmission.mockResolvedValue(gradedSubmission(assignment.rubric.version));
+        await expect(service.approve('course-1', 'submission-1', 'user-1')).resolves.toBeDefined();
+        expect(mongo.approveWritingSubmission).toHaveBeenCalled();
+    });
+});
+
+describe('approval requires staff-assessed criteria to be written', () => {
+    /**
+     * staffAssessed - marks one criterion staff-assessed on the service's approved rubric.
+     *
+     * Mutates the assignment `buildService` already handed to the mongo double, so the
+     * service reads the same object back.
+     */
+    function staffAssessed(assignment: WritingAssignment, criterionId: string): void {
+        assignment.rubric.criteria = assignment.rubric.criteria.map((criterion) => (
+            criterion.id === criterionId ? { ...criterion, assessedBy: 'staff' as const } : criterion
+        ));
+    }
+
+    it('refuses when the staff criterion has no saved explanation', async () => {
+        const { service, mongo, assignment } = buildService();
+        staffAssessed(assignment, assignment.rubric.criteria[0].id);
+        mongo.getWritingSubmission.mockResolvedValue(gradedSubmission(assignment.rubric.version));
+
+        await expect(service.approve('course-1', 'submission-1', 'user-1'))
+            .rejects.toThrow(/Write feedback for every criterion the teaching team assesses/);
+        expect(mongo.approveWritingSubmission).not.toHaveBeenCalled();
+    });
+
+    it('approves once the explanation is saved against the latest run', async () => {
+        const { service, mongo, assignment } = buildService();
+        const criterionId = assignment.rubric.criteria[0].id;
+        staffAssessed(assignment, criterionId);
+        const graded = gradedSubmission(assignment.rubric.version);
+        graded.reviews[0] = {
+            ...graded.reviews[0],
+            summaryEdits: [{
+                lens: 'linguistic',
+                feedbackRunId: 'run-linguistic',
+                strengths: [],
+                criterionExplanations: [{ criterion: criterionId, explanation: 'Margins follow the handout.' }]
+            }]
+        };
+        mongo.getWritingSubmission.mockResolvedValue(graded);
+
+        await expect(service.approve('course-1', 'submission-1', 'user-1')).resolves.toBeDefined();
+    });
+
+    it('refuses an explanation bound to an older run', async () => {
+        const { service, mongo, assignment } = buildService();
+        const criterionId = assignment.rubric.criteria[0].id;
+        staffAssessed(assignment, criterionId);
+        const graded = gradedSubmission(assignment.rubric.version);
+        graded.reviews[0] = {
+            ...graded.reviews[0],
+            summaryEdits: [{
+                lens: 'linguistic',
+                feedbackRunId: 'run-from-before-a-redraft',
+                strengths: [],
+                criterionExplanations: [{ criterion: criterionId, explanation: 'Stale.' }]
+            }]
+        };
+        mongo.getWritingSubmission.mockResolvedValue(graded);
+
+        await expect(service.approve('course-1', 'submission-1', 'user-1'))
+            .rejects.toThrow(/Write feedback for every criterion the teaching team assesses/);
+    });
+});
+
+describe('appendReview grade drafts', () => {
+    it('saves a partial grade as a draft and refuses both kinds at once', async () => {
+        const assignment = approvedAssignment(1);
+        const append = jest.fn(async (_course: string, _submission: string, revision: object) => revision);
+        const mongo = {
+            getWritingSubmission: jest.fn(async () => submission('draft_ready')),
+            getWritingAssignment: jest.fn(async () => assignment),
+            getLatestWritingRelease: jest.fn(async () => null),
+            appendWritingReview: append
+        } as unknown as EngEAI_MongoDB;
+        const service = new WritingFeedbackService(mongo, { generate: jest.fn(async () => result) });
+        const first = assignment.rubric.criteria[0];
+        const draft = { rubricVersion: 1, criteria: [{ criterionId: first.id, points: 1 }] };
+
+        await service.appendReview('course-1', 'submission-1', { feedbackRunId: 'run-1', staffUserId: 'staff-1', studentFeedback: '', assessmentDraft: draft });
+        expect(append).toHaveBeenCalledWith('course-1', 'submission-1', expect.objectContaining({
+            assessmentDraft: { lens: 'linguistic', rubricVersion: 1, criteria: [{ criterionId: first.id, points: 1 }] }
+        }));
+        expect(append.mock.calls[0][2]).not.toHaveProperty('finalAssessment');
+
+        await expect(service.appendReview('course-1', 'submission-1', {
+            feedbackRunId: 'run-1', staffUserId: 'staff-1', studentFeedback: '', assessmentDraft: draft, finalAssessment: draft
+        })).rejects.toThrow('not both');
     });
 });
 
@@ -722,7 +860,7 @@ describe('WritingFeedbackService summary redraft', () => {
         expect(created[0].redraftOfRunId).toBe('run-gen');
         expect(created[0].sourceComments).toEqual([staffComment]);
         expect(created[0].annotationsFingerprint).toMatch(/^[0-9a-f]{8}$/);
-        expect(created[0].modelMetadata.promptVersion).toBe('summary-redraft-v1');
+        expect(created[0].modelMetadata.promptVersion).toBe('summary-redraft-v1.1.0');
         expect(result.detail.summarySources.linguistic?.runId).toBe(created[0].id);
         expect(result.detail.workingComments.map((comment) => comment.id)).toEqual(['c-staff']);
     });

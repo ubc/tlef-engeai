@@ -1,5 +1,10 @@
 import { buildDefaultWritingAssignment } from '../default-rubric-profile';
-import { buildStaffFinalAssessment, gradedLensFor, rubricSupportsStaffAssessment } from '../staff-final-assessment';
+import {
+    buildStaffAssessmentDraft,
+    buildStaffFinalAssessment,
+    gradedLensFor,
+    rubricSupportsStaffAssessment
+} from '../staff-final-assessment';
 import type { WritingAssignment } from '../contracts';
 
 const assignment = buildDefaultWritingAssignment('course-1', 'assignment-1', 'Writing assignment');
@@ -35,6 +40,32 @@ describe('staff-final rubric assessment', () => {
                 ? { ...entry, points: (rubric.criteria[0].points ?? 0) + 1 }
                 : entry)
         }, rubric)).toThrow('exceeds');
+    });
+});
+
+describe('partial grades saved as a draft', () => {
+    it('keeps the criteria graded so far, in rubric order, without totals', () => {
+        const [first, second] = rubric.criteria;
+        const draft = buildStaffAssessmentDraft({
+            rubricVersion: rubric.version,
+            criteria: [{ criterionId: second.id, points: 1.004 }, { criterionId: first.id, points: 1 }]
+        }, rubric, 'technical');
+        expect(draft).toEqual({
+            lens: 'technical',
+            rubricVersion: rubric.version,
+            criteria: [{ criterionId: first.id, points: 1 }, { criterionId: second.id, points: 1 }]
+        });
+        expect(draft).not.toHaveProperty('totalPoints');
+    });
+
+    it('holds each score to the final-grade rules', () => {
+        const first = rubric.criteria[0];
+        expect(() => buildStaffAssessmentDraft({ rubricVersion: rubric.version + 1, criteria: [{ criterionId: first.id, points: 1 }] }, rubric))
+            .toThrow('outdated rubric');
+        expect(() => buildStaffAssessmentDraft({ rubricVersion: rubric.version, criteria: [{ criterionId: 'not_in_rubric', points: 1 }] }, rubric))
+            .toThrow('outside the approved rubric');
+        expect(() => buildStaffAssessmentDraft({ rubricVersion: rubric.version, criteria: [{ criterionId: first.id, points: (first.points ?? 0) + 1 }] }, rubric))
+            .toThrow('exceeds');
     });
 });
 

@@ -36,6 +36,7 @@ jest.mock('../../utils/logger', () => ({
     appLogger: { log: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
+import { canvas } from '@ubc/ubc-genai-toolkit-lms-integration';
 import { RosterSyncUnavailableError, syncCanvasCourseRoster } from '../canvas-roster-sync';
 import { hashRosterPuid, ROSTER_SALT_ENV } from '../../utils/roster-identity';
 import type { EngEAI_MongoDB } from '../../db/enge-ai-mongodb';
@@ -76,6 +77,8 @@ beforeEach(() => {
     process.env[ROSTER_SALT_ENV] = 'test-salt-value';
     jest.clearAllMocks();
     resolveApiOk.mockResolvedValue({} as any);
+    // Tests that stub only the student roster read an empty TA roster through the default reader.
+    (canvas.getCourseUsers as jest.Mock).mockResolvedValue([]);
 });
 
 describe('syncCanvasCourseRoster', () => {
@@ -95,8 +98,8 @@ describe('syncCanvasCourseRoster', () => {
 
         const snapshot: CourseRosterSnapshot = mongo.saveCourseLmsRosterSnapshot.mock.calls[0][0];
         expect(snapshot.entries).toEqual([
-            { puidHash: hashRosterPuid('puid-one'), lmsUserId: '11' },
-            { puidHash: hashRosterPuid('puid-two'), lmsUserId: '12' },
+            { puidHash: hashRosterPuid('puid-one'), lmsUserId: '11', role: 'student' },
+            { puidHash: hashRosterPuid('puid-two'), lmsUserId: '12', role: 'student' },
         ]);
         expect(snapshot.syncCredentialUserId).toBe(INSTRUCTOR_USER_ID);
         expect(snapshot.triggeredBy).toBe('user-admin-1');
@@ -277,6 +280,62 @@ describe('syncCanvasCourseRoster', () => {
         expect(summary.status).toBe('failed');
         expect(mongo.saveCourseLmsRosterSnapshot).not.toHaveBeenCalled();
         expect(mongo.recordLmsRosterSyncOutcome).toHaveBeenCalledWith('course-1', 'failed', 'Canvas 503');
+    });
+
+    it('stores TAs with their role, read from the TA roster', async () => {
+        const mongo = makeMongo();
+        const fetchTaRoster = jest.fn().mockResolvedValue([{ id: '21', name: 'Tee Ay', integrationId: 'puid-ta' }]);
+        const summary = await syncCanvasCourseRoster(mongo, makeCourse(), undefined, {
+            resolveApi: resolveApiOk,
+            fetchRoster: async () => [{ id: '11', name: 'Student One', integrationId: 'puid-one' }] as any,
+            fetchTaRoster,
+        });
+
+        expect(fetchTaRoster).toHaveBeenCalledWith(expect.anything(), '900');
+        const snapshot: CourseRosterSnapshot = mongo.saveCourseLmsRosterSnapshot.mock.calls[0][0];
+        expect(snapshot.entries).toEqual([
+            { puidHash: hashRosterPuid('puid-one'), lmsUserId: '11', role: 'student' },
+            { puidHash: hashRosterPuid('puid-ta'), lmsUserId: '21', role: 'ta' },
+        ]);
+        expect(summary.rosterSize).toBe(2);
+        expect(summary.message).toBe('Synced 1 student and 1 TA from Canvas.');
+    });
+
+    it('reads TAs with an explicit TA enrollment scope', async () => {
+        const mongo = makeMongo();
+        await syncCanvasCourseRoster(mongo, makeCourse(), undefined, {
+            resolveApi: resolveApiOk,
+            fetchRoster: async () => [] as any,
+            fetchWorkflowState: async () => 'available',
+        });
+
+        // The rows do not say which enrollment they came from, so the scope is the only thing
+        // keeping a TA from being stored as a student.
+        expect(canvas.getCourseUsers).toHaveBeenCalledWith(expect.anything(), '900', { enrollmentTypes: ['ta'] });
+    });
+
+    it('keeps the TA role for someone enrolled as both a student and a TA', async () => {
+        const mongo = makeMongo();
+        await syncCanvasCourseRoster(mongo, makeCourse(), undefined, {
+            resolveApi: resolveApiOk,
+            fetchRoster: async () => [{ id: '21', name: 'Tee Ay', integrationId: 'puid-ta' }] as any,
+            fetchTaRoster: async () => [{ id: '21', name: 'Tee Ay', integrationId: 'puid-ta' }] as any,
+        });
+
+        const snapshot: CourseRosterSnapshot = mongo.saveCourseLmsRosterSnapshot.mock.calls[0][0];
+        expect(snapshot.entries).toEqual([{ puidHash: hashRosterPuid('puid-ta'), lmsUserId: '21', role: 'ta' }]);
+    });
+
+    it('treats a TA-only roster without identifiers as a permission gap', async () => {
+        const mongo = makeMongo();
+        const summary = await syncCanvasCourseRoster(mongo, makeCourse(), undefined, {
+            resolveApi: resolveApiOk,
+            fetchRoster: async () => [] as any,
+            fetchTaRoster: async () => [{ id: '21', name: 'Tee Ay' }] as any,
+        });
+
+        expect(summary.status).toBe('identifiers_withheld');
+        expect(mongo.saveCourseLmsRosterSnapshot).not.toHaveBeenCalled();
     });
 
     it('refuses a course with no Canvas link', async () => {

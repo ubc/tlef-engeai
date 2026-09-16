@@ -36,6 +36,22 @@ Authorized staff may add or remove criteria and levels before or after approval.
 
 Rubric point metadata can guide staff calibration, but release grading is not inferred from model levels. The model may display staff-only suggested point bands; the saved staff-final assessment is the only numeric grade source for PDFs and Canvas release.
 
+### Who assesses a criterion
+
+Each criterion carries `assessedBy`, which is `'model'` (the default, and what an absent field means) or `'staff'`.
+
+Document extraction yields verified text and a filename; font, spacing, margins, and page geometry exist nowhere downstream. A criterion resting on those has no evidence the model can reach, and the schema's requirement that every criterion be answered exactly once left it only one move: report the absence, in the same words, on every submission, and never above a middle band. Marking such a criterion `'staff'` removes it from the question rather than accepting the answer.
+
+A staff-assessed criterion is:
+
+- **absent from generation** — excluded from both system prompts and from both structured-output schemas, in the linguistic engine, the technical engine, and the summary redraft. The redraft exclusion matters on its own: a redraft that re-judged the criterion would overwrite text staff wrote themselves.
+- **written in review** — the criterion card offers the same editable feedback box a model-drafted criterion has, seeded empty.
+- **graded normally** — `StaffFinalAssessment` already requires points per criterion, and `earnedLevelFor` turns those points into the criterion's rating. The staff grade *is* the level; there is no separate level control.
+- **shown without a rating where no grade exists** — a lab report is graded on its technical rubric, so a staff-assessed criterion on its *writing* rubric has written feedback and no points to name a level with. `CriterionFeedback.suggestedLevel` is therefore optional on a composed result (never on a stored run, where both schemas require it), and the PDF prints such a criterion as its own heading rather than trailing an em dash. It must render: approval requires the feedback, so dropping the row would discard work staff were made to do.
+- **indistinguishable to the student** — merged into the released result in rubric order by `applySummaryToResult`, and rendered by the same PDF path.
+
+Two gates hold the model/staff split honest. A rubric where every criterion is staff-assessed has nothing to generate and is refused at approval (`requireCompleteRubricCells`), with `NO_MODEL_CRITERIA_MESSAGE` as the schema-level backstop. A staff-assessed criterion left unwritten is refused at submission approval (`assertStaffCriteriaWritten`) — nothing else would notice, since an unwritten one is simply absent from the student's document rather than failing anywhere.
+
 ## V2 prompt and validation contract
 
 The linguistic engine is a two-call pipeline. It receives the assignment's approved rubric/profile and staff-verified submission text, then first runs a dedicated structured SFL analyzer. The analyzer may observe Content, Interpersonal, and Organizational meanings, but it must not produce feedback prose, rubric levels, grades, or hidden chain-of-thought. Its output keeps exact evidence, observation, functional interpretation, rule/source ids, alternatives, abstention reasons, and confidence as separate fields.

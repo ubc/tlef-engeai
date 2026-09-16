@@ -44,8 +44,29 @@ describe('summary redraft prompts', () => {
         expect(prompt).toContain('guidedQuestion');
         expect(prompt).toContain('Never rewrite student sentences');
         expect(prompt).toContain('Never state a confidence level');
+        expect(prompt).toContain('Never tell the student what you did not assess');
         expect(prompt).toContain('Never invent numeric weights or grades');
         expect(prompt).not.toContain(PRIME_DIRECTIVE);
+    });
+
+    it('withholds a staff-assessed criterion from the redraft prompt and output', () => {
+        const base = input();
+        const staffId = base.rubric.criteria[0].id;
+        const withStaff: SummaryRedraftInput = {
+            ...base,
+            rubric: {
+                ...base.rubric,
+                criteria: base.rubric.criteria.map((criterion) => (
+                    criterion.id === staffId ? { ...criterion, assessedBy: 'staff' as const } : criterion
+                ))
+            }
+        };
+
+        const prompt = buildSummaryRedraftSystemPrompt(withStaff);
+        expect(prompt).not.toContain(staffId);
+        // A redraft that re-judged this row would overwrite what staff wrote themselves.
+        expect(deterministicSummaryRedraft(withStaff).criteria.map((criterion) => criterion.criterion))
+            .not.toContain(staffId);
     });
 
     it('adds the technical prime directive and lab context only for the technical lens', () => {
