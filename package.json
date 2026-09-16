@@ -24,6 +24,7 @@
     "test:qdrant-empty": "ts-node src/test-scripts/test-qdrant-empty-upload.ts",
     "test:integrated": "ts-node src/test-scripts/test-integrated-embedding-qdrant.ts",
     "test:all-embedding": "ts-node src/test-scripts/run-embedding-tests.ts",
+    "canvas:feedback-pdf-fixture": "node scripts/canvas-feedback-pdf-access-fixture.mjs",
     "export:system-prompt-samples": "npm run prompts:export-samples",
     "prompts": "ts-node --transpile-only scripts/prompt-tools.ts",
     "prompts:validate": "ts-node --transpile-only scripts/prompt-tools.ts validate",

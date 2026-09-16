@@ -117,6 +117,34 @@ conversation transcript — and transcripts are synced, retained, and sometimes 
 The automation in Part 4 is written around this: nothing it runs needs to see a secret, and nothing
 it prints contains one.
 
+### 0.4 Canvas hostname for files and feedback PDFs
+
+Canvas-generated file URLs must use the same hostname your browser can open. The image's seeded
+`config/domain.yml` may advertise `canvas.docker`, which makes basic API calls succeed through
+`localhost` but can make Writing Feedback PDF attachments redirect to an unreachable host.
+
+For the standard local stack on port 9100, make Canvas advertise `localhost:9100` and keep the app's
+`CANVAS_DOMAIN` at `http://localhost:9100`:
+
+```bash
+docker exec local-canvas-canvas-1 \
+  sh -lc "sed -i 's/canvas\.docker/localhost:9100/g' /usr/src/app/config/domain.yml"
+docker exec local-canvas-canvas.job-1 \
+  sh -lc "sed -i 's/canvas\.docker/localhost:9100/g' /usr/src/app/config/domain.yml"
+docker restart local-canvas-canvas-1 local-canvas-canvas.job-1
+```
+
+Re-run those commands if the Canvas containers are recreated. After the restart, a quick check
+should redirect back to `localhost:9100`, not `canvas.docker`:
+
+```bash
+curl -I http://localhost:9100/login | grep -i '^location:'
+```
+
+If you instead choose to use `canvas.docker`, every browser and runtime that follows Canvas file
+links needs a working host/port route for that exact advertised origin. Do not mix hostnames in one
+OAuth/release test; disconnect and reconnect Canvas after changing `CANVAS_DOMAIN`.
+
 ---
 
 ## Part 1 — Local Canvas
@@ -415,14 +443,15 @@ curl -X POST -H "Authorization: Bearer $CANVAS_ADMIN_API_KEY" \
 
 ### 1.8 Pick one hostname and never switch
 
-The image advertises itself as `canvas.docker` (`VIRTUAL_HOST: .canvas.docker`), so some generated
-links come back with that host. To use it, add `127.0.0.1 canvas.docker` to `/etc/hosts` and use
-`http://canvas.docker:9100` for `CANVAS_DOMAIN` and in the browser. The Developer Key redirect URI
-does **not** use the Canvas hostname — it points at your app.
+The image advertises itself as `canvas.docker` (`VIRTUAL_HOST: .canvas.docker`), so file upload and
+download flows may hand the browser links on that host even when the first API request used
+`localhost`. For Writing Feedback release testing, set Canvas's internal `domain.yml` to
+`localhost:9100` as shown in §0.4, use `http://localhost:9100` for `CANVAS_DOMAIN`, and browse Canvas
+through that same origin. The Developer Key redirect URI does **not** use the Canvas hostname — it
+points at your app.
 
-Most people should simply use `http://localhost:9100` and skip `/etc/hosts`. If your app itself
-runs in Docker, its `localhost` is its own container; pick a hostname both the app container and
-the host browser can resolve.
+Do not mix `localhost` and `canvas.docker` in one OAuth/release test; disconnect and reconnect
+Canvas after changing the app's `CANVAS_DOMAIN`.
 
 ---
 
@@ -660,6 +689,39 @@ Keep these separate from the *stack* variables (`CANVAS_IMAGE`, `CANVAS_PORT`,
 `CANVAS_POSTGRES_PASSWORD`, `CANVAS_ADMIN_API_KEY`), which belong in the infrastructure directory's
 own `.env` and which the app never reads.
 
+#### 3.2.1 Writing Feedback PDF attachment checks
+
+Writing Feedback releases attach the approved feedback PDF to the Canvas submission comment. Local
+Canvas does not need DocViewer for this acceptance path; success is that each authorized role can
+open or download the actual PDF from the comment attachment.
+
+Local checklist:
+
+1. Start Canvas and make sure its `domain.yml` advertises `localhost:9100` as described in §0.4.
+2. Start the app with `CANVAS_DOMAIN=http://localhost:9100`.
+3. Connect Canvas OAuth from the app after any hostname change; old tokens from another Canvas host
+   should be disconnected and recreated.
+4. Import or create a synthetic assignment and submission, approve Writing Feedback, and release it
+   to Canvas. To create a direct Canvas-only smoke fixture, run:
+   `npm run canvas:feedback-pdf-fixture`.
+5. In Canvas, open the assignment/submission as each available role: submitting student, instructor,
+   TA, and admin if provisioned.
+6. Confirm the submission comment shows the feedback PDF attachment and that clicking it opens or
+   downloads a PDF whose bytes begin with `%PDF-`.
+7. Open the PDF in the browser or another capable viewer and confirm the embedded annotation popups
+   are present. Canvas's local DocViewer preview may remain unavailable.
+
+Staging checklist:
+
+1. Use the existing staging EngE-AI deployment and its real Canvas or sandbox hostname; do not use a
+   local-only hostname outside local development.
+2. Confirm staging is running a build with live Canvas release support before testing.
+3. Use only synthetic or authorized non-sensitive staging submissions.
+4. Run the same role checks as local for every provisioned staging role.
+5. Record only non-secret evidence: environment name, role, safe Canvas page or file URL, HTTP status
+   or content type, PDF signature, and pass/fail notes. Do not record credentials, tokens, student
+   identifiers, real writing, grades, generated feedback text, or screenshots containing any of them.
+
 ### 3.3 Minimal wiring
 
 ```js
@@ -852,6 +914,7 @@ is doing the work.
 | Canvas OAuth fails at the callback | `CANVAS_REDIRECT_URI` doesn't byte-for-byte match the Developer Key |
 | Canvas authorize screen refuses a key that looks perfect | the account binding is `off` — §1.6 |
 | Canvas callback says OAuth state is invalid/expired | session middleware missing, mounted after the auth router, or the session cookie wasn't preserved |
+| Writing Feedback PDF comment attachment redirects to an unreachable `canvas.docker` URL | Canvas's internal `domain.yml` still advertises `canvas.docker`; set it to `localhost:9100`, restart Canvas, keep `CANVAS_DOMAIN=http://localhost:9100`, and reconnect OAuth — §0.4, §1.8 |
 | Canvas never finishes first boot | init SQL wasn't copied, or the volume wasn't empty — `down -v` and retry |
 | Canvas up but nothing async happens | `canvas.job` container isn't running |
 | Course list returns `[]` from a correct setup | no courses seeded, or the user isn't enrolled — §1.7, §2.4 |
