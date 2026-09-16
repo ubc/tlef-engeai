@@ -383,6 +383,13 @@
     border: 1px solid var(--color-chbe-green);
 }
 
+/* Filled, so "Released" reads as finished beside the pale "Ready to release". */
+.wf-chip--green-solid {
+    background: var(--color-chbe-green);
+    color: #fff;
+    border: 1px solid var(--color-chbe-green);
+}
+
 .wf-chip--blue {
     background: rgba(47, 95, 143, 0.1);
     color: var(--color-ubc-blue);

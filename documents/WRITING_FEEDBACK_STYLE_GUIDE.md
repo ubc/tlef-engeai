@@ -9,7 +9,7 @@
 
 ## Navigation and status
 
-Place **Writing Feedback** directly below **Document** in the instructor sidebar. It is hidden until course data confirms that the capability is enabled. Use clear, non-automated language: **Imported**, **Verification needed**, **Draft ready**, **Approved**, **Released**, and **Needs attention**. Green communicates approved/released progress; amber communicates required verification; red is reserved for failures.
+Place **Writing Feedback** directly below **Document** in the instructor sidebar. It is hidden until course data confirms that the capability is enabled. Submission status labels name what staff do next, not the internal state: **Not started** (imported, or text still to be checked), **Needs review** (feedback generating or drafted), **Ready to release** (approved), **Released**, and **Needs attention** (failed). Grey marks work not yet begun, blue marks work waiting on staff review, pale green marks approved feedback not yet sent, solid green marks released feedback, and red is reserved for failures.
 
 Use the instructor shell's existing tokens by their exact names: `--color-chbe-green`, `--color-ubc-blue`, `--color-navy-blue`, `--background-2`, `--border-color`, `--text-primary`, `--text-secondary`, `--hover-bg`, `--sidebar-bg`, and `--chat-bg`. Do not introduce near-duplicate variables such as `--chbe-green` or `--ubc-blue`, and do not use inline styles or edit compiled CSS.
 

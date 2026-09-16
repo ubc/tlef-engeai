@@ -546,29 +546,36 @@ export interface CanvasAssignmentDetails {
 }
 
 
-/** Staff-facing text for each submission lifecycle state. */
+/**
+ * Staff-facing text for each submission lifecycle state.
+ *
+ * Grouped by what staff do next rather than one label per state: "Not started" covers text
+ * that still needs checking (the review page explains that step), and "Needs review" covers
+ * the brief generating state. "Ready to release" and "Released" stay distinct because only
+ * the second means the student has the feedback.
+ */
 export const STATUS_LABELS: Record<SubmissionStatus, string> = {
-    imported: 'Imported',
-    verification_needed: 'Verification needed',
-    generating: 'Generating',
-    draft_ready: 'Draft ready',
-    approved: 'Approved',
+    imported: 'Not started',
+    verification_needed: 'Not started',
+    generating: 'Needs review',
+    draft_ready: 'Needs review',
+    approved: 'Ready to release',
     released: 'Released',
     failed: 'Needs attention'
 };
 
 /** Supported semantic color treatments for compact workspace chips. */
 export type WfChipTone =
-    | 'neutral' | 'green' | 'blue' | 'amber' | 'red' | 'purple';
+    | 'neutral' | 'green' | 'green-solid' | 'blue' | 'amber' | 'red' | 'purple';
 
-/** Status → chip tone, matching the app's status color semantics. */
+/** Status → chip tone; a filled chip marks the one state where staff have nothing left to do. */
 export const STATUS_TONES: Record<SubmissionStatus, WfChipTone> = {
-    imported: 'blue',
-    verification_needed: 'amber',
+    imported: 'neutral',
+    verification_needed: 'neutral',
     generating: 'blue',
     draft_ready: 'blue',
     approved: 'green',
-    released: 'green',
+    released: 'green-solid',
     failed: 'red'
 };
 
