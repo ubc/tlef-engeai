@@ -180,8 +180,25 @@ function renderAssignmentCard(assignment: Assignment): HTMLElement {
     }
     controls.append(rubricButton);
     const deleteButton = createIconButton('trash-2', `Delete assignment "${assignment.title}"`, 'danger', async () => {
-        const result = await showDeleteConfirmationModal('assignment', assignment.title);
-        if (result.action !== 'delete') return;
+        // Deleting the assignment deletes its submissions too, so say how much work goes with it.
+        const submissions = await request<Submission[]>(`/submissions?assignmentId=${encodeURIComponent(assignment.id)}`);
+        if (submissions.length) {
+            const releasedCount = submissions.filter((item) => item.status === 'released').length;
+            const releasedNote = releasedCount
+                ? ` Feedback for ${releasedCount} of them was already released to Canvas; it stays in Canvas, but its record here is deleted.`
+                : '';
+            const result = await showConfirmModal(
+                'Delete assignment',
+                `Delete "${assignment.title}" and its ${submissions.length} submission${submissions.length === 1 ? '' : 's'}, including their feedback?${releasedNote} This cannot be undone.`,
+                'Delete assignment',
+                'Cancel',
+                'danger'
+            );
+            if (result.action !== 'delete-assignment') return;
+        } else {
+            const result = await showDeleteConfirmationModal('assignment', assignment.title);
+            if (result.action !== 'delete') return;
+        }
         await jsonRequest(`/assignments/${encodeURIComponent(assignment.id)}`, 'DELETE');
         state.assignments = state.assignments.filter((item) => item.id !== assignment.id);
         if (state.expandedAssignmentId === assignment.id) state.expandedAssignmentId = null;

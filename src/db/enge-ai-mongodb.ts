@@ -708,11 +708,11 @@ export class EngEAI_MongoDB {
         WritingFeedbackMongo.failWritingJob(this.ctx(), job, sanitizedError);
 
     /**
-     * deleteWritingAssignment — removes an assignment only when it has no submissions.
+     * deleteWritingAssignment — removes an assignment with all its submissions and their records.
      *
      * @param courseId - Owning course id
      * @param assignmentId - Assignment requested for deletion
-     * @returns Deletion result and blocking submission count
+     * @returns Whether it was deleted, and whether a running job or release blocked it
      */
     public deleteWritingAssignment = async (courseId: string, assignmentId: string) =>
         WritingFeedbackMongo.deleteWritingAssignment(this.ctx(), courseId, assignmentId);

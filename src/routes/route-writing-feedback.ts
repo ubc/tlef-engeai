@@ -814,12 +814,19 @@ router.post(
     })
 );
 
+/**
+ * Deletes an assignment together with all of its submissions, drafts, reviews, and release
+ * records. The workspace confirms the counts first. Canvas is not changed.
+ */
 router.delete('/:courseId/writing-feedback/assignments/:assignmentId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     const mongo = await EngEAI_MongoDB.getInstance();
-    const { deleted, submissionCount } = await mongo.deleteWritingAssignment(courseId(req), String(req.params.assignmentId));
+    const { deleted, blockedByWork } = await mongo.deleteWritingAssignment(courseId(req), String(req.params.assignmentId));
     if (deleted) return res.json({ success: true });
-    if (submissionCount > 0) {
-        return res.status(409).json({ success: false, error: 'Delete submissions before deleting this assignment' });
+    if (blockedByWork) {
+        return res.status(409).json({
+            success: false,
+            error: 'Wait for feedback generation and Canvas releases to finish before deleting this assignment'
+        });
     }
     res.status(404).json({ success: false, error: 'Writing assignment not found' });
 }));

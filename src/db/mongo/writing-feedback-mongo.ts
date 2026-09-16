@@ -84,6 +84,16 @@ const ACTIVE_SLOT_FILTER = { slot: { $in: ['active', null] } } as Filter<Writing
 /** Release states that mean a Canvas write for the submission has started but not settled. */
 const UNSETTLED_RELEASE_STATUSES: ReadonlyArray<WritingRelease['status']> = ['feedback_attached', 'grade_queued', 'reconciliation_required'];
 
+/** Matches releases that are part-written to Canvas or held by an unexpired worker lock. */
+function unsettledReleaseFilter(): Filter<WritingRelease> {
+    return {
+        $or: [
+            { status: { $in: [...UNSETTLED_RELEASE_STATUSES] } },
+            { releaseLockedAt: { $gt: new Date(Date.now() - RELEASE_LOCK_TTL_MS) } }
+        ]
+    };
+}
+
 function isNamespaceMissing(error: unknown): boolean {
     return typeof error === 'object' && error !== null
         && (('code' in error && (error as { code?: unknown }).code === 26)
@@ -311,33 +321,46 @@ export async function countWritingSubmissionsByAssignment(
 }
 
 /**
- * deleteWritingAssignment — deletes an empty assignment without orphaning submissions.
+ * deleteWritingAssignment — deletes an assignment with every submission and dependent record.
+ *
+ * Refused while any of its submissions has a queued or running job, or a Canvas release that
+ * has not settled: a worker would otherwise keep writing to records that no longer exist.
+ * The assignment is deleted first and its children only after that succeeds, so a failed or
+ * cross-course request never removes submissions. Canvas is not changed.
  *
  * @param ctx - Connected Mongo data-layer context
  * @param courseId - Owning course id
  * @param assignmentId - Assignment requested for deletion
- * @returns Deletion result and blocking submission count
+ * @returns Whether it was deleted, and whether running work blocked it
  */
 export async function deleteWritingAssignment(
     ctx: MongoDalContext,
     courseId: string,
     assignmentId: string
-): Promise<{ deleted: boolean; submissionCount: number }> {
-    // Refuse assignment deletion until staff explicitly removes every submission in the queue.
-    const submissionCount = await submissions(ctx).countDocuments({ courseId, assignmentId, ...ACTIVE_SLOT_FILTER });
-    if (submissionCount > 0) {
-        return { deleted: false, submissionCount };
+): Promise<{ deleted: boolean; blockedByWork: boolean }> {
+    // Step 1: refuse while any submission's job or release is still in flight.
+    const children = await submissions(ctx).find({ courseId, assignmentId }, { projection: { id: 1 } }).toArray();
+    const submissionIds = children.map((child) => child.id);
+    if (submissionIds.length) {
+        const [job, release] = await Promise.all([
+            jobs(ctx).findOne({ courseId, 'payload.submissionId': { $in: submissionIds }, state: { $in: ['queued', 'leased'] } }, { projection: { id: 1 } }),
+            releases(ctx).findOne({ courseId, submissionId: { $in: submissionIds }, ...unsettledReleaseFilter() }, { projection: { id: 1 } })
+        ]);
+        if (job || release) return { deleted: false, blockedByWork: true };
     }
-    const result = await assignments(ctx).deleteOne({ id: assignmentId, courseId });
-    if (result.deletedCount !== 1) return { deleted: false, submissionCount: 0 };
 
-    // Held and superseded attempts are not shown in the queue, so staff cannot delete them
-    // one by one; they go with the assignment.
-    const leftovers = await submissions(ctx).find({ courseId, assignmentId }, { projection: { id: 1 } }).toArray();
-    for (const leftover of leftovers) {
-        await deleteWritingSubmission(ctx, courseId, leftover.id);
+    // Step 2: delete the assignment, then everything that belonged to it.
+    const result = await assignments(ctx).deleteOne({ id: assignmentId, courseId });
+    if (result.deletedCount !== 1) return { deleted: false, blockedByWork: false };
+    await submissions(ctx).deleteMany({ courseId, assignmentId });
+    if (submissionIds.length) {
+        await Promise.all([
+            runs(ctx).deleteMany({ submissionId: { $in: submissionIds } }),
+            releases(ctx).deleteMany({ submissionId: { $in: submissionIds } }),
+            jobs(ctx).deleteMany({ 'payload.submissionId': { $in: submissionIds } })
+        ]);
     }
-    return { deleted: true, submissionCount: 0 };
+    return { deleted: true, blockedByWork: false };
 }
 
 /**
@@ -828,14 +851,7 @@ export async function hasUnsettledWritingWork(
 ): Promise<boolean> {
     const [job, release] = await Promise.all([
         jobs(ctx).findOne({ courseId, 'payload.submissionId': submissionId, state: { $in: ['queued', 'leased'] } }, { projection: { id: 1 } }),
-        releases(ctx).findOne({
-            courseId,
-            submissionId,
-            $or: [
-                { status: { $in: [...UNSETTLED_RELEASE_STATUSES] } },
-                { releaseLockedAt: { $gt: new Date(Date.now() - RELEASE_LOCK_TTL_MS) } }
-            ]
-        }, { projection: { id: 1 } })
+        releases(ctx).findOne({ courseId, submissionId, ...unsettledReleaseFilter() }, { projection: { id: 1 } })
     ]);
     return Boolean(job || release);
 }

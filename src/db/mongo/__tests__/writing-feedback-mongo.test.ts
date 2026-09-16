@@ -24,6 +24,7 @@ import {
     countFeedbackStaleOnApproval,
     createCanvasWritingAssignment,
     createManualWritingAssignment,
+    deleteWritingAssignment,
     discardWritingRubricDraft,
     ensureWritingFeedbackIndexes,
     finalizeWritingRelease,
@@ -738,5 +739,53 @@ describe('one active submission per student', () => {
         expect(result).toMatchObject({ id: 'held', slot: 'active' });
         expect(collection.findOneAndUpdate.mock.calls[0][1]).toMatchObject({ $set: { slot: 'superseded' } });
         expect(collection.deleteOne).not.toHaveBeenCalled();
+    });
+});
+
+describe('deleteWritingAssignment', () => {
+    function collections(options: { job?: unknown; release?: unknown; assignmentDeleted?: number } = {}) {
+        const submissionRows = [{ id: 'sub-1' }, { id: 'sub-2' }];
+        return {
+            'writing-assignments': { deleteOne: jest.fn().mockResolvedValue({ deletedCount: options.assignmentDeleted ?? 1 }) },
+            'writing-submissions': {
+                find: jest.fn().mockReturnValue({ toArray: jest.fn().mockResolvedValue(submissionRows) }),
+                deleteMany: jest.fn().mockResolvedValue({})
+            },
+            'writing-jobs': { findOne: jest.fn().mockResolvedValue(options.job ?? null), deleteMany: jest.fn().mockResolvedValue({}) },
+            'writing-releases': { findOne: jest.fn().mockResolvedValue(options.release ?? null), deleteMany: jest.fn().mockResolvedValue({}) },
+            'writing-feedback-runs': { deleteMany: jest.fn().mockResolvedValue({}) }
+        };
+    }
+
+    it('deletes the assignment and every submission, run, release, and job belonging to it', async () => {
+        const cols = collections();
+        const result = await deleteWritingAssignment(contextWithCollections(cols), 'course-1', 'assignment-1');
+
+        expect(result).toEqual({ deleted: true, blockedByWork: false });
+        expect(cols['writing-submissions'].deleteMany).toHaveBeenCalledWith({ courseId: 'course-1', assignmentId: 'assignment-1' });
+        const ids = { $in: ['sub-1', 'sub-2'] };
+        expect(cols['writing-feedback-runs'].deleteMany).toHaveBeenCalledWith({ submissionId: ids });
+        expect(cols['writing-releases'].deleteMany).toHaveBeenCalledWith({ submissionId: ids });
+        expect(cols['writing-jobs'].deleteMany).toHaveBeenCalledWith({ 'payload.submissionId': ids });
+    });
+
+    it.each([
+        ['a queued or running job', { job: { id: 'job-1' } }],
+        ['an unsettled Canvas release', { release: { id: 'release-1' } }]
+    ])('refuses and deletes nothing while there is %s', async (_label, options) => {
+        const cols = collections(options);
+        const result = await deleteWritingAssignment(contextWithCollections(cols), 'course-1', 'assignment-1');
+
+        expect(result).toEqual({ deleted: false, blockedByWork: true });
+        expect(cols['writing-assignments'].deleteOne).not.toHaveBeenCalled();
+        expect(cols['writing-submissions'].deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('leaves submissions alone when the assignment is not in the course', async () => {
+        const cols = collections({ assignmentDeleted: 0 });
+        const result = await deleteWritingAssignment(contextWithCollections(cols), 'course-1', 'assignment-1');
+
+        expect(result).toEqual({ deleted: false, blockedByWork: false });
+        expect(cols['writing-submissions'].deleteMany).not.toHaveBeenCalled();
     });
 });
