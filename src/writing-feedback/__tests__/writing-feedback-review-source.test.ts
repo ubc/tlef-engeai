@@ -53,19 +53,12 @@ describe('writing feedback review source contract', () => {
         expect(editorSource).toContain('Ask yourself:');
     });
 
-    it('lists internal review flags where they qualify the levels they belong to', () => {
-        // A live run abstained on source completeness and word count. Both were joined into
-        // one comma-separated sentence at the very bottom of the tab, under the release
-        // card, so a marker approving a level never saw what the model could not check.
-        const summaryTab = source.match(/function renderSummaryLens[\s\S]*?\n}\n/)?.[0] ?? '';
-        const flagsSection = source.match(/function renderInternalFlags[\s\S]*?\n}/)?.[0] ?? '';
-        expect(flagsSection).not.toContain('internalFlags.join');
-        expect(flagsSection).toContain("createText('h3', 'Internal review flags')");
-        const flagsIndex = summaryTab.indexOf('renderInternalFlags(run)');
-        const goalsIndex = summaryTab.indexOf("createText('h3', 'Priority revision goals')");
-        expect(flagsIndex).toBeGreaterThan(-1);
-        expect(goalsIndex).toBeGreaterThan(-1);
-        expect(flagsIndex).toBeLessThan(goalsIndex);
+    it('keeps the summary step free of grade progress and internal flags', () => {
+        // Staff found both to be extra reading: the cards already say which criteria are graded,
+        // and the model's internal flags did not help them decide anything.
+        expect(source).not.toContain('Next ungraded');
+        expect(source).not.toContain('wf-grade-progress');
+        expect(source).not.toContain('Internal review flags');
     });
 
     it('keeps the review history heading in step with the section it records', () => {
@@ -112,7 +105,7 @@ describe('summary editor source contract', () => {
     );
 
     it('uses the approved labels', () => {
-        expect(editor).toContain("'What you did well'");
+        expect(editor).toContain("'What the student did well'");
         expect(editor).toContain('`Strength ${');
         expect(editor).toContain("'+ Add strength'");
         expect(editor).toContain("'Feedback'");
@@ -153,10 +146,11 @@ describe('two-step review source contract', () => {
 
     it('redrafts through the summary-redraft route and confirms before replacing edits', () => {
         expect(source).toContain('/summary-redraft`');
-        expect(source).toContain("'Update the summary from your annotations?'");
-        expect(source).toContain("'Keep my summary'");
-        expect(source).toContain("'Redraft summary'");
-        expect(source).toContain("'Summary and suggested grades redrafted from your final annotations.'");
+        expect(source).toContain("'Update feedback from your annotations?'");
+        expect(source).toContain("'Keep my edits'");
+        expect(source).toContain("'Update feedback'");
+        expect(source).toContain("confirmation.action !== 'update-feedback'");
+        expect(source).toContain("'Feedback and suggested grades updated from your annotations.'");
     });
 
     it('no longer renders the read-only technical draft', () => {

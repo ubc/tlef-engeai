@@ -30,6 +30,7 @@ import type {
     WritingJob,
     WritingRubricDefinition,
     WritingRelease,
+    WritingPendingReplacement,
     WritingSubmission
 } from './contracts';
 import { RELEASE_LOCK_TTL_MS } from './contracts';
@@ -57,6 +58,12 @@ import {
 } from './release-cap';
 import { SanitizedJobError } from './job-runner';
 import { resolveQueuedReleaseService } from './queued-release-service';
+import {
+    TEXT_EDITED_MESSAGE,
+    TRANSCRIPT_EDITABLE_STATUSES,
+    reviewsSinceTextEdit,
+    runPredatesTextEdit
+} from './transcript-edit';
 import { requireCompleteSflProfile } from './sfl-analysis';
 import { appLogger } from '../utils/logger';
 import { fingerprintAnnotations } from './annotation-fingerprint';
@@ -149,13 +156,22 @@ export function describeFailureSafely(error: unknown): string {
 /** Refusal for a redraft requested once the submission has left `draft_ready`. */
 export const REDRAFT_NOT_DRAFT_READY_MESSAGE = 'The summary can only be redrafted before approval';
 
+/** Refusal for a staff edit while the worker is replacing the submission's draft. */
+export const REVIEW_WHILE_GENERATING_MESSAGE = 'Wait for feedback generation to finish before editing this submission';
+
+/** Refusal for approval while the worker is replacing the submission's draft. */
+export const APPROVE_WHILE_GENERATING_MESSAGE = 'Wait for feedback generation to finish before approving this submission';
+
 type GeneratedFeedbackWithTrace = WritingFeedbackResult & { runTrace?: WritingFeedbackRunTrace };
 
 type ReviewableSubmission = WritingSubmission & { reviews?: StaffReviewRevision[] };
 
+/** Detail submission, with the newer Canvas attempt waiting to replace it when there is one. */
+type DetailSubmission = ReviewableSubmission & { pendingReplacement?: WritingPendingReplacement };
+
 /** Staff detail payload combining persistent state with safe read-time comment derivations. */
 export interface SubmissionDetail {
-    submission: ReviewableSubmission; // submission plus append-only review history
+    submission: DetailSubmission; // submission plus append-only review history and any held newer attempt
     feedbackRun: WritingFeedbackRun | null; // latest immutable linguistic model draft
     /** Latest immutable technical draft; null for assignments without the technical lens. */
     technicalFeedbackRun: WritingFeedbackRun | null;
@@ -239,7 +255,8 @@ export class WritingFeedbackService {
     /**
      * Generates an immutable feedback run for every lens this assignment requires.
      *
-     * The linguistic lens is mandatory: its failure fails the submission and rethrows. The
+     * The linguistic lens is mandatory: its failure rethrows, and marks the submission failed
+     * unless `markFailed` is false (the worker passes false while it still has retries). The
      * technical lens runs only for a lab report whose technical rubric is currently approved,
      * and it is best-effort — its failure leaves the linguistic draft reviewable rather than
      * discarding it. Every model error (linguistic or technical) can carry prompt/student
@@ -247,12 +264,14 @@ export class WritingFeedbackService {
      *
      * @param courseId - Course authorization/persistence boundary
      * @param submissionId - Submission selected by staff
+     * @param options - `markFailed: false` leaves the submission generating when the linguistic lens fails
      * @returns Validated model drafts keyed by lens; a skipped or failed lens is absent
      * @throws Error when verification, assignment lookup, or linguistic generation fails
      */
     async generate(
         courseId: string,
-        submissionId: string
+        submissionId: string,
+        options: { markFailed?: boolean } = {}
     ): Promise<Partial<Record<WritingFeedbackLens, WritingFeedbackResult>>> {
         // Verified text is the only student content allowed across the model boundary.
         const submission = await this.requireSubmission(courseId, submissionId);
@@ -279,7 +298,9 @@ export class WritingFeedbackService {
             // construction, so an operator can tell a schema rejection from a rate limit from
             // an evidence mismatch without any student text reaching the log.
             appLogger.log('[writing-feedback] linguistic lens failed:', describeFailureSafely(error));
-            await this.mongo.setWritingSubmissionStatus(courseId, submissionId, 'failed');
+            if (options.markFailed !== false) {
+                await this.mongo.setWritingSubmissionStatus(courseId, submissionId, 'failed', ['generating']);
+            }
             throw error;
         }
 
@@ -298,7 +319,8 @@ export class WritingFeedbackService {
             }
         }
 
-        await this.mongo.setWritingSubmissionStatus(courseId, submissionId, 'draft_ready');
+        // Only a submission still generating moves on; one deleted or stopped meanwhile stays as it is.
+        await this.mongo.setWritingSubmissionStatus(courseId, submissionId, 'draft_ready', ['generating']);
         return results;
     }
 
@@ -336,6 +358,60 @@ export class WritingFeedbackService {
             maxAttempts: 3,
             payload: { submissionId }
         });
+    }
+
+    /**
+     * confirmTranscript - accepts staff's first confirmation of extracted text.
+     *
+     * Only the initial confirmation: text that is already confirmed is corrected through
+     * {@link editTranscript}, which also records that earlier feedback no longer matches it.
+     *
+     * @param courseId - Course authorization/persistence boundary
+     * @param submissionId - Submission awaiting confirmation
+     * @param verifiedText - Text staff confirmed against the student's file
+     * @returns The confirmed submission, ready for generation
+     * @throws Error when the text is already confirmed, or the submission is gone
+     */
+    async confirmTranscript(courseId: string, submissionId: string, verifiedText: string): Promise<WritingSubmission> {
+        const submission = await this.requireSubmission(courseId, submissionId);
+        if (!submission.requiresVerification) {
+            throw new Error('This text is already confirmed; edit it from the submission instead');
+        }
+        const confirmed = await this.mongo.updateVerifiedWritingText(courseId, submissionId, verifiedText);
+        if (!confirmed) throw new Error('This submission changed while you were editing. Reload it and try again.');
+        return confirmed;
+    }
+
+    /**
+     * editTranscript - corrects a submission's confirmed text after it was first confirmed.
+     *
+     * Existing feedback is anchored to the old text, so the submission returns to `imported`
+     * (withdrawing any approval) and needs generating again; annotations and summary edits saved
+     * before the edit are no longer loaded. Grades and the internal note stay in the history and
+     * carry forward. Unchanged text is not an edit and changes nothing.
+     *
+     * @param courseId - Course authorization/persistence boundary
+     * @param submissionId - Submission whose text is corrected
+     * @param text - Corrected text
+     * @returns The updated submission, or the unchanged one when the text did not change
+     * @throws Error when the text is empty, still awaiting first confirmation, generating,
+     *   released, or a release is in progress
+     */
+    async editTranscript(courseId: string, submissionId: string, text: string): Promise<WritingSubmission> {
+        const submission = await this.requireSubmission(courseId, submissionId);
+        if (!text.trim()) throw new Error('The submission text cannot be empty');
+        if (submission.requiresVerification) throw new Error('Confirm the extracted text before editing it');
+        if (submission.status === 'generating') throw new Error(REVIEW_WHILE_GENERATING_MESSAGE);
+        if (submission.status === 'released') {
+            throw new Error('Released feedback cannot be edited; create a new attempt for a revised release');
+        }
+        await this.assertNoReleaseInFlight(courseId, submissionId);
+        // Confirming trims surrounding whitespace, so that alone is not a correction.
+        if (text.trim() === (submission.verifiedText ?? '').trim()) return submission;
+
+        const updated = await this.mongo.editWritingTranscript(courseId, submissionId, text, TRANSCRIPT_EDITABLE_STATUSES);
+        if (!updated) throw new Error('This submission changed while you were editing. Reload it and try again.');
+        return updated;
     }
 
     /**
@@ -403,7 +479,8 @@ export class WritingFeedbackService {
             : null;
 
         // Step 1: the newest saved revision that snapshotted comments (legacy fields kept as before).
-        const latestWithComments = [...(submission.reviews ?? [])].reverse().find((review) => review.comments);
+        // Revisions from before a text edit are anchored to the old text and no longer apply.
+        const latestWithComments = [...reviewsSinceTextEdit(submission)].reverse().find((review) => review.comments);
         const comments = latestWithComments?.comments ? withStaleFlags(latestWithComments.comments, verifiedText) : [];
         const runsByLens: Record<WritingFeedbackLens, WritingFeedbackRun | null> = {
             linguistic: feedbackRun,
@@ -442,8 +519,20 @@ export class WritingFeedbackService {
         // Release counts travel with the detail so the review page can say a submission has
         // been revised without fetching and counting its release history itself.
         const priorReleases = await this.mongo.listWritingReleases(courseId, submissionId);
+        // Summarize a held newer attempt so the review page can offer the same choice as the queue.
+        const held = await this.mongo.getHeldWritingReplacement(courseId, submissionId);
         return {
-            submission,
+            submission: held
+                ? {
+                    ...submission,
+                    pendingReplacement: {
+                        submissionId: held.id,
+                        attempt: held.attempt,
+                        submittedAt: held.submittedAt,
+                        sourceType: held.sourceType
+                    }
+                }
+                : submission,
             feedbackRun,
             technicalFeedbackRun,
             comments,
@@ -495,6 +584,7 @@ export class WritingFeedbackService {
         for (const lens of [...new Set(input.lenses)].filter((item) => allowed.includes(item))) {
             const run = await this.mongo.getLatestWritingFeedbackRun(submissionId, lens);
             if (!run) continue;
+            if (runPredatesTextEdit(submission, run)) throw new Error(TEXT_EDITED_MESSAGE);
             const rubric = selectRubric(assignment, lens).approved;
             this.assertCurrentRubricForLens(run.rubricVersion, rubric, lens);
             const comments = commentsForLens(input.comments, lens);
@@ -544,7 +634,7 @@ export class WritingFeedbackService {
      * @param revision - Staff-authored narrative and optional complete comment snapshot
      * @param staffName - Display name of the saving staff member; attributes their new comments
      * @returns Persisted append-only review revision
-     * @throws Error when feedback is already released or any anchor is stale
+     * @throws Error when feedback is already released or generating, or any anchor is stale
      */
     async appendReview(
         courseId: string,
@@ -559,13 +649,26 @@ export class WritingFeedbackService {
         if (submission.status === 'released') {
             throw new Error('Released feedback cannot be edited; create a new attempt for a revised release');
         }
+        if (submission.status === 'generating') throw new Error(REVIEW_WHILE_GENERATING_MESSAGE);
         await this.assertNoReleaseInFlight(courseId, submissionId);
+        const loadLatestRuns = async () => ({
+            linguistic: await this.mongo.getLatestWritingFeedbackRun(submissionId),
+            technical: await this.mongo.getLatestWritingFeedbackRun(submissionId, 'technical')
+        });
+        // Saving marks the submission draft-ready, which feedback made for the old text is not.
+        if (submission.transcriptEditedAt) {
+            const runs = await loadLatestRuns();
+            if (runPredatesTextEdit(submission, runs.linguistic) || runPredatesTextEdit(submission, runs.technical)) {
+                throw new Error(TEXT_EDITED_MESSAGE);
+            }
+        }
         // Summary edits apply only to the runs staff were looking at (D-126).
         if (revision.summaryEdits?.length) {
-            assertSummaryEditsBound(revision.summaryEdits, {
-                linguistic: await this.mongo.getLatestWritingFeedbackRun(submissionId),
-                technical: await this.mongo.getLatestWritingFeedbackRun(submissionId, 'technical')
-            }, await this.requireAssignment(courseId, submission.assignmentId));
+            assertSummaryEditsBound(
+                revision.summaryEdits,
+                await loadLatestRuns(),
+                await this.requireAssignment(courseId, submission.assignmentId)
+            );
         }
         let comments = revision.comments;
         if (comments?.length) {
@@ -594,12 +697,15 @@ export class WritingFeedbackService {
             if (finalAssessmentInput) finalAssessment = buildStaffFinalAssessment(finalAssessmentInput, gradedRubric, lens);
             else assessmentDraft = buildStaffAssessmentDraft(draftInput!, gradedRubric, lens);
         }
-        return this.mongo.appendWritingReview(courseId, submissionId, {
+        const stored = await this.mongo.appendWritingReview(courseId, submissionId, {
             ...reviewFields,
             comments,
             ...(finalAssessment ? { finalAssessment } : {}),
             ...(assessmentDraft ? { assessmentDraft } : {})
         });
+        // Generation can start between the check above and the write; the write refuses it too.
+        if (stored === null) throw new Error(REVIEW_WHILE_GENERATING_MESSAGE);
+        return stored;
     }
 
     /**
@@ -615,6 +721,8 @@ export class WritingFeedbackService {
      */
     async approve(courseId: string, submissionId: string, staffUserId: string, staffName?: string) {
         const submission = await this.requireSubmission(courseId, submissionId);
+        // The draft checks below would describe the draft being replaced, so say what is happening.
+        if (submission.status === 'generating') throw new Error(APPROVE_WHILE_GENERATING_MESSAGE);
         const assignment = await this.requireAssignment(courseId, submission.assignmentId);
 
         const latestReview = submission.reviews?.[submission.reviews.length - 1];
@@ -628,6 +736,7 @@ export class WritingFeedbackService {
                     ? 'Generate technical feedback before staff approval'
                     : 'Generate feedback before staff approval');
             }
+            if (runPredatesTextEdit(submission, run)) throw new Error(TEXT_EDITED_MESSAGE);
             this.assertCurrentRubricForLens(run.rubricVersion, rubric, lens);
             // Nothing generates a staff-assessed criterion, so nothing else would notice it
             // was left blank: it is simply absent from the student's document.
@@ -692,6 +801,7 @@ export class WritingFeedbackService {
         } else {
             this.assertCurrentRubric(run.rubricVersion, assignment);
             ({ technicalRun, technicalRubric } = await this.loadTechnicalLens(submissionId, assignment));
+            this.assertRunsMatchText(submission, [run, technicalRun]);
         }
         // Step 2: assemble the student-safe feedback, staff text, and comments from the reviews.
         const studentDocument = this.buildStudentDocument(submission, run, technicalRun, assignment);
@@ -733,6 +843,7 @@ export class WritingFeedbackService {
         if (!feedbackRun) throw new Error('Generate feedback before a release preview');
         this.assertCurrentRubric(feedbackRun.rubricVersion, assignment);
         const { technicalRun, technicalRubric } = await this.loadTechnicalLens(submissionId, assignment);
+        this.assertRunsMatchText(submission, [feedbackRun, technicalRun]);
         const completePdf = await this.renderReleasePdf(assignment, submission, feedbackRun, technicalRun, technicalRubric);
         const studentDocument = this.buildStudentDocument(submission, feedbackRun, technicalRun, assignment);
         const artifacts: CanvasReleaseInput['artifacts'] = [
@@ -1027,6 +1138,7 @@ export class WritingFeedbackService {
         if (!feedbackRun) throw new Error('Generate feedback before release');
         this.assertCurrentRubric(feedbackRun.rubricVersion, assignment);
         const { technicalRun, technicalRubric } = await this.loadTechnicalLens(submissionId, assignment);
+        this.assertRunsMatchText(submission, [feedbackRun, technicalRun]);
         const completePdf = await this.renderReleasePdf(assignment, submission, feedbackRun, technicalRun, technicalRubric);
         const studentDocument = this.buildStudentDocument(submission, feedbackRun, technicalRun, assignment);
         const artifacts: CanvasReleaseInput['artifacts'] = [
@@ -1063,7 +1175,8 @@ export class WritingFeedbackService {
 
     private async requireSubmission(courseId: string, submissionId: string): Promise<ReviewableSubmission> {
         const submission = await this.mongo.getWritingSubmission(courseId, submissionId);
-        if (!submission) throw new Error('Writing submission not found');
+        // Held and superseded attempts are outside the queue; only the replacement route acts on them.
+        if (!submission || (submission.slot ?? 'active') !== 'active') throw new Error('Writing submission not found');
         return submission;
     }
 
@@ -1071,6 +1184,11 @@ export class WritingFeedbackService {
         const assignment = await this.mongo.getWritingAssignment(courseId, assignmentId);
         if (!assignment) throw new Error('Writing assignment not found');
         return assignment;
+    }
+
+    /** Refuses feedback generated before staff last edited the submission text. */
+    private assertRunsMatchText(submission: WritingSubmission, runs: Array<WritingFeedbackRun | null>): void {
+        if (runs.some((run) => runPredatesTextEdit(submission, run))) throw new Error(TEXT_EDITED_MESSAGE);
     }
 
     private assertCurrentRubric(runRubricVersion: number | undefined, assignment: WritingAssignment): void {
@@ -1113,7 +1231,7 @@ export class WritingFeedbackService {
     ) {
         const verifiedText = submission.verifiedText ?? '';
         const latestReview = submission.reviews?.[submission.reviews.length - 1];
-        const latestWithComments = [...(submission.reviews ?? [])].reverse().find((review) => review.comments);
+        const latestWithComments = [...reviewsSinceTextEdit(submission)].reverse().find((review) => review.comments);
         const revision = latestWithComments?.comments
             ? { comments: latestWithComments.comments, createdAt: latestWithComments.createdAt }
             : undefined;

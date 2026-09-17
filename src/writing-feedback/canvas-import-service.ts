@@ -20,7 +20,8 @@ import { createHash } from 'crypto';
 import { appLogger } from '../utils/logger';
 import type {
     CanvasAssignmentDetails,
-    CanvasImportedRubric
+    CanvasImportedRubric,
+    WritingSubmission
 } from './contracts';
 import type {
     CanvasImportAssignmentSummary,
@@ -185,19 +186,23 @@ export function createCanvasImportGateway(
  * string re-keys every future import, so they are versioned rather than edited.
  */
 const IDENTITY_DOMAINS = {
-    mock_canvas: { domain: 'writing-feedback-canvas-demo-v1', prefix: 'canvas-demo' },
-    canvas: { domain: 'writing-feedback-canvas-live-v1', prefix: 'canvas' }
+    mock_canvas: { domain: 'writing-feedback-canvas-demo-v1', studentDomain: 'writing-feedback-canvas-demo-student-v2', prefix: 'canvas-demo' },
+    canvas: { domain: 'writing-feedback-canvas-live-v1', studentDomain: 'writing-feedback-canvas-live-student-v2', prefix: 'canvas' }
 } as const;
 
 /**
- * buildCanvasImportIdentity — derives a stable, privacy-safe key for one source attempt.
+ * buildCanvasImportIdentity — derives privacy-safe keys for one student and one source attempt.
+ *
+ * `studentId` leaves the attempt out, so every attempt by the same student shares it and a
+ * resubmission can be matched to the submission already in the queue. `fingerprint` includes
+ * the attempt and identifies this exact source record.
  *
  * The digest is one-way by design: nothing here is reversible back to a Canvas user. Release
  * write-back therefore reads {@link WritingSubmission.canvasUserId} rather than trying to
  * recover an id from this key.
  *
  * @param input - Integration, course, local/source assignment, source record key, and attempt
- * @returns Pseudonymous local student ID and full idempotency fingerprint
+ * @returns Pseudonymous per-student ID and per-attempt idempotency fingerprint
  */
 export function buildCanvasImportIdentity(input: {
     integration: 'mock_canvas' | 'canvas';
@@ -207,8 +212,18 @@ export function buildCanvasImportIdentity(input: {
     sourceRecordKey: string;
     attempt: number;
 }): { studentId: string; fingerprint: string } {
-    // Domain-separate the digest so this identity cannot collide with another hash use.
-    const { domain, prefix } = IDENTITY_DOMAINS[input.integration];
+    // Domain-separate each digest so neither identity can collide with another hash use.
+    const { domain, studentDomain, prefix } = IDENTITY_DOMAINS[input.integration];
+    const studentDigest = createHash('sha256')
+        .update(`${studentDomain}\0`)
+        .update(input.courseId)
+        .update('\0')
+        .update(input.targetAssignmentId)
+        .update('\0')
+        .update(input.canvasAssignmentId)
+        .update('\0')
+        .update(input.sourceRecordKey)
+        .digest('hex');
     const fingerprint = createHash('sha256')
         .update(`${domain}\0`)
         .update(input.courseId)
@@ -221,7 +236,7 @@ export function buildCanvasImportIdentity(input: {
         .update('\0')
         .update(String(input.attempt))
         .digest('hex');
-    return { studentId: `${prefix}-${fingerprint.slice(0, 24)}`, fingerprint };
+    return { studentId: `${prefix}-${studentDigest.slice(0, 24)}`, fingerprint };
 }
 
 /**
@@ -239,8 +254,8 @@ function isDuplicateKey(error: unknown): boolean {
 }
 
 /**
- * Imports verified synthetic Canvas-text fixtures into an existing writing
- * assignment. Existing attempts are skipped, including concurrent duplicates.
+ * Imports Canvas submissions into an existing writing assignment, keeping one active
+ * submission per student. Existing attempts are skipped, including concurrent duplicates.
  */
 export class SafeCanvasImportService {
     /**
@@ -315,6 +330,15 @@ export class SafeCanvasImportService {
     /**
      * Imports unseen source attempts into an existing local assignment.
      *
+     * Running it again is how staff sync late submissions and resubmissions. Each student keeps
+     * one active submission per assignment, so every source attempt lands in one of four ways:
+     * - already stored (active, held, or superseded), older than the active one, or declined
+     *   by staff: skipped;
+     * - from a student with no active submission: imported active;
+     * - newer than the student's active submission: stored `held`, outside the queue, until
+     *   staff choose between the two. An older held attempt for the same student is replaced,
+     *   since Canvas only ever offers the latest one.
+     *
      * Each submission is intaken independently. A download or parse failure on one is recorded
      * and the run continues: an import of sixty submissions must not be lost to one corrupt
      * PDF, and because the operation is idempotent, re-running it retries only what failed.
@@ -325,7 +349,7 @@ export class SafeCanvasImportService {
      * `verification_needed` — a staff member must confirm the transcript before generation.
      *
      * @param input - Course-scoped source-to-target assignment selection
-     * @returns Newly imported submissions with retry-visible skip, unsupported, and failure counts
+     * @returns Newly imported submissions with held, skip, unsupported, and failure counts
      * @throws Error when import is disabled, the target is absent, or storage fails
      */
     async importAssignment(input: CanvasImportRequest): Promise<CanvasImportResult> {
@@ -338,11 +362,23 @@ export class SafeCanvasImportService {
         const target = await this.store.getWritingAssignment(input.courseId, input.targetAssignmentId);
         if (!target) throw new Error('Writing assignment not found');
 
-        // Snapshot existing attempts before writes to make ordinary retries inexpensive.
+        // Snapshot every stored attempt, and each student's active and held rows, before writes.
         const preview = await this.previewAssignment(input.canvasAssignmentId);
-        const existing = await this.store.listWritingSubmissions(input.courseId, input.targetAssignmentId);
+        const existing = await this.store.listWritingSubmissions(
+            input.courseId,
+            input.targetAssignmentId,
+            { includeInactive: true }
+        );
         const existingAttempts = new Set(existing.map((submission) => `${submission.studentId}:${submission.attempt}`));
+        const activeByStudent = new Map<string, WritingSubmission>();
+        const heldByStudent = new Map<string, WritingSubmission>();
+        for (const submission of existing) {
+            const slot = submission.slot ?? 'active';
+            if (slot === 'active') activeByStudent.set(submission.studentId, submission);
+            if (slot === 'held') heldByStudent.set(submission.studentId, submission);
+        }
         const imported: CanvasImportResult['submissions'] = [];
+        let heldCount = 0;
         let skippedCount = 0;
         let unsupportedCount = 0;
         let failedCount = 0;
@@ -363,7 +399,12 @@ export class SafeCanvasImportService {
                 attempt: source.attempt
             });
             const attemptKey = `${identity.studentId}:${source.attempt}`;
-            if (existingAttempts.has(attemptKey)) {
+            const active = activeByStudent.get(identity.studentId);
+            const held = heldByStudent.get(identity.studentId);
+            const alreadyDecided = existingAttempts.has(attemptKey)
+                || (active && (source.attempt <= active.attempt || active.declinedAttempts?.includes(source.attempt)))
+                || (held && source.attempt <= held.attempt);
+            if (alreadyDecided) {
                 skippedCount += 1;
                 continue;
             }
@@ -402,10 +443,21 @@ export class SafeCanvasImportService {
                     originalText: intake.text,
                     verifiedText: needsVerification ? undefined : intake.text,
                     requiresVerification: needsVerification,
-                    status: needsVerification ? 'verification_needed' : 'imported'
+                    status: needsVerification ? 'verification_needed' : 'imported',
+                    slot: active ? 'held' : 'active',
+                    replacesSubmissionId: active?.id
                 });
-                imported.push(stored);
                 existingAttempts.add(attemptKey);
+                if (active) {
+                    // Only the newest held attempt is worth offering; the one it replaces has
+                    // never been reviewed, so nothing is lost by removing it.
+                    if (held) await this.store.deleteWritingSubmission(input.courseId, held.id);
+                    heldByStudent.set(identity.studentId, stored);
+                    heldCount += 1;
+                } else {
+                    activeByStudent.set(identity.studentId, stored);
+                    imported.push(stored);
+                }
             } catch (error) {
                 // A unique-index race is an idempotent skip; unrelated storage errors propagate.
                 if (!isDuplicateKey(error)) throw error;
@@ -416,6 +468,7 @@ export class SafeCanvasImportService {
         return {
             assignment: preview.assignment,
             importedCount: imported.length,
+            heldCount,
             skippedCount,
             submissions: imported,
             integration,

@@ -63,6 +63,7 @@ import {
     WritingFeedbackLens,
     chip,
     confirmDiscardDirty,
+    createBackBar,
     createButton,
     createIconButton,
     createText,
@@ -79,6 +80,7 @@ import {
     scrollingAncestor,
     setWorkspaceMessage,
     setQueryState,
+    returnToLanding,
     setView,
     state,
     textAreaControl,
@@ -1243,14 +1245,14 @@ export async function openRubricPage(assignmentId: string): Promise<void> {
     if (!(await confirmDiscardDirty('setup')) || !(await confirmDiscardDirty('review'))) return;
     state.panelDirty = false;
     state.reviewDirty = false;
-    setQueryState({ wfView: 'rubric', wfAssignment: assignmentId, wfSubmission: null });
+    setQueryState({ wfView: 'rubric', wfAssignment: assignmentId, wfSubmission: null }, 'push');
     setView('rubric');
     const root = element<HTMLDivElement>('wf-view-rubric');
     root.replaceChildren(createText('p', 'Loading rubric…', 'wf-muted-note'));
     if (!state.assignments.length) state.assignments = await request<Assignment[]>('/assignments');
     let assignment = state.assignments.find((item) => item.id === assignmentId);
     if (!assignment) throw new Error('Writing assignment not found');
-    // A deep link or Edit Rubric on a pending assignment asks for its type first (D-123).
+    // A deep link or Edit rubric on a pending assignment asks for its type first (D-123).
     if (assignment.assignmentTypePending) {
         assignment = await ensureAssignmentTypeChosen(assignment);
     }
@@ -1460,19 +1462,19 @@ function renderRubricPage(
     root.replaceChildren();
     const isLabReport = Boolean(technicalData);
 
-    const back = createButton('← Back to assignments', 'quiet', async () => {
+    const back = createBackBar(async () => {
         if (!(await confirmDiscardDirty('setup'))) return;
         state.panelDirty = false;
-        await views.showLanding();
+        await returnToLanding();
     });
-    back.classList.add('wf-back-button');
     root.append(back);
 
     const header = document.createElement('header');
     header.className = 'wf-rubric-header';
     // The assignment's own name is the page title: staff know which assignment
-    // they clicked, and the heading confirms it rather than naming the form.
-    const heading = createText('h1', assignment.title, 'wf-rubric-title');
+    // they clicked, and the heading confirms it rather than naming the form. The
+    // prefix says what the page holds, now that the feature heading is hidden here.
+    const heading = createText('h1', `Rubric for: ${assignment.title}`, 'wf-rubric-title');
     const meta = document.createElement('p');
     meta.className = 'wf-assignment-meta';
     const canEditAny = linguisticData.permissions.canEdit;
@@ -2106,7 +2108,7 @@ async function approveEveryRubric(context: RubricPageContext): Promise<void> {
         }
         const count = staleCounts[index];
         const cost = count > 0
-            ? ` ${count} ${count === 1 ? 'student has' : 'students have'} feedback from v${section.approvedVersion} that isn't released yet. It will need to be regenerated and approved again; comments and written feedback staff added are kept.`
+            ? ` ${count} ${count === 1 ? 'student has' : 'students have'} feedback from v${section.approvedVersion} that isn't released yet. It will need to be regenerated and approved again. Comments staff added are kept; edited summaries and revision goals are replaced by the new draft.`
             : '';
         return `${subject} becomes v${versionOf(section)}, replacing v${section.approvedVersion}.${cost}`;
     });

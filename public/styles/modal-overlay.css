@@ -1286,9 +1286,36 @@ body.modal-open {
     line-height: 1.4;
 }
 
+/*
+ * The container is capped at 90vh and clips. A column layout gives the body only the height
+ * the header and footer leave, so the Close button stays on screen however short the window
+ * is; the grid inside scrolls within that height.
+ */
+.modal--grading.modal-container {
+    display: flex;
+    flex-direction: column;
+}
+
+.modal--grading .modal-header,
+.modal--grading .modal-footer {
+    flex: none;
+}
+
 .modal--grading .modal-body {
+    flex: 1 1 auto;
+    min-height: 0;
     max-height: none;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     padding: 1rem 1.25rem;
+}
+
+.modal--grading .modal-body > .modal-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
 }
 
 /*

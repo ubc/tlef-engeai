@@ -181,10 +181,19 @@ export interface CanvasImportStore {
         assignmentId: string,
         context: { rubric: CanvasImportedRubric | null; details: CanvasAssignmentDetails }
     ): Promise<unknown>;
-    /** Lists existing attempts used to skip idempotent re-imports. */
-    listWritingSubmissions(courseId: string, assignmentId: string): Promise<WritingSubmission[]>;
+    /**
+     * Lists existing attempts used to skip idempotent re-imports. Import passes
+     * `includeInactive` so held and superseded attempts are not imported again.
+     */
+    listWritingSubmissions(
+        courseId: string,
+        assignmentId: string,
+        options?: { includeInactive?: boolean }
+    ): Promise<WritingSubmission[]>;
     /** Creates one local submission without exposing adapter internals to storage. */
     createWritingSubmission(input: Omit<WritingSubmission, 'id' | 'createdAt' | 'updatedAt'>): Promise<WritingSubmission>;
+    /** Removes a held attempt that an even newer attempt has replaced. */
+    deleteWritingSubmission(courseId: string, submissionId: string): Promise<boolean>;
 }
 
 /** Explicit staff request mapping one source assignment into an existing local assignment. */
@@ -198,8 +207,13 @@ export interface CanvasImportRequest {
 export interface CanvasImportResult {
     assignment: CanvasImportAssignmentSummary; // source summary used for this operation
     importedCount: number; // number of new local records created
-    skippedCount: number; // existing or concurrently inserted attempts
-    submissions: WritingSubmission[]; // newly created records only
+    skippedCount: number; // existing, older, declined, or concurrently inserted attempts
+    /**
+     * Newer attempts from students who already have a submission. They are stored held, out of
+     * the queue, until staff choose which one to review; they are not in `importedCount`.
+     */
+    heldCount: number;
+    submissions: WritingSubmission[]; // newly created active records only
     /** Provenance of this import, so a demo result can never be read as live Canvas data. */
     integration: 'mock_canvas' | 'canvas';
     /**

@@ -665,6 +665,15 @@ body {
     display: none;
 }
 
+/*
+ * The button sits above page panels (z-index 1005), which also puts it above modal overlays
+ * (1000), where it covered modal footers such as the rubric grid's Close button. It cannot be
+ * used while a modal is open anyway, so it steps aside until the modal closes.
+ */
+body:has(.modal-overlay.show, .upload-modal-overlay.show) .course-summary-summon-fab {
+    display: none;
+}
+
 /* ===========================================
    DOCUMENT SETUP COMPLETION STYLES
    =========================================== */

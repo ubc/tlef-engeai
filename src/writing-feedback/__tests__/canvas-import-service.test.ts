@@ -18,7 +18,7 @@ import {
     SafeCanvasImportService,
     UnconfiguredCanvasImportGateway
 } from '../canvas-import-service';
-import type { CanvasImportStore } from '../canvas-import-contracts';
+import type { CanvasImportGateway, CanvasImportStore, CanvasImportSubmissionPreview } from '../canvas-import-contracts';
 import type { WritingAssignment, WritingSubmission } from '../contracts';
 
 /** Minimal in-memory persistence double used to expose import idempotency in isolation. */
@@ -29,6 +29,7 @@ class MemoryStore implements CanvasImportStore {
         'Local writing assignment'
     );
     readonly submissions: WritingSubmission[] = [];
+    private nextId = 1;
 
     async getWritingAssignment(courseId: string, assignmentId: string): Promise<WritingAssignment | null> {
         return courseId === this.assignment.courseId && assignmentId === this.assignment.id ? this.assignment : null;
@@ -42,9 +43,20 @@ class MemoryStore implements CanvasImportStore {
         input: Omit<WritingSubmission, 'id' | 'createdAt' | 'updatedAt'>
     ): Promise<WritingSubmission> {
         const now = new Date();
-        const stored: WritingSubmission = { ...input, id: `stored-${this.submissions.length + 1}`, createdAt: now, updatedAt: now };
+        // Mirrors the unique attempt index and the one-active-per-student partial index.
+        const clash = this.submissions.some((item) => item.studentId === input.studentId
+            && (item.attempt === input.attempt || (item.slot === 'active' && (input.slot ?? 'active') === 'active')));
+        if (clash) throw Object.assign(new Error('E11000 duplicate key'), { code: 11000 });
+        const stored: WritingSubmission = { slot: 'active', ...input, id: `stored-${this.nextId++}`, createdAt: now, updatedAt: now };
         this.submissions.push(stored);
         return stored;
+    }
+
+    async deleteWritingSubmission(courseId: string, submissionId: string): Promise<boolean> {
+        const index = this.submissions.findIndex((item) => item.courseId === courseId && item.id === submissionId);
+        if (index < 0) return false;
+        this.submissions.splice(index, 1);
+        return true;
     }
 }
 
@@ -103,6 +115,22 @@ describe('SafeCanvasImportService', () => {
         expect(store.submissions).toHaveLength(1);
     });
 
+    it('gives every attempt by one student the same studentId and a distinct fingerprint', () => {
+        const input = {
+            integration: 'canvas' as const,
+            courseId: 'course-1',
+            targetAssignmentId: 'assignment-1',
+            canvasAssignmentId: 'canvas-7',
+            sourceRecordKey: 'learner-a'
+        };
+        const first = buildCanvasImportIdentity({ ...input, attempt: 1 });
+        const second = buildCanvasImportIdentity({ ...input, attempt: 2 });
+        expect(second.studentId).toEqual(first.studentId);
+        expect(second.fingerprint).not.toEqual(first.fingerprint);
+        expect(buildCanvasImportIdentity({ ...input, sourceRecordKey: 'learner-b', attempt: 1 }).studentId)
+            .not.toEqual(first.studentId);
+    });
+
     it('builds deterministic, non-source identities for idempotency', () => {
         const input = {
             integration: 'mock_canvas' as const,
@@ -146,5 +174,107 @@ describe('SafeCanvasImportService', () => {
             targetAssignmentId: 'assignment-1',
             canvasAssignmentId: 'anything'
         })).rejects.toThrow('Canvas import is not configured');
+    });
+});
+
+/** Gateway whose Canvas submissions a test can change between syncs. */
+class ScriptedGateway implements CanvasImportGateway {
+    submissions: CanvasImportSubmissionPreview[] = [];
+
+    async getStatus() {
+        return {
+            mode: 'demo' as const, integration: 'mock_canvas' as const, connected: false,
+            canImport: true, syntheticDataOnly: true, label: 'Scripted', message: 'Scripted'
+        };
+    }
+
+    async listAssignments() {
+        return [{ canvasAssignmentId: 'canvas-7', title: 'Scripted', rubricState: 'no_canvas_rubric' as const, synthetic: true }];
+    }
+
+    async listSubmissionPreviews() {
+        return this.submissions;
+    }
+
+    /** Canvas lists only each student's latest attempt, so setting one replaces the last. */
+    submit(learner: string, attempt: number): void {
+        this.submissions = this.submissions.filter((item) => item.sourceRecordKey !== learner);
+        this.submissions.push({
+            sourceRecordKey: learner, canvasUserId: learner, studentLabel: learner, attempt,
+            submittedAt: new Date(Date.UTC(2026, 9, attempt)), contentKind: 'text_entry',
+            attachments: [], synthetic: true, text: `${learner} attempt ${attempt}`
+        });
+    }
+}
+
+describe('SafeCanvasImportService sync', () => {
+    const request = { courseId: 'course-1', targetAssignmentId: 'assignment-1', canvasAssignmentId: 'canvas-7' };
+
+    function setup() {
+        const store = new MemoryStore();
+        const gateway = new ScriptedGateway();
+        return { store, gateway, service: new SafeCanvasImportService(store, gateway) };
+    }
+
+    it('adds a late first submission to the queue as active', async () => {
+        const { store, gateway, service } = setup();
+        gateway.submit('learner-a', 1);
+        await service.importAssignment(request);
+        gateway.submit('learner-b', 1);
+
+        const result = await service.importAssignment(request);
+
+        expect(result).toMatchObject({ importedCount: 1, heldCount: 0, skippedCount: 1 });
+        expect(store.submissions.map((item) => item.slot)).toEqual(['active', 'active']);
+    });
+
+    it('holds a resubmission beside the active submission instead of adding a second one', async () => {
+        const { store, gateway, service } = setup();
+        gateway.submit('learner-a', 1);
+        const first = await service.importAssignment(request);
+        gateway.submit('learner-a', 2);
+
+        const result = await service.importAssignment(request);
+        const retry = await service.importAssignment(request);
+
+        expect(result).toMatchObject({ importedCount: 0, heldCount: 1, submissions: [] });
+        expect(retry).toMatchObject({ importedCount: 0, heldCount: 0, skippedCount: 1 });
+        expect(store.submissions).toHaveLength(2);
+        expect(store.submissions[1]).toMatchObject({
+            slot: 'held',
+            attempt: 2,
+            studentId: first.submissions[0].studentId,
+            replacesSubmissionId: first.submissions[0].id
+        });
+    });
+
+    it('keeps only the newest held attempt when a student resubmits again', async () => {
+        const { store, gateway, service } = setup();
+        gateway.submit('learner-a', 1);
+        await service.importAssignment(request);
+        gateway.submit('learner-a', 2);
+        await service.importAssignment(request);
+        gateway.submit('learner-a', 3);
+
+        const result = await service.importAssignment(request);
+
+        expect(result.heldCount).toBe(1);
+        expect(store.submissions.map((item) => [item.slot, item.attempt])).toEqual([['active', 1], ['held', 3]]);
+    });
+
+    it('skips an attempt staff declined and an attempt older than the active one', async () => {
+        const { store, gateway, service } = setup();
+        gateway.submit('learner-a', 2);
+        await service.importAssignment(request);
+        store.submissions[0].declinedAttempts = [3];
+
+        gateway.submit('learner-a', 3);
+        const declined = await service.importAssignment(request);
+        gateway.submit('learner-a', 1);
+        const older = await service.importAssignment(request);
+
+        expect(declined).toMatchObject({ heldCount: 0, skippedCount: 1 });
+        expect(older).toMatchObject({ heldCount: 0, skippedCount: 1 });
+        expect(store.submissions).toHaveLength(1);
     });
 });

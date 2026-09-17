@@ -94,6 +94,26 @@ describe('renderRubricGrid', () => {
         expect(pdf.length).toBeGreaterThan(1000);
     });
 
+    it.each([
+        ['a portrait grid started partway down a page', 4, 500],
+        ['a landscape grid', 5, 64]
+    ])('keeps every row of %s inside the page', (_name, levelCount, startY) => {
+        // In a feedback PDF the grid follows the written feedback, so it rarely starts at the
+        // top of a page. A row drawn past the bottom margin loses its cell text to new pages.
+        const rubric = rubricWith(levelCount, 6);
+        const doc = new PDFDocument({ size: 'LETTER', margin: 64, bufferPages: true });
+        doc.y = startY;
+        const overflowing: number[] = [];
+        const rect = doc.rect.bind(doc);
+        jest.spyOn(doc, 'rect').mockImplementation((x: number, y: number, w: number, h: number) => {
+            if (y + h > doc.page.height - doc.page.margins.bottom + 0.5) overflowing.push(y);
+            return rect(x, y, w, h);
+        });
+        renderRubricGrid(doc, rubric, assessmentFor(rubric));
+        doc.end();
+        expect(overflowing).toEqual([]);
+    });
+
     it('marks the top level when the awarded points sit above every band', async () => {
         // spaceBandsEvenly produces contiguous bands, but an imported Canvas rubric can leave
         // gaps. Points outside every band are clamped to the highest level they reach rather

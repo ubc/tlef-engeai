@@ -18,7 +18,13 @@ import { requireCourseFeatureAPI, requireInstructorForCourseAPI } from '../middl
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { LocalDocumentExtractionService } from '../writing-feedback/document-extraction-service';
 import { listPublishedCourseMaterialTitles } from '../writing-feedback/course-material-catalog';
-import { REDRAFT_NOT_DRAFT_READY_MESSAGE, WritingFeedbackService } from '../writing-feedback/writing-feedback-service';
+import {
+    APPROVE_WHILE_GENERATING_MESSAGE,
+    REDRAFT_NOT_DRAFT_READY_MESSAGE,
+    REVIEW_WHILE_GENERATING_MESSAGE,
+    WritingFeedbackService
+} from '../writing-feedback/writing-feedback-service';
+import { BATCH_ERRORS, WritingBatchGenerationService } from '../writing-feedback/batch-generation';
 import { summaryEditsInputSchema } from '../writing-feedback/summary-edits';
 import { SUMMARY_REDRAFT_FAILED_MESSAGE } from '../writing-feedback/summary-redraft-engine';
 import { MockCanvasGateway, SafeCanvasReleaseService } from '../writing-feedback/canvas-release-service';
@@ -31,6 +37,7 @@ import {
     resolveCanvasImportStatus
 } from '../writing-feedback/canvas-import-resolver';
 import { LiveCanvasReleaseService } from '../writing-feedback/live-canvas-release-service';
+import { REPLACEMENT_CONFLICTS, REPLACEMENT_ERRORS, SubmissionReplacementService } from '../writing-feedback/submission-replacement';
 import type { CanvasReleaseService } from '../writing-feedback/contracts';
 import { canvasConfig, resolveUserKey } from '../lms/canvas-config';
 import { ensureCanvasIdentityVerified } from '../lms/canvas-identity-once';
@@ -104,6 +111,13 @@ function isDuplicateKey(error: unknown): boolean {
         && 'code' in error
         && (error as { code?: unknown }).code === 11000;
 }
+/** Shown when manual intake would give a student a second submission for one assignment. */
+const DUPLICATE_STUDENT_SUBMISSION = 'This student already has a submission for this assignment';
+
+function isDuplicateKeyError(error: unknown): boolean {
+    return typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 11000;
+}
+
 function safeError(error: unknown): string {
     const message = error instanceof Error ? error.message : 'Writing feedback request failed';
     const safePrefixes = [
@@ -140,7 +154,11 @@ function safeError(error: unknown): string {
         'The assignment type has already been chosen', 'Only a lab report has a technical rubric',
         'Choose the assignment type before approving',
         'The summary can only be redrafted before approval', 'The summary changed since you opened it',
-        'Summary edits failed validation', 'The summary could not be updated from your annotations'
+        'Summary edits failed validation', 'The summary could not be updated from your annotations',
+        'This assignment is not linked to Canvas', DUPLICATE_STUDENT_SUBMISSION, 'decision must be',
+        REVIEW_WHILE_GENERATING_MESSAGE, APPROVE_WHILE_GENERATING_MESSAGE,
+        ...Object.values(REPLACEMENT_ERRORS),
+        ...Object.values(BATCH_ERRORS)
     ];
     return safePrefixes.some((prefix) => message.startsWith(prefix))
         ? message
@@ -474,6 +492,57 @@ router.post('/:courseId/writing-feedback/canvas/import', withCanvasClientWhenLin
 }));
 
 
+/**
+ * Imports submissions added in Canvas since the assignment was last imported.
+ *
+ * New students are added to the queue. A newer attempt from a student who already has a
+ * submission is held beside it until staff choose which to keep, so the response reports
+ * `heldCount` separately. Reads Canvas only; nothing is written back.
+ */
+router.post('/:courseId/writing-feedback/assignments/:assignmentId/canvas-sync', withCanvasClientWhenLinked, asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const mongo = await EngEAI_MongoDB.getInstance();
+        const assignment = await mongo.getWritingAssignment(courseId(req), String(req.params.assignmentId));
+        if (!assignment) return res.status(404).json({ success: false, error: 'Writing assignment not found' });
+        if (!assignment.canvasAssignmentId) throw new Error('This assignment is not linked to Canvas');
+        const service = await resolveCanvasImportService(req, mongo, courseId(req));
+        const result = await service.importAssignment({
+            courseId: courseId(req),
+            targetAssignmentId: assignment.id,
+            canvasAssignmentId: assignment.canvasAssignmentId
+        });
+        res.json({ success: true, data: result });
+    } catch (error) {
+        res.status(400).json({ success: false, error: safeError(error) });
+    }
+}));
+
+/**
+ * Applies the staff choice between a submission and the newer Canvas attempt held beside it.
+ *
+ * Body: `{ decision: 'use_newer' | 'keep_current' }`. Returns the student's active submission.
+ * Answers 409 while the choice cannot apply yet (generation or release running, or the rows
+ * changed); the workspace shows the confirmation before calling this.
+ */
+router.post('/:courseId/writing-feedback/submissions/:submissionId/replacement', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const decision = req.body?.decision;
+        if (decision !== 'use_newer' && decision !== 'keep_current') {
+            throw new Error('decision must be use_newer or keep_current');
+        }
+        const mongo = await EngEAI_MongoDB.getInstance();
+        const submission = await new SubmissionReplacementService(mongo)
+            .resolve(courseId(req), String(req.params.submissionId), decision);
+        res.json({ success: true, data: submission });
+    } catch (error) {
+        const message = safeError(error);
+        const status = message === REPLACEMENT_ERRORS.notFound ? 404
+            : REPLACEMENT_CONFLICTS.includes(message) ? 409
+                : 400;
+        res.status(status).json({ success: false, error: message });
+    }
+}));
+
 router.get('/:courseId/writing-feedback/assignments/:assignmentId/rubric', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     let lens: WritingFeedbackLens;
     try {
@@ -753,14 +822,82 @@ router.post(
     })
 );
 
+/**
+ * Deletes an assignment together with all of its submissions, drafts, reviews, and release
+ * records. The workspace confirms the counts first. Canvas is not changed.
+ */
 router.delete('/:courseId/writing-feedback/assignments/:assignmentId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     const mongo = await EngEAI_MongoDB.getInstance();
-    const { deleted, submissionCount } = await mongo.deleteWritingAssignment(courseId(req), String(req.params.assignmentId));
+    const { deleted, blockedByWork } = await mongo.deleteWritingAssignment(courseId(req), String(req.params.assignmentId));
     if (deleted) return res.json({ success: true });
-    if (submissionCount > 0) {
-        return res.status(409).json({ success: false, error: 'Delete submissions before deleting this assignment' });
+    if (blockedByWork) {
+        return res.status(409).json({
+            success: false,
+            error: 'Wait for feedback generation and Canvas releases to finish before deleting this assignment'
+        });
     }
     res.status(404).json({ success: false, error: 'Writing assignment not found' });
+}));
+
+/** Batch generation over the façade, queuing each submission through the usual single-submission path. */
+function batchService(mongo: EngEAI_MongoDB): WritingBatchGenerationService {
+    const service = new WritingFeedbackService(mongo);
+    return new WritingBatchGenerationService(mongo, (course, submissionId) => service.enqueueGeneration(course, submissionId));
+}
+
+/** Maps a batch refusal to its status: missing assignment 404, blocked batch 409. */
+function batchErrorStatus(message: string): number {
+    if (message === BATCH_ERRORS.notFound) return 404;
+    return message === BATCH_ERRORS.rubricNotApproved || message === BATCH_ERRORS.profileIncomplete ? 409 : 400;
+}
+
+/**
+ * Previews batch generation for the confirmation modal: how many submissions fall in each
+ * category, and why the batch cannot run when it cannot. Changes nothing.
+ */
+router.get('/:courseId/writing-feedback/assignments/:assignmentId/batch-generation', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const mongo = await EngEAI_MongoDB.getInstance();
+        const preview = await batchService(mongo).preview(courseId(req), String(req.params.assignmentId));
+        res.json({ success: true, data: preview });
+    } catch (error) {
+        const message = safeError(error);
+        res.status(batchErrorStatus(message)).json({ success: false, error: message });
+    }
+}));
+
+/**
+ * Starts batch generation: confirms file transcripts that pass the automatic check, then queues
+ * one generation job per submission with no draft or a failed one. `includeStale: true` also
+ * regenerates feedback made with an older rubric version. Returns `202`; the worker drafts the
+ * submissions one at a time and the workspace follows their statuses.
+ */
+router.post('/:courseId/writing-feedback/assignments/:assignmentId/batch-generation', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const mongo = await EngEAI_MongoDB.getInstance();
+        const result = await batchService(mongo).start(courseId(req), String(req.params.assignmentId), {
+            includeStale: req.body?.includeStale === true
+        });
+        res.status(202).json({ success: true, data: result });
+    } catch (error) {
+        const message = safeError(error);
+        res.status(batchErrorStatus(message)).json({ success: false, error: message });
+    }
+}));
+
+/**
+ * Stops batch generation: removes the assignment's generation jobs that have not started and
+ * returns those submissions to their previous state. A submission already generating finishes.
+ */
+router.post('/:courseId/writing-feedback/assignments/:assignmentId/batch-generation/stop', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const mongo = await EngEAI_MongoDB.getInstance();
+        const result = await batchService(mongo).stop(courseId(req), String(req.params.assignmentId));
+        res.json({ success: true, data: result });
+    } catch (error) {
+        const message = safeError(error);
+        res.status(batchErrorStatus(message)).json({ success: false, error: message });
+    }
 }));
 
 /**
@@ -823,8 +960,8 @@ router.post('/:courseId/writing-feedback/submissions', asyncHandlerWithAuth(asyn
         });
         res.status(201).json({ success: true, data: submission });
     } catch (error) {
-        const message = safeError(error);
-        res.status(message.includes('duplicate') ? 409 : 400).json({ success: false, error: message });
+        if (isDuplicateKeyError(error)) return res.status(409).json({ success: false, error: DUPLICATE_STUDENT_SUBMISSION });
+        res.status(400).json({ success: false, error: safeError(error) });
     }
 }));
 
@@ -851,18 +988,56 @@ router.post('/:courseId/writing-feedback/submissions/file', upload.single('file'
         });
         res.status(201).json({ success: true, data: submission });
     } catch (error) {
+        if (isDuplicateKeyError(error)) return res.status(409).json({ success: false, error: DUPLICATE_STUDENT_SUBMISSION });
         res.status(400).json({ success: false, error: safeError(error) });
     }
 }));
 
 router.post('/:courseId/writing-feedback/submissions/:submissionId/verify', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    let verifiedText: string;
+    try {
+        verifiedText = cleanText(req.body?.verifiedText);
+    } catch (error) {
+        return res.status(400).json({ success: false, error: safeError(error) });
+    }
     try {
         const mongo = await EngEAI_MongoDB.getInstance();
-        const result = await mongo.updateVerifiedWritingText(courseId(req), String(req.params.submissionId), cleanText(req.body?.verifiedText));
-        if (!result) return res.status(404).json({ success: false, error: 'Writing submission not found' });
-        res.json({ success: true, data: result });
+        const submission = await new WritingFeedbackService(mongo).confirmTranscript(
+            courseId(req),
+            String(req.params.submissionId),
+            verifiedText
+        );
+        res.json({ success: true, data: submission });
     } catch (error) {
-        res.status(400).json({ success: false, error: safeError(error) });
+        const message = safeError(error);
+        res.status(message === 'Writing submission not found' ? 404 : 409).json({ success: false, error: message });
+    }
+}));
+
+/**
+ * Replaces a submission's confirmed text with a staff correction.
+ *
+ * Feedback generated for the old text is left in history but must be generated again before
+ * approval; the submission returns to `imported`. Unchanged text is accepted and changes nothing.
+ */
+router.post('/:courseId/writing-feedback/submissions/:submissionId/transcript', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    let text: string;
+    try {
+        text = cleanText(req.body?.text);
+    } catch (error) {
+        return res.status(400).json({ success: false, error: safeError(error) });
+    }
+    try {
+        const mongo = await EngEAI_MongoDB.getInstance();
+        const submission = await new WritingFeedbackService(mongo).editTranscript(
+            courseId(req),
+            String(req.params.submissionId),
+            text
+        );
+        res.json({ success: true, data: submission });
+    } catch (error) {
+        const message = safeError(error);
+        res.status(message === 'Writing submission not found' ? 404 : 409).json({ success: false, error: message });
     }
 }));
 
@@ -993,7 +1168,8 @@ router.post('/:courseId/writing-feedback/submissions/:submissionId/reviews', asy
         res.status(201).json({ success: true, data: revision });
     } catch (error) {
         const message = safeError(error);
-        res.status(message.startsWith('The summary changed since you opened it') ? 409 : 400).json({ success: false, error: message });
+        const conflict = message.startsWith('The summary changed since you opened it') || message === REVIEW_WHILE_GENERATING_MESSAGE;
+        res.status(conflict ? 409 : 400).json({ success: false, error: message });
     }
 }));
 

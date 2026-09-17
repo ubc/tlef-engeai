@@ -81,7 +81,8 @@ import type {
     WritingJob,
     WritingRelease,
     WritingRubricDefinition,
-    WritingSubmission
+    WritingSubmission,
+    WritingSubmissionStatus
 } from '../writing-feedback/contracts';
 import * as ScenarioQuestionsMongo from './mongo/scenario-questions-mongo';
 import * as ScenarioProgressMongo from './mongo/scenario-progress-mongo';
@@ -396,12 +397,59 @@ export class EngEAI_MongoDB {
     /**
      * listWritingSubmissions — returns an assignment review queue newest first.
      *
+     * Active submissions only, each with any held newer attempt summarized, unless
+     * `includeInactive` asks for every slot.
+     *
      * @param courseId - Owning course id
      * @param assignmentId - Assignment whose queue is requested
+     * @param options - `includeInactive` returns held and superseded rows too
      * @returns Scoped submission list
      */
-    public listWritingSubmissions = async (courseId: string, assignmentId: string) =>
-        WritingFeedbackMongo.listWritingSubmissions(this.ctx(), courseId, assignmentId);
+    public listWritingSubmissions = async (courseId: string, assignmentId: string, options?: { includeInactive?: boolean }) =>
+        WritingFeedbackMongo.listWritingSubmissions(this.ctx(), courseId, assignmentId, options);
+
+    /**
+     * getHeldWritingReplacement — finds the held newer attempt waiting to replace a submission.
+     *
+     * @param courseId - Owning course id
+     * @param submissionId - Active submission
+     * @returns Held row or `null`
+     */
+    public getHeldWritingReplacement = async (courseId: string, submissionId: string) =>
+        WritingFeedbackMongo.getHeldWritingReplacement(this.ctx(), courseId, submissionId);
+
+    /**
+     * hasUnsettledWritingWork — reports running jobs or a half-finished Canvas release.
+     *
+     * @param courseId - Owning course id
+     * @param submissionId - Submission to check
+     * @returns `true` while work for the submission is in progress
+     */
+    public hasUnsettledWritingWork = async (courseId: string, submissionId: string) =>
+        WritingFeedbackMongo.hasUnsettledWritingWork(this.ctx(), courseId, submissionId);
+
+    /**
+     * replaceWritingSubmission — promotes a held attempt over the student's active submission.
+     *
+     * @param courseId - Owning course id
+     * @param currentId - Active submission being replaced
+     * @param heldId - Held attempt replacing it
+     * @param keepReplaced - Keep the replaced row as superseded instead of deleting it
+     * @returns Promoted submission, or `null` when either row changed meanwhile
+     */
+    public replaceWritingSubmission = async (courseId: string, currentId: string, heldId: string, keepReplaced: boolean) =>
+        WritingFeedbackMongo.replaceWritingSubmission(this.ctx(), courseId, currentId, heldId, keepReplaced);
+
+    /**
+     * declineWritingReplacement — keeps the active submission and discards the held attempt.
+     *
+     * @param courseId - Owning course id
+     * @param currentId - Active submission being kept
+     * @param held - Held attempt being discarded
+     * @returns Kept submission, or `null` when it is no longer active
+     */
+    public declineWritingReplacement = async (courseId: string, currentId: string, held: { id: string; attempt: number }) =>
+        WritingFeedbackMongo.declineWritingReplacement(this.ctx(), courseId, currentId, held);
 
     /**
      * updateVerifiedWritingText — stores staff-confirmed extraction text.
@@ -413,6 +461,58 @@ export class EngEAI_MongoDB {
      */
     public updateVerifiedWritingText = async (courseId: string, submissionId: string, verifiedText: string) =>
         WritingFeedbackMongo.updateVerifiedWritingText(this.ctx(), courseId, submissionId, verifiedText);
+
+    /**
+     * editWritingTranscript — replaces confirmed text with a staff correction.
+     * @see WritingFeedbackMongo.editWritingTranscript
+     */
+    public editWritingTranscript = async (
+        courseId: string,
+        submissionId: string,
+        verifiedText: string,
+        editableStatuses: ReadonlyArray<WritingSubmissionStatus>
+    ) => WritingFeedbackMongo.editWritingTranscript(this.ctx(), courseId, submissionId, verifiedText, editableStatuses);
+
+    /**
+     * autoConfirmWritingTranscript — accepts extracted file text for batch generation.
+     *
+     * @param courseId - Owning course id
+     * @param submissionId - File submission waiting for confirmation
+     * @param verifiedText - Extracted text that passed the automatic quality check
+     * @returns Updated submission, or `null` when it no longer needs confirming
+     */
+    public autoConfirmWritingTranscript = async (courseId: string, submissionId: string, verifiedText: string) =>
+        WritingFeedbackMongo.autoConfirmWritingTranscript(this.ctx(), courseId, submissionId, verifiedText);
+
+    /**
+     * listLatestWritingRunVersions — each submission's newest rubric version per lens.
+     *
+     * @param courseId - Owning course id
+     * @param assignmentId - Assignment whose runs are read
+     * @returns Map of submission id to rubric version by lens
+     */
+    public listLatestWritingRunVersions = async (courseId: string, assignmentId: string) =>
+        WritingFeedbackMongo.listLatestWritingRunVersions(this.ctx(), courseId, assignmentId);
+
+    /**
+     * listActiveWritingGenerationSubmissionIds — submissions with generation queued or running.
+     *
+     * @param courseId - Owning course id
+     * @param submissionIds - Submissions to check
+     * @returns The subset with an active `generate` job
+     */
+    public listActiveWritingGenerationSubmissionIds = async (courseId: string, submissionIds: string[]) =>
+        WritingFeedbackMongo.listActiveWritingGenerationSubmissionIds(this.ctx(), courseId, submissionIds);
+
+    /**
+     * cancelWritingGenerationJobs — removes generation work that has not started.
+     *
+     * @param courseId - Owning course id
+     * @param submissionIds - Submissions whose pending generation should stop
+     * @returns Ids of the submissions whose job was removed
+     */
+    public cancelWritingGenerationJobs = async (courseId: string, submissionIds: string[]) =>
+        WritingFeedbackMongo.cancelWritingGenerationJobs(this.ctx(), courseId, submissionIds);
 
     /**
      * setWritingSubmissionStatus — persists a service-validated workflow status.
@@ -515,7 +615,7 @@ export class EngEAI_MongoDB {
      * @param courseId - Owning course id
      * @param submissionId - Submission under review
      * @param revision - Staff revision excluding server provenance
-     * @returns Newly appended revision
+     * @returns Newly appended revision, or `null` when the submission is missing or generating
      */
     public appendWritingReview = async (
         courseId: string,
@@ -633,7 +733,7 @@ export class EngEAI_MongoDB {
         WritingFeedbackMongo.findLatestWritingJob(this.ctx(), courseId, submissionId, type);
 
     /**
-     * leaseNextWritingJob — atomically claims the oldest runnable job.
+     * leaseNextWritingJob — atomically claims the next runnable job, releases first.
      *
      * @param leaseMs - Optional lease duration before work can be reclaimed
      * @returns Leased job or `null`
@@ -661,11 +761,11 @@ export class EngEAI_MongoDB {
         WritingFeedbackMongo.failWritingJob(this.ctx(), job, sanitizedError);
 
     /**
-     * deleteWritingAssignment — removes an assignment only when it has no submissions.
+     * deleteWritingAssignment — removes an assignment with all its submissions and their records.
      *
      * @param courseId - Owning course id
      * @param assignmentId - Assignment requested for deletion
-     * @returns Deletion result and blocking submission count
+     * @returns Whether it was deleted, and whether a running job or release blocked it
      */
     public deleteWritingAssignment = async (courseId: string, assignmentId: string) =>
         WritingFeedbackMongo.deleteWritingAssignment(this.ctx(), courseId, assignmentId);

@@ -1,7 +1,7 @@
 /**
  * Summary editor — staff-editable summary sections for the review's Summary step (D-126)
  *
- * Holds the textareas for "What you did well", each criterion's feedback and the lens's
+ * Holds the textareas for "What the student did well", each criterion's feedback and the lens's
  * revision goals, per lens, and reads them back as a StaffSummaryEdit bound to the run they
  * were edited against.
  *
@@ -73,7 +73,7 @@ export class SummaryEditor {
     }
 
     /**
-     * strengthsSection - "What you did well" with one textarea per strength.
+     * strengthsSection - "What the student did well" with one textarea per strength.
      *
      * @param lens - Lens the strengths belong to
      * @param seed - Starting strengths (bound staff edit, else the run's)
@@ -82,7 +82,7 @@ export class SummaryEditor {
     strengthsSection(lens: WritingFeedbackLens, seed: string[]): HTMLElement {
         const section = document.createElement('section');
         section.className = 'wf-feedback-section';
-        section.append(createText('h3', 'What you did well'));
+        section.append(createText('h3', 'What the student did well'));
         const list = document.createElement('div');
         list.className = 'wf-summary-strengths';
         this.controls(lens).strengthList = list;
@@ -130,13 +130,29 @@ export class SummaryEditor {
      * @param lens - Lens the criterion belongs to
      * @param criterionId - Criterion id
      * @param seed - Starting explanation
+     * @param options - `required` marks the field (criteria staff assess, whose feedback approval
+     *   needs); `prompt` shows in the empty box and is also the box's accessible description
      * @returns The field wrapper
      */
-    explanationField(lens: WritingFeedbackLens, criterionId: string, seed: string): HTMLElement {
+    explanationField(
+        lens: WritingFeedbackLens,
+        criterionId: string,
+        seed: string,
+        options: { required?: boolean; prompt?: string } = {}
+    ): HTMLElement {
         const textarea = textAreaControl(seed, 4);
         textarea.addEventListener('input', this.markDirty);
         this.controls(lens).explanations.set(criterionId, textarea);
-        return field('Feedback', textarea);
+        const wrapper = field('Feedback', textarea, undefined, false, options.required);
+        if (options.prompt) {
+            textarea.placeholder = options.prompt;
+            // Placeholders are not announced reliably, so the prompt is also a description.
+            const description = createText('span', options.prompt, 'wf-visually-hidden');
+            description.id = `${textarea.id}-prompt`;
+            textarea.setAttribute('aria-describedby', description.id);
+            wrapper.append(description);
+        }
+        return wrapper;
     }
 
     /**
@@ -145,14 +161,13 @@ export class SummaryEditor {
      * @param lens - Lens the goals belong to
      * @param seed - Starting text
      * @param labelText - Field label
-     * @param help - Field help text
      * @returns Wrapper and textarea
      */
-    goalsField(lens: WritingFeedbackLens, seed: string, labelText: string, help: string): { wrapper: HTMLElement; textarea: HTMLTextAreaElement } {
+    goalsField(lens: WritingFeedbackLens, seed: string, labelText: string): { wrapper: HTMLElement; textarea: HTMLTextAreaElement } {
         const textarea = textAreaControl(seed, 8);
         textarea.addEventListener('input', this.markDirty);
         this.controls(lens).goals = textarea;
-        return { wrapper: field(labelText, textarea, help), textarea };
+        return { wrapper: field(labelText, textarea), textarea };
     }
 
     /**

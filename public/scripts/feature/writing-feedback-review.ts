@@ -22,6 +22,7 @@ import { showErrorToast, showSuccessToast, showToast } from '../ui/toast-notific
 import {
     AnchoredComment,
     Assignment,
+    autoGrow,
     CanvasAccountMismatchError,
     CriterionFeedback,
     FeedbackRun,
@@ -37,6 +38,7 @@ import {
     baseUrl,
     chip,
     confirmDiscardDirty,
+    createBackBar,
     createButton,
     createText,
     createZoomControl,
@@ -46,18 +48,23 @@ import {
     formatDate,
     isLateSubmission,
     jsonRequest,
+    queryState,
     refreshIcons,
     request,
     scrollingAncestor,
     setQueryState,
+    returnToLanding,
     runButtonAction,
     setView,
     state,
     textAreaControl,
+    TEXT_EDITABLE_STATUSES,
+    runPredatesTextEdit,
     views
 } from './writing-feedback-shared.js';
 import { getWorkingComments, initAnchorWorkingSet, renderAnnotations } from './writing-feedback-anchors.js';
 import { connectUrlReturningTo } from './writing-feedback-canvas-connect.js';
+import { renderReplacementNotice } from './writing-feedback-replacement.js';
 import { GradeEntry } from './writing-feedback-grade-entry.js';
 import { describeApprovalBlocker, type GradeProgress } from './writing-feedback-grade-progress.js';
 import { changedLenses, decideNextAction, stepBarState, type ReviewStep } from './writing-feedback-review-steps.js';
@@ -202,7 +209,7 @@ export async function openReview(submissionId: string): Promise<void> {
     if (!(await confirmDiscardDirty('review'))) return;
     state.reviewDirty = false;
     const returningToRelease = consumeReleaseReturn();
-    setQueryState({ wfSubmission: submissionId, wfView: null });
+    setQueryState({ wfSubmission: submissionId, wfView: null }, 'push');
     setView('review');
     const root = element<HTMLDivElement>('wf-view-review');
     root.replaceChildren(createText('p', 'Loading submission…', 'wf-muted-note'));
@@ -264,6 +271,49 @@ async function waitForGeneration(submissionId: string): Promise<SubmissionDetail
     throw new Error('Feedback generation is taking longer than expected. It may still finish — refresh this submission in a moment to check.');
 }
 
+/**
+ * followReviewGeneration - refreshes an open review page once its submission leaves `generating`.
+ *
+ * Stops quietly when staff have moved to another submission or view. A batch can keep a
+ * submission queued for a long time, so this waits without the single-submission deadline.
+ *
+ * @param submissionId - Submission shown on the page
+ */
+async function followReviewGeneration(submissionId: string): Promise<void> {
+    // Reopening the same submission renders the panel again; one follower is enough.
+    if (followedGenerationId === submissionId) return;
+    followedGenerationId = submissionId;
+    const stillShown = (): boolean => queryState('wfSubmission') === submissionId
+        && !element<HTMLDivElement>('wf-view-review').hidden;
+    try {
+        await waitUntilGenerated(submissionId, stillShown);
+    } finally {
+        followedGenerationId = null;
+    }
+}
+
+/** Submission whose generation the review page is currently waiting on. */
+let followedGenerationId: string | null = null;
+
+async function waitUntilGenerated(submissionId: string, stillShown: () => boolean): Promise<void> {
+    while (true) {
+        await delay(5000);
+        if (!stillShown()) return;
+        let detail: SubmissionDetail;
+        try {
+            detail = await request<SubmissionDetail>(`/submissions/${encodeURIComponent(submissionId)}`);
+        } catch {
+            continue;
+        }
+        if (detail.submission.status === 'generating') continue;
+        if (stillShown()) {
+            followedGenerationId = null;
+            await refreshReview(submissionId);
+        }
+        return;
+    }
+}
+
 /** What `release-status` reports while a queued release runs. */
 interface ReleaseStatus {
     release: SubmissionDetail['release'];
@@ -317,16 +367,17 @@ function renderReviewView(root: HTMLDivElement, detail: SubmissionDetail): void 
     topbar.className = 'wf-review-topbar';
     const left = document.createElement('div');
     left.className = 'wf-review-topbar-info';
-    const back = createButton('← Back to assignments', 'quiet', async () => {
+    // Above the top bar rather than inside it, where the rubric page and Scenario Questions put theirs.
+    const back = createBackBar(async () => {
         if (!(await confirmDiscardDirty('review'))) return;
         state.reviewDirty = false;
-        await views.showLanding();
+        await returnToLanding();
     });
     const identity = document.createElement('div');
     const subtitle = createText('p', `${assignment?.title ?? 'Writing assignment'} · Attempt ${submission.attempt}${submission.submittedAt ? ` · Submitted ${formatDate(submission.submittedAt, true)}` : ''}`);
     if (isLateSubmission(submission, assignment)) subtitle.append(' · ', createText('span', 'Late', 'wf-late-flag'));
     identity.append(createText('h2', submission.studentLabel || 'Unlabelled student'), subtitle);
-    left.append(back, identity);
+    left.append(identity);
     const meta = document.createElement('div');
     meta.className = 'wf-review-meta';
     meta.append(
@@ -334,7 +385,25 @@ function renderReviewView(root: HTMLDivElement, detail: SubmissionDetail): void 
         chip(`Rubric v${feedbackRun?.rubricVersion ?? '—'}`, 'neutral')
     );
     topbar.append(left, meta);
-    root.append(topbar);
+    root.append(back, topbar);
+
+    // First thing below the header: a newer attempt changes whether any work here is worth doing.
+    if (submission.pendingReplacement) {
+        const notice = renderReplacementNotice(submission, {
+            beforeUseNewer: () => confirmDiscardDirty('review'),
+            onResolved: async (decision, active) => {
+                if (decision === 'keep_current') {
+                    // Nothing on this page changed, so unsaved edits stay where they are.
+                    notice.remove();
+                    return;
+                }
+                state.reviewDirty = false;
+                await openReview(active.id);
+            }
+        });
+        notice.classList.add('wf-replacement-notice--page');
+        root.append(notice);
+    }
 
     // A run is reviewable only against the rubric version that produced it.
     // Version drift blocks annotation display, approval, and release until regeneration --
@@ -342,7 +411,9 @@ function renderReviewView(root: HTMLDivElement, detail: SubmissionDetail): void 
     // which rubricForRun still finds in the history, so a newer approved rubric leaves it
     // readable rather than hiding it behind "Regenerate".
     const released = submission.status === 'released';
-    const staleRubric = !released
+    // Nothing here can be acted on while generation replaces the draft, so no regenerate warnings.
+    const generating = submission.status === 'generating';
+    const staleRubric = !released && !generating
         && Boolean(feedbackRun && assignment && (feedbackRun.rubricVersion ?? 1) !== assignment.rubric.version);
     if (staleRubric) {
         const warning = createText(
@@ -357,7 +428,7 @@ function renderReviewView(root: HTMLDivElement, detail: SubmissionDetail): void 
     // The technical lens can drift (or be missing) independently of the linguistic
     // run above; approval/release/PDF all require it once the assignment is a lab
     // report with an approved technical rubric, so surface that gap here too.
-    const technicalStale = !released && Boolean(
+    const technicalStale = !released && !generating && Boolean(
         assignment?.isLabReport
         && assignment.technicalRubric?.status === 'approved'
         && (!detail.technicalFeedbackRun
@@ -375,6 +446,12 @@ function renderReviewView(root: HTMLDivElement, detail: SubmissionDetail): void 
         root.append(warning);
     }
 
+    // Feedback made before staff edited the text is anchored to the old text, so it is
+    // generated again rather than shown.
+    const staleText = !released && !generating && (
+        runPredatesTextEdit(submission, feedbackRun) || runPredatesTextEdit(submission, detail.technicalFeedbackRun)
+    );
+
     const layout = document.createElement('div');
     layout.className = 'wf-review-layout';
     const storedWidth = window.localStorage.getItem('wf-panel-width');
@@ -382,16 +459,18 @@ function renderReviewView(root: HTMLDivElement, detail: SubmissionDetail): void 
     layout.append(
         // Doc-pane annotations are anchored to the linguistic run only; keep this
         // gate on staleRubric alone regardless of technical lens state.
-        renderDocPane(submission, feedbackRun !== null && !staleRubric),
+        renderDocPane(submission, feedbackRun !== null && !staleRubric && !staleText && !generating, {
+            canEditText: TEXT_EDITABLE_STATUSES.includes(submission.status) && !submission.requiresVerification,
+            hasFeedback: Boolean(feedbackRun || detail.technicalFeedbackRun) && !staleText
+        }),
         createPanelResizeHandle(layout),
-        renderFeedbackPanel(detail, assignment, staleRubric || technicalStale)
+        renderFeedbackPanel(detail, assignment, staleText ? 'text' : staleRubric || technicalStale ? 'rubric' : false)
     );
     root.append(layout);
 }
 
 const PANEL_MIN_WIDTH = 340;
 const PANEL_DEFAULT_WIDTH = 420;
-const WIDE_VIEW_STORAGE_KEY = 'wf-doc-wide';
 
 /** Drag handle between the doc pane and feedback panel; resizes via --wf-panel-width, persisted per-browser. */
 function createPanelResizeHandle(layout: HTMLElement): HTMLElement {
@@ -442,34 +521,19 @@ function createPanelResizeHandle(layout: HTMLElement): HTMLElement {
 }
 
 /**
- * Sticky reading toolbar above the document: zoom stepper plus a Wide view
- * toggle that releases the 75ch prose measure. Both persist per-browser so a
- * grader's reading setup survives across the whole queue of submissions.
+ * The document card's own header, pinned to the top of the card while the text scrolls under
+ * it: the zoom stepper, and Edit text when staff may correct the text. The zoom level persists
+ * per-browser, so a grader's reading size survives across the whole queue of submissions.
  */
-function createDocToolbar(pane: HTMLElement): HTMLElement {
-    const bar = document.createElement('div');
-    bar.className = 'wf-doc-toolbar';
-    bar.setAttribute('role', 'toolbar');
-    bar.setAttribute('aria-label', 'Document view options');
+function createDocHeader(pane: HTMLElement): HTMLElement {
+    const header = document.createElement('div');
+    header.className = 'wf-doc-header';
+    header.setAttribute('role', 'toolbar');
+    header.setAttribute('aria-label', 'Document view options');
 
-    bar.append(createZoomControl(pane));
+    header.append(createZoomControl(pane));
 
-    const wide = document.createElement('button');
-    wide.type = 'button';
-    wide.className = 'wf-toolbar-toggle';
-    wide.textContent = 'Wide view';
-    const applyWide = (on: boolean): void => {
-        pane.classList.toggle('wf-doc-pane--wide', on);
-        wide.setAttribute('aria-pressed', String(on));
-        window.localStorage.setItem(WIDE_VIEW_STORAGE_KEY, on ? '1' : '0');
-    };
-    applyWide(window.localStorage.getItem(WIDE_VIEW_STORAGE_KEY) === '1');
-    wide.addEventListener('click', () => {
-        applyWide(!pane.classList.contains('wf-doc-pane--wide'));
-    });
-    bar.append(wide);
-
-    return bar;
+    return header;
 }
 
 /**
@@ -482,16 +546,19 @@ function createDocToolbar(pane: HTMLElement): HTMLElement {
  * caller outside the real workspace must arm demo mode first — see
  * `writing-feedback-demo-mode.ts`.
  */
-export function renderDocPane(submission: Submission, annotate: boolean): HTMLElement {
+export function renderDocPane(
+    submission: Submission,
+    annotate: boolean,
+    options: { canEditText?: boolean; hasFeedback?: boolean } = {}
+): HTMLElement {
     const pane = document.createElement('div');
     pane.className = 'wf-doc-pane';
-    pane.append(createDocToolbar(pane));
 
     if (submission.requiresVerification) {
         // OCR/file extraction remains an untrusted transcript until staff explicitly
         // confirms the corrected text; generation controls are withheld in this state.
         const paper = document.createElement('div');
-        paper.className = 'wf-doc-paper';
+        paper.className = 'wf-doc-paper wf-doc-paper--standalone';
         const transcript = textAreaControl(submission.verifiedText ?? submission.originalText, 18);
         transcript.id = 'wf-verified-transcript';
         paper.append(
@@ -510,8 +577,28 @@ export function renderDocPane(submission: Submission, annotate: boolean): HTMLEl
         return pane;
     }
 
+    // One card holds everything about the text: its reading controls, what is known about
+    // where it came from, and the text itself. Separate boxes stacked up the left column.
+    const card = document.createElement('div');
+    card.className = 'wf-doc-card';
+    const header = createDocHeader(pane);
+    card.append(header);
+
+    // Batch generation confirmed this text without a person reading it, so say so before anyone
+    // relies on feedback quoted from it.
+    if (submission.transcriptConfirmedBy === 'batch') {
+        const unchecked = document.createElement('p');
+        unchecked.className = 'wf-doc-notice';
+        const icon = document.createElement('i');
+        icon.setAttribute('data-feather', 'alert-triangle');
+        icon.setAttribute('aria-hidden', 'true');
+        unchecked.append(icon, createText('span', 'This text was extracted automatically.'));
+        card.append(unchecked);
+    }
+
     const verifiedText = submission.verifiedText ?? submission.originalText;
-    if (submission.verifiedText !== undefined && submission.verifiedText !== submission.originalText) {
+    // Confirming a transcript trims its surrounding whitespace, which is not a correction worth showing.
+    if (submission.verifiedText !== undefined && submission.verifiedText.trim() !== submission.originalText.trim()) {
         const original = document.createElement('details');
         original.className = 'wf-doc-original';
         const summary = document.createElement('summary');
@@ -519,7 +606,7 @@ export function renderDocPane(submission: Submission, annotate: boolean): HTMLEl
         const pre = document.createElement('pre');
         pre.textContent = submission.originalText;
         original.append(summary, pre);
-        pane.append(original);
+        card.append(original);
     }
 
     const paper = document.createElement('div');
@@ -530,8 +617,90 @@ export function renderDocPane(submission: Submission, annotate: boolean): HTMLEl
         text.setAttribute('tabindex', '0');
         paper.append(text);
     }
-    pane.append(paper);
+    card.append(paper);
+    pane.append(card);
+
+    if (options.canEditText) {
+        const editButton = document.createElement('button');
+        editButton.type = 'button';
+        editButton.className = 'wf-toolbar-toggle';
+        const editIcon = document.createElement('i');
+        editIcon.setAttribute('data-feather', 'edit-2');
+        editIcon.setAttribute('aria-hidden', 'true');
+        editButton.append(editIcon, createText('span', 'Edit text'));
+        editButton.addEventListener('click', () => {
+            editButton.disabled = true;
+            card.hidden = true;
+            card.after(renderTextEditor(submission, verifiedText, Boolean(options.hasFeedback), () => {
+                editButton.disabled = false;
+                card.hidden = false;
+            }));
+        });
+        header.prepend(editButton);
+    }
     return pane;
+}
+
+/**
+ * renderTextEditor - edits confirmed submission text in place of the document.
+ *
+ * Saving replaces the text on the server. When feedback already exists it is anchored to the
+ * old text, so staff confirm first that it will be generated again and their annotations and
+ * summary edits dropped; grades and the internal note are kept.
+ *
+ * @param submission - Submission whose text is edited
+ * @param text - Current confirmed text
+ * @param hasFeedback - Whether feedback made for the current text exists
+ * @param onClose - Restores the document view when editing is cancelled
+ * @returns Detached editor
+ */
+function renderTextEditor(submission: Submission, text: string, hasFeedback: boolean, onClose: () => void): HTMLElement {
+    const editor = document.createElement('div');
+    editor.className = 'wf-doc-paper wf-doc-paper--standalone wf-text-editor';
+    const wasDirty = state.reviewDirty;
+    const textarea = textAreaControl(text, 18);
+    textarea.setAttribute('aria-label', 'Submission text');
+    textarea.addEventListener('input', () => { state.reviewDirty = true; });
+
+    const cancel = createButton('Cancel', 'secondary', async () => {
+        if (textarea.value !== text && !(await confirmDiscardDirty('review'))) return;
+        state.reviewDirty = wasDirty;
+        editor.remove();
+        onClose();
+    });
+    const save = createButton('Save text', 'primary', async () => {
+        if (textarea.value.trim() === text.trim()) {
+            state.reviewDirty = wasDirty;
+            editor.remove();
+            onClose();
+            return;
+        }
+        if (hasFeedback || submission.status === 'approved') {
+            const confirmation = await showConfirmModal(
+                'Save the edited text?',
+                `The feedback no longer matches the text, so it will need to be generated again. Annotations and edits to the feedback will be removed. Grades and the internal note are kept.${submission.status === 'approved' ? ' This also withdraws the approval.' : ''}`,
+                'Save text',
+                'Keep editing'
+            );
+            if (confirmation.action !== 'save-text') return;
+        }
+        await jsonRequest(`/submissions/${encodeURIComponent(submission.id)}/transcript`, 'POST', { text: textarea.value });
+        state.reviewDirty = false;
+        showSuccessToast(hasFeedback ? 'Text saved. Generate feedback again to review it.' : 'Text saved.');
+        await refreshReview(submission.id);
+    });
+    const actions = document.createElement('div');
+    actions.className = 'wf-button-row';
+    actions.append(save, cancel);
+
+    editor.append(
+        createText('h3', 'Edit text'),
+        createText('p', 'Correct the text so it matches the student\'s file.', 'wf-muted-note'),
+        textarea,
+        actions
+    );
+    requestAnimationFrame(() => textarea.focus());
+    return editor;
 }
 
 /**
@@ -540,7 +709,12 @@ export function renderDocPane(submission: Submission, annotate: boolean): HTMLEl
  * caller outside the real workspace must arm demo mode first — see
  * `writing-feedback-demo-mode.ts`.
  */
-export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assignment | null, staleRubric: boolean): HTMLElement {
+export function renderFeedbackPanel(
+    detail: SubmissionDetail,
+    assignment: Assignment | null,
+    stale: false | 'rubric' | 'text'
+): HTMLElement {
+    const staleRubric = stale === 'rubric';
     const { submission, feedbackRun } = detail;
     const panel = document.createElement('aside');
     panel.className = 'wf-feedback-panel';
@@ -551,17 +725,35 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
     header.append(createText('h3', 'Feedback'));
     panel.append(header);
 
-    if (!feedbackRun || staleRubric) {
+    // Queued or running generation replaces whatever draft is here, so nothing is editable yet.
+    if (submission.status === 'generating') {
+        const body = document.createElement('div');
+        body.className = 'wf-panel-body';
+        const card = document.createElement('div');
+        card.setAttribute('role', 'status');
+        card.append(
+            createText('h4', 'Generating feedback'),
+            createText('p', 'This submission is queued or being generated. This page will refresh when its draft is ready. Other submissions can be reviewed in the meantime.', 'wf-muted-note')
+        );
+        body.append(card);
+        panel.append(body);
+        void followReviewGeneration(submission.id);
+        return panel;
+    }
+
+    if (!feedbackRun || stale) {
         const body = document.createElement('div');
         body.className = 'wf-panel-body';
         const card = document.createElement('div');
         card.append(
-            createText('h4', staleRubric ? 'Regenerate feedback' : 'Generate a feedback draft'),
+            createText('h4', stale === 'text' ? 'Generate feedback again' : staleRubric ? 'Regenerate feedback' : 'Generate a feedback draft'),
             createText(
                 'p',
                 submission.requiresVerification
                     ? 'Confirm the transcript first. The model will only evaluate verified text.'
-                    : 'The draft produces summary guidance with guiding questions plus annotations anchored to the text. Everything remains staff-only until it is reviewed and approved.',
+                    : stale === 'text'
+                        ? 'The text was edited, so the earlier feedback no longer matches it. Grades and the internal note are kept.'
+                        : 'The draft produces summary guidance with guiding questions plus annotations anchored to the text. Everything remains staff-only until it is reviewed and approved.',
                 'wf-muted-note'
             )
         );
@@ -752,22 +944,6 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
     const grading = gradeEntry;
     const gradingLens = gradeEntryLens;
 
-    // Pinned above the lens tabs, so how much grading is left stays in view while staff scroll the cards.
-    const progressText = createText('p', '', 'wf-grade-progress__text');
-    const nextUngradedButton = document.createElement('button');
-    nextUngradedButton.type = 'button';
-    nextUngradedButton.className = 'wf-button wf-button--quiet';
-    let nextUngradedId: string | null = null;
-    nextUngradedButton.addEventListener('click', () => {
-        if (nextUngradedId) goToCriterion(nextUngradedId);
-    });
-    if (grading) {
-        const progressLine = document.createElement('div');
-        progressLine.className = 'wf-grade-progress';
-        progressLine.append(progressText, nextUngradedButton);
-        summaryBody.prepend(progressLine);
-    }
-
     const shared = renderSummaryShared(detail, markDirty, preserved?.internalNote);
     const isReleased = submission.status === 'released'
         || detail.release?.status === 'released'
@@ -830,11 +1006,15 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
     const checks = document.createElement('div');
     checks.className = 'wf-button-row wf-review-checks';
     if (grading) {
-        checks.append(createButton('Open full rubric grid', 'secondary', async () => {
+        checks.append(createButton('Open full rubric grid', 'outline', async () => {
             await showGridModal('Rubric grading', grading.gridTable());
-        }));
+        }, false, 'grid'));
     }
-    checks.append(renderDownloadMenu(submission, detail));
+    // The PDF is built from the last saved revision, so unsaved edits are saved first.
+    checks.append(renderDownloadMenu(submission, async () => {
+        if (isReleased || !state.reviewDirty) return true;
+        return saveDraft();
+    }));
     // The connect prompt comes last, directly above the footer's disabled Release button it unblocks.
     reviewBody.append(reviewNotice, gradeSection, checks, ...shared.children, connectCallout);
 
@@ -862,7 +1042,7 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
         });
         return button;
     };
-    const saveButton = actionButton('Save draft', 'secondary', saveDraft);
+    const saveButton = actionButton('Save draft', 'secondary', async () => { await saveDraft(); });
     const approveButton = actionButton('Approve', 'primary', approve);
     const releaseButton = actionButton(isDemo ? 'Simulate release' : 'Release to Canvas', 'primary', releaseToCanvas);
     approveButton.classList.add('wf-panel-footer__primary');
@@ -879,20 +1059,8 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
     refreshActions = () => {
         const progress = grading?.progress();
 
-        // Step 1: the Summary step's pinned progress line and the Review step's grade summary.
-        if (grading && progress) {
-            const totals = `${progress.points} / ${progress.maxPoints}`;
-            progressText.textContent = progress.complete
-                ? `All ${progress.total} criteria graded · ${totals}`
-                : `Grades ${progress.graded.length} of ${progress.total} · ${totals} so far`;
-            const target = progress.invalid[0] ?? progress.missing[0];
-            nextUngradedId = target?.id ?? null;
-            nextUngradedButton.hidden = !target;
-            nextUngradedButton.textContent = target
-                ? `${progress.invalid[0] ? 'Check points' : 'Next ungraded'}: ${target.label}`
-                : '';
-            renderGradeSummary(grading, progress);
-        }
+        // Step 1: the Review step's grade summary.
+        if (grading && progress) renderGradeSummary(grading, progress);
 
         // Step 2: which footer buttons this step and status allow.
         const onReview = step === 'review';
@@ -928,7 +1096,7 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
                 ? 'Approval is available once the feedback draft is ready.'
                 : blocker ?? (state.reviewDirty
                     ? 'Approve saves your unsaved changes first. Nothing is sent to Canvas until you release.'
-                    : 'Approval does not send anything to Canvas.');
+                    : 'Approval does not send anything to Canvas yet.');
         }
         footerState.textContent = message;
         footerState.hidden = !message;
@@ -1041,7 +1209,8 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
         state.reviewDirty = false;
     }
 
-    async function saveDraft(): Promise<void> {
+    /** Saves a revision; resolves false when staff decline to withdraw an approval. */
+    async function saveDraft(): Promise<boolean> {
         // The server returns an approved submission to draft on any save, so say so before it happens.
         if (submission.status === 'approved') {
             const confirmation = await showConfirmModal(
@@ -1050,7 +1219,7 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
                 'Save and withdraw approval',
                 'Keep reviewing'
             );
-            if (confirmation.action !== 'save-and-withdraw-approval') return;
+            if (confirmation.action !== 'save-and-withdraw-approval') return false;
         }
         await saveRevision();
         showSuccessToast(submission.status === 'approved'
@@ -1058,6 +1227,7 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
             : 'Draft saved.');
         pendingReviewState = { submissionId: submission.id, step };
         await refreshReview(submission.id);
+        return true;
     }
 
     async function approve(): Promise<void> {
@@ -1155,12 +1325,12 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
         if (action.kind === 'advance') return setStep('summary');
         if (action.kind === 'confirm') {
             const confirmation = await showConfirmModal(
-                'Update the summary from your annotations?',
-                'You changed annotations after editing the summary. Redrafting replaces your edits to What you did well, Feedback by rubric criterion, and Priority revision goals. Your internal note and final grades are kept.',
-                'Redraft summary',
-                'Keep my summary'
+                'Update feedback from your annotations?',
+                'You changed annotations after editing the feedback in Step 2. Updating replaces your edits to What the student did well, Feedback by rubric criterion, and Priority revision goals. Your internal note and final grades are kept.',
+                'Update feedback',
+                'Keep my edits'
             );
-            if (confirmation.action !== 'redraft-summary') return setStep('summary');
+            if (confirmation.action !== 'update-feedback') return setStep('summary');
         }
         try {
             await jsonRequest(`/submissions/${encodeURIComponent(submission.id)}/summary-redraft`, 'POST', {
@@ -1168,13 +1338,13 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
                 lenses: action.lenses
             });
         } catch {
-            showToast('The summary could not be updated from your annotations. Edit it by hand or try again.', 8000, 'top-right', 'error');
+            showToast('The feedback could not be updated from your annotations. Edit it by hand or try again.', 8000, 'top-right', 'error');
             return setStep('summary');
         }
         pendingReviewState = {
             submissionId: submission.id,
             step: 'summary',
-            notice: 'Summary and suggested grades redrafted from your final annotations.',
+            notice: 'Feedback and suggested grades updated from your annotations.',
             internalNote: shared.internalNote.value,
             // A half-typed grade cannot survive the redraft; every valid one does.
             grades: grading?.readValid()
@@ -1193,13 +1363,13 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
 }
 
 /**
- * renderDownloadMenu - the student PDF viewer buttons shown on the Review and release step.
+ * renderDownloadMenu - the feedback PDF preview button shown on the Review and release step.
  *
- * @param submission - Submission whose PDFs are opened
- * @param detail - Detail payload, used to offer the technical PDF for a lab report
+ * @param submission - Submission whose PDF is opened
+ * @param beforePreview - Saves unsaved edits so the PDF reflects them; false cancels the preview
  * @returns Detached button group
  */
-function renderDownloadMenu(submission: Submission, detail: SubmissionDetail): HTMLElement {
+function renderDownloadMenu(submission: Submission, beforePreview: () => Promise<boolean>): HTMLElement {
     const downloadMenu = document.createElement('div');
     downloadMenu.className = 'wf-download-menu';
     const pdfBase = `${baseUrl()}/submissions/${encodeURIComponent(submission.id)}/feedback.pdf`;
@@ -1237,22 +1407,28 @@ function renderDownloadMenu(submission: Submission, detail: SubmissionDetail): H
     const viewerButton = (label: string, title: string, query: string): HTMLButtonElement => {
         const button = document.createElement('button');
         button.type = 'button';
-        button.className = 'wf-button wf-button--quiet';
-        button.textContent = label;
+        button.className = 'wf-button wf-button--outline';
+        // Same icon-then-label markup createButton uses, so the two buttons line up.
+        const icon = document.createElement('i');
+        icon.setAttribute('data-feather', 'file-text');
+        icon.setAttribute('aria-hidden', 'true');
+        button.append(icon, createText('span', label, 'wf-button-text'));
         button.title = title;
-        button.addEventListener('click', () => { void openPdf(label, query); });
+        button.addEventListener('click', () => {
+            void runButtonAction(button, async () => {
+                // Declining to withdraw an approval keeps the edits unsaved, so there is nothing to preview.
+                if (!(await beforePreview())) return;
+                await openPdf(label, query);
+            });
+        });
         return button;
     };
 
-    // The include query is the public PDF mode contract: summary-only is the
-    // default, annotated includes hover comments, and both combines the outputs.
+    // `include=both` renders exactly the document a release attaches: for a lab report the
+    // technical feedback, then the writing summary and the annotated text. The route's other
+    // modes stay available but are not offered here.
     downloadMenu.append(
-        viewerButton('PDF', 'Open the student PDF (summary feedback)', ''),
-        viewerButton('Annotated PDF', 'Open the student text with highlighted comments', '?include=annotated'),
-        viewerButton('Complete PDF', 'Open summary feedback plus the annotated student text', '?include=both'),
-        ...(detail.technicalFeedbackRun
-            ? [viewerButton('Technical PDF', 'Open the technical lab-report feedback on its own', '?lens=technical')]
-            : [])
+        viewerButton('Preview feedback PDF', 'Open the feedback PDF the student will receive', '?include=both')
     );
     return downloadMenu;
 }
@@ -1298,7 +1474,7 @@ function renderSummaryLens(input: {
         goals: seedSummaryText(run.result.revisionGoals)
     };
 
-    // Step 1: What you did well.
+    // Step 1: What the student did well.
     element.append(editor.strengthsSection(lens, edit?.strengths ?? run.result.strengths));
 
     // Step 2: grade controls, on the lens the assignment is graded on — technical for a lab report.
@@ -1323,9 +1499,6 @@ function renderSummaryLens(input: {
     const rubricSection = document.createElement('section');
     rubricSection.className = 'wf-feedback-section';
     rubricSection.append(createText('h3', 'Feedback by rubric criterion'));
-    if (assignment?.isLabReport && lens !== gradedLens) {
-        rubricSection.append(createText('p', 'Not graded. This lab report is graded on the Technical rubric.', 'wf-muted-note'));
-    }
     const criterionList = document.createElement('div');
     criterionList.className = 'wf-criterion-list';
     orderedCriterionIds(rubric, run.result.criteria).forEach((criterionId) => {
@@ -1338,14 +1511,19 @@ function renderSummaryLens(input: {
         const heading = createText('h4', criterionLabel(rubric, criterionId));
         const title = criterionTitle(rubric, criterionId);
         if (title) heading.title = title;
-        criterionHeader.append(heading);
+        const headerChips = document.createElement('div');
+        headerChips.className = 'wf-criterion-header__chips';
+        // Stays visible once the box is filled, and says why this card has no model feedback or evidence.
+        const staffAssessed = definition?.assessedBy === 'staff';
+        if (staffAssessed) headerChips.append(chip('Written by staff', 'neutral'));
         // A graded card states whether it has a grade; the suggested level is marked on its buttons instead.
         const gradeControl = gradeEntry?.control(criterionId) ?? null;
-        if (gradeEntry && gradeControl) criterionHeader.append(gradeEntry.statusChip(criterionId));
+        if (gradeEntry && gradeControl) headerChips.append(gradeEntry.statusChip(criterionId));
         // No chip without a level: a criterion course staff assess on an ungraded lens has none.
         else if (criterion?.suggestedLevel !== undefined) {
-            criterionHeader.append(chip(levelLabel(rubric, criterion.criterion, criterion.suggestedLevel), 'neutral'));
+            headerChips.append(chip(levelLabel(rubric, criterion.criterion, criterion.suggestedLevel), 'neutral'));
         }
+        criterionHeader.append(heading, headerChips);
         item.append(criterionHeader);
         const sflLabel = definition?.sflDimension
             ?? (definition?.functionTag ? `${FUNCTION_TAG_LABELS[definition.functionTag]} function` : undefined);
@@ -1353,14 +1531,13 @@ function renderSummaryLens(input: {
         if (gradeControl) item.append(gradeControl);
         // A staff-assessed criterion is never generated, so the run carries no row for it.
         // The card is the same card; only the seed text and the note above it differ.
-        if (definition?.assessedBy === 'staff') {
-            item.append(createText(
-                'p',
-                'The AI does not draft this criterion. Write the feedback the student will receive.',
-                'wf-muted-note'
-            ));
+        if (staffAssessed) {
             const staffText = edit?.criterionExplanations.find((entry) => entry.criterion === criterionId)?.explanation ?? '';
-            item.append(editor.explanationField(lens, criterionId, staffText));
+            // Approval refuses a blank staff-assessed criterion, so mark it like the final grade.
+            item.append(editor.explanationField(lens, criterionId, staffText, {
+                required: true,
+                prompt: 'EngE-AI doesn\'t assess this criterion. Write the feedback for the student here.'
+            }));
             criterionList.append(item);
             return;
         }
@@ -1380,9 +1557,8 @@ function renderSummaryLens(input: {
     rubricSection.append(criterionList);
     element.append(rubricSection);
 
-    // Step 4: readings (writing lens) and internal flags, under the levels they qualify.
+    // Step 4: readings (writing lens), under the levels they qualify.
     if (lens === 'linguistic') element.append(...renderReadings(run));
-    element.append(...renderInternalFlags(run));
 
     // Step 5: revision goals. Writing keeps the student-feedback textarea and its binding rule.
     const goalsSection = document.createElement('section');
@@ -1393,17 +1569,12 @@ function renderSummaryLens(input: {
         // Staff text applies only while it was saved against this run; after a redraft the
         // goals reseed from the redrafted run, the same rule the student PDF follows.
         const seed = latest && latest.feedbackRunId === run.id ? latest.studentFeedback : baseline.goals;
-        const goals = editor.goalsField(lens, seed, 'Goals the student will receive', 'Guide revision without supplying rewritten sentences or a model answer.');
+        const goals = editor.goalsField(lens, seed, 'Goals the student will receive');
         goals.textarea.id = 'wf-student-feedback';
         studentFeedback = goals.textarea;
         goalsSection.append(goals.wrapper);
     } else {
-        const goals = editor.goalsField(
-            lens,
-            edit?.revisionGoalsText ?? baseline.goals,
-            'Technical goals the student will receive',
-            'Guide revision without supplying corrected values or a model answer.'
-        );
+        const goals = editor.goalsField(lens, edit?.revisionGoalsText ?? baseline.goals, 'Technical goals the student will receive');
         goalsSection.append(goals.wrapper);
     }
     element.append(goalsSection);
@@ -1452,32 +1623,6 @@ function renderReadings(run: FeedbackRun): HTMLElement[] {
 }
 
 /**
- * renderInternalFlags - what the model could not judge, one per line (D-114).
- *
- * @param run - Latest run for the lens
- * @returns The staff-only flags section, or nothing when the run has none
- */
-function renderInternalFlags(run: FeedbackRun): HTMLElement[] {
-    // Internal flags stay in the staff workspace only; the PDF service and release payload
-    // exclude them. They sit directly under the criterion levels because that is what they
-    // qualify — a model that could not check source completeness has told the marker
-    // something about the level they are approving. One per line: joined into a sentence
-    // at the foot of the tab, a marker scrolled past them.
-    if (!run.result.internalFlags.length) return [];
-    const flags = document.createElement('section');
-    flags.className = 'wf-feedback-section wf-internal-note';
-    flags.append(
-        createText('h3', 'Internal review flags'),
-        createText('p', 'What the model could not judge from the verified text. Staff-only; never in the student PDF.', 'wf-muted-note')
-    );
-    const flagList = document.createElement('ul');
-    flagList.className = 'wf-strength-list';
-    run.result.internalFlags.forEach((flag) => flagList.append(createText('li', flag)));
-    flags.append(flagList);
-    return [flags];
-}
-
-/**
  * renderSummaryShared - internal note and review history, shown once per submission on the Review step.
  *
  * @param detail - Submission detail
@@ -1496,22 +1641,24 @@ function renderSummaryShared(
 
     const noteSection = document.createElement('section');
     noteSection.className = 'wf-feedback-section';
-    const internalNote = textAreaControl(preservedNote ?? revision?.internalNote ?? '', 3);
+    // One line until staff write more; it grows with the note rather than reserving space.
+    const internalNote = textAreaControl(preservedNote ?? revision?.internalNote ?? '', 1);
     internalNote.id = 'wf-internal-note';
+    internalNote.placeholder = 'Visible only to course staff';
     internalNote.addEventListener('input', markDirty);
-    noteSection.append(field(
-        'Internal staff note',
-        internalNote,
-        'Visible only to instructors and TAs; excluded from the student PDF.'
-    ));
+    autoGrow(internalNote);
+    noteSection.append(field('Internal staff note (optional)', internalNote));
     children.push(noteSection);
 
     if (submission.reviews?.length) {
-        const historySection = document.createElement('section');
-        historySection.className = 'wf-feedback-section';
+        // Closed by default: an occasional audit reference, not part of approving and releasing.
+        const historySection = document.createElement('details');
+        historySection.className = 'wf-feedback-section wf-history-disclosure';
+        const historySummary = document.createElement('summary');
+        historySummary.textContent = `Review history (${submission.reviews.length})`;
         historySection.append(
-            createText('h3', `Review history (${submission.reviews.length})`),
-            createText('p', 'Every saved revision is kept for audit. This is a read-only record — it cannot be restored or reverted.', 'wf-muted-note')
+            historySummary,
+            createText('p', 'Every saved revision is kept here. This is a read-only record — it cannot be restored or reverted.', 'wf-muted-note')
         );
         const history = document.createElement('div');
         history.className = 'wf-history-list';
@@ -1523,10 +1670,9 @@ function renderSummaryShared(
 
             const entry = document.createElement('details');
             entry.className = 'wf-history-item';
-            entry.open = reverseIndex === 0;
 
             const summary = document.createElement('summary');
-            summary.textContent = `Revision ${revisionNumber} · ${formatDate(item.createdAt, true)} · ${item.staffUserId}`;
+            summary.textContent = `Revision ${revisionNumber} · ${formatDate(item.createdAt, true)} · ${staffDisplayName(item.staffUserId)}`;
             entry.append(summary);
 
             const body = document.createElement('div');
@@ -1536,7 +1682,7 @@ function renderSummaryShared(
                 createText('pre', item.studentFeedback, 'wf-history-text')
             );
             if (item.internalNote) {
-                body.append(createText('h4', 'Internal staff note'), createText('pre', item.internalNote, 'wf-history-text'));
+                body.append(createText('h4', 'Internal staff note (optional)'), createText('pre', item.internalNote, 'wf-history-text'));
             }
             if (item.finalAssessment) {
                 body.append(
@@ -1579,6 +1725,21 @@ function renderSummaryShared(
     }
 
     return { children, internalNote };
+}
+
+/**
+ * staffDisplayName - the course roster name for a staff user id.
+ *
+ * Revisions record only the saver's internal user id. The course's instructor and TA lists
+ * carry names for current staff; anyone no longer on them reads as "Course staff".
+ *
+ * @param userId - `staffUserId` from a review revision
+ * @returns Display name, never the raw id
+ */
+function staffDisplayName(userId: string): string {
+    const roster = [...(state.course?.instructors ?? []), ...(state.course?.teachingAssistants ?? [])];
+    const match = roster.find((entry) => typeof entry === 'object' && entry.userId === userId);
+    return typeof match === 'object' && match.name?.trim() ? match.name.trim() : 'Course staff';
 }
 
 /**

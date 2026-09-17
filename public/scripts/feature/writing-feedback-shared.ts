@@ -398,9 +398,52 @@ export interface Submission {
     originalText: string; // parser/OCR output retained for staff comparison
     verifiedText?: string; // staff-confirmed source of truth for evidence offsets
     requiresVerification: boolean; // blocks generation until transcript confirmation
+    /** Who confirmed the transcript; `batch` means batch generation accepted it and no person checked it. */
+    transcriptConfirmedBy?: 'staff' | 'batch';
+    /** When staff last edited the confirmed text; feedback generated before it must be generated again. */
+    transcriptEditedAt?: string;
     status: SubmissionStatus; // server lifecycle state controlling available actions
     reviews?: ReviewRevision[]; // append-only staff revision audit history
     createdAt: string; // import timestamp used for queue ordering; not when the student submitted
+    /** A newer Canvas attempt from the same student, waiting for staff to choose between them. */
+    pendingReplacement?: PendingReplacement;
+}
+
+/** Queue summary of a held newer attempt; mirrors `WritingPendingReplacement`. */
+export interface PendingReplacement {
+    submissionId: string;
+    attempt: number;
+    submittedAt?: string;
+    sourceType: Submission['sourceType'];
+}
+
+/** Staff choice between a submission and its held newer attempt. */
+export type ReplacementDecision = 'use_newer' | 'keep_current';
+
+/** What batch generation does with one submission; mirrors `WritingBatchCategory`. */
+export type BatchCategory = 'no_draft' | 'failed' | 'transcript' | 'stale' | 'needs_transcript' | 'in_progress' | 'done';
+
+/** Batch generation preview for the confirmation modal; mirrors `WritingBatchPreview`. */
+export interface BatchPreview {
+    counts: Record<BatchCategory, number>;
+    blockedReason?: string; // why nothing can be generated yet
+}
+
+/** What a started batch queued; mirrors `WritingBatchStartResult`. */
+export interface BatchStartResult {
+    queued: number;
+    transcriptsConfirmed: number;
+    skipped: number;
+}
+
+/** Result of syncing one linked assignment with Canvas. */
+export interface CanvasSyncResult {
+    importedCount: number; // new students added to the queue
+    heldCount: number; // resubmissions waiting for staff to choose
+    skippedCount: number; // attempts already handled
+    unsupportedCount: number; // submissions with no extractable text, or text past the limit
+    failedCount: number; // downloads or parses that failed and can be retried
+    integration: 'mock_canvas' | 'canvas';
 }
 
 /** Complete review payload combining a submission, model run, and annotation sources. */
@@ -500,6 +543,7 @@ export interface CanvasImportResult {
     targetAssignment: Assignment; // local assignment created or reused by import
     importedCount: number; // new local attempts created
     skippedCount: number; // unchanged attempts omitted by idempotency checks
+    heldCount: number; // resubmissions waiting beside an existing submission for staff to choose
     unsupportedCount: number; // submissions with no extractable text, or text past the 30,000-character limit
     failedCount: number; // submissions whose download or parse failed and can be retried
     submissions: Submission[]; // resulting local submission summaries
@@ -522,29 +566,37 @@ export interface CanvasAssignmentDetails {
 }
 
 
-/** Staff-facing text for each submission lifecycle state. */
+/**
+ * Staff-facing text for each submission lifecycle state.
+ *
+ * Grouped by what staff do next rather than one label per state: "Not started" covers text
+ * that still needs checking (the review page explains that step). "Generating" stays separate
+ * because batch generation can hold a submission there for a while, and it cannot be reviewed
+ * yet. "Ready to release" and "Released" stay distinct because only the second means the
+ * student has the feedback.
+ */
 export const STATUS_LABELS: Record<SubmissionStatus, string> = {
-    imported: 'Imported',
-    verification_needed: 'Verification needed',
+    imported: 'Not started',
+    verification_needed: 'Not started',
     generating: 'Generating',
-    draft_ready: 'Draft ready',
-    approved: 'Approved',
+    draft_ready: 'Needs review',
+    approved: 'Ready to release',
     released: 'Released',
     failed: 'Needs attention'
 };
 
 /** Supported semantic color treatments for compact workspace chips. */
 export type WfChipTone =
-    | 'neutral' | 'green' | 'blue' | 'amber' | 'red' | 'purple';
+    | 'neutral' | 'green' | 'green-solid' | 'blue' | 'amber' | 'red' | 'purple';
 
-/** Status → chip tone, matching the app's status color semantics. */
+/** Status → chip tone; a filled chip marks the one state where staff have nothing left to do. */
 export const STATUS_TONES: Record<SubmissionStatus, WfChipTone> = {
-    imported: 'blue',
-    verification_needed: 'amber',
-    generating: 'blue',
+    imported: 'neutral',
+    verification_needed: 'neutral',
+    generating: 'purple',
     draft_ready: 'blue',
     approved: 'green',
-    released: 'green',
+    released: 'green-solid',
     failed: 'red'
 };
 
@@ -662,8 +714,9 @@ export function setView(view: WfViewName): void {
     element('wf-view-landing').hidden = view !== 'landing';
     element('wf-view-rubric').hidden = view !== 'rubric';
     element('wf-view-review').hidden = view !== 'review';
-    // Header intake actions only make sense while browsing assignments.
-    element('wf-header-actions').hidden = view !== 'landing';
+    // The feature heading and its intake actions belong to the assignment list; rubric and
+    // review pages lead with their own back button instead, as Scenario Questions does.
+    element('wf-header').hidden = view !== 'landing';
 }
 
 /**
@@ -785,18 +838,101 @@ export function clearWorkspaceMessage(): void {
     region.hidden = true;
 }
 
+/** History-state key holding the page scroll offset of the entry being left. */
+const SCROLL_TOP_KEY = 'wfScrollTop';
+/** History-state key holding the address of the entry a pushed entry was opened from. */
+const CAME_FROM_KEY = 'wfCameFrom';
+
 /**
- * setQueryState - replaces Writing Feedback deep-link parameters without navigation
+ * URL of the workspace page currently on screen. Browser Back has already changed the
+ * address by the time the page hears about it, so this is what "Keep editing" restores.
+ */
+let displayedUrl = '';
+
+/**
+ * setQueryState - updates Writing Feedback deep-link parameters without reloading
+ *
+ * `replace` edits the current history entry, for changes within a page (expanding an
+ * assignment) or a refresh of the same page. `push` adds an entry so the browser's Back
+ * button returns to the page being left; it replaces instead when the URL would not
+ * change, so reopening the current page never stacks duplicate entries. Before pushing,
+ * the scroll offset of the page being left is saved on its own entry so Back can restore it.
  *
  * @param values - Parameters to set, or null values to remove
+ * @param mode - Whether the change is a new history entry or an edit of the current one
  */
-export function setQueryState(values: Partial<Record<'wfAssignment' | 'wfSubmission' | 'wfView', string | null>>): void {
+export function setQueryState(
+    values: Partial<Record<'wfAssignment' | 'wfSubmission' | 'wfView', string | null>>,
+    mode: 'replace' | 'push' = 'replace'
+): void {
     const url = new URL(window.location.href);
     Object.entries(values).forEach(([key, value]) => {
         if (value) url.searchParams.set(key, value);
         else url.searchParams.delete(key);
     });
-    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    const next = `${url.pathname}${url.search}${url.hash}`;
+    const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (mode === 'push' && next !== current) {
+        const leaving = document.querySelector<HTMLElement>('[id^="wf-view-"]:not([hidden])') ?? element('wf-view-landing');
+        window.history.replaceState(
+            { ...(window.history.state ?? {}), [SCROLL_TOP_KEY]: scrollingAncestor(leaving).scrollTop },
+            '',
+            current
+        );
+        window.history.pushState({ view: 'writing-feedback', [CAME_FROM_KEY]: current }, '', next);
+    } else {
+        window.history.replaceState(window.history.state, '', next);
+    }
+    displayedUrl = next;
+}
+
+/**
+ * rememberDisplayedUrl - records the current address as the page on screen
+ *
+ * Called once the workspace mounts, before any page has set its own parameters.
+ */
+export function rememberDisplayedUrl(): void {
+    displayedUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+}
+
+/**
+ * restoreDisplayedUrl - puts back the address of the page still on screen
+ *
+ * Used when staff cancel a Back/Forward navigation to keep unsaved edits: the browser
+ * cannot cancel it, so the page's address is pushed again to match what is shown.
+ */
+export function restoreDisplayedUrl(): void {
+    if (displayedUrl) window.history.pushState({ view: 'writing-feedback' }, '', displayedUrl);
+}
+
+/**
+ * returnToLanding - goes back to the assignment list
+ *
+ * When this page was opened from the list, steps back through browser history so the
+ * list returns where staff left it and Back/Forward stay in step with the in-app button.
+ * Otherwise (a deep link or reload) opens the list as a new entry. Callers resolve unsaved
+ * edits first.
+ */
+export async function returnToLanding(): Promise<void> {
+    const cameFrom = (window.history.state as Record<string, unknown> | null)?.[CAME_FROM_KEY];
+    if (typeof cameFrom === 'string') {
+        const params = new URL(cameFrom, window.location.origin).searchParams;
+        if (!params.has('wfSubmission') && !params.has('wfView')) {
+            window.history.back();
+            return;
+        }
+    }
+    await views.showLanding();
+}
+
+/**
+ * savedScrollTop - the scroll offset saved on the current history entry, if any
+ *
+ * @returns Offset recorded when staff last left this entry, or null
+ */
+export function savedScrollTop(): number | null {
+    const value = (window.history.state as Record<string, unknown> | null)?.[SCROLL_TOP_KEY];
+    return typeof value === 'number' ? value : null;
 }
 
 /**
@@ -851,6 +987,23 @@ export function formatDate(value?: string, withTime = false): string {
 export function isLateSubmission(submission: Submission, assignment: Assignment | null | undefined): boolean {
     return Boolean(assignment?.dueAt && submission.submittedAt && new Date(submission.submittedAt) > new Date(assignment.dueAt));
 }
+
+/**
+ * runPredatesTextEdit - whether feedback was generated for text staff have since edited.
+ *
+ * Mirrors `runPredatesTextEdit` in src/writing-feedback/transcript-edit.ts.
+ *
+ * @param submission - Submission carrying the last text edit time
+ * @param run - Feedback run to check; an absent run never predates anything
+ * @returns True when the run was created at or before the last edit
+ */
+export function runPredatesTextEdit(submission: Submission, run: FeedbackRun | null | undefined): boolean {
+    if (!submission.transcriptEditedAt || !run) return false;
+    return new Date(run.createdAt).getTime() <= new Date(submission.transcriptEditedAt).getTime();
+}
+
+/** Statuses whose confirmed text staff may edit. Mirrors TRANSCRIPT_EDITABLE_STATUSES on the server. */
+export const TEXT_EDITABLE_STATUSES: ReadonlyArray<SubmissionStatus> = ['imported', 'failed', 'draft_ready', 'approved'];
 
 /**
  * scrollingAncestor - the element that actually scrolls when this one moves
@@ -923,6 +1076,41 @@ export function createButton(
     button.disabled = disabled;
     button.addEventListener('click', () => void runButtonAction(button, action));
     return button;
+}
+
+/**
+ * createBackBar - builds the sticky bar holding the "← Back to assignments" button
+ *
+ * Styled like the Scenario Questions back buttons: a quiet arrow and label with no button
+ * chrome, in a bar that stays pinned to the top of the page while it scrolls. Unlike
+ * {@link createButton} the label never changes to "Working…", because the action replaces
+ * the page; repeat clicks are ignored until it settles.
+ *
+ * @param action - Navigation to run; it resolves unsaved edits itself
+ * @returns Unattached bar, to be the first child of the page
+ */
+export function createBackBar(action: () => Promise<void>): HTMLDivElement {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'wf-back-button';
+    const icon = document.createElement('i');
+    icon.setAttribute('data-feather', 'arrow-left');
+    icon.setAttribute('aria-hidden', 'true');
+    const text = document.createElement('span');
+    text.textContent = 'Back to assignments';
+    button.append(icon, text);
+    let running = false;
+    button.addEventListener('click', () => {
+        if (running) return;
+        running = true;
+        void action()
+            .catch(handleActionError)
+            .finally(() => { running = false; });
+    });
+    const bar = document.createElement('div');
+    bar.className = 'wf-back-bar';
+    bar.append(button);
+    return bar;
 }
 
 /**

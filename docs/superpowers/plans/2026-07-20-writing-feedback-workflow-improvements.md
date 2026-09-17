@@ -1027,7 +1027,7 @@ if (submission.reviews?.length) {
     historySection.className = 'wf-feedback-section';
     historySection.append(
         createText('h3', `Review history (${submission.reviews.length})`),
-        createText('p', 'Every saved revision is kept for audit. This is a read-only record — it cannot be restored or reverted.', 'wf-muted-note')
+        createText('p', 'Every saved revision is kept here. This is a read-only record — it cannot be restored or reverted.', 'wf-muted-note')
     );
     const history = document.createElement('div');
     history.className = 'wf-history-list';
@@ -1052,7 +1052,7 @@ if (submission.reviews?.length) {
             createText('pre', item.studentFeedback, 'wf-history-text')
         );
         if (item.internalNote) {
-            body.append(createText('h4', 'Internal staff note'), createText('pre', item.internalNote, 'wf-history-text'));
+            body.append(createText('h4', 'Internal staff note (optional)'), createText('pre', item.internalNote, 'wf-history-text'));
         }
 
         function commentLine(label: string, comment: AnchoredComment): HTMLElement {

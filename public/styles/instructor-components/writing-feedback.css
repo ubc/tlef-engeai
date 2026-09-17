@@ -21,6 +21,9 @@
     --gingham-color: rgba(92, 138, 58, 0.1);
     --background-2: rgb(236, 229, 221);
     --pinned-color: var(--color-chbe-green);
+    /* Height of the review step bar with its two-line title beside Back and Next. The document
+       card's header matches it so both columns start at the same line. */
+    --wf-pane-header-height: 83px;
     display: flex;
     flex-direction: column;
     min-height: 100%;
@@ -34,6 +37,10 @@
 
 .wf-main-content {
     width: 100%;
+    /* Height of .wf-back-bar: its top padding, the line box holding the 24px arrow (about
+       31px, since the button sits inline), and its bottom padding. Content pinned below
+       the bar sticks this far down. */
+    --wf-back-bar-height: calc(var(--page-header-pad-top) + 2rem + 0.5rem);
 }
 
 /* The landing page with no assignments: a plain line rather than a card, matching how the
@@ -48,6 +55,11 @@
 /* Header — layout for left cluster and actions; bar chrome from .page-header */
 .wf-header {
     flex-wrap: wrap;
+}
+
+/* Rubric and review pages drop the heading; .page-header's display would otherwise win. */
+.wf-header[hidden] {
+    display: none;
 }
 
 .wf-header-left {
@@ -88,8 +100,14 @@
     display: none;
 }
 
-.wf-header-btn:hover {
+.wf-header-btn:hover:not(:disabled) {
     transform: scale(1.05);
+}
+
+/* Same treatment as .wf-button:disabled, e.g. while its action's modal is open. */
+.wf-header-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
 }
 
 .wf-header-btn svg,
@@ -347,9 +365,36 @@
     gap: 10px;
 }
 
-.wf-back-button {
-    margin-bottom: 15px;
+/* Matches .sg-instructor-sticky-chrome and .sg-instructor-topic-detail-sticky-chrome in
+   scenario-questions-instructor.css: pinned, full-bleed across the page padding, with the
+   page header's top padding above the button. */
+.wf-back-bar {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    isolation: isolate;
+    margin: 0 calc(-1 * var(--page-shell-pad-x)) 0.25rem;
+    padding: var(--page-header-pad-top) var(--page-shell-pad-x) 0.5rem;
+    background: var(--chat-bg);
 }
+
+/* Matches .sg-instructor-topic-detail-back-btn in scenario-questions-instructor.css. */
+.wf-back-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    color: var(--text-secondary, #6c757d);
+    font-size: 0.85rem;
+}
+
+.wf-back-button:hover {
+    color: var(--text-primary, #333);
+}
+
 
 /* Chips — documents .content-status recipe */
 
@@ -380,6 +425,13 @@
 .wf-chip--green {
     background: rgba(92, 138, 58, 0.1);
     color: var(--color-chbe-green);
+    border: 1px solid var(--color-chbe-green);
+}
+
+/* Filled, so "Released" reads as finished beside the pale "Ready to release". */
+.wf-chip--green-solid {
+    background: var(--color-chbe-green);
+    color: #fff;
     border: 1px solid var(--color-chbe-green);
 }
 
@@ -669,6 +721,103 @@
     font-weight: 600;
 }
 
+/* Sits under the row it concerns, sharing its surface so the two read as one entry. */
+.wf-replacement-notice {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px 15px;
+    padding: 10px 20px 15px;
+    background: rgba(230, 126, 34, 0.1);
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-primary);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.wf-replacement-notice .wf-button-row {
+    margin: 0;
+}
+
+/* On the review page the notice stands alone between the header and the document. */
+.wf-replacement-notice--page {
+    margin-bottom: 20px;
+    padding: 10px 16px;
+    border: 1px solid color-mix(in srgb, var(--color-eng-red) 60%, var(--color-chbe-green));
+    border-radius: 8px;
+}
+
+/* Batch generation bar above an assignment's submission list */
+
+.wf-batch-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px 15px;
+    padding: 10px 20px;
+    /* A green tint, distinct from the white rows and the beige header, so it reads as a toolbar. */
+    background: color-mix(in srgb, var(--chat-bg) 90%, var(--color-chbe-green));
+    border-top: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
+}
+
+/* The bar already draws the line above the first submission. */
+.wf-batch-bar + .wf-submission-row {
+    border-top: none;
+}
+
+.wf-batch-bar__status {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.wf-batch-bar .wf-button-row {
+    margin: 0 0 0 auto;
+}
+
+.wf-batch-modal p {
+    margin: 0 0 10px;
+    line-height: 1.5;
+}
+
+.wf-batch-modal__list {
+    margin: 0 0 15px;
+    padding-left: 20px;
+    line-height: 1.5;
+}
+
+.wf-batch-modal__option {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin: 0 0 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.wf-batch-modal__option input {
+    flex: none;
+    width: 18px;
+    height: 18px;
+    margin-top: 2px;
+}
+
+.wf-batch-modal__option > span {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.wf-batch-modal__option .wf-muted-note {
+    padding: 0;
+}
+
 .wf-add-submission-row {
     display: flex;
     justify-content: flex-end;
@@ -836,6 +985,11 @@
     min-height: 96px;
     line-height: 1.5;
     resize: vertical;
+}
+
+/* One line until staff write more; autoGrow sizes it to the note. */
+.wf-field textarea#wf-internal-note {
+    min-height: 0;
 }
 
 .wf-field textarea.wf-intake-text {
@@ -2357,11 +2511,7 @@
 }
 
 .wf-doc-original {
-    margin-bottom: 15px;
-    background: var(--chat-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 10px;
-    padding: 10px 20px;
+    margin: 14px 40px 0;
     color: var(--text-secondary);
     font-size: 13px;
 }
@@ -2379,18 +2529,73 @@
     line-height: 1.6;
 }
 
-.wf-doc-paper {
-    position: relative;
+/* One card around the reading controls, the text's provenance, and the text itself. The
+   verification and edit views are the same card without a header, so they share its chrome. */
+.wf-doc-card,
+.wf-doc-paper--standalone {
     background: color-mix(in srgb, var(--chat-bg) 95%, var(--background-2));
     border: 1px solid var(--border-color);
     border-radius: 10px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-    padding: 40px;
     max-width: 75ch;
     margin: 0 auto;
+}
+
+/* `display: flex` on nothing here, so the hidden attribute is enough while the text is edited. */
+.wf-doc-card[hidden] {
+    display: none;
+}
+
+.wf-doc-paper {
+    position: relative;
     color: var(--text-primary);
     font-size: calc(15px * var(--wf-zoom, 1));
     line-height: 1.75;
+}
+
+.wf-doc-paper--standalone {
+    padding: 40px;
+}
+
+.wf-doc-card > .wf-doc-paper {
+    padding: 28px 40px 40px;
+}
+
+/* Pinned to the top of the card, under the page's back bar, while the text scrolls beneath.
+   Same height and band colour as the feedback panel's step bar, so the two columns line up. */
+.wf-doc-header {
+    position: sticky;
+    top: calc(var(--wf-back-bar-height) + 16px);
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    min-height: var(--wf-pane-header-height);
+    padding: 12px 16px;
+    background: var(--background-2);
+    border-bottom: 1px solid var(--border-color);
+    border-radius: 10px 10px 0 0;
+}
+
+/* A line inside the card rather than a banner above it: it describes this text. */
+.wf-doc-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 0;
+    padding: 14px 40px 0;
+    color: color-mix(in srgb, var(--color-eng-red) 65%, var(--text-primary));
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.wf-doc-notice svg,
+.wf-doc-notice .feather {
+    flex: none;
+    width: 15px;
+    height: 15px;
+    margin-top: 2px;
 }
 
 .wf-zoom-control {
@@ -2413,22 +2618,10 @@
     color: var(--text-secondary);
 }
 
-.wf-doc-toolbar {
-    position: sticky;
-    top: 96px;
-    z-index: 5;
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 12px;
-    padding: 6px 10px;
-    margin-bottom: 10px;
-    background: var(--chat-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-}
-
 .wf-toolbar-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     padding: 6px 10px;
     background: var(--chat-bg);
     color: var(--text-primary);
@@ -2444,14 +2637,16 @@
     background: var(--hover-bg);
 }
 
+.wf-toolbar-toggle svg,
+.wf-toolbar-toggle .feather {
+    width: 15px;
+    height: 15px;
+}
+
 .wf-toolbar-toggle[aria-pressed="true"] {
     background: var(--gingham-color);
     border-color: var(--color-chbe-green);
     color: var(--color-chbe-green);
-}
-
-.wf-doc-pane--wide .wf-doc-paper {
-    max-width: none;
 }
 
 .wf-doc-paper h3 {
@@ -2482,6 +2677,10 @@
 .wf-doc-paper textarea:focus {
     outline: none;
     border-color: var(--pinned-color);
+}
+
+.wf-text-editor .wf-button-row {
+    margin-top: 12px;
 }
 
 mark.wf-anchor {
@@ -2545,10 +2744,10 @@ mark.wf-anchor.is-filtered-out,
 
 .wf-feedback-panel {
     position: sticky;
-    top: 96px;
+    top: calc(var(--wf-back-bar-height) + 16px);
     display: flex;
     flex-direction: column;
-    max-height: calc(100vh - 116px);
+    max-height: calc(100vh - var(--wf-back-bar-height) - 36px);
     background: var(--chat-bg);
     border: 1px solid var(--border-color);
     border-radius: 10px;
@@ -2561,6 +2760,7 @@ mark.wf-anchor.is-filtered-out,
     align-items: center;
     justify-content: space-between;
     gap: 10px;
+    min-height: var(--wf-pane-header-height);
     padding: 12px 16px;
     border-bottom: 1px solid var(--border-color);
 }
@@ -2584,8 +2784,17 @@ mark.wf-anchor.is-filtered-out,
     text-align: center;
 }
 
+/* The muted-note padding would make the title block taller than Back and Next, pushing the
+   title above their top edge; without it the two lines sit centred between the buttons. */
 .wf-step-bar__center p {
     margin: 0;
+    padding: 0;
+    font-style: normal;
+    line-height: 1.3;
+}
+
+.wf-step-bar__center h3 {
+    line-height: 1.3;
 }
 
 @media (max-width: 480px) {
@@ -2931,9 +3140,21 @@ mark.wf-anchor.is-filtered-out,
     font-weight: 700;
 }
 
-.wf-suggested-grading__band {
+.wf-suggested-grading__name {
     display: block;
     color: var(--text-primary);
+}
+
+.wf-suggested-grading__band {
+    display: block;
+    color: var(--text-secondary);
+}
+
+.wf-suggested-grading__descriptor {
+    margin: 4px 0 0;
+    color: var(--text-primary);
+    font-size: 12px;
+    line-height: 1.4;
 }
 
 .wf-suggested-grading__choice {
@@ -2957,12 +3178,22 @@ mark.wf-anchor.is-filtered-out,
 
 /* Inside the modal the grid is the whole content, so it gets the room the page could not give it. */
 .modal--grading .wf-suggested-grading__panel {
+    flex: 1 1 auto;
+    min-height: 0;
     min-width: min(1200px, 88vw);
+    display: flex;
+    flex-direction: column;
 }
 
+/* Takes whatever height the modal has left after the total line, and scrolls within it. */
 .modal--grading .wf-suggested-grading__scroll {
-    max-height: 68vh;
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-y: auto;
+}
+
+.modal--grading .wf-suggested-grading__total {
+    flex: none;
 }
 
 .wf-suggested-grading__tag {
@@ -2971,13 +3202,6 @@ mark.wf-anchor.is-filtered-out,
     color: var(--color-chbe-green);
     font-size: 11px;
     font-weight: 700;
-}
-
-.wf-suggested-grading__reason {
-    margin: 4px 0 0;
-    color: var(--text-secondary);
-    font-size: 12px;
-    line-height: 1.4;
 }
 
 .wf-suggested-grading__total {
@@ -3007,18 +3231,21 @@ mark.wf-anchor.is-filtered-out,
 .wf-grade-levels {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: 4px;
     margin-bottom: 8px;
 }
 
+/* Levels share the row equally and wrap only when a word no longer fits, so four levels stay on
+   one row down to a feedback pane about 370px wide. */
 .wf-grade-level {
-    flex: 1 1 96px;
+    flex: 1 1 0;
+    min-width: min-content;
     display: flex;
     flex-direction: column;
     align-items: flex-start;
     gap: 1px;
     min-height: 44px;
-    padding: 6px 10px;
+    padding: 5px;
     background: white;
     color: var(--text-primary);
     border: 1px solid var(--border-color);
@@ -3055,34 +3282,38 @@ mark.wf-anchor.is-filtered-out,
 }
 
 .wf-grade-level__name {
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
+    line-height: 1.3;
 }
 
 .wf-grade-level__band {
     color: var(--text-secondary);
-    font-size: 12px;
+    font-size: 11px;
 }
 
 .wf-grade-level__tag {
     color: var(--color-chbe-green);
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 700;
 }
 
 .wf-grade-points {
     display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 8px 12px;
+    justify-content: flex-end;
 }
 
-.wf-grade-points .wf-help-text {
-    flex: 1 1 160px;
-    margin: 0;
+/* Sits where the "Points" label was, and is empty until staff need to type a number. */
+.wf-grade-points__prompt {
+    color: var(--text-primary);
+    text-align: right;
 }
 
-.wf-grade-points .wf-help-text--error {
+.wf-grade-points__prompt:empty {
+    display: none;
+}
+
+.wf-grade-points__prompt--error {
     color: var(--color-eng-red);
 }
 
@@ -3090,14 +3321,14 @@ mark.wf-anchor.is-filtered-out,
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    margin-left: auto;
     color: var(--text-primary);
     font-size: 13px;
     font-weight: 600;
 }
 
 .wf-grade-points__entry input {
-    width: 78px;
+    /* Wide enough for a range placeholder such as "100–120" beside the number arrows. */
+    width: 96px;
     min-height: 40px;
     padding: 8px 10px;
     background: white;
@@ -3122,32 +3353,6 @@ mark.wf-anchor.is-filtered-out,
 .wf-grade-points__max {
     color: var(--text-secondary);
     font-weight: 400;
-}
-
-/* Pinned to the top of the Summary step's scroll area; the negative margins undo the body padding. */
-.wf-grade-progress {
-    position: sticky;
-    top: -16px;
-    z-index: 2;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 4px 10px;
-    margin: -16px -16px 16px;
-    padding: 6px 16px;
-    background: var(--chat-bg);
-    border-bottom: 1px solid var(--border-color);
-}
-
-.wf-grade-progress__text {
-    margin: 0;
-    color: var(--text-primary);
-    font-size: 13px;
-}
-
-.wf-grade-progress .wf-button[hidden] {
-    display: none;
 }
 
 /* Review and release step: the grade summary. */
@@ -3231,17 +3436,33 @@ mark.wf-anchor.is-filtered-out,
     padding: 12px 14px;
 }
 
+/* A grey title band across the top of each card, so each criterion's start is easy to spot
+   while scrolling. The negative margins undo the card's padding; grey stays clear of the
+   beige, green, and blue the workspace already uses for status. */
 .wf-criterion-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 10px;
+    margin: -12px -14px 8px;
+    padding: 8px 14px;
+    background: var(--hover-bg);
+    border-bottom: 1px solid var(--border-color);
+    border-radius: 7px 7px 0 0;
+}
+
+/* Chips stay together at the right of the card header, and wrap under each other if narrow. */
+.wf-criterion-header__chips {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
 }
 
 .wf-criterion h4 {
     margin: 0;
     color: var(--text-primary);
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 600;
 }
 
@@ -3280,6 +3501,20 @@ mark.wf-anchor.is-filtered-out,
     color: var(--text-primary) !important;
     font-size: 13px;
     font-style: italic;
+}
+
+/* Review history: one closed row at the foot of Step 3, styled like a section heading. */
+.wf-history-disclosure > summary {
+    cursor: pointer;
+    padding-bottom: 6px;
+    color: var(--color-chbe-green);
+    font-size: 15px;
+    font-weight: 700;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.wf-history-disclosure[open] > summary {
+    margin-bottom: 8px;
 }
 
 .wf-history-list {
@@ -3336,20 +3571,6 @@ mark.wf-anchor.is-filtered-out,
     color: var(--text-primary);
 }
 
-.wf-internal-note {
-    padding: 10px 12px;
-    background: rgba(230, 126, 34, 0.08);
-    border: 1px solid color-mix(in srgb, var(--color-eng-red) 60%, var(--color-chbe-green));
-    border-radius: 8px;
-    font-size: 13px;
-}
-
-.wf-internal-note h3 {
-    border: none;
-    color: color-mix(in srgb, var(--color-eng-red) 65%, var(--text-primary));
-    padding-bottom: 0;
-}
-
 /* Focus visibility */
 
 .wf-page button:focus-visible,
@@ -3373,7 +3594,7 @@ mark.wf-anchor.is-filtered-out,
         max-height: none;
     }
 
-    .wf-doc-toolbar {
+    .wf-doc-header {
         position: static;
     }
 
@@ -3427,8 +3648,17 @@ mark.wf-anchor.is-filtered-out,
         background: var(--background-2);
     }
 
-    .wf-doc-paper {
+    .wf-doc-paper--standalone,
+    .wf-doc-card > .wf-doc-paper {
         padding: 24px;
+    }
+
+    .wf-doc-notice {
+        padding: 14px 24px 0;
+    }
+
+    .wf-doc-original {
+        margin: 14px 24px 0;
     }
 }
 
