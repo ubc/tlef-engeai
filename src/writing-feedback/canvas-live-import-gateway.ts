@@ -128,6 +128,27 @@ interface CanvasSubmissionPayload {
 }
 
 /**
+ * describeDownloadTarget - the host and path Canvas pointed the download at.
+ *
+ * The query string is dropped, and that is the point: a Canvas file URL carries a `verifier`,
+ * which authorizes the download on its own and is therefore a credential. Host and path are
+ * what identify *which* endpoint a 401 came from -- a `/files/:id/download` web route, an
+ * `/api/v1/files/:id` API route, or an off-origin storage host -- and that is the difference
+ * between needing a different OAuth scope and needing something else entirely.
+ *
+ * @param url - Attachment URL as Canvas serialized it
+ * @returns `host + pathname`, or a marker when the value will not parse
+ */
+function describeDownloadTarget(url: string): string {
+    try {
+        const parsed = new URL(url);
+        return `${parsed.host}${parsed.pathname}`;
+    } catch {
+        return '(unparseable)';
+    }
+}
+
+/**
  * classifyPayload - names what a downloaded attachment's leading bytes actually are.
  *
  * Two distinct Canvas failures answer with a 200 and a body that is not the student's
@@ -464,6 +485,14 @@ export class LiveCanvasImportGateway implements CanvasImportGateway {
         if (attachment.size !== undefined && attachment.size > MAX_ATTACHMENT_BYTES) {
             throw new Error(`Canvas attachment exceeds the ${MAX_ATTACHMENT_BYTES}-byte import limit`);
         }
+
+        // Logged before the attempt, so a download that throws still says which endpoint it was
+        // refused by. The preview's URL is not the one fetched -- the download re-resolves it --
+        // but Canvas builds both the same way, so its host and path are the ones in play.
+        appLogger.info('[WritingFeedback] canvas_attachment_download_target', {
+            extension,
+            target: describeDownloadTarget(attachment.url)
+        });
 
         // Resolved through the course/assignment/student-scoped submission endpoint rather than
         // by following the preview's URL. `client.download`'s origin rules stop a handed-in URL
