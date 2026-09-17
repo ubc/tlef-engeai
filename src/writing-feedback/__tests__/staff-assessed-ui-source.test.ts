@@ -63,7 +63,8 @@ describe('review card', () => {
     });
 
     it('offers the same editable field the model branch uses', () => {
-        expect(review).toContain('editor.explanationField(lens, criterionId, staffText)');
+        expect(review).toContain('editor.explanationField(lens, criterionId, staffText, {');
+        expect(review).toContain('required: true');
     });
 
     it('blocks approval from the live controls, not the saved edit', () => {

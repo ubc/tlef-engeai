@@ -22,6 +22,7 @@ import { showErrorToast, showSuccessToast, showToast } from '../ui/toast-notific
 import {
     AnchoredComment,
     Assignment,
+    autoGrow,
     CanvasAccountMismatchError,
     CriterionFeedback,
     FeedbackRun,
@@ -846,22 +847,6 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
     const grading = gradeEntry;
     const gradingLens = gradeEntryLens;
 
-    // Pinned above the lens tabs, so how much grading is left stays in view while staff scroll the cards.
-    const progressText = createText('p', '', 'wf-grade-progress__text');
-    const nextUngradedButton = document.createElement('button');
-    nextUngradedButton.type = 'button';
-    nextUngradedButton.className = 'wf-button wf-button--quiet';
-    let nextUngradedId: string | null = null;
-    nextUngradedButton.addEventListener('click', () => {
-        if (nextUngradedId) goToCriterion(nextUngradedId);
-    });
-    if (grading) {
-        const progressLine = document.createElement('div');
-        progressLine.className = 'wf-grade-progress';
-        progressLine.append(progressText, nextUngradedButton);
-        summaryBody.prepend(progressLine);
-    }
-
     const shared = renderSummaryShared(detail, markDirty, preserved?.internalNote);
     const isReleased = submission.status === 'released'
         || detail.release?.status === 'released'
@@ -924,11 +909,11 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
     const checks = document.createElement('div');
     checks.className = 'wf-button-row wf-review-checks';
     if (grading) {
-        checks.append(createButton('Open full rubric grid', 'secondary', async () => {
+        checks.append(createButton('Open full rubric grid', 'outline', async () => {
             await showGridModal('Rubric grading', grading.gridTable());
-        }));
+        }, false, 'grid'));
     }
-    checks.append(renderDownloadMenu(submission, detail));
+    checks.append(renderDownloadMenu(submission));
     // The connect prompt comes last, directly above the footer's disabled Release button it unblocks.
     reviewBody.append(reviewNotice, gradeSection, checks, ...shared.children, connectCallout);
 
@@ -973,20 +958,8 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
     refreshActions = () => {
         const progress = grading?.progress();
 
-        // Step 1: the Summary step's pinned progress line and the Review step's grade summary.
-        if (grading && progress) {
-            const totals = `${progress.points} / ${progress.maxPoints}`;
-            progressText.textContent = progress.complete
-                ? `All ${progress.total} criteria graded · ${totals}`
-                : `Grades ${progress.graded.length} of ${progress.total} · ${totals} so far`;
-            const target = progress.invalid[0] ?? progress.missing[0];
-            nextUngradedId = target?.id ?? null;
-            nextUngradedButton.hidden = !target;
-            nextUngradedButton.textContent = target
-                ? `${progress.invalid[0] ? 'Check points' : 'Next ungraded'}: ${target.label}`
-                : '';
-            renderGradeSummary(grading, progress);
-        }
+        // Step 1: the Review step's grade summary.
+        if (grading && progress) renderGradeSummary(grading, progress);
 
         // Step 2: which footer buttons this step and status allow.
         const onReview = step === 'review';
@@ -1250,7 +1223,7 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
         if (action.kind === 'confirm') {
             const confirmation = await showConfirmModal(
                 'Update the summary from your annotations?',
-                'You changed annotations after editing the summary. Redrafting replaces your edits to What you did well, Feedback by rubric criterion, and Priority revision goals. Your internal note and final grades are kept.',
+                'You changed annotations after editing the summary. Redrafting replaces your edits to What the student did well, Feedback by rubric criterion, and Priority revision goals. Your internal note and final grades are kept.',
                 'Redraft summary',
                 'Keep my summary'
             );
@@ -1287,13 +1260,12 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
 }
 
 /**
- * renderDownloadMenu - the student PDF viewer buttons shown on the Review and release step.
+ * renderDownloadMenu - the feedback PDF preview button shown on the Review and release step.
  *
- * @param submission - Submission whose PDFs are opened
- * @param detail - Detail payload, used to offer the technical PDF for a lab report
+ * @param submission - Submission whose PDF is opened
  * @returns Detached button group
  */
-function renderDownloadMenu(submission: Submission, detail: SubmissionDetail): HTMLElement {
+function renderDownloadMenu(submission: Submission): HTMLElement {
     const downloadMenu = document.createElement('div');
     downloadMenu.className = 'wf-download-menu';
     const pdfBase = `${baseUrl()}/submissions/${encodeURIComponent(submission.id)}/feedback.pdf`;
@@ -1331,22 +1303,22 @@ function renderDownloadMenu(submission: Submission, detail: SubmissionDetail): H
     const viewerButton = (label: string, title: string, query: string): HTMLButtonElement => {
         const button = document.createElement('button');
         button.type = 'button';
-        button.className = 'wf-button wf-button--quiet';
-        button.textContent = label;
+        button.className = 'wf-button wf-button--outline';
+        // Same icon-then-label markup createButton uses, so the two buttons line up.
+        const icon = document.createElement('i');
+        icon.setAttribute('data-feather', 'file-text');
+        icon.setAttribute('aria-hidden', 'true');
+        button.append(icon, createText('span', label, 'wf-button-text'));
         button.title = title;
         button.addEventListener('click', () => { void openPdf(label, query); });
         return button;
     };
 
-    // The include query is the public PDF mode contract: summary-only is the
-    // default, annotated includes hover comments, and both combines the outputs.
+    // `include=both` renders exactly the document a release attaches: for a lab report the
+    // technical feedback, then the writing summary and the annotated text. The route's other
+    // modes stay available but are not offered here.
     downloadMenu.append(
-        viewerButton('PDF', 'Open the student PDF (summary feedback)', ''),
-        viewerButton('Annotated PDF', 'Open the student text with highlighted comments', '?include=annotated'),
-        viewerButton('Complete PDF', 'Open summary feedback plus the annotated student text', '?include=both'),
-        ...(detail.technicalFeedbackRun
-            ? [viewerButton('Technical PDF', 'Open the technical lab-report feedback on its own', '?lens=technical')]
-            : [])
+        viewerButton('Preview feedback PDF', 'Open the feedback PDF the student will receive', '?include=both')
     );
     return downloadMenu;
 }
@@ -1392,7 +1364,7 @@ function renderSummaryLens(input: {
         goals: seedSummaryText(run.result.revisionGoals)
     };
 
-    // Step 1: What you did well.
+    // Step 1: What the student did well.
     element.append(editor.strengthsSection(lens, edit?.strengths ?? run.result.strengths));
 
     // Step 2: grade controls, on the lens the assignment is graded on — technical for a lab report.
@@ -1432,14 +1404,19 @@ function renderSummaryLens(input: {
         const heading = createText('h4', criterionLabel(rubric, criterionId));
         const title = criterionTitle(rubric, criterionId);
         if (title) heading.title = title;
-        criterionHeader.append(heading);
+        const headerChips = document.createElement('div');
+        headerChips.className = 'wf-criterion-header__chips';
+        // Stays visible once the box is filled, and says why this card has no model feedback or evidence.
+        const staffAssessed = definition?.assessedBy === 'staff';
+        if (staffAssessed) headerChips.append(chip('Written by staff', 'neutral'));
         // A graded card states whether it has a grade; the suggested level is marked on its buttons instead.
         const gradeControl = gradeEntry?.control(criterionId) ?? null;
-        if (gradeEntry && gradeControl) criterionHeader.append(gradeEntry.statusChip(criterionId));
+        if (gradeEntry && gradeControl) headerChips.append(gradeEntry.statusChip(criterionId));
         // No chip without a level: a criterion course staff assess on an ungraded lens has none.
         else if (criterion?.suggestedLevel !== undefined) {
-            criterionHeader.append(chip(levelLabel(rubric, criterion.criterion, criterion.suggestedLevel), 'neutral'));
+            headerChips.append(chip(levelLabel(rubric, criterion.criterion, criterion.suggestedLevel), 'neutral'));
         }
+        criterionHeader.append(heading, headerChips);
         item.append(criterionHeader);
         const sflLabel = definition?.sflDimension
             ?? (definition?.functionTag ? `${FUNCTION_TAG_LABELS[definition.functionTag]} function` : undefined);
@@ -1447,14 +1424,13 @@ function renderSummaryLens(input: {
         if (gradeControl) item.append(gradeControl);
         // A staff-assessed criterion is never generated, so the run carries no row for it.
         // The card is the same card; only the seed text and the note above it differ.
-        if (definition?.assessedBy === 'staff') {
-            item.append(createText(
-                'p',
-                'EngE-AI is not able to evaluate this criterion. Please provide your feedback manually.',
-                'wf-muted-note'
-            ));
+        if (staffAssessed) {
             const staffText = edit?.criterionExplanations.find((entry) => entry.criterion === criterionId)?.explanation ?? '';
-            item.append(editor.explanationField(lens, criterionId, staffText));
+            // Approval refuses a blank staff-assessed criterion, so mark it like the final grade.
+            item.append(editor.explanationField(lens, criterionId, staffText, {
+                required: true,
+                prompt: 'EngE-AI doesn\'t assess this criterion. Write the feedback for the student here.'
+            }));
             criterionList.append(item);
             return;
         }
@@ -1474,9 +1450,8 @@ function renderSummaryLens(input: {
     rubricSection.append(criterionList);
     element.append(rubricSection);
 
-    // Step 4: readings (writing lens) and internal flags, under the levels they qualify.
+    // Step 4: readings (writing lens), under the levels they qualify.
     if (lens === 'linguistic') element.append(...renderReadings(run));
-    element.append(...renderInternalFlags(run));
 
     // Step 5: revision goals. Writing keeps the student-feedback textarea and its binding rule.
     const goalsSection = document.createElement('section');
@@ -1487,17 +1462,12 @@ function renderSummaryLens(input: {
         // Staff text applies only while it was saved against this run; after a redraft the
         // goals reseed from the redrafted run, the same rule the student PDF follows.
         const seed = latest && latest.feedbackRunId === run.id ? latest.studentFeedback : baseline.goals;
-        const goals = editor.goalsField(lens, seed, 'Goals the student will receive', 'Guide revision without supplying rewritten sentences or a model answer.');
+        const goals = editor.goalsField(lens, seed, 'Goals the student will receive');
         goals.textarea.id = 'wf-student-feedback';
         studentFeedback = goals.textarea;
         goalsSection.append(goals.wrapper);
     } else {
-        const goals = editor.goalsField(
-            lens,
-            edit?.revisionGoalsText ?? baseline.goals,
-            'Technical goals the student will receive',
-            'Guide revision without supplying corrected values or a model answer.'
-        );
+        const goals = editor.goalsField(lens, edit?.revisionGoalsText ?? baseline.goals, 'Technical goals the student will receive');
         goalsSection.append(goals.wrapper);
     }
     element.append(goalsSection);
@@ -1546,32 +1516,6 @@ function renderReadings(run: FeedbackRun): HTMLElement[] {
 }
 
 /**
- * renderInternalFlags - what the model could not judge, one per line (D-114).
- *
- * @param run - Latest run for the lens
- * @returns The staff-only flags section, or nothing when the run has none
- */
-function renderInternalFlags(run: FeedbackRun): HTMLElement[] {
-    // Internal flags stay in the staff workspace only; the PDF service and release payload
-    // exclude them. They sit directly under the criterion levels because that is what they
-    // qualify — a model that could not check source completeness has told the marker
-    // something about the level they are approving. One per line: joined into a sentence
-    // at the foot of the tab, a marker scrolled past them.
-    if (!run.result.internalFlags.length) return [];
-    const flags = document.createElement('section');
-    flags.className = 'wf-feedback-section wf-internal-note';
-    flags.append(
-        createText('h3', 'Internal review flags'),
-        createText('p', 'What the model could not judge from the verified text. Staff-only; never in the student PDF.', 'wf-muted-note')
-    );
-    const flagList = document.createElement('ul');
-    flagList.className = 'wf-strength-list';
-    run.result.internalFlags.forEach((flag) => flagList.append(createText('li', flag)));
-    flags.append(flagList);
-    return [flags];
-}
-
-/**
  * renderSummaryShared - internal note and review history, shown once per submission on the Review step.
  *
  * @param detail - Submission detail
@@ -1590,22 +1534,24 @@ function renderSummaryShared(
 
     const noteSection = document.createElement('section');
     noteSection.className = 'wf-feedback-section';
-    const internalNote = textAreaControl(preservedNote ?? revision?.internalNote ?? '', 3);
+    // One line until staff write more; it grows with the note rather than reserving space.
+    const internalNote = textAreaControl(preservedNote ?? revision?.internalNote ?? '', 1);
     internalNote.id = 'wf-internal-note';
+    internalNote.placeholder = 'Visible only to course staff';
     internalNote.addEventListener('input', markDirty);
-    noteSection.append(field(
-        'Internal staff note',
-        internalNote,
-        'Visible only to instructors and TAs; excluded from the student PDF.'
-    ));
+    autoGrow(internalNote);
+    noteSection.append(field('Internal staff note (optional)', internalNote));
     children.push(noteSection);
 
     if (submission.reviews?.length) {
-        const historySection = document.createElement('section');
-        historySection.className = 'wf-feedback-section';
+        // Closed by default: an occasional audit reference, not part of approving and releasing.
+        const historySection = document.createElement('details');
+        historySection.className = 'wf-feedback-section wf-history-disclosure';
+        const historySummary = document.createElement('summary');
+        historySummary.textContent = `Review history (${submission.reviews.length})`;
         historySection.append(
-            createText('h3', `Review history (${submission.reviews.length})`),
-            createText('p', 'Every saved revision is kept for audit. This is a read-only record — it cannot be restored or reverted.', 'wf-muted-note')
+            historySummary,
+            createText('p', 'Every saved revision is kept here. This is a read-only record — it cannot be restored or reverted.', 'wf-muted-note')
         );
         const history = document.createElement('div');
         history.className = 'wf-history-list';
@@ -1617,10 +1563,9 @@ function renderSummaryShared(
 
             const entry = document.createElement('details');
             entry.className = 'wf-history-item';
-            entry.open = reverseIndex === 0;
 
             const summary = document.createElement('summary');
-            summary.textContent = `Revision ${revisionNumber} · ${formatDate(item.createdAt, true)} · ${item.staffUserId}`;
+            summary.textContent = `Revision ${revisionNumber} · ${formatDate(item.createdAt, true)} · ${staffDisplayName(item.staffUserId)}`;
             entry.append(summary);
 
             const body = document.createElement('div');
@@ -1630,7 +1575,7 @@ function renderSummaryShared(
                 createText('pre', item.studentFeedback, 'wf-history-text')
             );
             if (item.internalNote) {
-                body.append(createText('h4', 'Internal staff note'), createText('pre', item.internalNote, 'wf-history-text'));
+                body.append(createText('h4', 'Internal staff note (optional)'), createText('pre', item.internalNote, 'wf-history-text'));
             }
             if (item.finalAssessment) {
                 body.append(
@@ -1673,6 +1618,21 @@ function renderSummaryShared(
     }
 
     return { children, internalNote };
+}
+
+/**
+ * staffDisplayName - the course roster name for a staff user id.
+ *
+ * Revisions record only the saver's internal user id. The course's instructor and TA lists
+ * carry names for current staff; anyone no longer on them reads as "Course staff".
+ *
+ * @param userId - `staffUserId` from a review revision
+ * @returns Display name, never the raw id
+ */
+function staffDisplayName(userId: string): string {
+    const roster = [...(state.course?.instructors ?? []), ...(state.course?.teachingAssistants ?? [])];
+    const match = roster.find((entry) => typeof entry === 'object' && entry.userId === userId);
+    return typeof match === 'object' && match.name?.trim() ? match.name.trim() : 'Course staff';
 }
 
 /**

@@ -26,6 +26,25 @@ import {
 import { earnedLevelFor, formatBand, resolveBand } from './writing-feedback-grid.js';
 import { gradeProgress, readPoints, type GradeCriterion, type GradeProgress } from './writing-feedback-grade-progress.js';
 
+/**
+ * levelName - a level button's name, allowed to wrap after a slash.
+ *
+ * Names like "No attempt/Poor" would otherwise hold the button at the width of "attempt/Poor"
+ * and push the row of levels onto a second line in a narrow feedback pane.
+ *
+ * @param name - Level name as staff wrote it
+ * @returns Name span with a line-break opportunity after each slash
+ */
+export function levelName(name: string): HTMLSpanElement {
+    const span = document.createElement('span');
+    span.className = 'wf-grade-level__name';
+    name.split('/').forEach((part, index) => {
+        if (index > 0) span.append('/', document.createElement('wbr'));
+        span.append(part);
+    });
+    return span;
+}
+
 /** What the grade controls hold, split the way the review save endpoint accepts it. */
 export interface GradeReading {
     complete?: StaffAssessmentDraft; // every criterion graded: sent as `finalAssessment`
@@ -84,6 +103,8 @@ export class GradeEntry {
             input.step = '0.01';
             input.inputMode = 'decimal';
             input.placeholder = `0–${criterion.points}`;
+            // No visible label: the prompt beside the box speaks only when staff need to act.
+            input.setAttribute('aria-label', `Points for ${criterion.label}`);
             const points = savedPoints.get(criterion.id);
             if (points !== undefined) input.value = String(points);
             this.inputs.set(criterion.id, input);
@@ -125,7 +146,7 @@ export class GradeEntry {
             button.type = 'button';
             button.className = 'wf-grade-level';
             button.setAttribute('aria-pressed', 'false');
-            button.append(createText('span', name, 'wf-grade-level__name'), createText('span', formatBand(band), 'wf-grade-level__band'));
+            button.append(levelName(name), createText('span', formatBand(band), 'wf-grade-level__band'));
             if (level.id === suggested) {
                 button.classList.add('wf-grade-level--suggested');
                 button.append(createText('span', 'Suggested', 'wf-grade-level__tag'));
@@ -137,10 +158,10 @@ export class GradeEntry {
         });
         this.options.set(criterion.id, options);
 
-        // Step 2: the points box, with a hint that asks for a number or explains a bad one.
+        // Step 2: the points box, with a prompt beside it that asks for a number or a valid one.
         const points = document.createElement('div');
         points.className = 'wf-grade-points';
-        const hint = createText('p', '', 'wf-help-text');
+        const hint = createText('span', '', 'wf-grade-points__prompt');
         hint.id = `wf-grade-hint-${criterion.id}`;
         hint.setAttribute('aria-live', 'polite');
         this.hints.set(criterion.id, hint);
@@ -164,11 +185,10 @@ export class GradeEntry {
                 input.blur();
             }
         });
-        const entry = document.createElement('label');
+        const entry = document.createElement('div');
         entry.className = 'wf-grade-points__entry';
-        entry.htmlFor = input.id;
-        entry.append('Points', input, createText('span', `/ ${criterion.points}`, 'wf-grade-points__max'));
-        points.append(hint, entry);
+        entry.append(hint, input, createText('span', `/ ${criterion.points}`, 'wf-grade-points__max'));
+        points.append(entry);
 
         fieldset.append(legend, levels, points);
         this.paint(criterion);
@@ -257,7 +277,11 @@ export class GradeEntry {
     }
 
     /**
-     * gridTable - a read-only rubric grid of the entered grades beside the model's suggestions.
+     * gridTable - the read-only rubric as the student's PDF prints it, with grades marked.
+     *
+     * Each cell carries the rubric's own rating name, point band and description, as in the
+     * PDF's rubric grid. The model's suggested cell is tagged and the cell the entered points
+     * fall in is filled; neither shows the model's student-specific explanation.
      *
      * @returns Detached panel for the grading modal
      */
@@ -290,13 +314,18 @@ export class GradeEntry {
             this.ordered.forEach((level) => {
                 const cell = document.createElement('td');
                 const band = resolveBand(criterion, level.id, this.rubric.levels);
-                if (band) cell.append(createText('strong', formatBand(band), 'wf-suggested-grading__band'));
+                // A level this criterion does not offer stays blank, as it does in the PDF.
+                if (band) {
+                    cell.append(
+                        createText('strong', band.label?.trim() || level.label, 'wf-suggested-grading__name'),
+                        createText('span', formatBand(band), 'wf-suggested-grading__band')
+                    );
+                    const descriptor = band.descriptor?.trim();
+                    if (descriptor) cell.append(createText('p', descriptor, 'wf-suggested-grading__descriptor'));
+                }
                 if (feedback?.suggestedLevel === level.id) {
                     cell.classList.add('wf-suggested-grading__choice');
-                    cell.append(
-                        createText('span', 'Suggested', 'wf-suggested-grading__tag'),
-                        createText('p', feedback.explanation, 'wf-suggested-grading__reason')
-                    );
+                    cell.append(createText('span', 'Suggested', 'wf-suggested-grading__tag'));
                 }
                 if (earned?.id === level.id) cell.classList.add('wf-suggested-grading__earned');
                 row.append(cell);
@@ -310,8 +339,7 @@ export class GradeEntry {
         const progress = this.progress();
         panel.append(
             scroll,
-            createText('p', `Total: ${progress.points} of ${progress.maxPoints}${progress.complete ? '' : ' so far'}`, 'wf-suggested-grading__total'),
-            createText('p', 'Read-only. Grades are entered on each criterion in Step 2.', 'wf-muted-note')
+            createText('p', `Total: ${progress.points} of ${progress.maxPoints}${progress.complete ? '' : ' so far'}`, 'wf-suggested-grading__total')
         );
         return panel;
     }
@@ -359,12 +387,11 @@ export class GradeEntry {
         const hint = this.hints.get(criterion.id);
         if (hint) {
             const pendingOption = options.find((option) => option.level.id === pending);
-            hint.classList.toggle('wf-help-text--error', points === null);
+            // The chosen level's range is already on its button and in the box's placeholder.
+            hint.classList.toggle('wf-grade-points__prompt--error', points === null);
             hint.textContent = points === null
-                ? `Enter points from 0 to ${max}.`
-                : pendingOption
-                    ? `${pendingOption.name} allows ${formatBand(pendingOption.band)}. Enter exact points.`
-                    : '';
+                ? `Enter points from 0 to ${max}:`
+                : pendingOption ? 'Enter exact points:' : '';
         }
 
         const chipElement = this.chips.get(criterion.id)!;
