@@ -284,6 +284,8 @@ A queued release runs after the staff member has closed the page, so it rebuilds
 
 ### Canvas rubric import
 
+Attachment download requires the `url:GET|/api/v1/files/:id` and `url:GET|/api/v1/courses/:course_id/files/:id` scopes. The URL Canvas returns is not an `/api/v1/` path and carries its own `verifier`, but the LMS package attaches the bearer token to any same-origin URL, so Enforce Scopes evaluates it and answers 401 without them. The symptom is text-entry submissions importing while every file upload fails.
+
 Import also pulls the assignment's rubric and brief. Canvas serializes `rubric`, `rubric_settings`, and `description` inline on the assignment payload, so this costs no extra request and no extra OAuth scope. A rubric failure never loses the submissions: it is logged (message only — a Canvas payload can carry assignment text) and the submission import continues.
 
 Canvas rubrics are converted into the normal EngE-AI rubric draft with `canvasRubricToSeedShape` and `seedRubricForLens`; there is no separate stored Canvas rubric editor. A representable Canvas rubric becomes an unapproved draft, so it cannot govern generation until course staff review and approve it. `rubricSource` records `canvas` provenance.
