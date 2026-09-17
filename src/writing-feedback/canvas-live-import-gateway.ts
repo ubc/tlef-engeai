@@ -23,6 +23,7 @@
  */
 
 import { canvas } from '@ubc/ubc-genai-toolkit-lms-integration';
+import { appLogger } from '../utils/logger';
 import type {
     CanvasAssignmentDetails,
     CanvasImportedRubric,
@@ -124,6 +125,33 @@ interface CanvasSubmissionPayload {
         size?: number | null;
         url?: string | null;
     }> | null;
+}
+
+/**
+ * classifyPayload - names what a downloaded attachment's leading bytes actually are.
+ *
+ * Two distinct Canvas failures answer with a 200 and a body that is not the student's
+ * document: an HTML sign-in or interstitial page, and a storage-layer
+ * `<?xml?><Error><Code>AccessDenied` from an expired or refused signature. Handing either to
+ * the parser produces a failure that names the parser rather than the download, which is the
+ * wrong place to look. The signature is read instead of the content type because Canvas file
+ * storage frequently serves `application/octet-stream` for everything.
+ *
+ * Only the first bytes are examined, and the result is a label rather than any of the bytes,
+ * so this never widens what may be logged.
+ *
+ * @param data - Downloaded attachment bytes
+ * @returns A label for the payload's shape
+ */
+function classifyPayload(data: Uint8Array): 'pdf' | 'zip' | 'html' | 'storage-error' | 'other' {
+    const head = Buffer.from(data.subarray(0, 512));
+    if (head.subarray(0, 5).toString('latin1') === '%PDF-') return 'pdf';
+    // DOCX is a Zip container; `PK\x03\x04` is the local file header every one starts with.
+    if (head.subarray(0, 4).toString('latin1') === 'PK\u0003\u0004') return 'zip';
+    const text = head.toString('utf8').trimStart();
+    if (/^<!doctype\s+html|^<html\b/i.test(text)) return 'html';
+    if (text.startsWith('<?xml') && /<Error\b/i.test(text)) return 'storage-error';
+    return 'other';
 }
 
 function extensionOf(fileName: string): string {
@@ -449,6 +477,36 @@ export class LiveCanvasImportGateway implements CanvasImportGateway {
             attachmentId: attachment.attachmentId,
             maxBytes: MAX_ATTACHMENT_BYTES
         });
+        // What arrived, before anything tries to parse it. The file name is deliberately absent
+        // -- it identifies the student -- so the extension, the two byte counts, and the
+        // payload's shape are what a staff-side download failure is diagnosed from.
+        const shape = classifyPayload(download.data);
+        appLogger.info('[WritingFeedback] canvas_attachment_downloaded', {
+            extension,
+            declaredBytes: attachment.size,
+            receivedBytes: download.data.byteLength,
+            contentType: download.contentType,
+            shape
+        });
+
+        // A 200 carrying a sign-in page or a storage refusal is not the student's document.
+        // Both are caught here rather than in the parser, whose error would name a corrupt
+        // file and send the reader looking in the wrong place.
+        if (shape === 'html') {
+            throw new Error('Canvas returned a sign-in or error page instead of the attachment');
+        }
+        if (shape === 'storage-error') {
+            throw new Error('Canvas file storage refused the download; the signed URL was rejected or had expired');
+        }
+        // Only these two formats carry a signature worth checking. TXT, Markdown, and HTML
+        // have none, and the toolkit has already rejected an HTML *response* above.
+        if (extension === 'pdf' && shape !== 'pdf') {
+            throw new Error(`Canvas attachment declared .pdf but its leading bytes are ${shape}`);
+        }
+        if (extension === 'docx' && shape !== 'zip') {
+            throw new Error(`Canvas attachment declared .docx but its leading bytes are ${shape}`);
+        }
+
         const extraction = await this.extractor.extract({
             buffer: Buffer.from(download.data),
             fileName: attachment.fileName
