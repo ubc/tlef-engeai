@@ -14,7 +14,7 @@ describe('CANVAS_OAUTH_SCOPES', () => {
     it('requests a scope for every endpoint the app calls', () => {
         // A missing entry is not a local failure: Canvas fixes the granted set when the token is
         // minted, so the gap surfaces as a 401 on whichever call was left out.
-        expect(CANVAS_OAUTH_SCOPES).toHaveLength(14);
+        expect(CANVAS_OAUTH_SCOPES).toHaveLength(16);
         expect(new Set(CANVAS_OAUTH_SCOPES).size).toBe(CANVAS_OAUTH_SCOPES.length);
     });
 
