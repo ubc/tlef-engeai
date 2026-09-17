@@ -18,7 +18,13 @@ import { requireCourseFeatureAPI, requireInstructorForCourseAPI } from '../middl
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { LocalDocumentExtractionService } from '../writing-feedback/document-extraction-service';
 import { listPublishedCourseMaterialTitles } from '../writing-feedback/course-material-catalog';
-import { REDRAFT_NOT_DRAFT_READY_MESSAGE, WritingFeedbackService } from '../writing-feedback/writing-feedback-service';
+import {
+    APPROVE_WHILE_GENERATING_MESSAGE,
+    REDRAFT_NOT_DRAFT_READY_MESSAGE,
+    REVIEW_WHILE_GENERATING_MESSAGE,
+    WritingFeedbackService
+} from '../writing-feedback/writing-feedback-service';
+import { BATCH_ERRORS, WritingBatchGenerationService } from '../writing-feedback/batch-generation';
 import { summaryEditsInputSchema } from '../writing-feedback/summary-edits';
 import { SUMMARY_REDRAFT_FAILED_MESSAGE } from '../writing-feedback/summary-redraft-engine';
 import { MockCanvasGateway, SafeCanvasReleaseService } from '../writing-feedback/canvas-release-service';
@@ -150,7 +156,9 @@ function safeError(error: unknown): string {
         'The summary can only be redrafted before approval', 'The summary changed since you opened it',
         'Summary edits failed validation', 'The summary could not be updated from your annotations',
         'This assignment is not linked to Canvas', DUPLICATE_STUDENT_SUBMISSION, 'decision must be',
-        ...Object.values(REPLACEMENT_ERRORS)
+        REVIEW_WHILE_GENERATING_MESSAGE, APPROVE_WHILE_GENERATING_MESSAGE,
+        ...Object.values(REPLACEMENT_ERRORS),
+        ...Object.values(BATCH_ERRORS)
     ];
     return safePrefixes.some((prefix) => message.startsWith(prefix))
         ? message
@@ -831,6 +839,67 @@ router.delete('/:courseId/writing-feedback/assignments/:assignmentId', asyncHand
     res.status(404).json({ success: false, error: 'Writing assignment not found' });
 }));
 
+/** Batch generation over the façade, queuing each submission through the usual single-submission path. */
+function batchService(mongo: EngEAI_MongoDB): WritingBatchGenerationService {
+    const service = new WritingFeedbackService(mongo);
+    return new WritingBatchGenerationService(mongo, (course, submissionId) => service.enqueueGeneration(course, submissionId));
+}
+
+/** Maps a batch refusal to its status: missing assignment 404, blocked batch 409. */
+function batchErrorStatus(message: string): number {
+    if (message === BATCH_ERRORS.notFound) return 404;
+    return message === BATCH_ERRORS.rubricNotApproved || message === BATCH_ERRORS.profileIncomplete ? 409 : 400;
+}
+
+/**
+ * Previews batch generation for the confirmation modal: how many submissions fall in each
+ * category, and why the batch cannot run when it cannot. Changes nothing.
+ */
+router.get('/:courseId/writing-feedback/assignments/:assignmentId/batch-generation', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const mongo = await EngEAI_MongoDB.getInstance();
+        const preview = await batchService(mongo).preview(courseId(req), String(req.params.assignmentId));
+        res.json({ success: true, data: preview });
+    } catch (error) {
+        const message = safeError(error);
+        res.status(batchErrorStatus(message)).json({ success: false, error: message });
+    }
+}));
+
+/**
+ * Starts batch generation: confirms file transcripts that pass the automatic check, then queues
+ * one generation job per submission with no draft or a failed one. `includeStale: true` also
+ * regenerates feedback made with an older rubric version. Returns `202`; the worker drafts the
+ * submissions one at a time and the workspace follows their statuses.
+ */
+router.post('/:courseId/writing-feedback/assignments/:assignmentId/batch-generation', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const mongo = await EngEAI_MongoDB.getInstance();
+        const result = await batchService(mongo).start(courseId(req), String(req.params.assignmentId), {
+            includeStale: req.body?.includeStale === true
+        });
+        res.status(202).json({ success: true, data: result });
+    } catch (error) {
+        const message = safeError(error);
+        res.status(batchErrorStatus(message)).json({ success: false, error: message });
+    }
+}));
+
+/**
+ * Stops batch generation: removes the assignment's generation jobs that have not started and
+ * returns those submissions to their previous state. A submission already generating finishes.
+ */
+router.post('/:courseId/writing-feedback/assignments/:assignmentId/batch-generation/stop', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const mongo = await EngEAI_MongoDB.getInstance();
+        const result = await batchService(mongo).stop(courseId(req), String(req.params.assignmentId));
+        res.json({ success: true, data: result });
+    } catch (error) {
+        const message = safeError(error);
+        res.status(batchErrorStatus(message)).json({ success: false, error: message });
+    }
+}));
+
 /**
  * Creates a clearly labelled synthetic Canvas-text submission for local MVP
  * review. It never contacts Canvas and never represents a real student.
@@ -1062,7 +1131,8 @@ router.post('/:courseId/writing-feedback/submissions/:submissionId/reviews', asy
         res.status(201).json({ success: true, data: revision });
     } catch (error) {
         const message = safeError(error);
-        res.status(message.startsWith('The summary changed since you opened it') ? 409 : 400).json({ success: false, error: message });
+        const conflict = message.startsWith('The summary changed since you opened it') || message === REVIEW_WHILE_GENERATING_MESSAGE;
+        res.status(conflict ? 409 : 400).json({ success: false, error: message });
     }
 }));
 

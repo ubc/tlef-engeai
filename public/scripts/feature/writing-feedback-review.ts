@@ -46,6 +46,7 @@ import {
     formatDate,
     isLateSubmission,
     jsonRequest,
+    queryState,
     refreshIcons,
     request,
     scrollingAncestor,
@@ -265,6 +266,49 @@ async function waitForGeneration(submissionId: string): Promise<SubmissionDetail
     throw new Error('Feedback generation is taking longer than expected. It may still finish — refresh this submission in a moment to check.');
 }
 
+/**
+ * followReviewGeneration - refreshes an open review page once its submission leaves `generating`.
+ *
+ * Stops quietly when staff have moved to another submission or view. A batch can keep a
+ * submission queued for a long time, so this waits without the single-submission deadline.
+ *
+ * @param submissionId - Submission shown on the page
+ */
+async function followReviewGeneration(submissionId: string): Promise<void> {
+    // Reopening the same submission renders the panel again; one follower is enough.
+    if (followedGenerationId === submissionId) return;
+    followedGenerationId = submissionId;
+    const stillShown = (): boolean => queryState('wfSubmission') === submissionId
+        && !element<HTMLDivElement>('wf-view-review').hidden;
+    try {
+        await waitUntilGenerated(submissionId, stillShown);
+    } finally {
+        followedGenerationId = null;
+    }
+}
+
+/** Submission whose generation the review page is currently waiting on. */
+let followedGenerationId: string | null = null;
+
+async function waitUntilGenerated(submissionId: string, stillShown: () => boolean): Promise<void> {
+    while (true) {
+        await delay(5000);
+        if (!stillShown()) return;
+        let detail: SubmissionDetail;
+        try {
+            detail = await request<SubmissionDetail>(`/submissions/${encodeURIComponent(submissionId)}`);
+        } catch {
+            continue;
+        }
+        if (detail.submission.status === 'generating') continue;
+        if (stillShown()) {
+            followedGenerationId = null;
+            await refreshReview(submissionId);
+        }
+        return;
+    }
+}
+
 /** What `release-status` reports while a queued release runs. */
 interface ReleaseStatus {
     release: SubmissionDetail['release'];
@@ -361,7 +405,9 @@ function renderReviewView(root: HTMLDivElement, detail: SubmissionDetail): void 
     // which rubricForRun still finds in the history, so a newer approved rubric leaves it
     // readable rather than hiding it behind "Regenerate".
     const released = submission.status === 'released';
-    const staleRubric = !released
+    // Nothing here can be acted on while generation replaces the draft, so no regenerate warnings.
+    const generating = submission.status === 'generating';
+    const staleRubric = !released && !generating
         && Boolean(feedbackRun && assignment && (feedbackRun.rubricVersion ?? 1) !== assignment.rubric.version);
     if (staleRubric) {
         const warning = createText(
@@ -376,7 +422,7 @@ function renderReviewView(root: HTMLDivElement, detail: SubmissionDetail): void 
     // The technical lens can drift (or be missing) independently of the linguistic
     // run above; approval/release/PDF all require it once the assignment is a lab
     // report with an approved technical rubric, so surface that gap here too.
-    const technicalStale = !released && Boolean(
+    const technicalStale = !released && !generating && Boolean(
         assignment?.isLabReport
         && assignment.technicalRubric?.status === 'approved'
         && (!detail.technicalFeedbackRun
@@ -401,7 +447,7 @@ function renderReviewView(root: HTMLDivElement, detail: SubmissionDetail): void 
     layout.append(
         // Doc-pane annotations are anchored to the linguistic run only; keep this
         // gate on staleRubric alone regardless of technical lens state.
-        renderDocPane(submission, feedbackRun !== null && !staleRubric),
+        renderDocPane(submission, feedbackRun !== null && !staleRubric && !generating),
         createPanelResizeHandle(layout),
         renderFeedbackPanel(detail, assignment, staleRubric || technicalStale)
     );
@@ -529,8 +575,21 @@ export function renderDocPane(submission: Submission, annotate: boolean): HTMLEl
         return pane;
     }
 
+    // Batch generation confirmed this text without a person reading it, so say so before anyone
+    // relies on feedback quoted from it.
+    if (submission.transcriptConfirmedBy === 'batch') {
+        const unchecked = createText(
+            'div',
+            'Transcript not checked by staff. Batch generation confirmed this text automatically from the student\'s file. Compare it with the file in Canvas before approving.',
+            'wf-workspace-message'
+        );
+        unchecked.dataset.tone = 'warning';
+        pane.append(unchecked);
+    }
+
     const verifiedText = submission.verifiedText ?? submission.originalText;
-    if (submission.verifiedText !== undefined && submission.verifiedText !== submission.originalText) {
+    // Confirming a transcript trims its surrounding whitespace, which is not a correction worth showing.
+    if (submission.verifiedText !== undefined && submission.verifiedText.trim() !== submission.originalText.trim()) {
         const original = document.createElement('details');
         original.className = 'wf-doc-original';
         const summary = document.createElement('summary');
@@ -569,6 +628,22 @@ export function renderFeedbackPanel(detail: SubmissionDetail, assignment: Assign
     header.className = 'wf-panel-header';
     header.append(createText('h3', 'Feedback'));
     panel.append(header);
+
+    // Queued or running generation replaces whatever draft is here, so nothing is editable yet.
+    if (submission.status === 'generating') {
+        const body = document.createElement('div');
+        body.className = 'wf-panel-body';
+        const card = document.createElement('div');
+        card.setAttribute('role', 'status');
+        card.append(
+            createText('h4', 'Generating feedback'),
+            createText('p', 'This submission is queued or being generated. This page will refresh when its draft is ready. Other submissions can be reviewed in the meantime.', 'wf-muted-note')
+        );
+        body.append(card);
+        panel.append(body);
+        void followReviewGeneration(submission.id);
+        return panel;
+    }
 
     if (!feedbackRun || staleRubric) {
         const body = document.createElement('div');

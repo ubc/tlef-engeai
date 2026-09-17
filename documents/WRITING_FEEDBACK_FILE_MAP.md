@@ -20,7 +20,9 @@ Line counts are a rough guide to reading cost, not a target.
 | File | Lines | Responsibility | Test | Open it when |
 | --- | ---: | --- | --- | --- |
 | `writing-feedback-service.ts` | 927 | Coordinates the staff-reviewed Writing Feedback lifecycle. | `writing-feedback-service.test.ts` | lifecycle, approval, preview, queueing, or the worker path changes |
-| `worker.ts` | 66 | Wires asynchronous Writing Feedback generation jobs at server startup. | — | job wiring changes |
+| `worker.ts` | 81 | Wires asynchronous Writing Feedback generation jobs at server startup; marks a generation failed only on its last attempt. | `worker.test.ts` | job wiring or retry marking changes |
+| `batch-generation.ts` | 245 | Previews, starts, and stops batch feedback generation for one assignment. | `batch-generation.test.ts` | which submissions a batch includes, or stopping, changes |
+| `transcript-quality.ts` | 74 | Decides whether extracted file text can be confirmed without a person. | `transcript-quality.test.ts` | automatic transcript acceptance changes |
 | `job-runner.ts` | 77 | Executes one leased Writing Feedback job with sanitized retry state. | `job-runner.test.ts` | retry or sanitized job failure changes |
 
 ### Generation
@@ -91,6 +93,7 @@ Line counts are a rough guide to reading cost, not a target.
 | `src/db/enge-ai-mongodb.ts` | 1481 | The façade every handler goes through to reach the delegates above. | a new delegate is exposed |
 | `src/report-generation/writing-feedback-report.ts` | 525 | Renders the student-safe PDF, including annotations and the lab-report technical section. | anything a student sees in the PDF changes |
 | `public/scripts/feature/writing-feedback.ts` | 852 | The workspace shell: assignment list, intake, and navigation. | the workspace layout or intake changes |
+| `public/scripts/feature/writing-feedback-batch.ts` | 299 | The "Generate feedback for all submissions" bar, confirmation modal, progress, and Stop. | batch generation UI changes |
 | `public/scripts/feature/writing-feedback-review.ts` | 1562 | The three-step review page: annotations, feedback with a grade per criterion, then review, approve and release. | review or release UI changes |
 | `public/scripts/feature/writing-feedback-grade-entry.ts` | 377 | Final grade controls on each criterion card (level buttons, points box, status chip) and the read-only rubric grid. | how staff enter or see grades changes |
 | `public/scripts/feature/writing-feedback-grade-progress.ts` | 104 | DOM-free grading progress and the sentence explaining why Approve is blocked. | what counts as graded, or the approval blocker wording |

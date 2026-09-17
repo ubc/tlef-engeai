@@ -2106,7 +2106,7 @@ async function approveEveryRubric(context: RubricPageContext): Promise<void> {
         }
         const count = staleCounts[index];
         const cost = count > 0
-            ? ` ${count} ${count === 1 ? 'student has' : 'students have'} feedback from v${section.approvedVersion} that isn't released yet. It will need to be regenerated and approved again; comments and written feedback staff added are kept.`
+            ? ` ${count} ${count === 1 ? 'student has' : 'students have'} feedback from v${section.approvedVersion} that isn't released yet. It will need to be regenerated and approved again. Comments staff added are kept; edited summaries and revision goals are replaced by the new draft.`
             : '';
         return `${subject} becomes v${versionOf(section)}, replacing v${section.approvedVersion}.${cost}`;
     });

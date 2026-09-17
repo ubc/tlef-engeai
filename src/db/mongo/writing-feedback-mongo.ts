@@ -953,7 +953,33 @@ export async function updateVerifiedWritingText(
 ) {
     return submissions(ctx).findOneAndUpdate(
         { id: submissionId, courseId, ...ACTIVE_SLOT_FILTER },
-        { $set: { verifiedText, requiresVerification: false, status: 'imported', updatedAt: new Date() } },
+        { $set: { verifiedText, requiresVerification: false, transcriptConfirmedBy: 'staff', status: 'imported', updatedAt: new Date() } },
+        { returnDocument: 'after' }
+    );
+}
+
+/**
+ * autoConfirmWritingTranscript — accepts extracted file text on behalf of batch generation.
+ *
+ * Applies only to an active submission still waiting for confirmation, so a transcript staff
+ * confirmed or corrected in the meantime is never overwritten. The row is stamped
+ * `transcriptConfirmedBy: 'batch'` so the review page can say no person has checked it.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param submissionId - File submission waiting for confirmation
+ * @param verifiedText - Extracted text that passed the automatic quality check
+ * @returns Updated submission, or `null` when it no longer needs confirming
+ */
+export async function autoConfirmWritingTranscript(
+    ctx: MongoDalContext,
+    courseId: string,
+    submissionId: string,
+    verifiedText: string
+) {
+    return submissions(ctx).findOneAndUpdate(
+        { id: submissionId, courseId, ...ACTIVE_SLOT_FILTER, requiresVerification: true, status: 'verification_needed' },
+        { $set: { verifiedText, requiresVerification: false, transcriptConfirmedBy: 'batch', status: 'imported', updatedAt: new Date() } },
         { returnDocument: 'after' }
     );
 }
@@ -1203,13 +1229,14 @@ export async function updateWritingGlossaryEntry(
  * appendWritingReview — appends an immutable staff-authored revision.
  *
  * Every edit receives a new id and timestamp. Appending a revision invalidates
- * prior approval by returning the submission to `draft_ready`.
+ * prior approval by returning the submission to `draft_ready`. Nothing is written while
+ * the submission is generating.
  *
  * @param ctx - Connected Mongo data-layer context
  * @param courseId - Owning course id
  * @param submissionId - Submission under review
  * @param revision - Validated revision fields excluding server provenance
- * @returns Newly constructed revision
+ * @returns Newly constructed revision, or `null` when the submission is missing or generating
  */
 export async function appendWritingReview(
     ctx: MongoDalContext,
@@ -1224,16 +1251,18 @@ export async function appendWritingReview(
         createdAt: new Date()
     };
 
-    // Append rather than replace so staff edits retain a complete audit trail.
-    await submissions(ctx).updateOne(
-        { id: submissionId, courseId },
+    // Append rather than replace so staff edits retain a complete audit trail. A generating
+    // submission is left alone: marking it draft_ready would let it be approved while the
+    // worker is still replacing the draft.
+    const result = await submissions(ctx).updateOne(
+        { id: submissionId, courseId, status: { $ne: 'generating' } },
         {
             $push: { reviews: stored },
             // Any staff edit after approval requires a new explicit approval.
             $set: { status: 'draft_ready', updatedAt: new Date() }
         }
     );
-    return stored;
+    return result.matchedCount === 1 ? stored : null;
 }
 
 /**
@@ -1471,6 +1500,105 @@ export async function findActiveWritingJob(
 }
 
 /**
+ * listActiveWritingGenerationSubmissionIds — submissions with generation queued or running.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param submissionIds - Submissions to check
+ * @returns Ids among `submissionIds` that have a queued or leased `generate` job
+ */
+export async function listActiveWritingGenerationSubmissionIds(
+    ctx: MongoDalContext,
+    courseId: string,
+    submissionIds: string[]
+): Promise<Set<string>> {
+    if (!submissionIds.length) return new Set();
+    const active = await jobs(ctx).find(
+        { courseId, type: 'generate', 'payload.submissionId': { $in: submissionIds }, state: { $in: ['queued', 'leased'] } },
+        { projection: { payload: 1 } }
+    ).toArray();
+    return new Set(active.map((job) => job.payload.submissionId));
+}
+
+/** A leased job this far past its lease is not running; its worker died on the last attempt. */
+const ABANDONED_LEASE_MS = 15 * 60_000;
+
+/**
+ * cancelWritingGenerationJobs — removes generation work that has not started.
+ *
+ * Deletes queued `generate` jobs, and leased ones whose lease ran out long ago with no attempts
+ * left (no worker will ever pick those up). A job a worker is running is left to finish. Each
+ * job is deleted with its state re-checked, so a job a worker claims in the meantime is kept.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param submissionIds - Submissions whose pending generation should stop
+ * @returns Ids of the submissions whose job was removed
+ */
+export async function cancelWritingGenerationJobs(
+    ctx: MongoDalContext,
+    courseId: string,
+    submissionIds: string[]
+): Promise<string[]> {
+    if (!submissionIds.length) return [];
+    const abandonedBefore = new Date(Date.now() - ABANDONED_LEASE_MS);
+    const stoppable: Filter<WritingJob> = {
+        $or: [
+            { state: 'queued' },
+            { state: 'leased', leaseUntil: { $lte: abandonedBefore }, $expr: { $gte: ['$attempts', '$maxAttempts'] } }
+        ]
+    };
+    const candidates = await jobs(ctx).find(
+        { courseId, type: 'generate', 'payload.submissionId': { $in: submissionIds }, ...stoppable },
+        { projection: { id: 1, payload: 1 } }
+    ).toArray();
+    const cancelled: string[] = [];
+    for (const job of candidates) {
+        const result = await jobs(ctx).deleteOne({ id: job.id, ...stoppable });
+        if (result.deletedCount === 1) cancelled.push(job.payload.submissionId);
+    }
+    return cancelled;
+}
+
+/**
+ * listLatestWritingRunVersions — each submission's newest rubric version per lens.
+ *
+ * Batch generation uses it to tell missing and out-of-date feedback apart without one query per
+ * submission. A run with no lens is linguistic and one with no rubric version is version 1, as in
+ * `getLatestWritingFeedbackRun` and the staleness checks.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param assignmentId - Assignment whose runs are read
+ * @returns Map of submission id to the rubric version of its latest run for each lens
+ */
+export async function listLatestWritingRunVersions(
+    ctx: MongoDalContext,
+    courseId: string,
+    assignmentId: string
+): Promise<Map<string, Partial<Record<WritingFeedbackLens, number>>>> {
+    const rows = await runs(ctx).aggregate<{ _id: { submissionId: string; lens: WritingFeedbackLens }; rubricVersion: number | null }>([
+        // Step 1: this assignment's runs, newest first.
+        { $match: { courseId, assignmentId } },
+        { $sort: { createdAt: -1 } },
+        // Step 2: one row per submission and lens, carrying its latest run's rubric version.
+        {
+            $group: {
+                _id: { submissionId: '$submissionId', lens: { $ifNull: ['$lens', 'linguistic'] } },
+                rubricVersion: { $first: '$rubricVersion' }
+            }
+        }
+    ]).toArray();
+    const versions = new Map<string, Partial<Record<WritingFeedbackLens, number>>>();
+    for (const row of rows) {
+        const entry = versions.get(row._id.submissionId) ?? {};
+        entry[row._id.lens] = row.rubricVersion ?? 1;
+        versions.set(row._id.submissionId, entry);
+    }
+    return versions;
+}
+
+/**
  * findLatestWritingJob — the newest job of one type for a submission, whatever its state.
  *
  * A polling page needs the terminal state as well as the active one: a release job that failed is
@@ -1496,8 +1624,9 @@ export async function findLatestWritingJob(
 }
 
 /**
- * leaseNextWritingJob — atomically claims the oldest runnable job.
+ * leaseNextWritingJob — atomically claims the next runnable job.
  *
+ * Release jobs are claimed before any other type; within a type the oldest goes first.
  * Queued jobs and expired leases are eligible only while attempts remain.
  * `findOneAndUpdate` performs selection, lease assignment, and attempt increment
  * atomically so concurrent workers cannot claim the same lease.
@@ -1508,10 +1637,9 @@ export async function findLatestWritingJob(
  */
 export async function leaseNextWritingJob(ctx: MongoDalContext, leaseMs: number = 60_000): Promise<WritingJob | null> {
     const now = new Date();
-
-    // Claim and increment in one database operation to enforce single-worker ownership.
-    return jobs(ctx).findOneAndUpdate(
+    const claim = (typeFilter: Filter<WritingJob>) => jobs(ctx).findOneAndUpdate(
         {
+            ...typeFilter,
             $expr: { $lt: ['$attempts', '$maxAttempts'] },
             $or: [
                 { state: 'queued' },
@@ -1521,6 +1649,14 @@ export async function leaseNextWritingJob(ctx: MongoDalContext, leaseMs: number 
         { $set: { state: 'leased', leaseUntil: new Date(now.getTime() + leaseMs), updatedAt: now }, $inc: { attempts: 1 } },
         { sort: { createdAt: 1 }, returnDocument: 'after' }
     );
+
+    // Step 1: a Canvas release goes first. Staff wait on it from the review page, and it would
+    // otherwise sit behind every submission of a batch generation run.
+    const release = await claim({ type: 'release' });
+    if (release) return release;
+    // Step 2: everything else, oldest first. Claim and increment are one operation, so two
+    // workers cannot hold the same lease.
+    return claim({ type: { $ne: 'release' } });
 }
 
 /**

@@ -72,7 +72,7 @@ export function renderReplacementNotice(submission: Submission, options: Replace
     const submitted = pending.submittedAt ? `, submitted ${formatDate(pending.submittedAt, true)}` : '';
     notice.append(createText(
         'span',
-        `This student resubmitted in Canvas (attempt ${pending.attempt}${submitted}). Which attempt should be reviewed?`
+        `This student resubmitted in Canvas (attempt ${pending.attempt}${submitted}). Which attempt should be used?`
     ));
 
     const decide = async (decision: ReplacementDecision): Promise<void> => {

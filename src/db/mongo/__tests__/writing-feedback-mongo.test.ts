@@ -18,7 +18,10 @@ import type {
     WritingRubricDefinition
 } from '../../../writing-feedback/contracts';
 import {
+    appendWritingReview,
     approveWritingRubricDraft,
+    autoConfirmWritingTranscript,
+    cancelWritingGenerationJobs,
     chooseWritingAssignmentType,
     completeWritingJob,
     countFeedbackStaleOnApproval,
@@ -30,6 +33,8 @@ import {
     finalizeWritingRelease,
     getLatestWritingFeedbackRun,
     getLatestWritingRelease,
+    leaseNextWritingJob,
+    listLatestWritingRunVersions,
     listWritingSubmissions,
     normalizeWritingAssignment,
     replaceWritingSubmission,
@@ -787,5 +792,121 @@ describe('deleteWritingAssignment', () => {
 
         expect(result).toEqual({ deleted: false, blockedByWork: false });
         expect(cols['writing-submissions'].deleteMany).not.toHaveBeenCalled();
+    });
+});
+
+describe('leaseNextWritingJob', () => {
+    it('claims a queued release before any other job', async () => {
+        const release = { id: 'job-release', type: 'release' };
+        const jobsCollection = { findOneAndUpdate: jest.fn().mockResolvedValueOnce(release) };
+        const ctx = contextWithCollections({ 'writing-jobs': jobsCollection });
+
+        await expect(leaseNextWritingJob(ctx)).resolves.toBe(release);
+        expect(jobsCollection.findOneAndUpdate).toHaveBeenCalledTimes(1);
+        expect(jobsCollection.findOneAndUpdate.mock.calls[0][0]).toMatchObject({ type: 'release' });
+    });
+
+    it('falls back to the oldest other job when no release is waiting', async () => {
+        const generate = { id: 'job-generate', type: 'generate' };
+        const jobsCollection = {
+            findOneAndUpdate: jest.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(generate)
+        };
+        const ctx = contextWithCollections({ 'writing-jobs': jobsCollection });
+
+        await expect(leaseNextWritingJob(ctx)).resolves.toBe(generate);
+        const [filter, update, options] = jobsCollection.findOneAndUpdate.mock.calls[1];
+        expect(filter).toMatchObject({ type: { $ne: 'release' } });
+        expect(update).toMatchObject({ $inc: { attempts: 1 } });
+        expect(options).toMatchObject({ sort: { createdAt: 1 } });
+    });
+});
+
+describe('cancelWritingGenerationJobs', () => {
+    it('removes only jobs whose conditional delete succeeds', async () => {
+        const jobsCollection = {
+            find: jest.fn(() => ({
+                toArray: jest.fn().mockResolvedValue([
+                    { id: 'job-a', payload: { submissionId: 'sub-a' } },
+                    { id: 'job-b', payload: { submissionId: 'sub-b' } }
+                ])
+            })),
+            // job-b was claimed by the worker between the read and the delete.
+            deleteOne: jest.fn().mockResolvedValueOnce({ deletedCount: 1 }).mockResolvedValueOnce({ deletedCount: 0 })
+        };
+        const ctx = contextWithCollections({ 'writing-jobs': jobsCollection });
+
+        await expect(cancelWritingGenerationJobs(ctx, 'course-1', ['sub-a', 'sub-b'])).resolves.toEqual(['sub-a']);
+        const [findFilter] = jobsCollection.find.mock.calls[0] as unknown as [Record<string, unknown>];
+        expect(findFilter).toMatchObject({ courseId: 'course-1', type: 'generate' });
+        // Only queued jobs and long-abandoned leases qualify; a running job is left to finish.
+        expect(jobsCollection.deleteOne.mock.calls[0][0]).toMatchObject({
+            id: 'job-a',
+            $or: [{ state: 'queued' }, expect.objectContaining({ state: 'leased' })]
+        });
+    });
+
+    it('does nothing for an empty assignment', async () => {
+        const ctx = contextWithCollections({ 'writing-jobs': { find: jest.fn() } });
+        await expect(cancelWritingGenerationJobs(ctx, 'course-1', [])).resolves.toEqual([]);
+    });
+});
+
+describe('appendWritingReview', () => {
+    it('writes nothing to a generating submission and reports it', async () => {
+        const submissionsCollection = { updateOne: jest.fn().mockResolvedValue({ matchedCount: 0 }) };
+        const ctx = contextWithCollections({ 'writing-submissions': submissionsCollection });
+
+        await expect(appendWritingReview(ctx, 'course-1', 'sub-1', {
+            feedbackRunId: 'run-1', staffUserId: 'staff-1', studentFeedback: 'Good.'
+        })).resolves.toBeNull();
+        expect(submissionsCollection.updateOne.mock.calls[0][0]).toEqual({
+            id: 'sub-1', courseId: 'course-1', status: { $ne: 'generating' }
+        });
+    });
+
+    it('returns the stored revision when the submission accepts it', async () => {
+        const submissionsCollection = { updateOne: jest.fn().mockResolvedValue({ matchedCount: 1 }) };
+        const ctx = contextWithCollections({ 'writing-submissions': submissionsCollection });
+
+        await expect(appendWritingReview(ctx, 'course-1', 'sub-1', {
+            feedbackRunId: 'run-1', staffUserId: 'staff-1', studentFeedback: 'Good.'
+        })).resolves.toMatchObject({ submissionId: 'sub-1', studentFeedback: 'Good.' });
+    });
+});
+
+describe('autoConfirmWritingTranscript', () => {
+    it('only confirms an active submission still waiting for confirmation, and marks it batch-confirmed', async () => {
+        const submissionsCollection = { findOneAndUpdate: jest.fn().mockResolvedValue(null) };
+        const ctx = contextWithCollections({ 'writing-submissions': submissionsCollection });
+
+        await autoConfirmWritingTranscript(ctx, 'course-1', 'sub-1', 'Extracted text.');
+        const [filter, update] = submissionsCollection.findOneAndUpdate.mock.calls[0];
+        expect(filter).toMatchObject({
+            id: 'sub-1', courseId: 'course-1', requiresVerification: true, status: 'verification_needed'
+        });
+        expect(update.$set).toMatchObject({
+            verifiedText: 'Extracted text.', requiresVerification: false, transcriptConfirmedBy: 'batch', status: 'imported'
+        });
+    });
+});
+
+describe('listLatestWritingRunVersions', () => {
+    it('maps each submission to its latest rubric version per lens, defaulting legacy runs', async () => {
+        const runsCollection = {
+            aggregate: jest.fn(() => ({
+                toArray: jest.fn().mockResolvedValue([
+                    { _id: { submissionId: 'sub-1', lens: 'linguistic' }, rubricVersion: 3 },
+                    { _id: { submissionId: 'sub-1', lens: 'technical' }, rubricVersion: 2 },
+                    { _id: { submissionId: 'sub-2', lens: 'linguistic' }, rubricVersion: null }
+                ])
+            }))
+        };
+        const ctx = contextWithCollections({ 'writing-feedback-runs': runsCollection });
+
+        const versions = await listLatestWritingRunVersions(ctx, 'course-1', 'assignment-1');
+        expect(versions.get('sub-1')).toEqual({ linguistic: 3, technical: 2 });
+        expect(versions.get('sub-2')).toEqual({ linguistic: 1 });
+        const [pipeline] = runsCollection.aggregate.mock.calls[0] as unknown as [Array<Record<string, unknown>>];
+        expect(pipeline[0]).toEqual({ $match: { courseId: 'course-1', assignmentId: 'assignment-1' } });
     });
 });

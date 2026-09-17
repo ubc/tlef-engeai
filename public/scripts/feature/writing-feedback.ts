@@ -25,8 +25,6 @@ import {
     CanvasImportResult,
     CanvasStatus,
     CanvasSyncResult,
-    STATUS_LABELS,
-    STATUS_TONES,
     Submission,
     WorkspaceContext,
     baseUrl,
@@ -63,6 +61,7 @@ import { setWritingFeedbackDemoMode, assertNotWritingFeedbackDemoMode } from './
 import { oldestPendingAssignment } from './writing-feedback-assignment-type-state.js';
 import { connectUrlReturningTo } from './writing-feedback-canvas-connect.js';
 import { renderReplacementNotice } from './writing-feedback-replacement.js';
+import { followGeneration, renderBatchBar, statusChip, stopFollowingGeneration } from './writing-feedback-batch.js';
 
 // ---------------------------------------------------------------------------
 // Landing view
@@ -259,6 +258,7 @@ async function expandAssignment(assignmentId: string): Promise<void> {
     const panel = document.getElementById(`wf-assignment-panel-${assignmentId}`);
     const assignment = state.assignments.find((item) => item.id === assignmentId);
     if (!panel || !assignment) return;
+    stopFollowingGeneration();
     panel.setAttribute('aria-busy', 'true');
     panel.replaceChildren(createText('p', 'Loading submissions…', 'wf-muted-note'));
     let submissions: Submission[];
@@ -279,6 +279,11 @@ async function expandAssignment(assignmentId: string): Promise<void> {
     }
     if (state.expandedAssignmentId !== assignmentId || !panel.isConnected) return;
     panel.replaceChildren();
+    if (submissions.length) {
+        panel.append(renderBatchBar(assignment, submissions, {
+            onChanged: async () => expandAssignment(assignmentId)
+        }));
+    }
 
     if (!submissions.length) {
         const emptyWrap = document.createElement('div');
@@ -289,6 +294,7 @@ async function expandAssignment(assignmentId: string): Promise<void> {
     submissions.forEach((submission) => {
         const row = document.createElement('div');
         row.className = 'wf-submission-row';
+        row.dataset.submissionId = submission.id;
         const late = isLateSubmission(submission, assignment);
 
         // The row is the object, so the row opens it — the same mouse/Enter/Space contract the
@@ -316,7 +322,7 @@ async function expandAssignment(assignmentId: string): Promise<void> {
         if (late) rowMeta.append(createText('span', 'Late', 'wf-late-flag'));
         rowMeta.append(
             createText('span', `Attempt ${submission.attempt}`),
-            chip(STATUS_LABELS[submission.status], STATUS_TONES[submission.status])
+            statusChip(submission)
         );
         info.append(rowMeta);
 
@@ -371,6 +377,7 @@ async function expandAssignment(assignmentId: string): Promise<void> {
     panel.append(footer);
     panel.setAttribute('aria-busy', 'false');
     refreshIcons();
+    followGeneration(assignment, panel, submissions);
     await expandDisclosure(panel);
 }
 
@@ -800,7 +807,7 @@ async function showCanvasImport(): Promise<void> {
     callout.className = 'wf-callout wf-callout--success';
     callout.append(createText(
         'span',
-        "This will import all of the selected assignment's submissions. Only assignments with at least one submission appear below. To pick up late submissions later, use Sync submissions on the assignment."
+        "This will import all of the selected assignment's submissions. Only assignments with at least one submission appear below. To import late submissions, use Sync submissions on the assignment."
     ));
     content.append(callout);
 

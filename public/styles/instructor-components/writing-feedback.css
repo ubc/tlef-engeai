@@ -703,6 +703,76 @@
     border-radius: 8px;
 }
 
+/* Batch generation bar above an assignment's submission list */
+
+.wf-batch-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px 15px;
+    padding: 10px 20px;
+    /* A green tint, distinct from the white rows and the beige header, so it reads as a toolbar. */
+    background: color-mix(in srgb, var(--chat-bg) 90%, var(--color-chbe-green));
+    border-top: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
+}
+
+/* The bar already draws the line above the first submission. */
+.wf-batch-bar + .wf-submission-row {
+    border-top: none;
+}
+
+.wf-batch-bar__status {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.wf-batch-bar .wf-button-row {
+    margin: 0 0 0 auto;
+}
+
+.wf-batch-modal p {
+    margin: 0 0 10px;
+    line-height: 1.5;
+}
+
+.wf-batch-modal__list {
+    margin: 0 0 15px;
+    padding-left: 20px;
+    line-height: 1.5;
+}
+
+.wf-batch-modal__option {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin: 0 0 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.wf-batch-modal__option input {
+    flex: none;
+    width: 18px;
+    height: 18px;
+    margin-top: 2px;
+}
+
+.wf-batch-modal__option > span {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.wf-batch-modal__option .wf-muted-note {
+    padding: 0;
+}
+
 .wf-add-submission-row {
     display: flex;
     justify-content: flex-end;

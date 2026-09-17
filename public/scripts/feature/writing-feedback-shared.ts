@@ -398,6 +398,8 @@ export interface Submission {
     originalText: string; // parser/OCR output retained for staff comparison
     verifiedText?: string; // staff-confirmed source of truth for evidence offsets
     requiresVerification: boolean; // blocks generation until transcript confirmation
+    /** Who confirmed the transcript; `batch` means batch generation accepted it and no person checked it. */
+    transcriptConfirmedBy?: 'staff' | 'batch';
     status: SubmissionStatus; // server lifecycle state controlling available actions
     reviews?: ReviewRevision[]; // append-only staff revision audit history
     createdAt: string; // import timestamp used for queue ordering; not when the student submitted
@@ -415,6 +417,22 @@ export interface PendingReplacement {
 
 /** Staff choice between a submission and its held newer attempt. */
 export type ReplacementDecision = 'use_newer' | 'keep_current';
+
+/** What batch generation does with one submission; mirrors `WritingBatchCategory`. */
+export type BatchCategory = 'no_draft' | 'failed' | 'transcript' | 'stale' | 'needs_transcript' | 'in_progress' | 'done';
+
+/** Batch generation preview for the confirmation modal; mirrors `WritingBatchPreview`. */
+export interface BatchPreview {
+    counts: Record<BatchCategory, number>;
+    blockedReason?: string; // why nothing can be generated yet
+}
+
+/** What a started batch queued; mirrors `WritingBatchStartResult`. */
+export interface BatchStartResult {
+    queued: number;
+    transcriptsConfirmed: number;
+    skipped: number;
+}
 
 /** Result of syncing one linked assignment with Canvas. */
 export interface CanvasSyncResult {
@@ -550,14 +568,15 @@ export interface CanvasAssignmentDetails {
  * Staff-facing text for each submission lifecycle state.
  *
  * Grouped by what staff do next rather than one label per state: "Not started" covers text
- * that still needs checking (the review page explains that step), and "Needs review" covers
- * the brief generating state. "Ready to release" and "Released" stay distinct because only
- * the second means the student has the feedback.
+ * that still needs checking (the review page explains that step). "Generating" stays separate
+ * because batch generation can hold a submission there for a while, and it cannot be reviewed
+ * yet. "Ready to release" and "Released" stay distinct because only the second means the
+ * student has the feedback.
  */
 export const STATUS_LABELS: Record<SubmissionStatus, string> = {
     imported: 'Not started',
     verification_needed: 'Not started',
-    generating: 'Needs review',
+    generating: 'Generating',
     draft_ready: 'Needs review',
     approved: 'Ready to release',
     released: 'Released',
@@ -572,7 +591,7 @@ export type WfChipTone =
 export const STATUS_TONES: Record<SubmissionStatus, WfChipTone> = {
     imported: 'neutral',
     verification_needed: 'neutral',
-    generating: 'blue',
+    generating: 'purple',
     draft_ready: 'blue',
     approved: 'green',
     released: 'green-solid',

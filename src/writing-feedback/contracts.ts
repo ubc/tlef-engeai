@@ -303,6 +303,12 @@ export interface WritingSubmission {
     originalText: string; // extracted/source transcript retained for staff comparison
     verifiedText?: string; // sole text permitted to enter feedback generation
     requiresVerification: boolean; // hard gate for OCR or unresolved extraction
+    /**
+     * Who confirmed `verifiedText` for a file submission. `batch` means batch generation accepted
+     * the extracted text after the automatic quality check, and no person has compared it with
+     * the file, so the review page says so. Absent on submissions that never needed confirming.
+     */
+    transcriptConfirmedBy?: 'staff' | 'batch';
     status: WritingSubmissionStatus; // drives allowed staff actions and queue state
     sourceFileId?: string; // restricted retained upload reference when policy permits
     createdAt: Date; // submission audit creation timestamp
@@ -313,6 +319,34 @@ export interface WritingSubmission {
     approvedBy?: string;
     /** Display name captured at approval; used as the PDF annotation author. */
     approvedByName?: string;
+}
+
+/**
+ * Why a submission is, or is not, part of a batch generation run.
+ *
+ * - `no_draft`: verified text, no feedback yet
+ * - `failed`: the last generation attempt failed
+ * - `transcript`: a file submission whose extracted text passes the automatic check; the batch
+ *   confirms it and then generates
+ * - `stale`: feedback generated with an older rubric version; included only when staff opt in
+ * - `needs_transcript`: text staff must confirm by hand (a scan, or extraction that failed the check)
+ * - `in_progress`: already queued or generating
+ * - `done`: current feedback, or already released
+ */
+export type WritingBatchCategory = 'no_draft' | 'failed' | 'transcript' | 'stale' | 'needs_transcript' | 'in_progress' | 'done';
+
+/** What batch generation would do for one assignment; the confirmation modal shows it. */
+export interface WritingBatchPreview {
+    counts: Record<WritingBatchCategory, number>;
+    /** Staff-readable reason nothing can be generated (for example, the rubric is not approved). */
+    blockedReason?: string;
+}
+
+/** What a started batch actually queued. */
+export interface WritingBatchStartResult {
+    queued: number; // generation jobs added, including confirmed transcripts
+    transcriptsConfirmed: number; // file transcripts the batch confirmed before queuing
+    skipped: number; // submissions left for staff: transcripts to confirm, or queuing refused
 }
 
 /**

@@ -150,6 +150,12 @@ export function describeFailureSafely(error: unknown): string {
 /** Refusal for a redraft requested once the submission has left `draft_ready`. */
 export const REDRAFT_NOT_DRAFT_READY_MESSAGE = 'The summary can only be redrafted before approval';
 
+/** Refusal for a staff edit while the worker is replacing the submission's draft. */
+export const REVIEW_WHILE_GENERATING_MESSAGE = 'Wait for feedback generation to finish before editing this submission';
+
+/** Refusal for approval while the worker is replacing the submission's draft. */
+export const APPROVE_WHILE_GENERATING_MESSAGE = 'Wait for feedback generation to finish before approving this submission';
+
 type GeneratedFeedbackWithTrace = WritingFeedbackResult & { runTrace?: WritingFeedbackRunTrace };
 
 type ReviewableSubmission = WritingSubmission & { reviews?: StaffReviewRevision[] };
@@ -243,7 +249,8 @@ export class WritingFeedbackService {
     /**
      * Generates an immutable feedback run for every lens this assignment requires.
      *
-     * The linguistic lens is mandatory: its failure fails the submission and rethrows. The
+     * The linguistic lens is mandatory: its failure rethrows, and marks the submission failed
+     * unless `markFailed` is false (the worker passes false while it still has retries). The
      * technical lens runs only for a lab report whose technical rubric is currently approved,
      * and it is best-effort — its failure leaves the linguistic draft reviewable rather than
      * discarding it. Every model error (linguistic or technical) can carry prompt/student
@@ -251,12 +258,14 @@ export class WritingFeedbackService {
      *
      * @param courseId - Course authorization/persistence boundary
      * @param submissionId - Submission selected by staff
+     * @param options - `markFailed: false` leaves the submission generating when the linguistic lens fails
      * @returns Validated model drafts keyed by lens; a skipped or failed lens is absent
      * @throws Error when verification, assignment lookup, or linguistic generation fails
      */
     async generate(
         courseId: string,
-        submissionId: string
+        submissionId: string,
+        options: { markFailed?: boolean } = {}
     ): Promise<Partial<Record<WritingFeedbackLens, WritingFeedbackResult>>> {
         // Verified text is the only student content allowed across the model boundary.
         const submission = await this.requireSubmission(courseId, submissionId);
@@ -283,7 +292,9 @@ export class WritingFeedbackService {
             // construction, so an operator can tell a schema rejection from a rate limit from
             // an evidence mismatch without any student text reaching the log.
             appLogger.log('[writing-feedback] linguistic lens failed:', describeFailureSafely(error));
-            await this.mongo.setWritingSubmissionStatus(courseId, submissionId, 'failed');
+            if (options.markFailed !== false) {
+                await this.mongo.setWritingSubmissionStatus(courseId, submissionId, 'failed', ['generating']);
+            }
             throw error;
         }
 
@@ -302,7 +313,8 @@ export class WritingFeedbackService {
             }
         }
 
-        await this.mongo.setWritingSubmissionStatus(courseId, submissionId, 'draft_ready');
+        // Only a submission still generating moves on; one deleted or stopped meanwhile stays as it is.
+        await this.mongo.setWritingSubmissionStatus(courseId, submissionId, 'draft_ready', ['generating']);
         return results;
     }
 
@@ -560,7 +572,7 @@ export class WritingFeedbackService {
      * @param revision - Staff-authored narrative and optional complete comment snapshot
      * @param staffName - Display name of the saving staff member; attributes their new comments
      * @returns Persisted append-only review revision
-     * @throws Error when feedback is already released or any anchor is stale
+     * @throws Error when feedback is already released or generating, or any anchor is stale
      */
     async appendReview(
         courseId: string,
@@ -575,6 +587,7 @@ export class WritingFeedbackService {
         if (submission.status === 'released') {
             throw new Error('Released feedback cannot be edited; create a new attempt for a revised release');
         }
+        if (submission.status === 'generating') throw new Error(REVIEW_WHILE_GENERATING_MESSAGE);
         await this.assertNoReleaseInFlight(courseId, submissionId);
         // Summary edits apply only to the runs staff were looking at (D-126).
         if (revision.summaryEdits?.length) {
@@ -610,12 +623,15 @@ export class WritingFeedbackService {
             if (finalAssessmentInput) finalAssessment = buildStaffFinalAssessment(finalAssessmentInput, gradedRubric, lens);
             else assessmentDraft = buildStaffAssessmentDraft(draftInput!, gradedRubric, lens);
         }
-        return this.mongo.appendWritingReview(courseId, submissionId, {
+        const stored = await this.mongo.appendWritingReview(courseId, submissionId, {
             ...reviewFields,
             comments,
             ...(finalAssessment ? { finalAssessment } : {}),
             ...(assessmentDraft ? { assessmentDraft } : {})
         });
+        // Generation can start between the check above and the write; the write refuses it too.
+        if (stored === null) throw new Error(REVIEW_WHILE_GENERATING_MESSAGE);
+        return stored;
     }
 
     /**
@@ -631,6 +647,8 @@ export class WritingFeedbackService {
      */
     async approve(courseId: string, submissionId: string, staffUserId: string, staffName?: string) {
         const submission = await this.requireSubmission(courseId, submissionId);
+        // The draft checks below would describe the draft being replaced, so say what is happening.
+        if (submission.status === 'generating') throw new Error(APPROVE_WHILE_GENERATING_MESSAGE);
         const assignment = await this.requireAssignment(courseId, submission.assignmentId);
 
         const latestReview = submission.reviews?.[submission.reviews.length - 1];
