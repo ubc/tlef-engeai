@@ -98,7 +98,7 @@ Saving a draft never changes generation, PDF, or release behavior. Approval prom
 
 ## Data flow and state
 
-1. Staff lands on an assignment-card list (empty state when no assignments exist) and chooses **Import from Canvas** or **Add assignment (manually)**; each assignment card expands into its submission list where staff paste text or upload a file. Canvas import begins with an explicit integration status and assignment selection; it does not silently import a whole course.
+1. Staff lands on an assignment-card list (empty state when no assignments exist) and chooses **Import from Canvas** or **Add assignment (manually)**; opening a card moves to that assignment's own page, which holds its submission list and every action on it — sync, batch generation, and pasting text or uploading a file. Canvas import begins with an explicit integration status and assignment selection; it does not silently import a whole course.
 2. Digital extraction produces a staff-verification state; pasted text can be marked verified on intake.
 3. Staff confirms the transcript. `POST /generate` validates the verified text, approved rubric, and approved SFL profile, marks the submission `generating`, enqueues only internal ids, and returns `202`.
 4. The worker reloads the submission, then runs the linguistic V2 pipeline: structured SFL analyzer; validator for exact evidence, rule/source ids, profile applicability, and observation/interpretation separation; published course-material retrieval from non-student-text labels; and a separate feedback-writer call that evaluates every approved criterion.

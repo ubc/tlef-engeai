@@ -53,7 +53,7 @@ import {
     request,
     scrollingAncestor,
     setQueryState,
-    returnToLanding,
+    returnToAssignment,
     runButtonAction,
     setView,
     state,
@@ -219,7 +219,7 @@ export async function openReview(submissionId: string): Promise<void> {
         if (!state.assignments.length) state.assignments = await request<Assignment[]>('/assignments');
         const detail = await request<SubmissionDetail>(`/submissions/${encodeURIComponent(submissionId)}`);
         state.currentAssignment = state.assignments.find((item) => item.id === detail.submission.assignmentId) ?? null;
-        state.expandedAssignmentId = detail.submission.assignmentId;
+        state.activeAssignmentId = detail.submission.assignmentId;
         initAnchorWorkingSet(detail);
         if (returningToRelease) pendingReviewState = { submissionId, step: 'review' };
         renderReviewView(root, detail);
@@ -368,11 +368,12 @@ function renderReviewView(root: HTMLDivElement, detail: SubmissionDetail): void 
     const left = document.createElement('div');
     left.className = 'wf-review-topbar-info';
     // Above the top bar rather than inside it, where the rubric page and Scenario Questions put theirs.
+    // Back leads to the assignment this submission belongs to, which is the page it was opened from.
     const back = createBackBar(async () => {
         if (!(await confirmDiscardDirty('review'))) return;
         state.reviewDirty = false;
-        await returnToLanding();
-    });
+        await returnToAssignment(submission.assignmentId);
+    }, 'Back to assignment');
     const identity = document.createElement('div');
     const subtitle = createText('p', `${assignment?.title ?? 'Writing assignment'} · Attempt ${submission.attempt}${submission.submittedAt ? ` · Submitted ${formatDate(submission.submittedAt, true)}` : ''}`);
     if (isLateSubmission(submission, assignment)) subtitle.append(' · ', createText('span', 'Late', 'wf-late-flag'));
