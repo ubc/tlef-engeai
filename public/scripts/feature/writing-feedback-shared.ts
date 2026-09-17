@@ -400,6 +400,8 @@ export interface Submission {
     requiresVerification: boolean; // blocks generation until transcript confirmation
     /** Who confirmed the transcript; `batch` means batch generation accepted it and no person checked it. */
     transcriptConfirmedBy?: 'staff' | 'batch';
+    /** When staff last edited the confirmed text; feedback generated before it must be generated again. */
+    transcriptEditedAt?: string;
     status: SubmissionStatus; // server lifecycle state controlling available actions
     reviews?: ReviewRevision[]; // append-only staff revision audit history
     createdAt: string; // import timestamp used for queue ordering; not when the student submitted
@@ -712,8 +714,9 @@ export function setView(view: WfViewName): void {
     element('wf-view-landing').hidden = view !== 'landing';
     element('wf-view-rubric').hidden = view !== 'rubric';
     element('wf-view-review').hidden = view !== 'review';
-    // Header intake actions only make sense while browsing assignments.
-    element('wf-header-actions').hidden = view !== 'landing';
+    // The feature heading and its intake actions belong to the assignment list; rubric and
+    // review pages lead with their own back button instead, as Scenario Questions does.
+    element('wf-header').hidden = view !== 'landing';
 }
 
 /**
@@ -986,6 +989,23 @@ export function isLateSubmission(submission: Submission, assignment: Assignment 
 }
 
 /**
+ * runPredatesTextEdit - whether feedback was generated for text staff have since edited.
+ *
+ * Mirrors `runPredatesTextEdit` in src/writing-feedback/transcript-edit.ts.
+ *
+ * @param submission - Submission carrying the last text edit time
+ * @param run - Feedback run to check; an absent run never predates anything
+ * @returns True when the run was created at or before the last edit
+ */
+export function runPredatesTextEdit(submission: Submission, run: FeedbackRun | null | undefined): boolean {
+    if (!submission.transcriptEditedAt || !run) return false;
+    return new Date(run.createdAt).getTime() <= new Date(submission.transcriptEditedAt).getTime();
+}
+
+/** Statuses whose confirmed text staff may edit. Mirrors TRANSCRIPT_EDITABLE_STATUSES on the server. */
+export const TEXT_EDITABLE_STATUSES: ReadonlyArray<SubmissionStatus> = ['imported', 'failed', 'draft_ready', 'approved'];
+
+/**
  * scrollingAncestor - the element that actually scrolls when this one moves
  *
  * Workspace pages scroll inside `.page-shell`, not the window, so a scroll correction has to
@@ -1056,6 +1076,41 @@ export function createButton(
     button.disabled = disabled;
     button.addEventListener('click', () => void runButtonAction(button, action));
     return button;
+}
+
+/**
+ * createBackBar - builds the sticky bar holding the "← Back to assignments" button
+ *
+ * Styled like the Scenario Questions back buttons: a quiet arrow and label with no button
+ * chrome, in a bar that stays pinned to the top of the page while it scrolls. Unlike
+ * {@link createButton} the label never changes to "Working…", because the action replaces
+ * the page; repeat clicks are ignored until it settles.
+ *
+ * @param action - Navigation to run; it resolves unsaved edits itself
+ * @returns Unattached bar, to be the first child of the page
+ */
+export function createBackBar(action: () => Promise<void>): HTMLDivElement {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'wf-back-button';
+    const icon = document.createElement('i');
+    icon.setAttribute('data-feather', 'arrow-left');
+    icon.setAttribute('aria-hidden', 'true');
+    const text = document.createElement('span');
+    text.textContent = 'Back to assignments';
+    button.append(icon, text);
+    let running = false;
+    button.addEventListener('click', () => {
+        if (running) return;
+        running = true;
+        void action()
+            .catch(handleActionError)
+            .finally(() => { running = false; });
+    });
+    const bar = document.createElement('div');
+    bar.className = 'wf-back-bar';
+    bar.append(button);
+    return bar;
 }
 
 /**

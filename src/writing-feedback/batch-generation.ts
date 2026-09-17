@@ -106,9 +106,11 @@ export function classifyForBatch(
     // Step 3: a failed attempt, or one left generating with no job behind it.
     if (submission.status === 'failed' || submission.status === 'generating') return 'failed';
 
-    // Step 4: compare existing feedback with the rubric versions now approved.
+    // Step 4: compare existing feedback with the rubric versions now approved. Feedback on an
+    // `imported` submission was made for text staff have since edited, so it owes a new draft;
+    // nothing staff wrote for it is still loaded, so there is nothing to opt in to losing.
     const linguistic = context.runVersions?.linguistic;
-    if (linguistic === undefined) return 'no_draft';
+    if (linguistic === undefined || submission.status === 'imported') return 'no_draft';
     if (linguistic !== context.assignment.rubric.version) return 'stale';
     const technicalRubric = context.assignment.isLabReport
         ? selectRubric(context.assignment, 'technical').approved

@@ -1005,6 +1005,33 @@ router.post('/:courseId/writing-feedback/submissions/:submissionId/verify', asyn
 }));
 
 /**
+ * Replaces a submission's confirmed text with a staff correction.
+ *
+ * Feedback generated for the old text is left in history but must be generated again before
+ * approval; the submission returns to `imported`. Unchanged text is accepted and changes nothing.
+ */
+router.post('/:courseId/writing-feedback/submissions/:submissionId/transcript', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    let text: string;
+    try {
+        text = cleanText(req.body?.text);
+    } catch (error) {
+        return res.status(400).json({ success: false, error: safeError(error) });
+    }
+    try {
+        const mongo = await EngEAI_MongoDB.getInstance();
+        const submission = await new WritingFeedbackService(mongo).editTranscript(
+            courseId(req),
+            String(req.params.submissionId),
+            text
+        );
+        res.json({ success: true, data: submission });
+    } catch (error) {
+        const message = safeError(error);
+        res.status(message === 'Writing submission not found' ? 404 : 409).json({ success: false, error: message });
+    }
+}));
+
+/**
  * Queues a feedback draft for every lens the assignment requires.
  *
  * The queued job stores only internal ids; the worker reloads verified text

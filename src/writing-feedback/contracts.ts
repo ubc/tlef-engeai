@@ -309,6 +309,12 @@ export interface WritingSubmission {
      * the file, so the review page says so. Absent on submissions that never needed confirming.
      */
     transcriptConfirmedBy?: 'staff' | 'batch';
+    /**
+     * When staff last edited `verifiedText` after it was first confirmed. Feedback runs and staff
+     * revisions from before this moment are anchored to the old text: runs must be generated
+     * again, and older annotations are no longer loaded.
+     */
+    transcriptEditedAt?: Date;
     status: WritingSubmissionStatus; // drives allowed staff actions and queue state
     sourceFileId?: string; // restricted retained upload reference when policy permits
     createdAt: Date; // submission audit creation timestamp

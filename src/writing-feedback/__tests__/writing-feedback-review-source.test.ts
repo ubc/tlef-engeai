@@ -146,10 +146,11 @@ describe('two-step review source contract', () => {
 
     it('redrafts through the summary-redraft route and confirms before replacing edits', () => {
         expect(source).toContain('/summary-redraft`');
-        expect(source).toContain("'Update the summary from your annotations?'");
-        expect(source).toContain("'Keep my summary'");
-        expect(source).toContain("'Redraft summary'");
-        expect(source).toContain("'Summary and suggested grades redrafted from your final annotations.'");
+        expect(source).toContain("'Update feedback from your annotations?'");
+        expect(source).toContain("'Keep my edits'");
+        expect(source).toContain("'Update feedback'");
+        expect(source).toContain("confirmation.action !== 'update-feedback'");
+        expect(source).toContain("'Feedback and suggested grades updated from your annotations.'");
     });
 
     it('no longer renders the read-only technical draft', () => {

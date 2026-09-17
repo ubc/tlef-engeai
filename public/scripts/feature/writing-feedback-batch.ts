@@ -74,7 +74,7 @@ export function buildConfirmation(preview: BatchPreview): { body: HTMLElement; i
     body.className = 'wf-batch-modal';
 
     body.append(createText('p', baseCount
-        ? `Feedback will be generated for ${plural(baseCount, 'submission', 'submissions')}, one at a time in the background. You can review and approve finished submissions while the rest are generating.`
+        ? `Generating feedback for ${plural(baseCount, 'submission', 'submissions')} in the background. You can review finished ones while the rest generate.`
         : 'No submission is waiting for a first draft.'));
 
     const list = document.createElement('ul');
@@ -82,8 +82,7 @@ export function buildConfirmation(preview: BatchPreview): { body: HTMLElement; i
     if (counts.no_draft) list.append(createText('li', `${plural(counts.no_draft, 'has', 'have')} no feedback yet`));
     if (counts.failed) list.append(createText('li', `${plural(counts.failed, 'failed', 'failed')} last time`));
     if (counts.transcript) {
-        const pages = counts.transcript === 1 ? 'Its review page' : 'Their review pages';
-        list.append(createText('li', `${plural(counts.transcript, 'is a file submission', 'are file submissions')} whose text will be confirmed automatically. ${pages} will say the text was not checked by staff.`));
+        list.append(createText('li', `${plural(counts.transcript, 'file submission', 'file submissions')}: text will be extracted without a staff check`));
     }
     if (list.childElementCount) body.append(list);
 

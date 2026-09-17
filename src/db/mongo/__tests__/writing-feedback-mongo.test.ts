@@ -29,6 +29,7 @@ import {
     createManualWritingAssignment,
     deleteWritingAssignment,
     discardWritingRubricDraft,
+    editWritingTranscript,
     ensureWritingFeedbackIndexes,
     finalizeWritingRelease,
     getLatestWritingFeedbackRun,
@@ -887,6 +888,23 @@ describe('autoConfirmWritingTranscript', () => {
         expect(update.$set).toMatchObject({
             verifiedText: 'Extracted text.', requiresVerification: false, transcriptConfirmedBy: 'batch', status: 'imported'
         });
+    });
+});
+
+describe('editWritingTranscript', () => {
+    it('edits only confirmed text in an editable status, and marks it staff-edited and needing generation', async () => {
+        const submissionsCollection = { findOneAndUpdate: jest.fn().mockResolvedValue(null) };
+        const ctx = contextWithCollections({ 'writing-submissions': submissionsCollection });
+
+        await editWritingTranscript(ctx, 'course-1', 'sub-1', 'Corrected text.', ['draft_ready', 'approved']);
+        const [filter, update] = submissionsCollection.findOneAndUpdate.mock.calls[0];
+        expect(filter).toMatchObject({
+            id: 'sub-1', courseId: 'course-1', requiresVerification: false, status: { $in: ['draft_ready', 'approved'] }
+        });
+        expect(update.$set).toMatchObject({
+            verifiedText: 'Corrected text.', transcriptConfirmedBy: 'staff', status: 'imported'
+        });
+        expect(update.$set.transcriptEditedAt).toBeInstanceOf(Date);
     });
 });
 

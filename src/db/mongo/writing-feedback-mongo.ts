@@ -959,6 +959,51 @@ export async function updateVerifiedWritingText(
 }
 
 /**
+ * editWritingTranscript — replaces already-confirmed text with a staff correction.
+ *
+ * Stamps `transcriptEditedAt` so feedback and annotations anchored to the old text are treated
+ * as out of date, and returns the submission to `imported` so it needs generating again (this
+ * also withdraws an approval). Applies only to a submission whose text is confirmed and whose
+ * status is one of `editableStatuses`, so a submission that started generating or was
+ * released in the meantime is left alone.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param submissionId - Submission whose text is corrected
+ * @param verifiedText - Corrected text
+ * @param editableStatuses - Statuses the submission may be in for the edit to apply
+ * @returns Updated submission, or `null` when it is absent or no longer editable
+ */
+export async function editWritingTranscript(
+    ctx: MongoDalContext,
+    courseId: string,
+    submissionId: string,
+    verifiedText: string,
+    editableStatuses: ReadonlyArray<WritingSubmissionStatus>
+) {
+    const now = new Date();
+    return submissions(ctx).findOneAndUpdate(
+        {
+            id: submissionId,
+            courseId,
+            ...ACTIVE_SLOT_FILTER,
+            requiresVerification: false,
+            status: { $in: [...editableStatuses] }
+        },
+        {
+            $set: {
+                verifiedText,
+                transcriptConfirmedBy: 'staff',
+                transcriptEditedAt: now,
+                status: 'imported',
+                updatedAt: now
+            }
+        },
+        { returnDocument: 'after' }
+    );
+}
+
+/**
  * autoConfirmWritingTranscript — accepts extracted file text on behalf of batch generation.
  *
  * Applies only to an active submission still waiting for confirmation, so a transcript staff

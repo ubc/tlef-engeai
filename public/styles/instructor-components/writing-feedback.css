@@ -34,6 +34,10 @@
 
 .wf-main-content {
     width: 100%;
+    /* Height of .wf-back-bar: its top padding, the line box holding the 24px arrow (about
+       31px, since the button sits inline), and its bottom padding. Content pinned below
+       the bar sticks this far down. */
+    --wf-back-bar-height: calc(var(--page-header-pad-top) + 2rem + 0.5rem);
 }
 
 /* The landing page with no assignments: a plain line rather than a card, matching how the
@@ -48,6 +52,11 @@
 /* Header — layout for left cluster and actions; bar chrome from .page-header */
 .wf-header {
     flex-wrap: wrap;
+}
+
+/* Rubric and review pages drop the heading; .page-header's display would otherwise win. */
+.wf-header[hidden] {
+    display: none;
 }
 
 .wf-header-left {
@@ -353,9 +362,36 @@
     gap: 10px;
 }
 
-.wf-back-button {
-    margin-bottom: 15px;
+/* Matches .sg-instructor-sticky-chrome and .sg-instructor-topic-detail-sticky-chrome in
+   scenario-questions-instructor.css: pinned, full-bleed across the page padding, with the
+   page header's top padding above the button. */
+.wf-back-bar {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    isolation: isolate;
+    margin: 0 calc(-1 * var(--page-shell-pad-x)) 0.25rem;
+    padding: var(--page-header-pad-top) var(--page-shell-pad-x) 0.5rem;
+    background: var(--chat-bg);
 }
+
+/* Matches .sg-instructor-topic-detail-back-btn in scenario-questions-instructor.css. */
+.wf-back-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    color: var(--text-secondary, #6c757d);
+    font-size: 0.85rem;
+}
+
+.wf-back-button:hover {
+    color: var(--text-primary, #333);
+}
+
 
 /* Chips — documents .content-status recipe */
 
@@ -2530,7 +2566,7 @@
 
 .wf-doc-toolbar {
     position: sticky;
-    top: 96px;
+    top: calc(var(--wf-back-bar-height) + 16px);
     z-index: 5;
     display: flex;
     align-items: center;
@@ -2599,6 +2635,10 @@
     border-color: var(--pinned-color);
 }
 
+.wf-text-editor .wf-button-row {
+    margin-top: 12px;
+}
+
 mark.wf-anchor {
     padding: 1px 0;
     background: var(--gingham-color);
@@ -2660,10 +2700,10 @@ mark.wf-anchor.is-filtered-out,
 
 .wf-feedback-panel {
     position: sticky;
-    top: 96px;
+    top: calc(var(--wf-back-bar-height) + 16px);
     display: flex;
     flex-direction: column;
-    max-height: calc(100vh - 116px);
+    max-height: calc(100vh - var(--wf-back-bar-height) - 36px);
     background: var(--chat-bg);
     border: 1px solid var(--border-color);
     border-radius: 10px;

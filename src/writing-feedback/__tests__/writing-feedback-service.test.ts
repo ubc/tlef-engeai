@@ -1059,3 +1059,86 @@ describe('WritingFeedbackService while generation is running', () => {
         expect(mongo.setWritingSubmissionStatus).toHaveBeenCalledWith('course-1', 'submission-1', 'failed', ['generating']);
     });
 });
+
+describe('WritingFeedbackService transcript edits', () => {
+    const editedAt = new Date('2026-09-17T12:00:00.000Z');
+    const before = new Date('2026-09-17T11:00:00.000Z');
+    const after = new Date('2026-09-17T13:00:00.000Z');
+
+    function editService(sub: WritingSubmission & { reviews?: StaffReviewRevision[] }) {
+        const { service, mongo } = buildService();
+        mongo.getWritingSubmission.mockImplementation(async () => sub);
+        const extra = mongo as typeof mongo & Record<string, jest.Mock>;
+        extra.getLatestWritingRelease = jest.fn(async () => null);
+        extra.listWritingReleases = jest.fn(async () => []);
+        extra.getHeldWritingReplacement = jest.fn(async () => null);
+        extra.appendWritingReview = jest.fn(async () => null);
+        extra.editWritingTranscript = jest.fn(async (_c: string, _s: string, text: string) => ({
+            ...sub, verifiedText: text, status: 'imported', transcriptEditedAt: editedAt
+        }));
+        return { service, mongo: extra };
+    }
+
+    it('saves corrected text for statuses that are not generating or released', async () => {
+        const { service, mongo } = editService(submission('approved'));
+        const updated = await service.editTranscript('course-1', 'submission-1', 'Corrected student text.');
+        expect(updated.verifiedText).toBe('Corrected student text.');
+        expect(mongo.editWritingTranscript).toHaveBeenCalledWith(
+            'course-1', 'submission-1', 'Corrected student text.', ['imported', 'failed', 'draft_ready', 'approved']
+        );
+    });
+
+    it('treats unchanged text as no edit', async () => {
+        const { service, mongo } = editService(submission('draft_ready'));
+        await service.editTranscript('course-1', 'submission-1', '  Verified student text.  ');
+        expect(mongo.editWritingTranscript).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        ['generating', 'Wait for feedback generation to finish'],
+        ['released', 'Released feedback cannot be edited']
+    ] as const)('refuses a %s submission', async (status, message) => {
+        const { service, mongo } = editService(submission(status));
+        await expect(service.editTranscript('course-1', 'submission-1', 'Corrected.')).rejects.toThrow(message);
+        expect(mongo.editWritingTranscript).not.toHaveBeenCalled();
+    });
+
+    it('refuses text still waiting for its first confirmation', async () => {
+        const { service } = editService({ ...submission('verification_needed'), requiresVerification: true });
+        await expect(service.editTranscript('course-1', 'submission-1', 'Corrected.'))
+            .rejects.toThrow('Confirm the extracted text before editing it');
+    });
+
+    it('refuses to approve or save a review on feedback made for the old text', async () => {
+        const { service, mongo } = editService({ ...submission('draft_ready'), transcriptEditedAt: editedAt });
+        mongo.getLatestWritingFeedbackRun.mockImplementation(async () => ({ ...feedbackRun('linguistic', 1), createdAt: before }));
+        await expect(service.approve('course-1', 'submission-1', 'instructor-1')).rejects.toThrow('text was edited');
+        await expect(service.appendReview('course-1', 'submission-1', {
+            feedbackRunId: 'run-linguistic',
+            staffUserId: 'instructor-1',
+            studentFeedback: 'Nice work.'
+        })).rejects.toThrow('text was edited');
+        expect(mongo.appendWritingReview).not.toHaveBeenCalled();
+    });
+
+    it('stops loading annotations saved before the edit once feedback is generated again', async () => {
+        const oldComment: AnchoredComment = {
+            id: 'old', lens: 'linguistic', quote: 'Verified', startOffset: 0, endOffset: 8, comment: 'Old note.', origin: 'staff'
+        };
+        const oldReview = {
+            id: 'review-old', submissionId: 'submission-1', feedbackRunId: 'run-linguistic',
+            staffUserId: 'instructor-1', studentFeedback: '', comments: [oldComment], createdAt: before
+        } as StaffReviewRevision;
+        const { service, mongo } = editService({
+            ...submission('draft_ready'),
+            verifiedText: 'Corrected student text.',
+            transcriptEditedAt: editedAt,
+            reviews: [oldReview]
+        });
+        mongo.getLatestWritingFeedbackRun.mockImplementation(async (_s: string, lens: WritingFeedbackLens = 'linguistic') =>
+            lens === 'linguistic' ? { ...feedbackRun('linguistic', 1), createdAt: after } : null);
+        const detail = await service.detail('course-1', 'submission-1');
+        expect(detail.workingComments.map((comment) => comment.id)).not.toContain('old');
+        expect(detail.comments).toEqual([]);
+    });
+});

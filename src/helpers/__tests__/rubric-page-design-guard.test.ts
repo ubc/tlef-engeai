@@ -53,7 +53,7 @@ describe('rubric page copy', () => {
 
     it('titles the page with the assignment, not with the name of the form', () => {
         expect(read(RUBRIC_TS)).not.toContain('Assignment Rubric and Details');
-        expect(read(RUBRIC_TS)).toContain("createText('h1', assignment.title, 'wf-rubric-title')");
+        expect(read(RUBRIC_TS)).toContain("createText('h1', `Rubric for: ${assignment.title}`, 'wf-rubric-title')");
     });
 
     it('offers one Approve for the whole assignment, and no everyday Save', () => {

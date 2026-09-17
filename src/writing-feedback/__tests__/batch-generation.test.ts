@@ -116,6 +116,11 @@ describe('classifyForBatch', () => {
         expect(classifyForBatch(submission('a'), context())).toBe('no_draft');
     });
 
+    it('queues a submission whose text was edited after its feedback was generated', () => {
+        expect(classifyForBatch(submission('a', { status: 'imported' }), context({ runVersions: { linguistic: 2 } })))
+            .toBe('no_draft');
+    });
+
     it('retries failed submissions, and ones left generating with no job', () => {
         expect(classifyForBatch(submission('a', { status: 'failed' }), context())).toBe('failed');
         expect(classifyForBatch(submission('a', { status: 'generating' }), context())).toBe('failed');

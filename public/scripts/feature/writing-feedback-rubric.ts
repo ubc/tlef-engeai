@@ -63,6 +63,7 @@ import {
     WritingFeedbackLens,
     chip,
     confirmDiscardDirty,
+    createBackBar,
     createButton,
     createIconButton,
     createText,
@@ -1461,19 +1462,19 @@ function renderRubricPage(
     root.replaceChildren();
     const isLabReport = Boolean(technicalData);
 
-    const back = createButton('← Back to assignments', 'quiet', async () => {
+    const back = createBackBar(async () => {
         if (!(await confirmDiscardDirty('setup'))) return;
         state.panelDirty = false;
         await returnToLanding();
     });
-    back.classList.add('wf-back-button');
     root.append(back);
 
     const header = document.createElement('header');
     header.className = 'wf-rubric-header';
     // The assignment's own name is the page title: staff know which assignment
-    // they clicked, and the heading confirms it rather than naming the form.
-    const heading = createText('h1', assignment.title, 'wf-rubric-title');
+    // they clicked, and the heading confirms it rather than naming the form. The
+    // prefix says what the page holds, now that the feature heading is hidden here.
+    const heading = createText('h1', `Rubric for: ${assignment.title}`, 'wf-rubric-title');
     const meta = document.createElement('p');
     meta.className = 'wf-assignment-meta';
     const canEditAny = linguisticData.permissions.canEdit;

@@ -81,7 +81,8 @@ import type {
     WritingJob,
     WritingRelease,
     WritingRubricDefinition,
-    WritingSubmission
+    WritingSubmission,
+    WritingSubmissionStatus
 } from '../writing-feedback/contracts';
 import * as ScenarioQuestionsMongo from './mongo/scenario-questions-mongo';
 import * as ScenarioProgressMongo from './mongo/scenario-progress-mongo';
@@ -460,6 +461,17 @@ export class EngEAI_MongoDB {
      */
     public updateVerifiedWritingText = async (courseId: string, submissionId: string, verifiedText: string) =>
         WritingFeedbackMongo.updateVerifiedWritingText(this.ctx(), courseId, submissionId, verifiedText);
+
+    /**
+     * editWritingTranscript — replaces confirmed text with a staff correction.
+     * @see WritingFeedbackMongo.editWritingTranscript
+     */
+    public editWritingTranscript = async (
+        courseId: string,
+        submissionId: string,
+        verifiedText: string,
+        editableStatuses: ReadonlyArray<WritingSubmissionStatus>
+    ) => WritingFeedbackMongo.editWritingTranscript(this.ctx(), courseId, submissionId, verifiedText, editableStatuses);
 
     /**
      * autoConfirmWritingTranscript — accepts extracted file text for batch generation.

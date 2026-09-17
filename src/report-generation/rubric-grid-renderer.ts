@@ -209,11 +209,27 @@ export function renderRubricGrid(
 
     const left = margin;
     const awarded = new Map(assessment.criteria.map((entry) => [entry.criterionId, entry.points]));
+    const headerHeight = HEADER_SIZE * 2 + CELL_PADDING * 2;
+    const pageBottom = () => doc.page.height - doc.page.margins.bottom;
+    const newPage = () => doc.addPage(geometry.landscape ? { layout: 'landscape', margin } : { margin });
+    // The measured breaks assume a full portrait page from the top, but the grid usually starts
+    // partway down one, and a turned page is shorter. A row drawn past the bottom margin makes
+    // PDFKit scatter its cell text across new pages, so each row is fitted against the space
+    // actually left, and never split.
     let y = doc.y;
+    if (y + headerHeight + geometry.rowHeights[0] > pageBottom()) {
+        newPage();
+        y = doc.y;
+    }
     y += drawHeader(doc, rubric.levels, geometry, left, y);
 
     rubric.criteria.forEach((criterion, index) => {
         const height = geometry.rowHeights[index];
+        if (index > 0 && y + height > pageBottom()) {
+            newPage();
+            y = doc.y;
+            y += drawHeader(doc, rubric.levels, geometry, left, y);
+        }
         const points = awarded.get(criterion.id);
         // earnedLevelFor, not the cells map: cells is sparse, so reading it directly left
         // every criterion without authored bands unmarked.
@@ -260,11 +276,6 @@ export function renderRubricGrid(
         }
 
         y += height;
-        if (geometry.pageBreakAfter.includes(index)) {
-            doc.addPage(geometry.landscape ? { layout: 'landscape', margin } : { margin });
-            y = doc.y;
-            y += drawHeader(doc, rubric.levels, geometry, left, y);
-        }
     });
 
     doc.y = y;
