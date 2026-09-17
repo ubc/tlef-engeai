@@ -361,6 +361,28 @@ export class WritingFeedbackService {
     }
 
     /**
+     * confirmTranscript - accepts staff's first confirmation of extracted text.
+     *
+     * Only the initial confirmation: text that is already confirmed is corrected through
+     * {@link editTranscript}, which also records that earlier feedback no longer matches it.
+     *
+     * @param courseId - Course authorization/persistence boundary
+     * @param submissionId - Submission awaiting confirmation
+     * @param verifiedText - Text staff confirmed against the student's file
+     * @returns The confirmed submission, ready for generation
+     * @throws Error when the text is already confirmed, or the submission is gone
+     */
+    async confirmTranscript(courseId: string, submissionId: string, verifiedText: string): Promise<WritingSubmission> {
+        const submission = await this.requireSubmission(courseId, submissionId);
+        if (!submission.requiresVerification) {
+            throw new Error('This text is already confirmed; edit it from the submission instead');
+        }
+        const confirmed = await this.mongo.updateVerifiedWritingText(courseId, submissionId, verifiedText);
+        if (!confirmed) throw new Error('This submission changed while you were editing. Reload it and try again.');
+        return confirmed;
+    }
+
+    /**
      * editTranscript - corrects a submission's confirmed text after it was first confirmed.
      *
      * Existing feedback is anchored to the old text, so the submission returns to `imported`

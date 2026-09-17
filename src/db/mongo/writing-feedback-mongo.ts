@@ -939,11 +939,15 @@ export async function declineWritingReplacement(
  * Verification clears the blocking flag and returns the submission to imported
  * state; it does not delete the original extraction.
  *
+ * Applies only to an active row still awaiting confirmation, so this first-confirmation path
+ * can never rewrite the text of a submission that already has feedback or a release —
+ * correcting confirmed text is {@link editWritingTranscript}.
+ *
  * @param ctx - Connected Mongo data-layer context
  * @param courseId - Owning course id
  * @param submissionId - Submission being verified
  * @param verifiedText - Staff-confirmed source text
- * @returns Updated submission, or `null` when the scoped record is absent
+ * @returns Updated submission, or `null` when the row is absent or already confirmed
  */
 export async function updateVerifiedWritingText(
     ctx: MongoDalContext,
@@ -952,7 +956,7 @@ export async function updateVerifiedWritingText(
     verifiedText: string
 ) {
     return submissions(ctx).findOneAndUpdate(
-        { id: submissionId, courseId, ...ACTIVE_SLOT_FILTER },
+        { id: submissionId, courseId, ...ACTIVE_SLOT_FILTER, requiresVerification: true },
         { $set: { verifiedText, requiresVerification: false, transcriptConfirmedBy: 'staff', status: 'imported', updatedAt: new Date() } },
         { returnDocument: 'after' }
     );

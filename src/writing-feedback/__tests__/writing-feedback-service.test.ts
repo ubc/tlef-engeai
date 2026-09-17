@@ -1142,3 +1142,29 @@ describe('WritingFeedbackService transcript edits', () => {
         expect(detail.comments).toEqual([]);
     });
 });
+
+describe('WritingFeedbackService first transcript confirmation', () => {
+    function confirmService(sub: WritingSubmission) {
+        const { service, mongo } = buildService();
+        mongo.getWritingSubmission.mockImplementation(async () => sub);
+        const extra = mongo as typeof mongo & Record<string, jest.Mock>;
+        extra.updateVerifiedWritingText = jest.fn(async (_c: string, _s: string, text: string) => ({
+            ...sub, verifiedText: text, requiresVerification: false, status: 'imported'
+        }));
+        return { service, mongo: extra };
+    }
+
+    it('confirms text that is still waiting for staff', async () => {
+        const { service, mongo } = confirmService({ ...submission('verification_needed'), requiresVerification: true });
+        const confirmed = await service.confirmTranscript('course-1', 'submission-1', 'Confirmed text.');
+        expect(confirmed.requiresVerification).toBe(false);
+        expect(mongo.updateVerifiedWritingText).toHaveBeenCalledWith('course-1', 'submission-1', 'Confirmed text.');
+    });
+
+    it('refuses to rewrite text that is already confirmed', async () => {
+        const { service, mongo } = confirmService(submission('released'));
+        await expect(service.confirmTranscript('course-1', 'submission-1', 'Rewritten.'))
+            .rejects.toThrow('already confirmed');
+        expect(mongo.updateVerifiedWritingText).not.toHaveBeenCalled();
+    });
+});

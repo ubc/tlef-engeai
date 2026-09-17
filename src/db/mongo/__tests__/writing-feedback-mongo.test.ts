@@ -30,6 +30,7 @@ import {
     deleteWritingAssignment,
     discardWritingRubricDraft,
     editWritingTranscript,
+    updateVerifiedWritingText,
     ensureWritingFeedbackIndexes,
     finalizeWritingRelease,
     getLatestWritingFeedbackRun,
@@ -887,6 +888,20 @@ describe('autoConfirmWritingTranscript', () => {
         });
         expect(update.$set).toMatchObject({
             verifiedText: 'Extracted text.', requiresVerification: false, transcriptConfirmedBy: 'batch', status: 'imported'
+        });
+    });
+});
+
+describe('updateVerifiedWritingText', () => {
+    it('confirms only a row still awaiting confirmation', async () => {
+        const submissionsCollection = { findOneAndUpdate: jest.fn().mockResolvedValue(null) };
+        const ctx = contextWithCollections({ 'writing-submissions': submissionsCollection });
+
+        await updateVerifiedWritingText(ctx, 'course-1', 'sub-1', 'Confirmed text.');
+        const [filter, update] = submissionsCollection.findOneAndUpdate.mock.calls[0];
+        expect(filter).toMatchObject({ id: 'sub-1', courseId: 'course-1', requiresVerification: true });
+        expect(update.$set).toMatchObject({
+            verifiedText: 'Confirmed text.', requiresVerification: false, transcriptConfirmedBy: 'staff', status: 'imported'
         });
     });
 });

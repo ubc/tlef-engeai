@@ -471,7 +471,6 @@ function renderReviewView(root: HTMLDivElement, detail: SubmissionDetail): void 
 
 const PANEL_MIN_WIDTH = 340;
 const PANEL_DEFAULT_WIDTH = 420;
-const WIDE_VIEW_STORAGE_KEY = 'wf-doc-wide';
 
 /** Drag handle between the doc pane and feedback panel; resizes via --wf-panel-width, persisted per-browser. */
 function createPanelResizeHandle(layout: HTMLElement): HTMLElement {
@@ -522,34 +521,19 @@ function createPanelResizeHandle(layout: HTMLElement): HTMLElement {
 }
 
 /**
- * Sticky reading toolbar above the document: zoom stepper plus a Wide view
- * toggle that releases the 75ch prose measure. Both persist per-browser so a
- * grader's reading setup survives across the whole queue of submissions.
+ * The document card's own header, pinned to the top of the card while the text scrolls under
+ * it: the zoom stepper, and Edit text when staff may correct the text. The zoom level persists
+ * per-browser, so a grader's reading size survives across the whole queue of submissions.
  */
-function createDocToolbar(pane: HTMLElement): HTMLElement {
-    const bar = document.createElement('div');
-    bar.className = 'wf-doc-toolbar';
-    bar.setAttribute('role', 'toolbar');
-    bar.setAttribute('aria-label', 'Document view options');
+function createDocHeader(pane: HTMLElement): HTMLElement {
+    const header = document.createElement('div');
+    header.className = 'wf-doc-header';
+    header.setAttribute('role', 'toolbar');
+    header.setAttribute('aria-label', 'Document view options');
 
-    bar.append(createZoomControl(pane));
+    header.append(createZoomControl(pane));
 
-    const wide = document.createElement('button');
-    wide.type = 'button';
-    wide.className = 'wf-toolbar-toggle';
-    wide.textContent = 'Wide view';
-    const applyWide = (on: boolean): void => {
-        pane.classList.toggle('wf-doc-pane--wide', on);
-        wide.setAttribute('aria-pressed', String(on));
-        window.localStorage.setItem(WIDE_VIEW_STORAGE_KEY, on ? '1' : '0');
-    };
-    applyWide(window.localStorage.getItem(WIDE_VIEW_STORAGE_KEY) === '1');
-    wide.addEventListener('click', () => {
-        applyWide(!pane.classList.contains('wf-doc-pane--wide'));
-    });
-    bar.append(wide);
-
-    return bar;
+    return header;
 }
 
 /**
@@ -569,14 +553,12 @@ export function renderDocPane(
 ): HTMLElement {
     const pane = document.createElement('div');
     pane.className = 'wf-doc-pane';
-    const toolbar = createDocToolbar(pane);
-    pane.append(toolbar);
 
     if (submission.requiresVerification) {
         // OCR/file extraction remains an untrusted transcript until staff explicitly
         // confirms the corrected text; generation controls are withheld in this state.
         const paper = document.createElement('div');
-        paper.className = 'wf-doc-paper';
+        paper.className = 'wf-doc-paper wf-doc-paper--standalone';
         const transcript = textAreaControl(submission.verifiedText ?? submission.originalText, 18);
         transcript.id = 'wf-verified-transcript';
         paper.append(
@@ -595,16 +577,23 @@ export function renderDocPane(
         return pane;
     }
 
+    // One card holds everything about the text: its reading controls, what is known about
+    // where it came from, and the text itself. Separate boxes stacked up the left column.
+    const card = document.createElement('div');
+    card.className = 'wf-doc-card';
+    const header = createDocHeader(pane);
+    card.append(header);
+
     // Batch generation confirmed this text without a person reading it, so say so before anyone
     // relies on feedback quoted from it.
     if (submission.transcriptConfirmedBy === 'batch') {
-        const unchecked = createText(
-            'div',
-            'Text extracted automatically. Check it against the student\'s file in Canvas.',
-            'wf-workspace-message'
-        );
-        unchecked.dataset.tone = 'warning';
-        pane.append(unchecked);
+        const unchecked = document.createElement('p');
+        unchecked.className = 'wf-doc-notice';
+        const icon = document.createElement('i');
+        icon.setAttribute('data-feather', 'alert-triangle');
+        icon.setAttribute('aria-hidden', 'true');
+        unchecked.append(icon, createText('span', 'This text was extracted automatically.'));
+        card.append(unchecked);
     }
 
     const verifiedText = submission.verifiedText ?? submission.originalText;
@@ -617,7 +606,7 @@ export function renderDocPane(
         const pre = document.createElement('pre');
         pre.textContent = submission.originalText;
         original.append(summary, pre);
-        pane.append(original);
+        card.append(original);
     }
 
     const paper = document.createElement('div');
@@ -628,22 +617,26 @@ export function renderDocPane(
         text.setAttribute('tabindex', '0');
         paper.append(text);
     }
-    pane.append(paper);
+    card.append(paper);
+    pane.append(card);
 
     if (options.canEditText) {
         const editButton = document.createElement('button');
         editButton.type = 'button';
         editButton.className = 'wf-toolbar-toggle';
-        editButton.textContent = 'Edit text';
+        const editIcon = document.createElement('i');
+        editIcon.setAttribute('data-feather', 'edit-2');
+        editIcon.setAttribute('aria-hidden', 'true');
+        editButton.append(editIcon, createText('span', 'Edit text'));
         editButton.addEventListener('click', () => {
             editButton.disabled = true;
-            paper.hidden = true;
-            paper.after(renderTextEditor(submission, verifiedText, Boolean(options.hasFeedback), () => {
+            card.hidden = true;
+            card.after(renderTextEditor(submission, verifiedText, Boolean(options.hasFeedback), () => {
                 editButton.disabled = false;
-                paper.hidden = false;
+                card.hidden = false;
             }));
         });
-        toolbar.prepend(editButton);
+        header.prepend(editButton);
     }
     return pane;
 }
@@ -663,7 +656,7 @@ export function renderDocPane(
  */
 function renderTextEditor(submission: Submission, text: string, hasFeedback: boolean, onClose: () => void): HTMLElement {
     const editor = document.createElement('div');
-    editor.className = 'wf-doc-paper wf-text-editor';
+    editor.className = 'wf-doc-paper wf-doc-paper--standalone wf-text-editor';
     const wasDirty = state.reviewDirty;
     const textarea = textAreaControl(text, 18);
     textarea.setAttribute('aria-label', 'Submission text');

@@ -21,6 +21,9 @@
     --gingham-color: rgba(92, 138, 58, 0.1);
     --background-2: rgb(236, 229, 221);
     --pinned-color: var(--color-chbe-green);
+    /* Height of the review step bar with its two-line title beside Back and Next. The document
+       card's header matches it so both columns start at the same line. */
+    --wf-pane-header-height: 83px;
     display: flex;
     flex-direction: column;
     min-height: 100%;
@@ -2508,11 +2511,7 @@
 }
 
 .wf-doc-original {
-    margin-bottom: 15px;
-    background: var(--chat-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 10px;
-    padding: 10px 20px;
+    margin: 14px 40px 0;
     color: var(--text-secondary);
     font-size: 13px;
 }
@@ -2530,18 +2529,73 @@
     line-height: 1.6;
 }
 
-.wf-doc-paper {
-    position: relative;
+/* One card around the reading controls, the text's provenance, and the text itself. The
+   verification and edit views are the same card without a header, so they share its chrome. */
+.wf-doc-card,
+.wf-doc-paper--standalone {
     background: color-mix(in srgb, var(--chat-bg) 95%, var(--background-2));
     border: 1px solid var(--border-color);
     border-radius: 10px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-    padding: 40px;
     max-width: 75ch;
     margin: 0 auto;
+}
+
+/* `display: flex` on nothing here, so the hidden attribute is enough while the text is edited. */
+.wf-doc-card[hidden] {
+    display: none;
+}
+
+.wf-doc-paper {
+    position: relative;
     color: var(--text-primary);
     font-size: calc(15px * var(--wf-zoom, 1));
     line-height: 1.75;
+}
+
+.wf-doc-paper--standalone {
+    padding: 40px;
+}
+
+.wf-doc-card > .wf-doc-paper {
+    padding: 28px 40px 40px;
+}
+
+/* Pinned to the top of the card, under the page's back bar, while the text scrolls beneath.
+   Same height and band colour as the feedback panel's step bar, so the two columns line up. */
+.wf-doc-header {
+    position: sticky;
+    top: calc(var(--wf-back-bar-height) + 16px);
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    min-height: var(--wf-pane-header-height);
+    padding: 12px 16px;
+    background: var(--background-2);
+    border-bottom: 1px solid var(--border-color);
+    border-radius: 10px 10px 0 0;
+}
+
+/* A line inside the card rather than a banner above it: it describes this text. */
+.wf-doc-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 0;
+    padding: 14px 40px 0;
+    color: color-mix(in srgb, var(--color-eng-red) 65%, var(--text-primary));
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.wf-doc-notice svg,
+.wf-doc-notice .feather {
+    flex: none;
+    width: 15px;
+    height: 15px;
+    margin-top: 2px;
 }
 
 .wf-zoom-control {
@@ -2564,22 +2618,10 @@
     color: var(--text-secondary);
 }
 
-.wf-doc-toolbar {
-    position: sticky;
-    top: calc(var(--wf-back-bar-height) + 16px);
-    z-index: 5;
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 12px;
-    padding: 6px 10px;
-    margin-bottom: 10px;
-    background: var(--chat-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-}
-
 .wf-toolbar-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     padding: 6px 10px;
     background: var(--chat-bg);
     color: var(--text-primary);
@@ -2595,14 +2637,16 @@
     background: var(--hover-bg);
 }
 
+.wf-toolbar-toggle svg,
+.wf-toolbar-toggle .feather {
+    width: 15px;
+    height: 15px;
+}
+
 .wf-toolbar-toggle[aria-pressed="true"] {
     background: var(--gingham-color);
     border-color: var(--color-chbe-green);
     color: var(--color-chbe-green);
-}
-
-.wf-doc-pane--wide .wf-doc-paper {
-    max-width: none;
 }
 
 .wf-doc-paper h3 {
@@ -2716,6 +2760,7 @@ mark.wf-anchor.is-filtered-out,
     align-items: center;
     justify-content: space-between;
     gap: 10px;
+    min-height: var(--wf-pane-header-height);
     padding: 12px 16px;
     border-bottom: 1px solid var(--border-color);
 }
@@ -3549,7 +3594,7 @@ mark.wf-anchor.is-filtered-out,
         max-height: none;
     }
 
-    .wf-doc-toolbar {
+    .wf-doc-header {
         position: static;
     }
 
@@ -3603,8 +3648,17 @@ mark.wf-anchor.is-filtered-out,
         background: var(--background-2);
     }
 
-    .wf-doc-paper {
+    .wf-doc-paper--standalone,
+    .wf-doc-card > .wf-doc-paper {
         padding: 24px;
+    }
+
+    .wf-doc-notice {
+        padding: 14px 24px 0;
+    }
+
+    .wf-doc-original {
+        margin: 14px 24px 0;
     }
 }
 

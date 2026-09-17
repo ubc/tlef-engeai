@@ -994,13 +994,23 @@ router.post('/:courseId/writing-feedback/submissions/file', upload.single('file'
 }));
 
 router.post('/:courseId/writing-feedback/submissions/:submissionId/verify', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    let verifiedText: string;
+    try {
+        verifiedText = cleanText(req.body?.verifiedText);
+    } catch (error) {
+        return res.status(400).json({ success: false, error: safeError(error) });
+    }
     try {
         const mongo = await EngEAI_MongoDB.getInstance();
-        const result = await mongo.updateVerifiedWritingText(courseId(req), String(req.params.submissionId), cleanText(req.body?.verifiedText));
-        if (!result) return res.status(404).json({ success: false, error: 'Writing submission not found' });
-        res.json({ success: true, data: result });
+        const submission = await new WritingFeedbackService(mongo).confirmTranscript(
+            courseId(req),
+            String(req.params.submissionId),
+            verifiedText
+        );
+        res.json({ success: true, data: submission });
     } catch (error) {
-        res.status(400).json({ success: false, error: safeError(error) });
+        const message = safeError(error);
+        res.status(message === 'Writing submission not found' ? 404 : 409).json({ success: false, error: message });
     }
 }));
 
