@@ -532,7 +532,7 @@
     margin-top: 10px;
 }
 
-/* Landing — assignment accordion (documents .topic-or-week-instance pattern) */
+/* Assignment queue — one card per assignment, each opening its own page */
 
 .wf-assignment-list {
     display: flex;
@@ -602,6 +602,8 @@
     gap: 10px;
 }
 
+/* Disclosure chevron, used by the collapsible sections on the rubric page */
+
 .wf-expand-icon {
     display: inline-flex;
     color: var(--text-secondary);
@@ -616,6 +618,56 @@
 .wf-expand-icon .feather {
     width: 18px;
     height: 18px;
+}
+
+/* Assignment page — the heading, its actions, and the card the submission rows sit in */
+
+/* The actions sit on a row below the title rather than opposite it. Sharing the row meant a
+   long assignment name pushed them onto a line of their own anyway, so where they appeared
+   depended on how the title happened to wrap; on their own row they stay right-aligned in
+   one place whatever it says. */
+.wf-assignment-page-header {
+    margin: 0 0 18px;
+}
+
+.wf-assignment-page-identity {
+    min-width: 0;
+}
+
+/* Matches .wf-rubric-title: the assignment's own name is the page title. */
+.wf-assignment-page-title {
+    margin: 0;
+    color: var(--color-chbe-green);
+    font-size: 2rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.wf-assignment-page-title .wf-chip {
+    margin-left: 10px;
+    vertical-align: middle;
+}
+
+.wf-assignment-page-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+/* The same card as .wf-assignment on the queue, so the rows keep their borders and corners. */
+.wf-submission-list {
+    background: var(--chat-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+/* The card's own border already draws this line, whether the batch bar or a row is first. */
+.wf-submission-list > :first-child {
+    border-top: none;
 }
 
 .wf-disclosure-body {
@@ -748,7 +800,8 @@
     border-radius: 8px;
 }
 
-/* Batch generation bar above an assignment's submission list */
+/* Batch generation progress strip above the submission list; the action that starts a run
+   lives in the page header with the assignment's other actions. */
 
 .wf-batch-bar {
     display: flex;
@@ -763,7 +816,13 @@
     border-bottom: 1px solid var(--border-color);
 }
 
-/* The bar already draws the line above the first submission. */
+/* display:flex would otherwise beat the hidden attribute, leaving an empty tinted band
+   above the list whenever nothing is generating. */
+.wf-batch-bar[hidden] {
+    display: none;
+}
+
+/* The strip already draws the line above the first submission. */
 .wf-batch-bar + .wf-submission-row {
     border-top: none;
 }
@@ -3707,8 +3766,22 @@ mark.wf-anchor.is-filtered-out,
         border-bottom: 0;
     }
 
-    .wf-rubric-title {
+    .wf-rubric-title,
+    .wf-assignment-page-title {
         font-size: 1.5rem;
+    }
+
+    /* Stacked, so each action gets the full width and a 44px touch target. */
+    /* Stacked, each action takes the full width and a 44px touch target. */
+    .wf-assignment-page-actions {
+        align-items: stretch;
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .wf-assignment-page-actions .wf-header-btn {
+        justify-content: center;
+        min-height: 44px;
     }
 
     .wf-step-header {

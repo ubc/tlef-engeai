@@ -634,14 +634,18 @@ export function refreshIcons(): void {
 }
 
 /** URL-addressable child view within the mounted Writing Feedback component. */
-export type WfViewName = 'landing' | 'rubric' | 'review';
+export type WfViewName = 'landing' | 'assignment' | 'rubric' | 'review';
 
 /** Mutable browser state shared only across Writing Feedback view modules. */
 interface WfState {
     course: activeCourse | null;
     workspace: WorkspaceContext | null;
     assignments: Assignment[];
-    expandedAssignmentId: string | null;
+    /**
+     * The assignment the staff member is working in: the one whose page is open, or the one
+     * the open rubric or review belongs to. Null only on the assignment queue.
+     */
+    activeAssignmentId: string | null;
     currentAssignment: Assignment | null;
     reviewDirty: boolean;
     panelDirty: boolean;
@@ -657,7 +661,7 @@ export const state: WfState = {
     course: null,
     workspace: null,
     assignments: [],
-    expandedAssignmentId: null,
+    activeAssignmentId: null,
     currentAssignment: null,
     reviewDirty: false,
     panelDirty: false
@@ -666,11 +670,12 @@ export const state: WfState = {
 /**
  * Late-bound sibling view openers.
  *
- * Registration during initialization avoids circular imports while giving
- * rubric/review modules a common way to return to the landing view.
+ * Registration during initialization avoids circular imports while giving each
+ * view module a common way to open the pages it links to.
  */
 export const views = {
     showLanding: async (): Promise<void> => {},
+    showAssignment: async (_assignmentId: string): Promise<void> => {},
     showRubric: async (_assignmentId: string): Promise<void> => {},
     showReview: async (_submissionId: string): Promise<void> => {}
 };
@@ -702,8 +707,8 @@ export function element<T extends HTMLElement>(id: string): T {
 /**
  * setView - shows exactly one workspace child view
  *
- * Landing-only intake actions are hidden in rubric and review views so actions
- * remain associated with the assignment queue.
+ * Landing-only intake actions are hidden in the assignment, rubric, and review views so
+ * actions remain associated with the assignment queue.
  *
  * @param view - Child view to expose
  */
@@ -712,11 +717,59 @@ export function setView(view: WfViewName): void {
     // instructor into the next view.
     clearWorkspaceMessage();
     element('wf-view-landing').hidden = view !== 'landing';
+    element('wf-view-assignment').hidden = view !== 'assignment';
     element('wf-view-rubric').hidden = view !== 'rubric';
     element('wf-view-review').hidden = view !== 'review';
-    // The feature heading and its intake actions belong to the assignment list; rubric and
-    // review pages lead with their own back button instead, as Scenario Questions does.
+    // The feature heading and its intake actions belong to the assignment list; every other
+    // page leads with its own back button instead, as Scenario Questions does.
     element('wf-header').hidden = view !== 'landing';
+}
+
+/**
+ * openActionPanel - opens the shared inline setup panel inside the view that asked for it
+ *
+ * One panel serves the assignment queue (add an assignment, import from Canvas) and the
+ * assignment page (add a submission), so it is moved to the caller's mount rather than
+ * duplicated per view.
+ *
+ * @param title - Heading naming the action being set up
+ * @param hostId - Element id of the mount inside the visible view
+ * @returns The emptied content container for the caller's form
+ */
+export function openActionPanel(title: string, hostId: string): HTMLElement {
+    const panel = element<HTMLElement>('wf-action-panel');
+    const host = element<HTMLElement>(hostId);
+    if (panel.parentElement !== host) host.append(panel);
+    element('wf-action-panel-title').textContent = title;
+    const content = element<HTMLElement>('wf-action-panel-content');
+    content.replaceChildren();
+    panel.hidden = false;
+    // 'nearest' so the panel is only scrolled to when it is actually off-screen. Revealing
+    // it already pushes the content below it down; aligning its top to the viewport on top of
+    // that moved the page under the reviewer even when the panel was fully visible.
+    panel.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'nearest' });
+    return content;
+}
+
+/**
+ * closeActionPanel - clears the shared setup panel and returns it to its resting host
+ *
+ * Moving it out of the view it was opened in is what lets that view re-render freely: a page
+ * that replaced its children while the panel sat inside would take the panel with it.
+ *
+ * @param confirm - Whether unsaved setup edits must be resolved first
+ * @returns False when staff chose to keep editing, leaving the panel open
+ */
+export async function closeActionPanel(confirm = true): Promise<boolean> {
+    // Never clear setup controls until the reviewer has resolved dirty state;
+    // successful submissions bypass the prompt only after persistence completes.
+    if (confirm && !(await confirmDiscardDirty('setup'))) return false;
+    state.panelDirty = false;
+    const panel = element<HTMLElement>('wf-action-panel');
+    panel.hidden = true;
+    element('wf-action-panel-content').replaceChildren();
+    element<HTMLElement>('wf-action-panel-home').append(panel);
+    return true;
 }
 
 /**
@@ -906,6 +959,18 @@ export function restoreDisplayedUrl(): void {
 }
 
 /**
+ * cameFromParams - the deep-link parameters of the page this one was opened from
+ *
+ * @returns Query parameters of the recorded opener, or null when this page was reached
+ *          directly (a deep link, a reload, or Back/Forward)
+ */
+function cameFromParams(): URLSearchParams | null {
+    const cameFrom = (window.history.state as Record<string, unknown> | null)?.[CAME_FROM_KEY];
+    if (typeof cameFrom !== 'string') return null;
+    return new URL(cameFrom, window.location.origin).searchParams;
+}
+
+/**
  * returnToLanding - goes back to the assignment list
  *
  * When this page was opened from the list, steps back through browser history so the
@@ -914,15 +979,35 @@ export function restoreDisplayedUrl(): void {
  * edits first.
  */
 export async function returnToLanding(): Promise<void> {
-    const cameFrom = (window.history.state as Record<string, unknown> | null)?.[CAME_FROM_KEY];
-    if (typeof cameFrom === 'string') {
-        const params = new URL(cameFrom, window.location.origin).searchParams;
-        if (!params.has('wfSubmission') && !params.has('wfView')) {
-            window.history.back();
-            return;
-        }
+    const params = cameFromParams();
+    if (params && !params.has('wfSubmission') && !params.has('wfView')) {
+        window.history.back();
+        return;
     }
     await views.showLanding();
+}
+
+/**
+ * returnToAssignment - goes back to one assignment's own page
+ *
+ * The page a rubric or a review was opened from, which is where staff expect to land when
+ * they finish with it. Steps back through history when that is literally the entry behind
+ * this one, so the submission list returns where they left it. Callers resolve unsaved edits
+ * first.
+ *
+ * @param assignmentId - Assignment whose page to return to; the queue when there is none
+ */
+export async function returnToAssignment(assignmentId: string | null): Promise<void> {
+    if (!assignmentId) {
+        await returnToLanding();
+        return;
+    }
+    const params = cameFromParams();
+    if (params && params.get('wfView') === 'assignment' && params.get('wfAssignment') === assignmentId) {
+        window.history.back();
+        return;
+    }
+    await views.showAssignment(assignmentId);
 }
 
 /**
@@ -966,6 +1051,25 @@ export function assignmentOriginText(assignment: Assignment): string {
     return assignment.canvasAssignmentId
         ? `Imported from Canvas ${formatDate(assignment.createdAt)}`
         : `Created manually ${formatDate(assignment.createdAt)}`;
+}
+
+/**
+ * canvasOutcomeNotes - the per-count sentences shared by the import and sync toasts
+ *
+ * The two actions read the same Canvas submissions and hold back the same ones, so they
+ * report them in the same words; only the leading count differs.
+ *
+ * @param result - Counts from an import or sync
+ * @returns Sentences for the counts worth mentioning
+ */
+export function canvasOutcomeNotes(result: Pick<CanvasSyncResult, 'heldCount' | 'unsupportedCount' | 'failedCount'>): string[] {
+    const notes: string[] = [];
+    if (result.heldCount > 0) {
+        notes.push(`${result.heldCount} resubmission${result.heldCount === 1 ? '' : 's'} waiting for you to choose which attempt to review`);
+    }
+    if (result.unsupportedCount > 0) notes.push(`${result.unsupportedCount} had no readable text or exceeded the 30,000-character review limit`);
+    if (result.failedCount > 0) notes.push(`${result.failedCount} could not be read and can be retried by syncing again`);
+    return notes;
 }
 
 export function formatDate(value?: string, withTime = false): string {
@@ -1079,7 +1183,7 @@ export function createButton(
 }
 
 /**
- * createBackBar - builds the sticky bar holding the "← Back to assignments" button
+ * createBackBar - builds the sticky bar holding the page's "← Back" button
  *
  * Styled like the Scenario Questions back buttons: a quiet arrow and label with no button
  * chrome, in a bar that stays pinned to the top of the page while it scrolls. Unlike
@@ -1087,9 +1191,10 @@ export function createButton(
  * the page; repeat clicks are ignored until it settles.
  *
  * @param action - Navigation to run; it resolves unsaved edits itself
+ * @param label - Where the button says it leads, naming the page the action opens
  * @returns Unattached bar, to be the first child of the page
  */
-export function createBackBar(action: () => Promise<void>): HTMLDivElement {
+export function createBackBar(action: () => Promise<void>, label = 'Back to assignments'): HTMLDivElement {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'wf-back-button';
@@ -1097,7 +1202,7 @@ export function createBackBar(action: () => Promise<void>): HTMLDivElement {
     icon.setAttribute('data-feather', 'arrow-left');
     icon.setAttribute('aria-hidden', 'true');
     const text = document.createElement('span');
-    text.textContent = 'Back to assignments';
+    text.textContent = label;
     button.append(icon, text);
     let running = false;
     button.addEventListener('click', () => {

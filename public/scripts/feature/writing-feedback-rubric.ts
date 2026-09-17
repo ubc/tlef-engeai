@@ -80,7 +80,7 @@ import {
     scrollingAncestor,
     setWorkspaceMessage,
     setQueryState,
-    returnToLanding,
+    returnToAssignment,
     setView,
     state,
     textAreaControl,
@@ -1462,11 +1462,12 @@ function renderRubricPage(
     root.replaceChildren();
     const isLabReport = Boolean(technicalData);
 
+    // Back leads to the assignment's own page, which is where the rubric was opened from.
     const back = createBackBar(async () => {
         if (!(await confirmDiscardDirty('setup'))) return;
         state.panelDirty = false;
-        await returnToLanding();
-    });
+        await returnToAssignment(assignment.id);
+    }, 'Back to assignment');
     root.append(back);
 
     const header = document.createElement('header');

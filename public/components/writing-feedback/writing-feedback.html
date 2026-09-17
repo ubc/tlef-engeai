@@ -1,13 +1,13 @@
 <!--
   Writing Feedback instructor workspace shell
 
-  Provides the persistent heading/status regions and three view hosts populated
+  Provides the persistent heading/status regions and four view hosts populated
   by the Writing Feedback TypeScript modules.
 
   @author: @rdschrs
   @date: 2026-07-19
   @version: 1.0.0
-  @description: Semantic component shell for assignment intake, rubric editing, and submission review.
+  @description: Semantic component shell for assignment intake, one assignment's submissions, rubric editing, and submission review.
 -->
 <link rel="stylesheet" href="/styles/instructor-components/writing-feedback.css">
 
@@ -41,8 +41,28 @@
             </button>
         </div>
 
-        <!-- Assignment queue and inline setup/import panel -->
+        <!-- Assignment queue; the shared setup/import panel is moved into its mount when opened -->
         <div id="wf-view-landing">
+            <div id="wf-landing-action-mount"></div>
+
+            <div id="wf-assignment-list" class="wf-assignment-list" aria-live="polite" aria-busy="true">
+                <p class="wf-muted-note">Loading assignments…</p>
+            </div>
+        </div>
+
+        <!-- Mutually exclusive routed hosts populated by the assignment/rubric/review modules -->
+        <div id="wf-view-assignment" hidden></div>
+
+        <div id="wf-view-rubric" hidden></div>
+
+        <div id="wf-view-review" hidden></div>
+
+        <!--
+          One inline setup/import panel serves the assignment queue and the assignment page.
+          It rests here while closed so that re-rendering either view cannot destroy it, and
+          openActionPanel moves it into the mount of the view that is asking for it.
+        -->
+        <div id="wf-action-panel-home">
             <section id="wf-action-panel" class="wf-action-panel" aria-labelledby="wf-action-panel-title" hidden>
                 <header class="wf-action-panel-header">
                     <h2 id="wf-action-panel-title">Action</h2>
@@ -52,15 +72,6 @@
                 </header>
                 <div id="wf-action-panel-content"></div>
             </section>
-
-            <div id="wf-assignment-list" class="wf-assignment-list" aria-live="polite" aria-busy="true">
-                <p class="wf-muted-note">Loading assignments…</p>
-            </div>
         </div>
-
-        <!-- Mutually exclusive routed hosts populated by rubric/review modules -->
-        <div id="wf-view-rubric" hidden></div>
-
-        <div id="wf-view-review" hidden></div>
     </main>
 </div>

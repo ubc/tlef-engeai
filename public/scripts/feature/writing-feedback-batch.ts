@@ -2,11 +2,12 @@
 /**
  * Writing Feedback batch generation — the "Generate feedback for all submissions" controls
  *
- * Adds a bar above an assignment's submission list with the batch button, progress, and Stop.
- * The button previews the batch, asks for confirmation in a modal (with an opt-in to regenerate
- * feedback made with an older rubric), and starts it. While submissions are generating, the bar
- * follows their statuses and updates the list rows in place, so rows do not move under staff
- * who are opening finished submissions.
+ * The batch action sits with the assignment page's other actions in its header; it previews the
+ * batch, asks for confirmation in a modal (with an opt-in to regenerate feedback made with an
+ * older rubric), and starts it. A progress strip above the submission list holds the running
+ * count and Stop, and appears only while something is generating. While it is, it follows the
+ * submissions' statuses and updates the list rows in place, so rows do not move under staff who
+ * are opening finished submissions.
  *
  * @author: EngE-AI Team
  * @date: 2026-09-16
@@ -34,14 +35,22 @@ import {
 /** How often the list is re-read while anything is generating. */
 const POLL_INTERVAL_MS = 5000;
 
-/** Callbacks the landing view supplies. */
+/** Callbacks the assignment page supplies. */
 export interface BatchBarOptions {
     /** Reloads the assignment's submission list after a batch starts or stops. */
     onChanged: () => Promise<void>;
 }
 
-/** The single poll timer; only one assignment is expanded at a time. */
+/** The single poll timer; only one assignment's page is open at a time. */
 let pollTimer: number | null = null;
+
+/**
+ * The page's Generate-feedback control, which lives in the page header rather than in the
+ * progress strip. Held here because the poll has to hide it while a run is in flight and the
+ * two are no longer in the same part of the page. One reference is enough for the same reason
+ * one timer is: only one assignment page exists at a time.
+ */
+let startControl: HTMLButtonElement | null = null;
 
 function plural(count: number, one: string, many: string): string {
     return `${count} ${count === 1 ? one : many}`;
@@ -190,12 +199,35 @@ async function stopBatch(assignment: Assignment): Promise<boolean> {
 }
 
 /**
- * renderBatchBar - the batch button, progress line, and Stop for one assignment.
+ * renderBatchStart - the "Generate feedback for all submissions" action for the page header.
  *
- * @param assignment - Assignment whose list the bar sits above
+ * Sits with the assignment's other actions rather than above the list, because all three act
+ * on the assignment as a whole. It is hidden for as long as a run is in flight, when the
+ * progress strip below carries both the count and the way to stop it.
+ *
+ * @param assignment - Assignment to generate for
+ * @param options - Assignment page callbacks
+ * @returns Detached button, styled as a header action by its caller
+ */
+export function renderBatchStart(assignment: Assignment, options: BatchBarOptions): HTMLButtonElement {
+    const start = createButton('Generate feedback for all submissions', 'secondary', async () => {
+        if (await startBatch(assignment)) await options.onChanged();
+    }, false, 'zap');
+    // Styled like the workspace's "Import assignment from Canvas" action, which it matches in
+    // importance; the second class is what the progress strip's CSS and this module's tests find.
+    start.className = 'wf-header-btn wf-batch-bar__start';
+    startControl = start;
+    return start;
+}
+
+/**
+ * renderBatchBar - the progress strip above the submission list: what is running, and Stop.
+ *
+ * @param assignment - Assignment whose list the strip sits above
  * @param submissions - The list as just loaded
- * @param options - Landing view callbacks
- * @returns Detached bar; call {@link updateBatchBar} when the list changes
+ * @param options - Assignment page callbacks
+ * @returns Detached strip, hidden unless something is generating; call {@link updateBatchBar}
+ *          when the list changes
  */
 export function renderBatchBar(assignment: Assignment, submissions: Submission[], options: BatchBarOptions): HTMLElement {
     const bar = document.createElement('div');
@@ -203,38 +235,36 @@ export function renderBatchBar(assignment: Assignment, submissions: Submission[]
     const status = createText('p', '', 'wf-batch-bar__status');
     status.setAttribute('role', 'status');
     status.setAttribute('aria-live', 'polite');
-    const start = createButton('Generate feedback for all submissions', 'secondary', async () => {
-        if (await startBatch(assignment)) await options.onChanged();
-    }, false, 'zap');
-    // Styled like the workspace's "Import assignment from Canvas" action, which it sits beside in importance.
-    start.className = 'wf-header-btn wf-batch-bar__start';
     const stop = createButton('Stop generating', 'outline', async () => {
         if (await stopBatch(assignment)) await options.onChanged();
     }, false, 'square');
     stop.classList.add('wf-batch-bar__stop');
     const actions = document.createElement('div');
     actions.className = 'wf-button-row';
-    actions.append(start, stop);
+    actions.append(stop);
     bar.append(status, actions);
     updateBatchBar(bar, submissions);
     return bar;
 }
 
 /**
- * updateBatchBar - shows Stop and progress while anything generates, the batch button otherwise.
+ * updateBatchBar - shows the strip while anything generates, and the header action otherwise.
  *
- * @param bar - Bar from {@link renderBatchBar}
+ * The two are never on screen together: starting a run is meaningless while one is running,
+ * and a strip reporting nothing is a tinted empty band above the list.
+ *
+ * @param bar - Strip from {@link renderBatchBar}
  * @param submissions - Current list
  */
 export function updateBatchBar(bar: HTMLElement, submissions: Submission[]): void {
     const text = batchProgressText(submissions);
     const status = bar.querySelector<HTMLElement>('.wf-batch-bar__status');
     if (status && status.textContent !== text) status.textContent = text;
-    if (status) status.hidden = !text;
-    const start = bar.querySelector<HTMLButtonElement>('.wf-batch-bar__start');
+    bar.hidden = !text;
     const stop = bar.querySelector<HTMLButtonElement>('.wf-batch-bar__stop');
-    if (start) start.hidden = Boolean(text);
     if (stop) stop.hidden = !text;
+    // The header control may have been replaced by a re-render since it was recorded.
+    if (startControl?.isConnected) startControl.hidden = Boolean(text);
 }
 
 /**
@@ -249,11 +279,11 @@ export function stopFollowingGeneration(): void {
  * followGeneration - re-reads the list while anything is generating and updates rows in place.
  *
  * Rows are matched by `data-submission-id`; only their status chip changes, so the list keeps
- * its order until staff reload it. Polling ends once nothing is generating, or when the panel
- * leaves the page (the assignment collapsed, or staff opened a submission).
+ * its order until staff reload it. Polling ends once nothing is generating, or when the list
+ * leaves the page (staff went back to the queue, or opened a submission).
  *
  * @param assignment - Assignment being followed
- * @param panel - Expanded submission panel
+ * @param panel - Container holding the assignment page's submission rows
  * @param submissions - The list as just rendered
  */
 export function followGeneration(assignment: Assignment, panel: HTMLElement, submissions: Submission[]): void {
@@ -262,7 +292,7 @@ export function followGeneration(assignment: Assignment, panel: HTMLElement, sub
 
     const poll = async (): Promise<void> => {
         pollTimer = null;
-        if (!panel.isConnected || state.expandedAssignmentId !== assignment.id) return;
+        if (!panel.isConnected || state.activeAssignmentId !== assignment.id) return;
         let latest: Submission[];
         try {
             latest = await request<Submission[]>(`/submissions?assignmentId=${encodeURIComponent(assignment.id)}`);
@@ -271,7 +301,7 @@ export function followGeneration(assignment: Assignment, panel: HTMLElement, sub
             pollTimer = window.setTimeout(() => void poll(), POLL_INTERVAL_MS);
             return;
         }
-        if (!panel.isConnected || state.expandedAssignmentId !== assignment.id) return;
+        if (!panel.isConnected || state.activeAssignmentId !== assignment.id) return;
         for (const submission of latest) {
             const row = panel.querySelector<HTMLElement>(`.wf-submission-row[data-submission-id="${CSS.escape(submission.id)}"]`);
             const current = row?.querySelector<HTMLElement>('.wf-chip[data-status]');
