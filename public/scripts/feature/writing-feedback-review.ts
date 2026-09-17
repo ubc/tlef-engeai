@@ -52,6 +52,7 @@ import {
     request,
     scrollingAncestor,
     setQueryState,
+    returnToLanding,
     runButtonAction,
     setView,
     state,
@@ -205,7 +206,7 @@ export async function openReview(submissionId: string): Promise<void> {
     if (!(await confirmDiscardDirty('review'))) return;
     state.reviewDirty = false;
     const returningToRelease = consumeReleaseReturn();
-    setQueryState({ wfSubmission: submissionId, wfView: null });
+    setQueryState({ wfSubmission: submissionId, wfView: null }, 'push');
     setView('review');
     const root = element<HTMLDivElement>('wf-view-review');
     root.replaceChildren(createText('p', 'Loading submission…', 'wf-muted-note'));
@@ -366,7 +367,7 @@ function renderReviewView(root: HTMLDivElement, detail: SubmissionDetail): void 
     const back = createButton('← Back to assignments', 'quiet', async () => {
         if (!(await confirmDiscardDirty('review'))) return;
         state.reviewDirty = false;
-        await views.showLanding();
+        await returnToLanding();
     });
     const identity = document.createElement('div');
     const subtitle = createText('p', `${assignment?.title ?? 'Writing assignment'} · Attempt ${submission.attempt}${submission.submittedAt ? ` · Submitted ${formatDate(submission.submittedAt, true)}` : ''}`);

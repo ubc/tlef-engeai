@@ -45,8 +45,12 @@ import {
     jsonRequest,
     queryState,
     refreshIcons,
+    rememberDisplayedUrl,
     request,
+    restoreDisplayedUrl,
     runButtonAction,
+    savedScrollTop,
+    scrollingAncestor,
     setQueryState,
     setView,
     setWorkspaceMessage,
@@ -67,9 +71,9 @@ import { followGeneration, renderBatchBar, statusChip, stopFollowingGeneration }
 // Landing view
 // ---------------------------------------------------------------------------
 
-async function loadLanding(): Promise<void> {
+async function loadLanding(mode: 'push' | 'replace' = 'push'): Promise<void> {
     setView('landing');
-    setQueryState({ wfSubmission: null, wfView: null });
+    setQueryState({ wfSubmission: null, wfView: null }, mode);
     const list = element<HTMLDivElement>('wf-assignment-list');
     list.setAttribute('aria-busy', 'true');
     list.replaceChildren(createText('p', 'Loading assignments…', 'wf-muted-note'));
@@ -955,6 +959,86 @@ function bindStaticActions(): void {
 }
 
 /**
+ * showPageFromUrl - renders the workspace page the current URL names
+ *
+ * Restores exactly one page; each opener reloads its own server-authoritative data rather
+ * than trusting stale browser state. The URL already names the page, so nothing here adds
+ * a history entry.
+ *
+ * @returns Which page was shown
+ */
+async function showPageFromUrl(): Promise<'landing' | 'rubric' | 'review'> {
+    state.expandedAssignmentId = queryState('wfAssignment');
+    const requestedSubmission = queryState('wfSubmission');
+    if (requestedSubmission) {
+        state.assignments = await request<Assignment[]>('/assignments');
+        await openReview(requestedSubmission);
+        return 'review';
+    }
+    if (queryState('wfView') === 'rubric' && state.expandedAssignmentId) {
+        state.assignments = await request<Assignment[]>('/assignments');
+        await openRubricPage(state.expandedAssignmentId);
+        return 'rubric';
+    }
+    await loadLanding('replace');
+    return 'landing';
+}
+
+/**
+ * isWritingFeedbackMounted - whether the workspace is the component on screen
+ *
+ * @returns True once {@link initializeWritingFeedback} has run against mounted markup
+ */
+export function isWritingFeedbackMounted(): boolean {
+    return state.course !== null && document.getElementById('wf-view-landing') !== null;
+}
+
+/**
+ * confirmLeaveWritingFeedbackPage - resolves unsaved edits before the page on screen changes
+ *
+ * Asks about unsaved staff feedback and setup edits in turn, and clears both once staff
+ * agree to discard them.
+ *
+ * @returns True when there was nothing unsaved or staff chose to discard it
+ */
+export async function confirmLeaveWritingFeedbackPage(): Promise<boolean> {
+    if (!(await confirmDiscardDirty('review')) || !(await confirmDiscardDirty('setup'))) return false;
+    state.reviewDirty = false;
+    state.panelDirty = false;
+    return true;
+}
+
+/**
+ * syncWritingFeedbackFromUrl - follows browser Back/Forward between workspace pages
+ *
+ * The browser has already changed the address when this runs and cannot be stopped, so
+ * choosing "Keep editing" puts the on-screen page's address back instead. Returning to the
+ * assignment list restores the scroll position staff left it at.
+ *
+ * @returns False when the workspace is not mounted and the shell must load it instead
+ */
+export async function syncWritingFeedbackFromUrl(): Promise<boolean> {
+    if (!isWritingFeedbackMounted()) return false;
+    if (!(await confirmLeaveWritingFeedbackPage())) {
+        restoreDisplayedUrl();
+        return true;
+    }
+    const scrollTop = savedScrollTop();
+    try {
+        const page = await showPageFromUrl();
+        if (page === 'landing' && scrollTop !== null) {
+            // After layout, once the list has rendered to full height.
+            requestAnimationFrame(() => {
+                scrollingAncestor(element('wf-view-landing')).scrollTop = scrollTop;
+            });
+        }
+    } catch (error) {
+        await handleActionError(error);
+    }
+    return true;
+}
+
+/**
  * initializeWritingFeedback - boots the course-scoped instructor workspace
  *
  * Resets module state, registers sibling view openers, loads capability-aware
@@ -979,6 +1063,7 @@ export async function initializeWritingFeedback(currentClass: activeCourse): Pro
     state.currentAssignment = null;
     state.reviewDirty = false;
     state.panelDirty = false;
+    rememberDisplayedUrl();
     views.showLanding = loadLanding;
     views.showRubric = openRubricPage;
     views.showReview = openReview;
@@ -991,18 +1076,8 @@ export async function initializeWritingFeedback(currentClass: activeCourse): Pro
         // Canvas mode and its data-handling terms are stated where they apply —
         // the import dialog and the release control — so the workspace opens
         // without a standing banner repeating them on every view.
-        // Restore exactly one URL-addressed view; each opener reloads its own
-        // server-authoritative data rather than trusting stale browser state.
-        const requestedSubmission = queryState('wfSubmission');
-        const requestedView = queryState('wfView');
-        if (requestedSubmission) {
-            state.assignments = await request<Assignment[]>('/assignments');
-            await openReview(requestedSubmission);
-        } else if (requestedView === 'rubric' && state.expandedAssignmentId) {
-            state.assignments = await request<Assignment[]>('/assignments');
-            await openRubricPage(state.expandedAssignmentId);
-        } else {
-            await loadLanding();
+        const page = await showPageFromUrl();
+        if (page === 'landing') {
             if (returningFromCanvasConnect) {
                 // Through the button's own action wrapper, so a Canvas failure is reported
                 // the way a click would report it rather than as "workspace unavailable".

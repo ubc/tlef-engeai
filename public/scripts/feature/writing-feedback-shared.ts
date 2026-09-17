@@ -835,18 +835,101 @@ export function clearWorkspaceMessage(): void {
     region.hidden = true;
 }
 
+/** History-state key holding the page scroll offset of the entry being left. */
+const SCROLL_TOP_KEY = 'wfScrollTop';
+/** History-state key holding the address of the entry a pushed entry was opened from. */
+const CAME_FROM_KEY = 'wfCameFrom';
+
 /**
- * setQueryState - replaces Writing Feedback deep-link parameters without navigation
+ * URL of the workspace page currently on screen. Browser Back has already changed the
+ * address by the time the page hears about it, so this is what "Keep editing" restores.
+ */
+let displayedUrl = '';
+
+/**
+ * setQueryState - updates Writing Feedback deep-link parameters without reloading
+ *
+ * `replace` edits the current history entry, for changes within a page (expanding an
+ * assignment) or a refresh of the same page. `push` adds an entry so the browser's Back
+ * button returns to the page being left; it replaces instead when the URL would not
+ * change, so reopening the current page never stacks duplicate entries. Before pushing,
+ * the scroll offset of the page being left is saved on its own entry so Back can restore it.
  *
  * @param values - Parameters to set, or null values to remove
+ * @param mode - Whether the change is a new history entry or an edit of the current one
  */
-export function setQueryState(values: Partial<Record<'wfAssignment' | 'wfSubmission' | 'wfView', string | null>>): void {
+export function setQueryState(
+    values: Partial<Record<'wfAssignment' | 'wfSubmission' | 'wfView', string | null>>,
+    mode: 'replace' | 'push' = 'replace'
+): void {
     const url = new URL(window.location.href);
     Object.entries(values).forEach(([key, value]) => {
         if (value) url.searchParams.set(key, value);
         else url.searchParams.delete(key);
     });
-    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    const next = `${url.pathname}${url.search}${url.hash}`;
+    const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (mode === 'push' && next !== current) {
+        const leaving = document.querySelector<HTMLElement>('[id^="wf-view-"]:not([hidden])') ?? element('wf-view-landing');
+        window.history.replaceState(
+            { ...(window.history.state ?? {}), [SCROLL_TOP_KEY]: scrollingAncestor(leaving).scrollTop },
+            '',
+            current
+        );
+        window.history.pushState({ view: 'writing-feedback', [CAME_FROM_KEY]: current }, '', next);
+    } else {
+        window.history.replaceState(window.history.state, '', next);
+    }
+    displayedUrl = next;
+}
+
+/**
+ * rememberDisplayedUrl - records the current address as the page on screen
+ *
+ * Called once the workspace mounts, before any page has set its own parameters.
+ */
+export function rememberDisplayedUrl(): void {
+    displayedUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+}
+
+/**
+ * restoreDisplayedUrl - puts back the address of the page still on screen
+ *
+ * Used when staff cancel a Back/Forward navigation to keep unsaved edits: the browser
+ * cannot cancel it, so the page's address is pushed again to match what is shown.
+ */
+export function restoreDisplayedUrl(): void {
+    if (displayedUrl) window.history.pushState({ view: 'writing-feedback' }, '', displayedUrl);
+}
+
+/**
+ * returnToLanding - goes back to the assignment list
+ *
+ * When this page was opened from the list, steps back through browser history so the
+ * list returns where staff left it and Back/Forward stay in step with the in-app button.
+ * Otherwise (a deep link or reload) opens the list as a new entry. Callers resolve unsaved
+ * edits first.
+ */
+export async function returnToLanding(): Promise<void> {
+    const cameFrom = (window.history.state as Record<string, unknown> | null)?.[CAME_FROM_KEY];
+    if (typeof cameFrom === 'string') {
+        const params = new URL(cameFrom, window.location.origin).searchParams;
+        if (!params.has('wfSubmission') && !params.has('wfView')) {
+            window.history.back();
+            return;
+        }
+    }
+    await views.showLanding();
+}
+
+/**
+ * savedScrollTop - the scroll offset saved on the current history entry, if any
+ *
+ * @returns Offset recorded when staff last left this entry, or null
+ */
+export function savedScrollTop(): number | null {
+    const value = (window.history.state as Record<string, unknown> | null)?.[SCROLL_TOP_KEY];
+    return typeof value === 'number' ? value : null;
 }
 
 /**

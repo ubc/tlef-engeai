@@ -26,7 +26,13 @@ import { authService } from '../services/auth-service.js';
 import { showConfirmModal, showSimpleErrorModal } from '../ui/modal-overlay.js';
 import { renderAbout } from '../about/about.js';
 // @rdschrs: Integrated capability-gated Writing Feedback navigation and initialization.
-import { initializeWritingFeedback } from '../feature/writing-feedback.js';
+import {
+    confirmLeaveWritingFeedbackPage,
+    initializeWritingFeedback,
+    isWritingFeedbackMounted,
+    syncWritingFeedbackFromUrl
+} from '../feature/writing-feedback.js';
+import { restoreDisplayedUrl as restoreWritingFeedbackUrl } from '../feature/writing-feedback-shared.js';
 import { initializeCourseSummary, summonCourseSummary, configureCourseSummaryFabVisibility } from '../feature/course-summary.js';
 import { startInactivityTracking } from '../services/inactivity-tracker.js';
 import { initializeAssistantPrompts, hasUnsavedPromptChanges, resetUnsavedPromptChanges } from '../feature/assistant-prompts.js';
@@ -843,6 +849,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.addEventListener('popstate', async () => {
         const view = getInstructorViewFromURL();
         const chatId = getChatIdFromURL();
+
+        // Leaving Writing Feedback would drop unsaved staff edits with the component, and
+        // Back cannot be cancelled, so "Keep editing" restores the workspace's address.
+        if (
+            view !== 'writing-feedback' &&
+            currentState === StateEvent.WritingFeedback &&
+            isWritingFeedbackMounted() &&
+            !(await confirmLeaveWritingFeedbackPage())
+        ) {
+            restoreWritingFeedbackUrl();
+            return;
+        }
         
         if (view) {
             if (view === 'settings' || view === 'course-information') {
@@ -906,6 +924,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 isScenarioQuestionsMounted()
             ) {
                 await syncScenarioQuestionsFromURL(true);
+            } else if (
+                view === 'writing-feedback' &&
+                currentState === StateEvent.WritingFeedback &&
+                await syncWritingFeedbackFromUrl()
+            ) {
+                // Back/Forward between workspace pages; the mounted workspace switched pages itself.
             } else {
                 // Load component for current view
                 currentState = mapViewToStateEvent(view);

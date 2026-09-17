@@ -79,6 +79,7 @@ import {
     scrollingAncestor,
     setWorkspaceMessage,
     setQueryState,
+    returnToLanding,
     setView,
     state,
     textAreaControl,
@@ -1243,7 +1244,7 @@ export async function openRubricPage(assignmentId: string): Promise<void> {
     if (!(await confirmDiscardDirty('setup')) || !(await confirmDiscardDirty('review'))) return;
     state.panelDirty = false;
     state.reviewDirty = false;
-    setQueryState({ wfView: 'rubric', wfAssignment: assignmentId, wfSubmission: null });
+    setQueryState({ wfView: 'rubric', wfAssignment: assignmentId, wfSubmission: null }, 'push');
     setView('rubric');
     const root = element<HTMLDivElement>('wf-view-rubric');
     root.replaceChildren(createText('p', 'Loading rubric…', 'wf-muted-note'));
@@ -1463,7 +1464,7 @@ function renderRubricPage(
     const back = createButton('← Back to assignments', 'quiet', async () => {
         if (!(await confirmDiscardDirty('setup'))) return;
         state.panelDirty = false;
-        await views.showLanding();
+        await returnToLanding();
     });
     back.classList.add('wf-back-button');
     root.append(back);
