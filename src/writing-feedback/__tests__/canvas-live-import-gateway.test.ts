@@ -17,6 +17,9 @@ import { LiveCanvasImportGateway } from '../canvas-live-import-gateway';
 import type { CanvasImportStore } from '../canvas-import-contracts';
 import type { DocumentExtractionService, WritingAssignment, WritingSubmission } from '../contracts';
 
+/** Canvas deployment these fixtures speak to; attachment downloads are origin-checked against it. */
+const CANVAS_DOMAIN = 'https://canvas.test';
+
 /** In-memory persistence double, mirroring the one used for the demo adapter. */
 class MemoryStore implements CanvasImportStore {
     readonly assignment: WritingAssignment = buildDefaultWritingAssignment('course-1', 'assignment-1', 'Technical Description');
@@ -131,7 +134,7 @@ const ASSIGNMENTS = [
 describe('LiveCanvasImportGateway assignment listing', () => {
     it('offers only assignments that can actually be imported', async () => {
         const { client } = fakeClient({ getAll: { '/assignments': ASSIGNMENTS } });
-        const gateway = new LiveCanvasImportGateway({ client, canvasCourseId: '55' });
+        const gateway = new LiveCanvasImportGateway({ client, canvasCourseId: '55', canvasDomain: CANVAS_DOMAIN });
 
         const assignments = await gateway.listAssignments();
 
@@ -148,7 +151,7 @@ describe('LiveCanvasImportGateway assignment listing', () => {
         // Without this the summary reaches the import route with no description, the created
         // assignment has no instructions, and auto-fill refuses with nothing to propose from.
         const { client } = fakeClient({ getAll: { '/assignments': ASSIGNMENTS } });
-        const gateway = new LiveCanvasImportGateway({ client, canvasCourseId: '55' });
+        const gateway = new LiveCanvasImportGateway({ client, canvasCourseId: '55', canvasDomain: CANVAS_DOMAIN });
 
         const [assignment] = await gateway.listAssignments();
 
@@ -160,13 +163,13 @@ describe('LiveCanvasImportGateway assignment listing', () => {
         // Canvas's assignment payload carries no submitted count; inventing one from
         // needs_grading_count would show staff a number that means something else.
         const { client } = fakeClient({ getAll: { '/assignments': ASSIGNMENTS } });
-        const assignments = await new LiveCanvasImportGateway({ client, canvasCourseId: '55' }).listAssignments();
+        const assignments = await new LiveCanvasImportGateway({ client, canvasCourseId: '55', canvasDomain: CANVAS_DOMAIN }).listAssignments();
         expect(assignments[0].submissionCount).toBeUndefined();
     });
 
     it('reports a live, importable connection without calling Canvas', async () => {
         const { client, calls } = fakeClient({});
-        const status = await new LiveCanvasImportGateway({ client, canvasCourseId: '55' }).getStatus();
+        const status = await new LiveCanvasImportGateway({ client, canvasCourseId: '55', canvasDomain: CANVAS_DOMAIN }).getStatus();
 
         expect(status).toMatchObject({ mode: 'live', integration: 'canvas', connected: true, canImport: true, syntheticDataOnly: false });
         expect(calls).toHaveLength(0);
@@ -210,7 +213,7 @@ describe('LiveCanvasImportGateway submission previews', () => {
 
     it('classifies each submission and drops rows with nothing to import', async () => {
         const { client } = fakeClient({ get: { '/assignments/101': { id: 101 } }, getAll: { '/submissions': SUBMISSIONS } });
-        const previews = await new LiveCanvasImportGateway({ client, canvasCourseId: '55' }).listSubmissionPreviews('101');
+        const previews = await new LiveCanvasImportGateway({ client, canvasCourseId: '55', canvasDomain: CANVAS_DOMAIN }).listSubmissionPreviews('101');
 
         expect(previews.map((item) => [item.canvasUserId, item.contentKind])).toEqual([
             ['900', 'text_entry'],
@@ -229,7 +232,7 @@ describe('LiveCanvasImportGateway submission previews', () => {
         }];
         const { client } = fakeClient({ get: { '/assignments/101': { id: 101 } }, getAll: { '/submissions': markdownSubmission } });
 
-        const previews = await new LiveCanvasImportGateway({ client, canvasCourseId: '55' }).listSubmissionPreviews('101');
+        const previews = await new LiveCanvasImportGateway({ client, canvasCourseId: '55', canvasDomain: CANVAS_DOMAIN }).listSubmissionPreviews('101');
 
         expect(previews[0]).toMatchObject({ canvasUserId: '905', contentKind: 'file_upload' });
         expect(previews[0].attachments[0]).toMatchObject({ fileName: 'report.md', attachmentId: '9' });
@@ -237,7 +240,7 @@ describe('LiveCanvasImportGateway submission previews', () => {
 
     it('requests no SIS data, so Canvas never serializes a PUID, student number, or CWL', async () => {
         const { client, calls } = fakeClient({ get: { '/assignments/101': { id: 101 } }, getAll: { '/submissions': SUBMISSIONS } });
-        await new LiveCanvasImportGateway({ client, canvasCourseId: '55' }).listSubmissionPreviews('101');
+        await new LiveCanvasImportGateway({ client, canvasCourseId: '55', canvasDomain: CANVAS_DOMAIN }).listSubmissionPreviews('101');
 
         const submissionCall = calls.find((call) => call.path.includes('/submissions'));
         expect(submissionCall?.query).toEqual({ include: ['user'] });
@@ -246,14 +249,14 @@ describe('LiveCanvasImportGateway submission previews', () => {
 
     it('fetches no attachment bytes while previewing', async () => {
         const { client, calls } = fakeClient({ get: { '/assignments/101': { id: 101 } }, getAll: { '/submissions': SUBMISSIONS } });
-        await new LiveCanvasImportGateway({ client, canvasCourseId: '55' }).listSubmissionPreviews('101');
+        await new LiveCanvasImportGateway({ client, canvasCourseId: '55', canvasDomain: CANVAS_DOMAIN }).listSubmissionPreviews('101');
         expect(calls.some((call) => call.method === 'download')).toBe(false);
     });
 
     it('refuses an anonymized assignment with a reason staff can act on', async () => {
         const { client } = fakeClient({ get: { '/assignments/104': { id: 104, anonymize_students: true } } });
         await expect(
-            new LiveCanvasImportGateway({ client, canvasCourseId: '55' }).listSubmissionPreviews('104')
+            new LiveCanvasImportGateway({ client, canvasCourseId: '55', canvasDomain: CANVAS_DOMAIN }).listSubmissionPreviews('104')
         ).rejects.toThrow('anonymous grading');
     });
 });
@@ -287,7 +290,7 @@ describe('LiveCanvasImportGateway rubric and assignment-detail import', () => {
 
     it('preserves each row\'s own ratings instead of padding to a rectangle', async () => {
         const { client } = fakeClient({ get: { '/assignments/101': RUBRIC_ASSIGNMENT } });
-        const { rubric } = await new LiveCanvasImportGateway({ client, canvasCourseId: '55' })
+        const { rubric } = await new LiveCanvasImportGateway({ client, canvasCourseId: '55', canvasDomain: CANVAS_DOMAIN })
             .loadAssignmentContext('101');
 
         expect(rubric?.rows.map((row) => row.ratings.length)).toEqual([2, 3]);
@@ -298,7 +301,7 @@ describe('LiveCanvasImportGateway rubric and assignment-detail import', () => {
 
     it('mirrors Canvas exactly, adding no EngE-AI fields of its own', async () => {
         const { client } = fakeClient({ get: { '/assignments/101': RUBRIC_ASSIGNMENT } });
-        const { rubric } = await new LiveCanvasImportGateway({ client, canvasCourseId: '55' })
+        const { rubric } = await new LiveCanvasImportGateway({ client, canvasCourseId: '55', canvasDomain: CANVAS_DOMAIN })
             .loadAssignmentContext('101');
 
         expect(Object.keys(rubric!.rows[0]).sort()).toEqual(
@@ -311,7 +314,7 @@ describe('LiveCanvasImportGateway rubric and assignment-detail import', () => {
 
     it('imports the assignment brief as both HTML and plain text', async () => {
         const { client } = fakeClient({ get: { '/assignments/101': RUBRIC_ASSIGNMENT } });
-        const { details } = await new LiveCanvasImportGateway({ client, canvasCourseId: '55' })
+        const { details } = await new LiveCanvasImportGateway({ client, canvasCourseId: '55', canvasDomain: CANVAS_DOMAIN })
             .loadAssignmentContext('101');
 
         expect(details.descriptionHtml).toContain('<strong>device</strong>');
@@ -334,7 +337,7 @@ describe('LiveCanvasImportGateway rubric and assignment-detail import', () => {
             }]
         };
         const { client } = fakeClient({ get: { '/assignments/103': encoded } });
-        const { rubric } = await new LiveCanvasImportGateway({ client, canvasCourseId: '55' })
+        const { rubric } = await new LiveCanvasImportGateway({ client, canvasCourseId: '55', canvasDomain: CANVAS_DOMAIN })
             .loadAssignmentContext('103');
 
         expect(rubric?.rows[0].label).toBe('Stance, Tone & Citations');
@@ -353,7 +356,7 @@ describe('LiveCanvasImportGateway rubric and assignment-detail import', () => {
             }]
         };
         const { client } = fakeClient({ get: { '/assignments/104': wrapped } });
-        const { rubric } = await new LiveCanvasImportGateway({ client, canvasCourseId: '55' })
+        const { rubric } = await new LiveCanvasImportGateway({ client, canvasCourseId: '55', canvasDomain: CANVAS_DOMAIN })
             .loadAssignmentContext('104');
 
         expect(rubric?.rows[0].label).toBe('Stance and Tone');
@@ -361,7 +364,7 @@ describe('LiveCanvasImportGateway rubric and assignment-detail import', () => {
 
     it('reports no rubric rather than failing when Canvas has none', async () => {
         const { client } = fakeClient({ get: { '/assignments/102': { id: 102, name: 'No Rubric', description: '' } } });
-        const context = await new LiveCanvasImportGateway({ client, canvasCourseId: '55' })
+        const context = await new LiveCanvasImportGateway({ client, canvasCourseId: '55', canvasDomain: CANVAS_DOMAIN })
             .loadAssignmentContext('102');
 
         // The instructor authors one in EngE-AI instead; this is an ordinary outcome.
@@ -388,7 +391,25 @@ describe('SafeCanvasImportService over a live gateway', () => {
             getAll: { '/assignments': [{ id: 101, name: 'Technical Description', submission_types: ['online_text_entry', 'online_upload'], has_submitted_submissions: true }], '/submissions': SUBMISSIONS },
             download
         });
-        const gateway = new LiveCanvasImportGateway({ client, canvasCourseId: '55', extractor: passthroughExtractor });
+        // Attachment bytes no longer travel through `client.download` — the gateway fetches them
+        // itself so no bearer token is presented (see `canvas-attachment-download.ts`). The stub
+        // is adapted rather than dropped so these cases still exercise the same outcomes.
+        const fetchImpl = download
+            ? (async () => {
+                const result = await download();
+                return new Response(Buffer.from(result.data), {
+                    status: 200,
+                    headers: { 'content-type': 'application/octet-stream' }
+                });
+            }) as unknown as typeof fetch
+            : undefined;
+        const gateway = new LiveCanvasImportGateway({
+            client,
+            canvasCourseId: '55',
+            canvasDomain: CANVAS_DOMAIN,
+            extractor: passthroughExtractor,
+            fetchImpl
+        });
         return { service: new SafeCanvasImportService(store, gateway), calls };
     }
 
@@ -456,7 +477,7 @@ describe('SafeCanvasImportService over a live gateway', () => {
         });
         const service = new SafeCanvasImportService(
             store,
-            new LiveCanvasImportGateway({ client, canvasCourseId: '55', extractor: passthroughExtractor })
+            new LiveCanvasImportGateway({ client, canvasCourseId: '55', canvasDomain: CANVAS_DOMAIN, extractor: passthroughExtractor })
         );
 
         const result = await service.importAssignment(request);
@@ -488,7 +509,7 @@ describe('SafeCanvasImportService over a live gateway', () => {
         });
         const service = new SafeCanvasImportService(
             store,
-            new LiveCanvasImportGateway({ client, canvasCourseId: '55', extractor: passthroughExtractor })
+            new LiveCanvasImportGateway({ client, canvasCourseId: '55', canvasDomain: CANVAS_DOMAIN, extractor: passthroughExtractor })
         );
 
         const result = await service.importAssignment(request);

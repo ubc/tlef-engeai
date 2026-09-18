@@ -66,16 +66,11 @@ export const CANVAS_OAUTH_SCOPES: readonly string[] = [
     'url:GET|/api/v1/courses/:course_id/assignments/:id',
     'url:GET|/api/v1/courses/:course_id/assignments/:assignment_id/submissions',
     'url:GET|/api/v1/courses/:course_id/assignments/:assignment_id/submissions/:user_id',
-    // Downloading a submission attachment. Canvas hands back a non-API URL --
-    // `/files/:id/download?verifier=...` -- whose `verifier` authorizes the download by itself,
-    // so these look unnecessary. They are not: the LMS package attaches the bearer token to any
-    // same-origin URL, and with Enforce Scopes on Canvas then evaluates that token against the
-    // grant and answers 401. Both forms are requested because the non-API path does not state
-    // which one it is checked against. Removing them breaks file-upload import while leaving
-    // text-entry import working, which is a confusing failure to diagnose -- see the
-    // `canvas_attachment_downloaded` log line in `canvas-live-import-gateway.ts`.
-    'url:GET|/api/v1/files/:id',
-    'url:GET|/api/v1/courses/:course_id/files/:id',
+    // No files scope belongs here, and adding one does not work. Canvas serves a submission
+    // attachment from `/files/:id/download?verifier=...`, a web route rather than an API one,
+    // and Enforce Scopes has no scope to match it against -- a request carrying a token is
+    // refused with 401 whatever the grant contains. The `verifier` authorizes that one file on
+    // its own, so `canvas-attachment-download.ts` fetches the bytes with no token at all.
     'url:POST|/api/v1/courses/:course_id/assignments/:assignment_id/submissions/:user_id/comments/files',
     'url:PUT|/api/v1/courses/:course_id/assignments/:assignment_id/submissions/:user_id',
     'url:POST|/api/v1/courses/:course_id/assignments/:assignment_id/submissions/update_grades',
