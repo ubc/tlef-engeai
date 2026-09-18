@@ -193,10 +193,12 @@ me the UI click path from §1.6 as the fallback.
 - If I paste a secret into this chat by mistake, say so and tell me to rotate it.
 - Don't invent OAuth scopes. The app requests the list in `src/lms/canvas-config.ts`, and the
   authorize URL carries one `scope` parameter per entry. With Enforce Scopes off, this local key
-  ignores them. Note the two `files` entries in that list are required for **file-upload**
-  submission import even though the URL Canvas hands back is not an `/api/v1/` path: the package
-  sends the bearer token to it anyway, and with Enforce Scopes on Canvas answers 401. Without
-  them, text-entry submissions import and every file upload fails.
+  ignores them. There is deliberately **no** `files` scope in that list: Canvas serves submission
+  attachments from `/files/:id/download?verifier=...`, a web route with no scope to match against,
+  so with Enforce Scopes on a request carrying a token is refused 401 no matter what the grant
+  says. Adding a files scope was tried and did not help. The bytes are fetched without a token by
+  `src/writing-feedback/canvas-attachment-download.ts` instead — don't reintroduce a files scope
+  to "fix" a file-upload import failure.
 - Don't paginate by hand. Canvas defaults to 10 items and reports the rest in the RFC 5988 `Link`
   header; the package already follows it.
 - Don't add LTI. This integration is OAuth-only — an LTI launch is not an API token.

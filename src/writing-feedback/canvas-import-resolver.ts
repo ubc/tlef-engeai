@@ -121,7 +121,12 @@ export async function resolveCanvasImportService(
 
     let gateway: CanvasImportGateway;
     if (canvasCourseId && client) {
-        gateway = new LiveCanvasImportGateway({ client, canvasCourseId });
+        // `canvasConfig` is non-null here: `canvasCourseId` is only resolved when it is set.
+        gateway = new LiveCanvasImportGateway({
+            client,
+            canvasCourseId,
+            canvasDomain: canvasConfig!.canvasDomain
+        });
     } else if (canvasCourseId) {
         // Linked to Canvas but no client reached this handler — the auth middleware should have
         // answered 401 first, so this is a wiring fault. Fail closed rather than falling through

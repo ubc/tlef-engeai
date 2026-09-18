@@ -24,6 +24,7 @@
 
 import { canvas } from '@ubc/ubc-genai-toolkit-lms-integration';
 import { appLogger } from '../utils/logger';
+import { downloadSubmissionAttachmentUnauthenticated } from './canvas-attachment-download';
 import type {
     CanvasAssignmentDetails,
     CanvasImportedRubric,
@@ -321,20 +322,28 @@ function htmlToText(html: string): string {
 export class LiveCanvasImportGateway implements CanvasImportGateway {
     private readonly client: ApiClient;
     private readonly canvasCourseId: string;
+    private readonly canvasDomain: string;
+    private readonly fetchImpl?: typeof fetch;
     private readonly extractor: DocumentExtractionService;
 
     /**
      * @param deps.client - Authenticated Canvas client for the current staff member
      * @param deps.canvasCourseId - Canvas course id from the EngE-AI course's `lmsLink`
+     * @param deps.canvasDomain - Configured Canvas deployment, used to origin-check downloads
+     * @param deps.fetchImpl - Byte fetch for attachment downloads; defaults to the global `fetch`
      * @param deps.extractor - Local parser for attachment bytes; never the RAG pipeline
      */
     constructor(deps: {
         client: ApiClient;
         canvasCourseId: string;
+        canvasDomain: string;
         extractor?: DocumentExtractionService;
+        fetchImpl?: typeof fetch;
     }) {
         this.client = deps.client;
         this.canvasCourseId = deps.canvasCourseId;
+        this.canvasDomain = deps.canvasDomain;
+        this.fetchImpl = deps.fetchImpl;
         this.extractor = deps.extractor ?? new LocalDocumentExtractionService();
     }
 
@@ -494,27 +503,45 @@ export class LiveCanvasImportGateway implements CanvasImportGateway {
             target: describeDownloadTarget(attachment.url)
         });
 
-        // Resolved through the course/assignment/student-scoped submission endpoint rather than
-        // by following the preview's URL. `client.download`'s origin rules stop a handed-in URL
-        // being an SSRF primitive or leaking the bearer token off-origin, but they cannot show
-        // that the file belongs to this course, this assignment, and this student. Naming those
-        // four things and letting Canvas produce the URL does.
-        const download = await canvas.downloadSubmissionAttachment(this.client, {
+        // Deliberately not `canvas.downloadSubmissionAttachment`. That helper attaches the
+        // bearer token to any same-origin URL, and Canvas serves attachments from the web route
+        // `/files/:id/download?verifier=...`. Under Enforce Scopes the token is then evaluated
+        // against a grant that cannot contain a non-`/api/v1/` route, so Canvas answers 401 --
+        // no OAuth scope can fix it, and presenting the token is worse than presenting nothing.
+        // The replacement re-resolves the URL through the same course-, assignment- and
+        // student-scoped submission endpoint, so Canvas still produces it, and keeps the origin,
+        // redirect and size protections. See that module's header.
+        const download = await downloadSubmissionAttachmentUnauthenticated(this.client, {
             courseId: this.canvasCourseId,
-            gradeItemId: context.canvasAssignmentId,
+            assignmentId: context.canvasAssignmentId,
             userId: context.canvasUserId,
             attachmentId: attachment.attachmentId,
-            maxBytes: MAX_ATTACHMENT_BYTES
+            canvasDomain: this.canvasDomain,
+            maxBytes: MAX_ATTACHMENT_BYTES,
+            fetchImpl: this.fetchImpl
         });
+
+        // Canvas reports the attachment's size; a mismatch means the body was truncated or
+        // re-encoded in transit. Caught here because the parser would report it as a corrupt
+        // document and send the reader looking at the wrong layer.
+        if (download.declaredBytes !== undefined && download.data.byteLength !== download.declaredBytes) {
+            throw new Error(
+                `Canvas file download was incomplete (expected ${download.declaredBytes} bytes, `
+                + `received ${download.data.byteLength})`
+            );
+        }
+
         // What arrived, before anything tries to parse it. The file name is deliberately absent
         // -- it identifies the student -- so the extension, the two byte counts, and the
         // payload's shape are what a staff-side download failure is diagnosed from.
         const shape = classifyPayload(download.data);
         appLogger.info('[WritingFeedback] canvas_attachment_downloaded', {
             extension,
-            declaredBytes: attachment.size,
+            declaredBytes: download.declaredBytes,
             receivedBytes: download.data.byteLength,
             contentType: download.contentType,
+            // Presence only. The value authorizes the download, so it is itself a credential.
+            verifierPresent: download.verifierPresent,
             shape
         });
 
