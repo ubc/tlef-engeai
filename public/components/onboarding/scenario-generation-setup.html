@@ -100,7 +100,7 @@
                     <div class="welcome-content">
                         <div class="welcome-message">
                             <h3>Start with a prompt, then review the draft</h3>
-                            <p>Scenario Generation turns a situation you describe into a practice scenario with subquestions and a worked solution. Course staff review and edit every draft before publishing it.</p>
+                            <p>Scenario Generation turns a situation you describe into a practice scenario with subquestions and a worked solution, reviewed by staff first.</p>
 
                             <div class="demo-explanation">
                                 <h4>What you can do:</h4>
@@ -113,7 +113,7 @@
                             </div>
 
                             <div class="completion-note">
-                                <p><strong>This tutorial is a simulation.</strong> You can edit the next form, but no scenario is saved and no AI model is called.</p>
+                                <p><strong>This tutorial is a simulation.</strong> Edit the form freely: nothing is saved and no model is called.</p>
                             </div>
                         </div>
                     </div>
@@ -125,15 +125,15 @@
                 <div class="content-step-inner">
                     <div class="step-header">
                         <h1>Generating a Practice Scenario</h1>
-                        <p>Describe the situation, pick your options, and generate a draft</p>
+                        <p>Describe the situation, pick options, generate a draft</p>
                     </div>
 
                     <div class="demo-explanation">
-                        <p>This is the same form used in Practice Scenarios. The example is filled in so you can focus on how the controls work.</p>
+                        <p>The same form used in Practice Scenarios, filled in so you can focus on the controls.</p>
                     </div>
 
                     <p class="sg-setup-action-prompt" id="sgSetupActionPrompt" role="status" aria-live="polite">
-                        <strong>Try it:</strong> Edit any field, then select Generate to continue.
+                        <strong><strong>Try it:</strong> edit a field, then Generate to continue.</strong>
                     </p>
 
                     <div id="sgSetupGenerateMount" class="sg-setup-mount" aria-live="polite">
@@ -152,7 +152,7 @@
                         </dl>
                         <h4>Subquestions</h4>
                         <ol id="sgSetupPreviewSubquestions"></ol>
-                        <p class="sg-setup-draft-note"><i data-feather="eye-off"></i> This draft is visible only to you. Students cannot see it until you publish it.</p>
+                        <p class="sg-setup-draft-note">This draft is yours alone until you publish it.</p>
                     </div>
                 </div>
             </div>
@@ -167,17 +167,17 @@
 
                     <div class="demo-explanation">
                         <h4>Every generated scenario starts as a draft</h4>
-                        <p>Students cannot see or open drafts. Course staff decide what is published and when.</p>
+                        <p>Students never see drafts. Staff decide what is published, and when.</p>
 
                         <ul class="feature-list">
-                            <li><strong>Review the scenario body.</strong> Check that the situation is solvable with what your students know.</li>
-                            <li><strong>Review each sub-question.</strong> Add, remove, reorder, or rewrite any of them.</li>
-                            <li><strong>Review the worked solution.</strong> Check every step before publishing.</li>
-                            <li><strong>Check the estimated time.</strong> Adjust it if the difficulty estimate feels wrong.</li>
+                            <li><strong>Review the body.</strong> Is it solvable with what your students know?</li>
+                            <li><strong>Review each sub-question.</strong> Add, remove, reorder, or rewrite.</li>
+                            <li><strong>Review the worked solution</strong> step by step.</li>
+                            <li><strong>Check the estimated time</strong> if the difficulty feels wrong.</li>
                         </ul>
 
                         <div class="completion-note">
-                            <p><strong>Need several?</strong> You can generate up to ten scenarios in a batch, review them together, and publish only the ones you want.</p>
+                            <p><strong>Need several?</strong> Generate up to ten at once and publish only what you want.</p>
                         </div>
                     </div>
                 </div>
@@ -190,22 +190,22 @@
                         <div class="completion-message">
                             <div class="success-icon"><i data-feather="award" aria-hidden="true"></i></div>
                             <h3>Scenario Generation tutorial complete</h3>
-                            <p>You can now create and review a practice scenario draft.</p>
+                            <p>You can now create and review a scenario draft.</p>
                             <ul class="completion-list">
                                 <li>Generated a sample from editable choices</li>
                                 <li>Learned that drafts stay hidden until published</li>
                             </ul>
                             <div class="completion-note">
-                                <p>Practice Scenarios is available from your course navigation.</p>
+                                <p>Practice Scenarios sits in your course navigation.</p>
                             </div>
                         </div>
 
                         <div class="next-steps">
                             <h4>What you can do next</h4>
                             <ul>
-                                <li><i data-feather="edit-3" aria-hidden="true"></i> Draft scenarios from your own prompts and learning objectives</li>
-                                <li><i data-feather="search" aria-hidden="true"></i> Review and edit every draft before it goes live</li>
-                                <li><i data-feather="upload" aria-hidden="true"></i> Publish scenarios individually, when your course is ready for them</li>
+                                <li>Draft scenarios from your own prompts and objectives</li>
+                                <li>Review and edit every draft before it goes live</li>
+                                <li>Publish scenarios individually, when your course is ready</li>
                             </ul>
                         </div>
                     </div>
@@ -216,6 +216,10 @@
 
         <!-- Navigation -->
         <div class="onboarding-navigation">
+            <button class="nav-btn btn-skip-tutorial" id="skipTutorialBtn" type="button">
+                <span class="nav-btn-text">Skip tutorial</span>
+                <i data-feather="fast-forward"></i>
+            </button>
             <button class="nav-btn btn-back" id="backBtn">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
                 <span class="nav-btn-text">Back</span>

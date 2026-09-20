@@ -35,6 +35,13 @@ function fakeActiveUsers(doc: Record<string, any>) {
     return doc;
 }
 
+/**
+ * A configured course whose content has been filed.
+ *
+ * Document Setup is owed while the course holds no items, so a fixture with empty
+ * divisions would stop every case here at that stage before it reached the progression
+ * this suite is about.
+ */
 function makeCourse(id: string, courseSetup = true): activeCourse {
     return {
         id,
@@ -45,8 +52,8 @@ function makeCourse(id: string, courseSetup = true): activeCourse {
         teachingAssistants: [],
         frameType: 'byWeek',
         tilesNumber: 12,
-        topicOrWeekInstances: [],
-    } as activeCourse;
+        topicOrWeekInstances: [{ id: 'w1', items: [{ id: 'i1' }] }],
+    } as unknown as activeCourse;
 }
 
 const ctx = { db: {}, idGenerator: {} } as unknown as MongoDalContext;

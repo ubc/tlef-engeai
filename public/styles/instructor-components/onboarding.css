@@ -749,6 +749,25 @@
     transform: translateY(-1px);
 }
 
+/* Muted sibling of Back: an exit, never the obvious next action. */
+.btn-skip-tutorial {
+    border: 1px solid var(--border-color);
+    background: #fff;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.btn-skip-tutorial:hover {
+    border-color: var(--color-chbe-green);
+    color: var(--color-chbe-green);
+    transform: translateY(-1px);
+}
+
+.btn-skip-tutorial svg {
+    width: 16px;
+    height: 16px;
+}
+
 .btn-next {
     background-color: var(--color-chbe-green);
     color: white;
@@ -2615,6 +2634,92 @@
     .accordion-content {
         background-color: #fff;
         border: 2px solid #000;
+    }
+}
+
+/* ===========================================
+   TUTORIAL CHROME (MODE BANNER + STAGE PROGRESS)
+   =========================================== */
+
+.tutorial-chrome {
+    display: flex;
+    position: relative;
+    z-index: 11;
+    flex-direction: column;
+    flex: 0 0 auto;
+    gap: 0.5rem;
+    padding: 1rem 2rem 0.85rem;
+    border-bottom: 1px solid var(--border-color);
+    background: #fff;
+}
+
+.tutorial-chrome__banner {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.55rem 0.75rem;
+    border-radius: 8px;
+    background: var(--gingham-color);
+    color: var(--text-primary);
+    font-size: 0.88rem;
+    font-weight: 600;
+}
+
+.tutorial-chrome__banner svg {
+    flex: 0 0 auto;
+    width: 16px;
+    height: 16px;
+    stroke: var(--color-chbe-green);
+    stroke-width: 2;
+    fill: none;
+}
+
+.tutorial-chrome__progress {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem;
+    font-size: 0.82rem;
+}
+
+.tutorial-chrome__position {
+    color: var(--text-primary);
+    font-weight: 700;
+    letter-spacing: 0.01em;
+}
+
+.tutorial-chrome__stage {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-secondary);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tutorial-chrome__track {
+    width: 100%;
+    height: 4px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: var(--border-color);
+}
+
+.tutorial-chrome__fill {
+    display: block;
+    width: 0;
+    height: 100%;
+    border-radius: 999px;
+    background: var(--color-chbe-green);
+    transition: width 0.25s ease;
+}
+
+@media (max-width: 768px) {
+    .tutorial-chrome {
+        padding: calc(0.6rem + env(safe-area-inset-top)) max(1rem, env(safe-area-inset-left)) 0.6rem;
+    }
+
+    .tutorial-chrome__banner {
+        font-size: 0.8rem;
     }
 }
 

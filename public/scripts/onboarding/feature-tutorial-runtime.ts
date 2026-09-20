@@ -20,6 +20,8 @@ import { showErrorModal, showHelpModal } from "../ui/modal-overlay.js";
 import type { OnboardingFeatureKey } from "../utils/onboarding-stage-order.js";
 import { updateStaffOnboardingProgress } from "./staff-onboarding-ui.js";
 import { completeInstructorOnboardingStage } from "./onboarding-progress.js";
+import { renderTutorialChrome } from "./onboarding-tutorial-chrome.js";
+import { offerSkipTutorial } from "./onboarding-skip.js";
 
 /** Component names for the three feature tutorials. */
 export type FeatureTutorialComponent =
@@ -207,6 +209,7 @@ export async function runFeatureTutorial(
             updateStepIndicators(stepNumber);
             updateNavigationButtons(state);
             updateStaffOnboardingProgress(state.currentStep, state.totalSteps);
+            renderTutorialChrome(definition.component, instructorCourse as any);
 
             await definition.initializeStep?.(stepNumber, context);
 
@@ -232,6 +235,17 @@ export async function runFeatureTutorial(
                 detail: { course: instructorCourse, feature: definition.feature, completedAt: new Date() }
             }));
         };
+
+        // Skip tutorial: the same confirmation as the unprompted offer, available from
+        // every stage that only teaches. A refused or failed skip leaves the instructor
+        // exactly where they were.
+        document.getElementById('skipTutorialBtn')?.addEventListener('click', () => {
+            void (async () => {
+                if (await offerSkipTutorial() === 'skipped') {
+                    window.dispatchEvent(new CustomEvent('instructorOnboardingSkipped'));
+                }
+            })();
+        });
 
         document.getElementById('backBtn')?.addEventListener('click', () => {
             if (state.currentStep > 1) {

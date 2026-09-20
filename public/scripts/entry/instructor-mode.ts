@@ -55,9 +55,15 @@ import {
 import {
     buildOnboardingStagePath,
     FEATURE_ONBOARDING_STAGES,
+    isSkippableOnboardingStage,
     resolveNextOnboardingStage,
     type InstructorOnboardingStage
 } from '../utils/onboarding-stage-order.js';
+import {
+    hasSeenSkipPrompt,
+    markSkipPromptSeen,
+    offerSkipTutorial
+} from '../onboarding/onboarding-skip.js';
 
 /**
  * checkAuthentication
@@ -560,6 +566,29 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     });
 
+    /**
+     * Leaves onboarding after a successful skip.
+     *
+     * The write already marked every tutorial taught, so the resolver will not route this
+     * user back in. The local mirror is updated too, so anything deciding on progress later
+     * in this page's life reads the same facts the server now holds.
+     */
+    window.addEventListener('instructorOnboardingSkipped', () => {
+        instructorOnboarding = {
+            ...instructorOnboarding,
+            contentSetup: true,
+            flagSetup: true,
+            monitorSetup: true,
+            scenarioGeneration: true,
+            writingFeedback: true,
+            guidedPathway: true
+        };
+        document.body.classList.remove('onboarding-active');
+
+        const courseId = getCourseIdFromURL();
+        window.location.href = courseId ? `/course/${courseId}/instructor/dashboard` : '/';
+    });
+
     // Listen for monitor setup completion event
     window.addEventListener('monitorSetupComplete', () => {
         // console.log('📊 Monitor setup completed, redirecting to main interface...');
@@ -1025,31 +1054,48 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     };
 
-    /** Renders one onboarding stage. Exhaustive over `InstructorOnboardingStage`. */
-    const renderOnboardingStage = (stage: InstructorOnboardingStage) => {
+    /** Mounts one onboarding stage's component. Exhaustive over `InstructorOnboardingStage`. */
+    const mountOnboardingStage = (stage: InstructorOnboardingStage): Promise<unknown> => {
         switch (stage) {
             case 'course-setup':
-                renderOnCourseSetup(currentClass);
-                return;
+                return Promise.resolve(renderOnCourseSetup(currentClass));
             case 'document-setup':
-                renderDocumentSetup(currentClass);
-                return;
+                return Promise.resolve(renderDocumentSetup(currentClass));
             case 'scenario-generation-setup':
-                renderScenarioGenerationSetup(currentClass);
-                return;
+                return Promise.resolve(renderScenarioGenerationSetup(currentClass));
             case 'writing-feedback-setup':
-                renderWritingFeedbackSetup(currentClass);
-                return;
+                return Promise.resolve(renderWritingFeedbackSetup(currentClass));
             case 'guided-pathway-setup':
-                renderGuidedPathwaySetup(currentClass);
-                return;
+                return Promise.resolve(renderGuidedPathwaySetup(currentClass));
             case 'flag-setup':
-                renderFlagSetup(currentClass);
-                return;
+                return Promise.resolve(renderFlagSetup(currentClass));
             case 'monitor-setup':
-                renderMonitorSetup(currentClass);
-                return;
+                return Promise.resolve(renderMonitorSetup(currentClass));
         }
+    };
+
+    /**
+     * Renders one onboarding stage and, once per session, offers the tutorial exit.
+     *
+     * The offer is unprompted on the first stage that only teaches, which is the stage
+     * immediately after Course Content — whichever one the resolver picks. It waits for the
+     * component to mount so the modal is not covered by the content swap, and is remembered
+     * for the session so a reload does not ask again; the footer button keeps the exit
+     * available on every later stage.
+     */
+    const renderOnboardingStage = (stage: InstructorOnboardingStage) => {
+        const mounted = mountOnboardingStage(stage);
+
+        if (!isSkippableOnboardingStage(stage) || hasSeenSkipPrompt()) {
+            return;
+        }
+
+        markSkipPromptSeen();
+        void mounted.then(async () => {
+            if (await offerSkipTutorial() === 'skipped') {
+                window.dispatchEvent(new CustomEvent('instructorOnboardingSkipped'));
+            }
+        });
     };
 
     const updateUI = () => {

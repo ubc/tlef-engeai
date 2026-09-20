@@ -436,7 +436,15 @@ export interface activeCourse {
     id : string,
     date : Date,
     courseSetup : boolean, 
-    /** @deprecated moved to `GlobalUser.instructorOnboarding` (OB-002); retained for rollback only */
+    /**
+     * True once this course's content has been filed by Document Setup.
+     *
+     * The *tutorial* moved to `GlobalUser.instructorOnboarding` (OB-002) so a colleague
+     * joining a configured course is still taught. The course-state half stayed behind:
+     * a veteran creating a second course owes no tutorial but the course still owes its
+     * content, and without this flag they landed on the dashboard with an empty course.
+     * `undefined` means a course predating the field and is not treated as owing content.
+     */
     contentSetup? : boolean,
     /** @deprecated moved to `GlobalUser.instructorOnboarding` (OB-002); retained for rollback only */
     flagSetup? : boolean,

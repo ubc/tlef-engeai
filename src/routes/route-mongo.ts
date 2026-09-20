@@ -1039,6 +1039,41 @@ async function patchCourseFeature(
 }
 
 /**
+ * POST /:courseId/onboarding/content-setup
+ * Records that Document Setup has filed this course's content. Course staff only.
+ *
+ * Document Setup does two jobs: it teaches the viewer, recorded per-user by
+ * `PATCH /api/user/onboarding/instructor-stage`, and it files the course's content,
+ * recorded here. Splitting them is what lets a veteran creating a second course still be
+ * sent through Document Setup while never being re-taught the feature tutorials.
+ *
+ * This is the only path that may set `contentSetup`: `PUT /api/courses/:id` strips it so a
+ * stale client cannot resurrect the deprecated course-level tutorial flags.
+ *
+ * @route POST /api/courses/:courseId/onboarding/content-setup
+ * @param {string} courseId - Course ID (path param)
+ * @returns {object} { success: boolean, error?: string }
+ * @response 200 - Recorded
+ * @response 401 - User not authenticated
+ * @response 403 - Course staff access required
+ * @response 404 - Course not found
+ */
+router.post(
+    '/:courseId/onboarding/content-setup',
+    requireInstructorForCourseAPI(['params']),
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const updated = await instance.markCourseContentSetupComplete(routeParam(req.params, 'courseId'));
+
+        if (!updated) {
+            return res.status(404).json({ success: false, error: 'Course not found' });
+        }
+
+        return res.status(200).json({ success: true });
+    })
+);
+
+/**
  * PUT /:id
  * Update a course. Instructors only.
  *

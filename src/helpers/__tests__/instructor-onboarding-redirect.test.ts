@@ -15,10 +15,22 @@
  * @author: @rdschrs
  */
 
-import { resolveInstructorModeRedirect } from '../instructor-onboarding-redirect';
+import {
+    ONBOARDING_STAGE_LABELS,
+    SKIPPABLE_ONBOARDING_STAGES,
+    buildOnboardingStageSequence,
+    isSkippableOnboardingStage,
+    resolveInstructorModeRedirect,
+    resolveOnboardingStagePosition
+} from '../instructor-onboarding-redirect';
 import {
     FEATURE_ONBOARDING_STAGES,
+    ONBOARDING_STAGE_LABELS as BROWSER_STAGE_LABELS,
+    SKIPPABLE_ONBOARDING_STAGES as BROWSER_SKIPPABLE_STAGES,
+    buildOnboardingStageSequence as browserBuildStageSequence,
+    isSkippableOnboardingStage as browserIsSkippableStage,
     resolveNextOnboardingStage,
+    resolveOnboardingStagePosition as browserResolveStagePosition,
     type InstructorOnboardingStage,
     type OnboardingCourseProgress,
     type OnboardingUserProgress
@@ -42,7 +54,18 @@ const FULL_DONE: InstructorOnboardingProgress = {
     guidedPathway: true
 };
 
-/** Builds a configured course whose missing feature map inherits registry defaults. */
+/** One division carrying a filed item, which is what proves a course holds content. */
+const FILED_CONTENT = [{ id: 'w1', items: [{ id: 'i1' }] }] as unknown as activeCourse['topicOrWeekInstances'];
+
+/** Divisions Course Setup created but Document Setup never filled. */
+const EMPTY_DIVISIONS = [{ id: 'w1', items: [] }] as unknown as activeCourse['topicOrWeekInstances'];
+
+/**
+ * Builds a fully configured course whose missing feature map inherits registry defaults.
+ *
+ * Content is filed by default because that is what a course past Document Setup looks
+ * like, and the resolver reads the items to decide whether the stage is still owed.
+ */
 function buildCourse(overrides: Partial<activeCourse> = {}): activeCourse {
     return {
         id: COURSE_ID,
@@ -53,7 +76,7 @@ function buildCourse(overrides: Partial<activeCourse> = {}): activeCourse {
         teachingAssistants: [],
         frameType: 'byWeek',
         tilesNumber: 12,
-        topicOrWeekInstances: [],
+        topicOrWeekInstances: FILED_CONTENT,
         ...overrides
     } as activeCourse;
 }
@@ -168,6 +191,67 @@ describe('instructor onboarding stage order', () => {
             // Deprecated fields left on old documents must not grant progress.
             const stale = buildCourse({ contentSetup: true, flagSetup: true, monitorSetup: true });
             expectStage(stale, {}, 'document-setup');
+        });
+    });
+
+    /**
+     * Document Setup teaches the instructor *and* files the course's content, so it is owed
+     * when either job is outstanding.
+     *
+     * OB-002 moved the tutorial onto the user so a colleague joining a configured course is
+     * still taught. That left the other half unowned: a veteran creating their second course
+     * was taught nothing and landed on the dashboard with an empty course. `courseSetup` was
+     * always kept on the course for exactly this reason, and content is course state by the
+     * same argument, so the course now carries `contentSetup` as "content has been filed".
+     *
+     * `undefined` means a course that predates the field and is left alone: forcing the stage
+     * on every legacy course would send established instructors back through it.
+     */
+    describe('document setup is owed for the course as well as the person', () => {
+        it('teaches a veteran on a newly provisioned course with no content', () => {
+            expectStage(buildCourse({ contentSetup: false, topicOrWeekInstances: EMPTY_DIVISIONS }), FULL_DONE, 'document-setup');
+        });
+
+        it('still teaches a newcomer on a course whose content is already filed', () => {
+            expectStage(buildCourse({ contentSetup: true, topicOrWeekInstances: FILED_CONTENT }), {}, 'document-setup');
+        });
+
+        it('asks nobody once the content is filed and the viewer has been taught', () => {
+            expectStage(buildCourse({ contentSetup: true, topicOrWeekInstances: FILED_CONTENT }), FULL_DONE, null);
+        });
+
+        /**
+         * The regression this predicate exists to avoid. `provisionCourse` has written
+         * `contentSetup: false` on every course created since OB-002 and nothing wrote it
+         * back, so a flag-only test would re-teach every one of them.
+         */
+        it('leaves a course whose content is filed but whose flag was never updated', () => {
+            expectStage(buildCourse({ contentSetup: false, topicOrWeekInstances: FILED_CONTENT }), FULL_DONE, null);
+        });
+
+        it('treats divisions without items as no content, since Course Setup creates them', () => {
+            expectStage(buildCourse({ topicOrWeekInstances: EMPTY_DIVISIONS }), FULL_DONE, 'document-setup');
+        });
+
+        it('lets a recorded flag settle a course with no items', () => {
+            expectStage(buildCourse({ contentSetup: true, topicOrWeekInstances: EMPTY_DIVISIONS }), FULL_DONE, null);
+        });
+
+        it('keeps course setup ahead of an unfiled course', () => {
+            expectStage(
+                buildCourse({ courseSetup: false, contentSetup: false, topicOrWeekInstances: EMPTY_DIVISIONS }),
+                FULL_DONE,
+                'course-setup'
+            );
+        });
+
+        it('owes a teaching assistant nothing on an unconfigured course', () => {
+            expectStage(
+                buildCourse({ courseSetup: false, contentSetup: false, topicOrWeekInstances: EMPTY_DIVISIONS }),
+                FULL_DONE,
+                null,
+                false
+            );
         });
     });
 
@@ -344,5 +428,145 @@ describe('instructor onboarding stage order', () => {
                 { stage: 'guided-pathway-setup', feature: 'guidedPathway' }
             ]);
         });
+    });
+});
+
+/**
+ * Stage sequence, position, labels and the skippable set.
+ *
+ * These feed the tutorial chrome and the Skip tutorial affordance (D-130, D-133).
+ * The sequence deliberately ignores completion: it is the denominator of
+ * "Tutorial 3 of 7", which must not shrink as stages are finished.
+ */
+describe('onboarding stage sequence and position', () => {
+    const ALL_FEATURES = enabled(...FEATURE_KEYS);
+    const ALL_STAGES: InstructorOnboardingStage[] = [
+        'course-setup',
+        'document-setup',
+        'scenario-generation-setup',
+        'writing-feedback-setup',
+        'guided-pathway-setup',
+        'flag-setup',
+        'monitor-setup'
+    ];
+
+    it('sequences all seven stages for a roster manager on a fully enabled course', () => {
+        expect(buildOnboardingStageSequence(buildCourse({ features: ALL_FEATURES }), true)).toEqual(ALL_STAGES);
+    });
+
+    it('drops a disabled capability from the sequence', () => {
+        const course = buildCourse({ features: enabled('scenarioGeneration', 'guidedPathway') });
+        const sequence = buildOnboardingStageSequence(course, true);
+        expect(sequence).not.toContain('writing-feedback-setup');
+        expect(sequence).toHaveLength(6);
+    });
+
+    it('omits course setup for a teaching assistant', () => {
+        const sequence = buildOnboardingStageSequence(buildCourse({ features: ALL_FEATURES }), false);
+        expect(sequence).not.toContain('course-setup');
+        expect(sequence[0]).toBe('document-setup');
+        expect(sequence).toHaveLength(6);
+    });
+
+    it('reports a one-based position out of the viewer-specific total', () => {
+        expect(
+            resolveOnboardingStagePosition('writing-feedback-setup', buildCourse({ features: ALL_FEATURES }), true)
+        ).toEqual({ index: 4, total: 7 });
+        expect(
+            resolveOnboardingStagePosition(
+                'flag-setup',
+                buildCourse({ features: enabled('writingFeedback', 'guidedPathway') }),
+                true
+            )
+        ).toEqual({ index: 5, total: 6 });
+        expect(
+            resolveOnboardingStagePosition('document-setup', buildCourse({ features: ALL_FEATURES }), false)
+        ).toEqual({ index: 1, total: 6 });
+    });
+
+    it('returns null for a stage the viewer is never routed through', () => {
+        expect(
+            resolveOnboardingStagePosition('course-setup', buildCourse({ features: ALL_FEATURES }), false)
+        ).toBeNull();
+        expect(
+            resolveOnboardingStagePosition(
+                'writing-feedback-setup',
+                buildCourse({ features: enabled('scenarioGeneration', 'guidedPathway') }),
+                true
+            )
+        ).toBeNull();
+    });
+
+    it('treats every stage after document setup as skippable', () => {
+        expect(SKIPPABLE_ONBOARDING_STAGES).toEqual([
+            'scenario-generation-setup',
+            'writing-feedback-setup',
+            'guided-pathway-setup',
+            'flag-setup',
+            'monitor-setup'
+        ]);
+        expect(isSkippableOnboardingStage('course-setup')).toBe(false);
+        expect(isSkippableOnboardingStage('document-setup')).toBe(false);
+        expect(isSkippableOnboardingStage('monitor-setup')).toBe(true);
+    });
+
+    it('labels every stage without an internal slug', () => {
+        expect(ONBOARDING_STAGE_LABELS).toEqual({
+            'course-setup': 'Course Setup',
+            'document-setup': 'Course Content',
+            'scenario-generation-setup': 'Scenario Generation',
+            'writing-feedback-setup': 'Writing Feedback',
+            'guided-pathway-setup': 'Guided Pathway',
+            'flag-setup': 'Flags',
+            'monitor-setup': 'Monitor'
+        });
+        ALL_STAGES.forEach(stage => expect(ONBOARDING_STAGE_LABELS[stage]).not.toContain('-'));
+    });
+});
+
+/**
+ * Parity for the new helpers.
+ *
+ * Same contract as the pre-existing stage-order parity: neither module can import
+ * the other, so every input combination is asserted on both.
+ */
+describe('browser and backend stage helpers agree', () => {
+    const courses = [
+        buildCourse({ features: enabled(...FEATURE_KEYS) }),
+        buildCourse({ features: enabled('writingFeedback') }),
+        buildCourse({ features: NO_FEATURES }),
+        buildCourse({ courseSetup: false, features: enabled('guidedPathway') })
+    ];
+    const stages: InstructorOnboardingStage[] = [
+        'course-setup',
+        'document-setup',
+        'scenario-generation-setup',
+        'writing-feedback-setup',
+        'guided-pathway-setup',
+        'flag-setup',
+        'monitor-setup'
+    ];
+
+    it('produces identical labels and skippable sets', () => {
+        expect(BROWSER_STAGE_LABELS).toEqual(ONBOARDING_STAGE_LABELS);
+        expect(BROWSER_SKIPPABLE_STAGES).toEqual(SKIPPABLE_ONBOARDING_STAGES);
+        stages.forEach(stage =>
+            expect(browserIsSkippableStage(stage)).toBe(isSkippableOnboardingStage(stage))
+        );
+    });
+
+    it('produces identical sequences and positions for every input combination', () => {
+        for (const course of courses) {
+            for (const canManageRoster of [true, false]) {
+                expect(browserBuildStageSequence(course as OnboardingCourseProgress, canManageRoster)).toEqual(
+                    buildOnboardingStageSequence(course, canManageRoster)
+                );
+                for (const stage of stages) {
+                    expect(
+                        browserResolveStagePosition(stage, course as OnboardingCourseProgress, canManageRoster)
+                    ).toEqual(resolveOnboardingStagePosition(stage, course, canManageRoster));
+                }
+            }
+        }
     });
 });

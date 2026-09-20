@@ -195,6 +195,10 @@ export class EngEAI_MongoDB {
         updateData: Partial<activeCourse>
     ): Promise<activeCourse | null> => CourseMongo.updateActiveCourse(this.ctx(), id, updateData);
 
+    public markCourseContentSetupComplete = async (
+        id: string
+    ): Promise<activeCourse | null> => CourseMongo.markCourseContentSetupComplete(this.ctx(), id);
+
     public deleteActiveCourse = async (course: activeCourse) =>
         CourseMongo.deleteActiveCourse(this.ctx(), course);
 
@@ -1369,6 +1373,10 @@ export class EngEAI_MongoDB {
         puid: string,
         stage: keyof InstructorOnboardingProgress
     ) => GlobalUserMongo.completeInstructorOnboardingStage(this.ctx(), puid, stage);
+
+    /** Marks every instructor tutorial taught, which is what Skip tutorial records. */
+    public skipRemainingInstructorOnboardingStages = async (puid: string) =>
+        GlobalUserMongo.skipRemainingInstructorOnboardingStages(this.ctx(), puid);
 
     public updateGlobalUserAffiliation = async (
         userId: string,

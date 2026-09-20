@@ -345,6 +345,15 @@ resurrect them.
 - Written only by `completeInstructorOnboardingStage` (`global-user-mongo.ts`), which uses a
   dotted `$set` (`instructorOnboarding.<stage>`). The shallow `$set` in `updateGlobalUser`
   would replace the whole subdocument and wipe the sibling stages. Only ever sets `true`.
+- `markCourseContentSetupComplete` (`course-mongo.ts`) records that Document Setup filed a
+  course's content, setting `activeCourse.contentSetup = true` and nothing else. Kept out of
+  `updateActiveCourse` because the course update route strips `contentSetup` on purpose; this is
+  the one server-owned writer. Only ever sets `true`.
+- `skipRemainingInstructorOnboardingStages` (`global-user-mongo.ts`) is the Skip tutorial
+  write: keyed by `puid`, it sets all six dotted `instructorOnboarding.*` paths listed in
+  `INSTRUCTOR_ONBOARDING_TUTORIAL_STAGES` plus `updatedAt` in one `findOneAndUpdate` and
+  returns the post-image. It never touches `courseSetup`, which is course state, and like the
+  single-stage delegate it only ever sets `true`.
 - Read by `resolveInstructorModeRedirect` (`src/helpers/instructor-onboarding-redirect.ts`),
   the single choke point for both course-entry routes.
 - `sanitizeGlobalUserForFrontend` (`src/utils/user-utils.ts`) whitelists fields, so the

@@ -23,6 +23,7 @@ import { showErrorModal, showHelpModal } from "../ui/modal-overlay.js";
 import { buildOnboardingStagePath, resolveNextOnboardingStage } from "../utils/onboarding-stage-order.js";
 import { isBrowserCourseFeatureEnabled } from "../utils/course-features.js";
 import { updateStaffOnboardingProgress } from "./staff-onboarding-ui.js";
+import { renderTutorialChrome } from './onboarding-tutorial-chrome.js';
 import { isAlreadyCompleteError, shouldSubmitCourseSetup } from "./course-setup-submission.js";
 
 /**
@@ -520,6 +521,7 @@ function updateStepDisplay(state: OnboardingState, onBoardingCourse: activeCours
     }
 
     updateStaffOnboardingProgress(state.currentStep, state.totalSteps);
+    renderTutorialChrome('course-setup', (window as any).currentClass);
 
     synchronizeFormValues(state, onBoardingCourse);
 }

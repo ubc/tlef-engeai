@@ -41,3 +41,33 @@ export async function completeInstructorOnboardingStage(stage: InstructorOnboard
         throw new Error(result.error || 'Failed to record onboarding progress');
     }
 }
+
+/**
+ * Marks this course's content as filed by Document Setup.
+ *
+ * The companion to {@link completeInstructorOnboardingStage} for the half of Document Setup
+ * that is course state rather than tutorial progress. Without it a veteran who owes no
+ * tutorial would skip the stage on every new course and leave it with no content.
+ *
+ * @param courseId - Course whose content has just been set up
+ * @throws Error carrying the server's message when the update fails
+ */
+export async function markCourseContentSetupComplete(courseId: string): Promise<void> {
+    const response = await fetch(`/api/courses/${courseId}/onboarding/content-setup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin'
+    });
+
+    if (!response.ok) {
+        const errorData = await response
+            .json()
+            .catch(() => ({ error: 'Failed to record course content setup' }));
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    if (!result.success) {
+        throw new Error(result.error || 'Failed to record course content setup');
+    }
+}

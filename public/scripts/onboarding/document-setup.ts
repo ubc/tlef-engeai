@@ -27,8 +27,9 @@ import { activeCourse, TopicOrWeekInstance, TopicOrWeekItem } from "../types.js"
 import { showErrorModal, showHelpModal, showConfirmModal, openContentInputModal, showSimpleErrorModal } from "../ui/modal-overlay.js";
 import type { ContentInputPayload, ContentInputSubmitResult } from "../ui/modal-overlay.js";
 import { DocumentUploadModule } from '../services/document-upload-module.js';
-import { completeInstructorOnboardingStage } from './onboarding-progress.js';
+import { completeInstructorOnboardingStage, markCourseContentSetupComplete } from './onboarding-progress.js';
 import { updateStaffOnboardingProgress } from './staff-onboarding-ui.js';
+import { renderTutorialChrome } from './onboarding-tutorial-chrome.js';
 
 // ===========================================
 // TYPE DEFINITIONS
@@ -438,10 +439,13 @@ async function handleFinalCompletion(state: DocumentSetupState, instructorCourse
     console.log("🎯 Completing document setup...");
     
     try {
-        // Record the tutorial against the instructor, not the course, so a colleague who
-        // is new to EngE-AI still gets taught on this same course.
+        // Document Setup does two jobs, recorded separately. The tutorial goes against the
+        // instructor, not the course, so a colleague new to EngE-AI is still taught on this
+        // same course; the content itself is course state, so a veteran creating their next
+        // course is still sent through the stage instead of landing on an empty dashboard.
         console.log(`📡 Recording contentSetup tutorial for the current instructor`);
         await completeInstructorOnboardingStage('contentSetup');
+        await markCourseContentSetupComplete(instructorCourse.id);
 
         console.log("✅ Content setup progress persisted to database successfully!");
         
@@ -483,6 +487,7 @@ function updateStepDisplay(state: DocumentSetupState): void {
     }
 
     updateStaffOnboardingProgress(state.currentStep, state.totalSteps);
+    renderTutorialChrome('document-setup', (window as any).currentClass);
 }
 
 /**

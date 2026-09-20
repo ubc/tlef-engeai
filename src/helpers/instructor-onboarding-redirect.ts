@@ -38,6 +38,28 @@ export const FEATURE_ONBOARDING_STAGES: ReadonlyArray<{
 ];
 
 /**
+ * True when this course still owes the content Document Setup files.
+ *
+ * Read from the course's own items rather than from `contentSetup` alone, because that
+ * flag cannot be trusted as history: `provisionCourse` has written `contentSetup: false`
+ * on every new course since OB-002 moved the tutorial to the user, and nothing wrote it
+ * back to `true`, so a flag-only test would drag every course created since through
+ * Document Setup a second time. The items are the fact; the flag is a fast path once a
+ * completed Document Setup has recorded it, and lets a deliberately empty course settle.
+ *
+ * Course Setup creates the divisions, so their presence proves nothing — only an item
+ * filed under one of them does.
+ *
+ * @param course - course whose content is in question
+ */
+function courseOwesContent(course: Pick<activeCourse, 'contentSetup' | 'topicOrWeekInstances'>): boolean {
+    if (course.contentSetup === true) {
+        return false;
+    }
+    return !(course.topicOrWeekInstances ?? []).some(instance => (instance.items?.length ?? 0) > 0);
+}
+
+/**
  * resolveNextOnboardingStage - first onboarding stage this staff member still owes.
  *
  * Sequence: Course, Document, then each enabled-and-incomplete feature tutorial
@@ -74,7 +96,9 @@ export function resolveNextOnboardingStage(
     if (!courseData.courseSetup) {
         return canManageRoster ? 'course-setup' : null;
     }
-    if (!progress?.contentSetup) {
+    // Document Setup does two jobs: it teaches the viewer and it files the course's content.
+    // Either one being outstanding owes the stage.
+    if (courseOwesContent(courseData) || !progress?.contentSetup) {
         return 'document-setup';
     }
 
@@ -134,4 +158,81 @@ export function validateCourseSetupFields(
         return 'For weekly organization, maximum 14 weeks allowed';
     }
     return null;
+}
+
+/**
+ * Human-readable stage names for tutorial chrome.
+ *
+ * Mirrors `public/scripts/utils/onboarding-stage-order.ts`; parity is pinned by
+ * `src/helpers/__tests__/instructor-onboarding-redirect.test.ts`.
+ */
+export const ONBOARDING_STAGE_LABELS: Record<InstructorOnboardingStage, string> = {
+    'course-setup': 'Course Setup',
+    'document-setup': 'Course Content',
+    'scenario-generation-setup': 'Scenario Generation',
+    'writing-feedback-setup': 'Writing Feedback',
+    'guided-pathway-setup': 'Guided Pathway',
+    'flag-setup': 'Flags',
+    'monitor-setup': 'Monitor'
+};
+
+/**
+ * Stages that offer Skip tutorial.
+ *
+ * Course Setup writes the course's own structure and Course Content files real
+ * material under it, so neither may be skipped.
+ */
+export const SKIPPABLE_ONBOARDING_STAGES: ReadonlyArray<InstructorOnboardingStage> = [
+    'scenario-generation-setup',
+    'writing-feedback-setup',
+    'guided-pathway-setup',
+    'flag-setup',
+    'monitor-setup'
+];
+
+/** True when this stage offers Skip tutorial. */
+export function isSkippableOnboardingStage(stage: InstructorOnboardingStage): boolean {
+    return SKIPPABLE_ONBOARDING_STAGES.includes(stage);
+}
+
+/**
+ * Every stage this viewer can be routed through on this course, in presentation order.
+ *
+ * Completion is ignored so the total stays stable as stages are finished. Ordering and
+ * capability gating mirror {@link resolveNextOnboardingStage}.
+ *
+ * @param courseData - course supplying `courseSetup` and the capability map
+ * @param canManageRoster - true for faculty instructors and platform admins
+ */
+export function buildOnboardingStageSequence(
+    courseData: activeCourse,
+    canManageRoster = true
+): InstructorOnboardingStage[] {
+    const sequence: InstructorOnboardingStage[] = [];
+    if (canManageRoster) {
+        sequence.push('course-setup');
+    }
+    sequence.push('document-setup');
+    for (const { stage, feature } of FEATURE_ONBOARDING_STAGES) {
+        if (isCourseFeatureEnabled(courseData, feature)) {
+            sequence.push(stage);
+        }
+    }
+    sequence.push('flag-setup', 'monitor-setup');
+    return sequence;
+}
+
+/**
+ * One-based position of a stage within {@link buildOnboardingStageSequence}.
+ *
+ * @returns `{ index, total }`, or null when this viewer is never routed through the stage
+ */
+export function resolveOnboardingStagePosition(
+    stage: InstructorOnboardingStage,
+    courseData: activeCourse,
+    canManageRoster = true
+): { index: number; total: number } | null {
+    const sequence = buildOnboardingStageSequence(courseData, canManageRoster);
+    const zeroBased = sequence.indexOf(stage);
+    return zeroBased === -1 ? null : { index: zeroBased + 1, total: sequence.length };
 }
