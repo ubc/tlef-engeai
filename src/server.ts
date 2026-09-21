@@ -28,6 +28,7 @@ import adminManualFlagRoutes from './routes/mongo/admin-manual-flag-routes';
 // Import SAML authentication middleware
 import sessionMiddleware from './middleware/session';
 import { passport } from './middleware/passport';
+import { studentViewImpersonation } from './middleware/student-view';
 import { sessionActivityMiddleware } from './middleware/session-activity';
 import { EngEAI_MongoDB } from './db/enge-ai-mongodb';
 import { initAcademicPeriods } from './helpers/init-academic-periods';
@@ -56,6 +57,9 @@ app.use(sessionMiddleware);
 // Passport middleware
 app.use(passport.initialize());
 app.use(passport.session());
+
+// Student View: while a staff member is previewing, this request carries the test student.
+app.use(studentViewImpersonation);
 
 // Session idle: bump activity on /api/* (except poll endpoint); block expired sessions
 app.use(sessionActivityMiddleware);
