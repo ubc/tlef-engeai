@@ -13,6 +13,9 @@ import type { StudentViewState } from '../types.js';
 
 const BANNER_TEXT = "You're in student view as Test student. Only you can see this.";
 
+/** Marks the shell as making room for the banner. Styled in student-view-banner.css. */
+export const STUDENT_VIEW_BODY_CLASS = 'student-view-active';
+
 /** Copy for the Reset confirmation, kept here so a test can pin it. */
 export const STUDENT_VIEW_RESET_COPY = {
     title: 'Reset your test student?',
@@ -84,8 +87,15 @@ export function renderStudentViewBanner(state: StudentViewState): void {
 
     const model = buildStudentViewBannerModel(state);
     if (!model) {
+        // The shell sizes itself to the whole viewport, so the layout compensation below
+        // must come off again whenever the banner is not shown.
+        document.body.classList.remove(STUDENT_VIEW_BODY_CLASS);
         return;
     }
+
+    // Lets the body become a flex column so the banner does not push the dashboard's
+    // bottom edge off screen; see student-view-banner.css.
+    document.body.classList.add(STUDENT_VIEW_BODY_CLASS);
 
     const courseId = model.courseId;
 

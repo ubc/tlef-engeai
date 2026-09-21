@@ -71,3 +71,28 @@
         justify-content: flex-end;
     }
 }
+
+/*
+ * The shell assumes it owns the whole viewport: `html, body` are `height: 100%` with
+ * `overflow: hidden`, and `.main-dashboard` is `height: 100%`. Adding the banner above it
+ * therefore pushed the bottom of the dashboard past the viewport, where it was clipped.
+ * While student view is on, the body becomes a flex column so the banner takes its natural
+ * height and the dashboard takes what is left. Scoped to the class so nothing changes for
+ * an ordinary student.
+ */
+body.student-view-active {
+    display: flex;
+    flex-direction: column;
+}
+
+body.student-view-active .main-dashboard {
+    flex: 1 1 auto;
+    height: auto;
+    /* Without this a flex item refuses to shrink below its content, which reintroduces
+       the overflow the rule above exists to remove. */
+    min-height: 0;
+}
+
+#student-view-banner-root {
+    flex: 0 0 auto;
+}
