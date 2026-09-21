@@ -921,6 +921,17 @@ export interface GlobalUser {
  */
 export type User = CourseUser;
 
+/**
+ * Must match src/types/shared.ts
+ *
+ * Whether the viewer is previewing a course as their Student View test student.
+ * Carries only what the banner needs; the test student's own id stays on the server.
+ */
+export interface StudentViewState {
+    active: boolean;
+    courseId: string | null;
+}
+
 // ===========================================
 // ========= API / CHAT API ==================
 // ===========================================

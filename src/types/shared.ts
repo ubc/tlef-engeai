@@ -983,6 +983,17 @@ export interface GlobalUser {
  */
 export type User = CourseUser;
 
+/**
+ * Whether the viewer is previewing a course as their Student View test student.
+ *
+ * Carries only what the student-facing banner needs; the test student's own id stays
+ * on the server.
+ */
+export interface StudentViewState {
+    active: boolean;
+    courseId: string | null;
+}
+
 // ===========================================
 // ========= MEMORY AGENT DATA TYPE ==========
 // ===========================================

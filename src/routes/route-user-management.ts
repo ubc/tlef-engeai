@@ -10,8 +10,25 @@ import { asyncHandlerWithAuth } from '../middleware/async-handler';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { sanitizeGlobalUserForFrontend } from '../utils/user-utils';
 import { respondWithSessionIdleStatus } from '../middleware/session-activity';
+import type { StudentViewSession } from '../middleware/student-view';
+import type { StudentViewState } from '../types/shared';
 
 const router = express.Router();
+
+/**
+ * buildStudentViewState — the browser-safe view of Student View.
+ *
+ * Carries only what the banner needs. The test student's id stays on the server, because
+ * nothing in the student interface should be able to name it.
+ *
+ * @param session - The session's Student View entry, when one is set
+ * @returns `{ active, courseId }`, inactive when nothing is being previewed
+ */
+export function buildStudentViewState(session: StudentViewSession | undefined): StudentViewState {
+    return session
+        ? { active: true, courseId: session.courseId }
+        : { active: false, courseId: null };
+}
 
 /**
  * GET /current
@@ -48,7 +65,8 @@ router.get('/current', asyncHandlerWithAuth(async (req: Request, res: Response) 
         return res.json({
             courseUser,
             globalUser: sanitizeGlobalUserForFrontend(freshGlobalUser ?? globalUser),
-            currentCourse
+            currentCourse,
+            studentView: buildStudentViewState((req.session as any).studentView)
         });
         
     } catch (error) {
