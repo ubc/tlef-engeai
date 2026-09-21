@@ -7,6 +7,7 @@ import { getCollectionNames } from './collection-registry-mongo';
 import type { MongoDalContext } from './mongo-context';
 import type { activeCourse, MonitorRosterRole } from '../../types/shared';
 import { isInCourseInstructors, isInCourseTAs } from '../../utils/course-staff';
+import { withoutTestStudents } from './student-view-filter';
 
 export interface MonitorRosterUser {
     userId: string;
@@ -28,7 +29,7 @@ export async function getMonitorRosterUsers(
     const usersCollection = ctx.db.collection(collectionNames.users);
     const allUsers = await usersCollection
         .find(
-            { affiliation: { $in: ['student', 'faculty'] } },
+            withoutTestStudents({ affiliation: { $in: ['student', 'faculty'] } }),
             { projection: { userId: 1, name: 1, affiliation: 1, chats: 1 } }
         )
         .toArray();

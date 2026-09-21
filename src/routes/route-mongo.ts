@@ -110,6 +110,7 @@ import {
 import { normalizeRouteParams, routeParam } from '../helpers/route-params';
 import { contentDispositionAttachmentPdf } from '../report-generation';
 import type { ConversationZipExportRow } from '../db/mongo/conversation-export-mongo';
+import { withoutTestStudents } from '../db/mongo/student-view-filter';
 import { mountSystemPromptConfigRoutes } from './mongo/system-prompt-config-routes';
 import { mountScenarioQuestionRoutes } from './mongo/scenario-questions-routes';
 import { mountPathwaysRoutes } from './mongo/pathways-routes';
@@ -4149,7 +4150,7 @@ router.get(
         // Get all users (students and faculty) from the course users collection (projection for efficiency)
         const usersCollection = mongoDB.db.collection(collectionNames.users);
         const allUsers = await usersCollection.find(
-            { affiliation: { $in: ['student', 'faculty'] } },
+            withoutTestStudents({ affiliation: { $in: ['student', 'faculty'] } }),
             { projection: { userId: 1, name: 1, affiliation: 1, chats: 1 } }
         ).toArray();
 

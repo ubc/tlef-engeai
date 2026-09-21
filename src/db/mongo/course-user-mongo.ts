@@ -9,6 +9,7 @@ import type { Document } from 'mongodb';
 import type { CourseUser } from '../../types/shared';
 import { getCollectionNames } from './collection-registry-mongo';
 import type { MongoDalContext } from './mongo-context';
+import { withoutTestStudents } from './student-view-filter';
 import { appLogger } from '../../utils/logger';
 
 /** Roster metrics for instructor course summary (aligned with conversation ZIP export filters). */
@@ -29,9 +30,12 @@ export function courseSummaryEngagementFacetPipeline(): Document[] {
     return [
         {
             $facet: {
-                studentFacet: [{ $match: { affiliation: 'student' } }, { $count: 'count' }],
+                studentFacet: [
+                    { $match: withoutTestStudents({ affiliation: 'student' }) },
+                    { $count: 'count' }
+                ],
                 chatFacet: [
-                    { $match: { affiliation: 'student' } },
+                    { $match: withoutTestStudents({ affiliation: 'student' }) },
                     { $unwind: { path: '$chats', preserveNullAndEmptyArrays: false } },
                     {
                         $match: {

@@ -10,6 +10,7 @@ import type { MemoryAgentChapterStruggle } from '../../types/shared';
 import type { MongoDalContext } from './mongo-context';
 import { getCollectionNames } from './collection-registry-mongo';
 import { getCourseUsersMongoCollection } from './course-user-mongo';
+import { withoutTestStudents } from './student-view-filter';
 import { getCourseByName } from './course-mongo';
 import { getAllInstructorStruggleTopics } from './topic-week-mongo';
 import {
@@ -48,7 +49,7 @@ export interface ConversationZipExportRow {
  */
 export function studentConversationZipExportPipeline(): Document[] {
     return [
-        { $match: { affiliation: 'student' } },
+        { $match: withoutTestStudents({ affiliation: 'student' }) },
         { $unwind: { path: '$chats', preserveNullAndEmptyArrays: false } },
         {
             $match: {
@@ -154,7 +155,9 @@ export async function listStudentStruggleRowsForZipExport(
 
     const usersColl = await getCourseUsersMongoCollection(ctx, courseName);
     const docs = await usersColl
-        .find({ affiliation: 'student' }, { projection: { userId: 1, name: 1 } })
+        .find(withoutTestStudents({ affiliation: 'student' }), {
+            projection: { userId: 1, name: 1 }
+        })
         .toArray();
 
     const sorted = docs
