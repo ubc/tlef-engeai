@@ -162,7 +162,8 @@ describe('ensureTestStudentForOwner', () => {
 
     it('returns the existing test student untouched, so chats survive re-entry', async () => {
         const { ctx, activeUsers } = makeCtx({
-            existingGlobalUser: { userId: 'ts-existing', isTestStudent: true }
+            existingGlobalUser: { userId: 'ts-existing', isTestStudent: true },
+            courseUserRow: { userId: 'ts-existing', isTestStudent: true }
         });
 
         const identity = await ensureTestStudentForOwner(ctx, course, 'owner-9');
@@ -170,6 +171,29 @@ describe('ensureTestStudentForOwner', () => {
         expect(identity.userId).toBe('ts-existing');
         expect(activeUsers.insertOne).not.toHaveBeenCalled();
         expect(createStudentMock).not.toHaveBeenCalled();
+    });
+
+    // Found in the 2026-09-21 browser pass: Reset deletes the CourseUser, which is where the
+    // chats live, and deliberately leaves the GlobalUser. Short-circuiting on the GlobalUser
+    // alone left the test student with no course record, and the next entry bounced the
+    // viewer to course selection instead of the student shell.
+    it('recreates the course record after a reset, when only the identity survives', async () => {
+        const { ctx, activeUsers } = makeCtx({
+            existingGlobalUser: { userId: 'ts-existing', isTestStudent: true }
+            // no courseUserRow: this is the state Reset leaves behind
+        });
+
+        const identity = await ensureTestStudentForOwner(ctx, course, 'owner-9');
+
+        expect(identity.userId).toBe('ts-existing');
+        expect(activeUsers.insertOne).not.toHaveBeenCalled();
+        expect(createStudentMock).toHaveBeenCalledTimes(1);
+        expect(createStudentMock.mock.calls[0][2]).toMatchObject({
+            userId: 'ts-existing',
+            userOnboarding: true,
+            isTestStudent: true,
+            chats: []
+        });
     });
 });
 

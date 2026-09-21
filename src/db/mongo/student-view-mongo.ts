@@ -77,47 +77,56 @@ export async function ensureTestStudentForOwner(
     ownerUserId: string
 ): Promise<TestStudentIdentity> {
     const existing = await findTestStudentForOwner(ctx, course.id, ownerUserId);
-    if (existing) {
-        return existing;
-    }
 
     // 1. Mint an identity from generated ids only — never from a real PUID.
     const puid = testStudentPuid(course.id, ownerUserId);
-    const userId = ctx.idGenerator.globalUserID(puid, TEST_STUDENT_NAME, 'student');
+    const userId = existing?.userId ?? ctx.idGenerator.globalUserID(puid, TEST_STUDENT_NAME, 'student');
     const now = new Date();
 
     // 2. The GlobalUser, enrolled in this one course, which is what refuses every other one.
-    const globalUser: GlobalUser = {
-        name: TEST_STUDENT_NAME,
-        puid,
-        userId,
-        coursesEnrolled: [course.id],
-        affiliation: 'student',
-        status: 'active',
-        createdAt: now,
-        updatedAt: now,
-        studentOnboardingCompleted: true,
-        isTestStudent: true,
-        testStudentOwnerUserId: ownerUserId
-    };
-    await activeUsers(ctx).insertOne(globalUser as unknown as Document);
+    if (!existing) {
+        const globalUser: GlobalUser = {
+            name: TEST_STUDENT_NAME,
+            puid,
+            userId,
+            coursesEnrolled: [course.id],
+            affiliation: 'student',
+            status: 'active',
+            createdAt: now,
+            updatedAt: now,
+            studentOnboardingCompleted: true,
+            isTestStudent: true,
+            testStudentOwnerUserId: ownerUserId
+        };
+        await activeUsers(ctx).insertOne(globalUser as unknown as Document);
+    }
 
-    // 3. The CourseUser, already past onboarding with an empty history.
-    const courseUser: Partial<CourseUser> = {
-        name: TEST_STUDENT_NAME,
-        userId,
-        courseName: course.courseName,
-        courseId: course.id,
-        userOnboarding: true,
-        affiliation: 'student',
-        status: 'active',
-        chats: [],
-        isTestStudent: true,
-        testStudentOwnerUserId: ownerUserId
-    };
-    await createStudent(ctx, course.courseName, courseUser);
+    // 3. The CourseUser, already past onboarding with an empty history. Checked
+    //    independently of the GlobalUser: Reset deletes this document — it is where the
+    //    chats live — while the identity above deliberately survives, so after a reset the
+    //    GlobalUser exists and this one does not. Recreating it here is what makes the next
+    //    entry work; without it the student shell finds no course user and bounces the
+    //    viewer to course selection.
+    const users = await getCourseUsersMongoCollection(ctx, course.courseName);
+    const courseUserRow = await users.findOne({ userId });
+    if (!courseUserRow) {
+        const courseUser: Partial<CourseUser> = {
+            name: TEST_STUDENT_NAME,
+            userId,
+            courseName: course.courseName,
+            courseId: course.id,
+            userOnboarding: true,
+            affiliation: 'student',
+            status: 'active',
+            chats: [],
+            isTestStudent: true,
+            testStudentOwnerUserId: ownerUserId
+        };
+        await createStudent(ctx, course.courseName, courseUser);
+    }
 
-    // 4. Same empty memory-agent row a real student gets; a failure here must not block entry.
+    // 4. Same empty memory-agent row a real student gets; idempotent, and a failure here
+    //    must not block entry.
     try {
         await initializeMemoryAgentForUser(
             ctx,
