@@ -1,0 +1,73 @@
+/**
+ * student-view-banner.css
+ *
+ * The persistent Student View bar above the student shell. It sits at the top of every
+ * student page so a staff member can always tell they are previewing, and always leave.
+ */
+
+.student-view-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 16px;
+    background: var(--warning-bg, #fff4e0);
+    border-bottom: 1px solid var(--warning-border, #e0b877);
+    color: var(--text-primary, #1f1f1f);
+    font-size: 14px;
+    line-height: 20px;
+}
+
+.student-view-banner__text {
+    margin: 0;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.student-view-banner__actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+}
+
+.student-view-banner__button {
+    /* 44px minimum touch target. */
+    min-height: 44px;
+    padding: 0 14px;
+    border: 1px solid var(--warning-border, #e0b877);
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    font-size: 14px;
+    font-family: inherit;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.student-view-banner__button:hover {
+    background: rgba(0, 0, 0, 0.05);
+}
+
+.student-view-banner__button:focus-visible {
+    outline: 2px solid var(--focus-ring, #1a73e8);
+    outline-offset: 2px;
+}
+
+.student-view-banner__button--primary {
+    background: var(--warning-border, #e0b877);
+    font-weight: 600;
+}
+
+/* Below the shell breakpoint the bar stacks so neither the text nor the buttons clip. */
+@media (max-width: 768px) {
+    .student-view-banner {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+    }
+
+    .student-view-banner__actions {
+        justify-content: flex-end;
+    }
+}
