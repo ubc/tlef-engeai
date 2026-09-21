@@ -333,6 +333,27 @@ Live Canvas OAuth is provided by `/api/lms/canvas/*`. Writing Feedback release r
 | POST | `/api/course/enter-by-code` | Yes | Any | Enter course by code; students and global `staff` join without prior enrollment (course user stored as `student`); faculty with a valid code auto-join `instructors[]` (idempotent); other non-students require `isCourseAccessible` |
 | GET | `/api/course/current` | Yes | Any | Get current course from session |
 
+#### Student View (`/api/course/:courseId/student-view`)
+
+Lets a faculty instructor or platform admin open their own course as a brand-new student,
+using a private per-staff test student. Guarded by `requireRosterManageAPI(['params'])` —
+faculty listed in `course.instructors[]` plus platform admins; **teaching assistants are
+refused**. Admitting TAs later is a change of guard on these three routes only.
+
+These are the only routes exempt from the `studentViewImpersonation` middleware
+(`src/middleware/student-view.ts`), so their guard always authorizes the **real** staff
+member, including while that person is already previewing.
+
+| Method | Path | Auth | Role | Description |
+|--------|------|------|------|-------------|
+| POST | `/api/course/:courseId/student-view/enter` | Yes | Roster manage | Creates the caller's test student on first use, sets `session.studentView`, returns `{ success, redirectTo: '/course/:courseId/student' }`. Entering for a second course replaces the first. |
+| POST | `/api/course/:courseId/student-view/exit` | Yes | Roster manage | Clears `session.studentView`, restores the staff `session.globalUser`, returns `{ success, redirectTo: '/course/:courseId/instructor/dashboard' }` |
+| POST | `/api/course/:courseId/student-view/reset` | Yes | Roster manage | Purges everything the test student produced and recreates it; returns `{ success, testStudentUserId }`. The purge asserts `isTestStudent` before any delete. |
+
+No request body. Logout clears Student View, because `teardownSession` destroys the session.
+`GET /api/user/current` carries `studentView: { active, courseId }` so the student shell can
+render its banner; the test student's own id is never sent to the browser.
+
 ### 4.3 Courses & Content (`/api/courses`)
 
 #### Course CRUD
