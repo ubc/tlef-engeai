@@ -40,7 +40,8 @@ import { initializeSystemPrompts, flushSystemPromptOnLeave } from '../feature/sy
 import { initializeScenarioQuestionsInstructor, isScenarioQuestionsMounted, syncScenarioQuestionsFromURL } from '../feature/scenario-questions-instructor.js';
 import { initializePathwayLibrary } from '../feature/pathway-library.js';
 import { initializeDashboard, renderDashboardCards } from '../feature/dashboard.js';
-import { canManageGuidedPathways } from '../utils/course-permissions.js';
+import { canManageCourseRoster, canManageGuidedPathways } from '../utils/course-permissions.js';
+import { initStudentViewControl } from '../instructor/student-view-control.js';
 import { isBrowserCourseFeatureEnabled } from '../utils/course-features.js';
 import { 
     getCourseIdFromURL, 
@@ -497,6 +498,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Sidebar header: `{firstName} (Instructor|TA)`
     const authUser = authService.getAuthState().user;
     const canManageGuidedPathwayFeatures = canManageGuidedPathways(currentClass, authUser);
+    // Student View is offered to the same group the endpoint authorizes: faculty
+    // instructors of this course and platform admins.
+    initStudentViewControl({
+        courseId: currentClass.id,
+        canManageCourse: canManageCourseRoster(currentClass, authUser)
+    });
     if (authUser) {
         updateSidebarCompanionText(authUser.name, authUser.userId, currentClass);
     }
