@@ -30,6 +30,36 @@ const router = express.Router();
  * @response 404 - Course not found
  * @response 500 - Failed to enter course
  */
+/**
+ * refuseTestStudentOutsideItsCourse - keeps a Student View test student in its one course.
+ *
+ * A test student has `affiliation: 'student'`, and `joinsCourseAsStudent` lets a student join
+ * any course by id or code. Without this a staff member previewing their own course would
+ * hold a student identity that can enter courses they are not staff of — something they
+ * cannot do as themselves. The test student belongs to exactly one course, permanently.
+ *
+ * @param globalUser - The acting global user, which is the test student while previewing
+ * @param courseId - The course being entered
+ * @returns true when the request was refused and a response has been sent
+ */
+function refuseTestStudentOutsideItsCourse(
+    globalUser: { isTestStudent?: boolean; coursesEnrolled?: string[] },
+    courseId: string,
+    res: Response
+): boolean {
+    if (globalUser?.isTestStudent !== true) {
+        return false;
+    }
+    if ((globalUser.coursesEnrolled ?? []).includes(courseId)) {
+        return false;
+    }
+    appLogger.log('[COURSE-ENTRY] refused a student-view test student an outside course');
+    res.status(403).json({
+        error: 'Student view is limited to the course it was started from. Exit student view first.'
+    });
+    return true;
+}
+
 router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const { courseId } = req.body;
@@ -42,7 +72,11 @@ router.post('/enter', asyncHandlerWithAuth(async (req: Request, res: Response) =
         if (!courseId) {
             return res.status(400).json({ error: 'Course ID is required' });
         }
-        
+
+        if (refuseTestStudentOutsideItsCourse(globalUser, courseId, res)) {
+            return;
+        }
+
         appLogger.log(`[COURSE-ENTRY] User ${globalUser.puid} entering course ${courseId}`);
         
         // 1. Get course details from active-course-list
@@ -241,6 +275,10 @@ router.post('/enter-by-code', asyncHandlerWithAuth(async (req: Request, res: Res
         if (!course) {
             appLogger.error(`[COURSE-ENTRY] Course not found with code: ${courseCode}`);
             return res.status(404).json({ error: 'Course not found. Please check the course code and try again.' });
+        }
+
+        if (refuseTestStudentOutsideItsCourse(globalUser, (course as unknown as { id: string }).id, res)) {
+            return;
         }
         
         appLogger.log(`[COURSE-ENTRY] Course found: ${course.courseName} (ID: ${course.id})`);
