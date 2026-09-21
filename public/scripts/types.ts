@@ -849,6 +849,10 @@ export interface CourseUser {
     chats: Chat[];                 // Course-specific chat history
     createdAt: Date;
     updatedAt: Date;
+    /** true for a Student View test student; excluded from every staff-facing listing. */
+    isTestStudent?: boolean;
+    /** userId of the staff member this test student belongs to; staff-gated, never student-facing. */
+    testStudentOwnerUserId?: string;
 }
 
 /**
@@ -904,6 +908,10 @@ export interface GlobalUser {
     canvasVerifiedUserId?: string;
     /** When that Canvas account was verified. */
     canvasVerifiedAt?: Date;
+    /** true for a Student View test student; excluded from every staff-facing listing. */
+    isTestStudent?: boolean;
+    /** userId of the staff member this test student belongs to; staff-gated, never student-facing. */
+    testStudentOwnerUserId?: string;
 }
 
 /**
