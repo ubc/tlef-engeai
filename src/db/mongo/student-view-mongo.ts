@@ -185,7 +185,12 @@ export async function purgeTestStudentData(
     await ctx.db.collection(names.memoryAgent).deleteMany(scope);
     // 3. Manual flags raised while previewing.
     await ctx.db.collection(names.flags).deleteMany(scope);
-    // 4. Scenario practice drafts, when the course has been given the collection.
+    // 4. Automatic Guided Pathway alerts the preview triggered, which record the student
+    //    under `studentUserId` rather than `userId`.
+    await ctx.db
+        .collection(names.guidedPathwayFlags)
+        .deleteMany({ studentUserId: testStudentUserId });
+    // 5. Scenario practice drafts, when the course has been given the collection.
     if (course.collections?.scenarioProgress) {
         await ctx.db.collection(course.collections.scenarioProgress).deleteMany(scope);
     }

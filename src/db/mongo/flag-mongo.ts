@@ -483,6 +483,8 @@ export async function getFlagReportsWithUserNames(
         FlagReport & {
             userName?: string;
             userAffiliation?: string;
+            /** True when the reporter is a Student View test student; staff see a tag, not a hidden row. */
+            isTestStudent?: boolean;
         }
     >
 > {
@@ -497,7 +499,8 @@ export async function getFlagReportsWithUserNames(
             return {
                 ...flag,
                 userName: userInfo?.name || 'Unknown User',
-                userAffiliation: userInfo?.affiliation || 'Unknown'
+                userAffiliation: userInfo?.affiliation || 'Unknown',
+                isTestStudent: userInfo?.isTestStudent === true
             };
         });
         appLogger.log(`[MONGODB] ✅ Retrieved ${flagsWithNames.length} flag reports with user names`);

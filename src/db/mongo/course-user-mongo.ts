@@ -150,17 +150,24 @@ export async function batchFindUsersByUserIds(
     ctx: MongoDalContext,
     courseName: string,
     userIds: readonly (string | number)[]
-): Promise<Map<string, { name: string; affiliation: string; userId: string }>> {
+): Promise<
+    Map<string, { name: string; affiliation: string; userId: string; isTestStudent: boolean }>
+> {
     appLogger.log(`[MONGODB] 🔍 Batch finding ${userIds.length} users in course: ${courseName}`);
     try {
         const userCollection = await getCourseUsersMongoCollection(ctx, courseName);
         const users = await userCollection.find({ userId: { $in: userIds as unknown[] } }).toArray();
-        const userMap = new Map<string, { name: string; affiliation: string; userId: string }>();
+        const userMap = new Map<
+            string,
+            { name: string; affiliation: string; userId: string; isTestStudent: boolean }
+        >();
         for (const user of users) {
             userMap.set(String(user.userId), {
                 name: user.name,
                 affiliation: user.affiliation,
-                userId: user.userId
+                userId: user.userId,
+                // Student View flags stay visible to staff; the tag is how they are told apart.
+                isTestStudent: user.isTestStudent === true
             });
         }
         appLogger.log(`[MONGODB] ✅ Batch lookup found ${userMap.size} out of ${userIds.length} users`);

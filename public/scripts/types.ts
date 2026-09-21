@@ -89,6 +89,8 @@ export interface GuidedPathwayFlagView {
     pathwayTitle: string; // winning pathway title snapshot
     messageText: string; // exact triggering chat message
     origin: GuidedPathwayFlagOrigin; // production student alert or non-escalatable course-staff test
+    /** true when the alert came from a Student View test student; shown to course staff as a tag. */
+    isTestStudent?: boolean;
     status: GuidedPathwayFlagStatus; // instructor decision lifecycle
     triggeredAt: string; // ISO trigger timestamp
     decidedAt?: string; // ISO instructor-decision timestamp
@@ -154,6 +156,8 @@ export interface FlagReport {
     updatedAt: string | Date;
     userName?: string;
     userAffiliation?: string;
+    /** true when the reporter is a Student View test student; staff see a tag, not a hidden row. */
+    isTestStudent?: boolean;
 }
 
 /** Must match src/types/shared.ts. Safe cross-course manual escalation row for admins. */

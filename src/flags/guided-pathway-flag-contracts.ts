@@ -27,6 +27,8 @@ export interface GuidedPathwayFlagReviewActor {
 export interface GuidedPathwayFlagTriggerActor {
     origin: GuidedPathwayFlagOrigin;
     userId: string;
+    /** True for a Student View test student, so the platform-admin queue can leave it out. */
+    isTestStudent?: boolean;
 }
 
 /** Input from the chat trigger path. Chat/request identifiers are hashed, never stored verbatim. */

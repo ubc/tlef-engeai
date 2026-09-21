@@ -13,7 +13,8 @@ const getCourseUsersMongoCollectionMock = jest.fn();
 const getCollectionNamesMock = jest.fn(async () => ({
     users: 'DemoCourse_users',
     flags: 'DemoCourse_flags',
-    memoryAgent: 'DemoCourse_memory-agent'
+    memoryAgent: 'DemoCourse_memory-agent',
+    guidedPathwayFlags: 'DemoCourse_guided_pathway_flags'
 }));
 const initializeMemoryAgentForUserMock = jest.fn(async () => undefined);
 
@@ -232,11 +233,17 @@ describe('purgeTestStudentData', () => {
         const touched = [...courseCollections.entries()];
         expect(touched.map(([name]) => name).sort()).toEqual([
             'DemoCourse_flags',
+            'DemoCourse_guided_pathway_flags',
             'DemoCourse_memory-agent',
             'DemoCourse_scenario_progress'
         ]);
-        for (const [, collection] of touched) {
-            expect(collection.deleteMany).toHaveBeenCalledWith({ userId: 'ts-user-1' });
+        for (const [name, collection] of touched) {
+            // Guided Pathway alerts record the student under studentUserId, not userId.
+            const expected =
+                name === 'DemoCourse_guided_pathway_flags'
+                    ? { studentUserId: 'ts-user-1' }
+                    : { userId: 'ts-user-1' };
+            expect(collection.deleteMany).toHaveBeenCalledWith(expected);
         }
     });
 
