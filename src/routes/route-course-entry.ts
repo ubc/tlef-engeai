@@ -55,7 +55,7 @@ function refuseTestStudentOutsideItsCourse(
     }
     appLogger.log('[COURSE-ENTRY] refused a student-view test student an outside course');
     res.status(403).json({
-        error: 'Student view is limited to the course it was started from. Exit student view first.'
+        error: 'Student View is limited to the course it was started from. Exit Student View first.'
     });
     return true;
 }

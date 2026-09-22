@@ -10,11 +10,11 @@ import { showConfirmModal, showErrorModal } from '../ui/modal-overlay.js';
 
 /** Copy for the entry confirmation, kept beside the control so a test can pin it. */
 export const STUDENT_VIEW_CONFIRM_COPY = {
-    title: 'Enter student view?',
+    title: 'Enter Student View?',
     body:
         'You will see this course as a new student in your class sees it, using your own ' +
         'test student. Nothing you do there affects real students.',
-    confirmText: 'Enter student view',
+    confirmText: 'Enter Student View',
     cancelText: 'Cancel'
 } as const;
 
@@ -53,7 +53,7 @@ export async function enterStudentView(courseId: string): Promise<string> {
         credentials: 'same-origin'
     });
     if (!response.ok) {
-        throw new Error('Could not start student view');
+        throw new Error('Could not start Student View');
     }
     const body = (await response.json()) as { redirectTo: string };
     return body.redirectTo;
@@ -93,8 +93,8 @@ export function initStudentViewControl(options: {
             window.location.href = await enterStudentView(options.courseId);
         } catch {
             await showErrorModal(
-                'Student view unavailable',
-                'Student view could not be started. Try again.'
+                'Student View unavailable',
+                'Student View could not be started. Try again.'
             );
         }
     });

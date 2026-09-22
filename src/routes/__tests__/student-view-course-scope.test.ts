@@ -70,7 +70,7 @@ describe('a test student is confined to its own course', () => {
             .send({ courseId: 'course-2' });
 
         expect(res.status).toBe(403);
-        expect(res.body.error).toMatch(/Student view is limited to the course/);
+        expect(res.body.error).toMatch(/Student View is limited to the course/);
     });
 
     it('is refused another course by code', async () => {

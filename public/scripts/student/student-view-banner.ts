@@ -11,7 +11,7 @@
 import { showConfirmModal, showErrorModal } from '../ui/modal-overlay.js';
 import type { StudentViewState } from '../types.js';
 
-const BANNER_TEXT = "You're in student view as Test student. Only you can see this.";
+const BANNER_TEXT = "You're in Student View as Test student. Only you can see this.";
 
 /** Marks the shell as making room for the banner. Styled in student-view-banner.css. */
 export const STUDENT_VIEW_BODY_CLASS = 'student-view-active';
@@ -55,7 +55,7 @@ export function buildStudentViewBannerModel(
         courseId: state.courseId,
         actions: [
             { action: 'reset', label: 'Reset' },
-            { action: 'exit', label: 'Exit student view' }
+            { action: 'exit', label: 'Exit Student View' }
         ]
     };
 }
@@ -143,7 +143,7 @@ export function renderStudentViewBanner(state: StudentViewState): void {
     exit.addEventListener('click', async () => {
         const response = await post(courseId, 'exit');
         if (!response.ok) {
-            await showErrorModal('Could not exit', 'Student view could not be exited. Try again.');
+            await showErrorModal('Could not exit', 'Student View could not be exited. Try again.');
             return;
         }
         const body = (await response.json()) as { redirectTo: string };

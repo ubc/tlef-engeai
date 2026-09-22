@@ -25,7 +25,7 @@ describe('student view banner model', () => {
     it('names the test student and says only the viewer sees it', () => {
         const model = buildStudentViewBannerModel({ active: true, courseId: 'course-1' })!;
 
-        expect(model.text).toBe("You're in student view as Test student. Only you can see this.");
+        expect(model.text).toBe("You're in Student View as Test student. Only you can see this.");
         expect(model.courseId).toBe('course-1');
     });
 
@@ -34,7 +34,7 @@ describe('student view banner model', () => {
 
         expect(model.actions).toEqual([
             { action: 'reset', label: 'Reset' },
-            { action: 'exit', label: 'Exit student view' }
+            { action: 'exit', label: 'Exit Student View' }
         ]);
     });
 
