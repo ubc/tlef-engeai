@@ -5,18 +5,17 @@
  *
  * Owns theme toggle, Learn more reveal, features scrub (tablet+) / static
  * title→desc→image cards (phone), shared footer injection, glassy topbar,
- * TLEF grant count-up, hero video autoplay + scroll zoom-to-max, and testimonials marquee.
+ * and hero video autoplay + scroll zoom-to-max.
  *
  * @author: EngE-AI Team
  * @date: 2026-07-31
- * @version: 1.9.2
+ * @version: 1.9.3
  * @description: Client behavior for the public EngE-AI hero homepage.
  */
 
 const REVEAL_STORAGE_KEY = 'engeai-home-more-revealed';
 const THEME_STORAGE_KEY = 'engeai-home-theme';
 const SCROLL_GLASS_THRESHOLD_PX = 24;
-const GRANT_COUNT_DURATION_MS = 1100;
 /** Resting hero video scale (matches CSS). */
 const HERO_ZOOM_BASE = 1.06;
 /** Max hero video scale reached during scroll zoom. */
@@ -30,13 +29,11 @@ type HomeSectionHash = (typeof HOME_SECTION_HASHES)[number];
 type HomeTheme = 'dark' | 'light';
 
 /**
- * initHomePage - wires theme, footer, grant counter, features scrub, and hero video.
+ * initHomePage - wires theme, footer, features scrub, and hero video.
  */
 function initHomePage(): void {
 	setupThemeToggle();
 	setupTopbarGlass();
-	setupGrantFunding();
-	setupTestimonialsMarquee();
 
 	const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 	setupHeroVideo(reducedMotion);
@@ -238,9 +235,6 @@ function setupHeroScrollZoom(reducedMotion: boolean): void {
 
 /** Callback set by setupFeaturesScroll so Learn more can re-measure after reveal. */
 let refreshFeaturesScroll: (() => void) | null = null;
-
-/** Callback set by setupGrantFunding so Learn more can position the ink bar after reveal. */
-let refreshGrantInk: (() => void) | null = null;
 
 /** Callback set by setupLearnMore — reveals #home-more; optional section id scrolls there instead of block top. */
 let revealHomeMore: ((scrollTo?: HomeSectionHash) => void) | null = null;
@@ -455,289 +449,6 @@ function setupFeaturesScroll(reducedMotion: boolean): void {
 }
 
 /**
- * formatGrantCurrency - formats a non-negative integer as a CAD dollar string.
- *
- * @param value - amount in whole dollars
- * @returns e.g. "CA$87,198"
- */
-function formatGrantCurrency(value: number): string {
-	return `CA$${Math.max(0, Math.floor(value)).toLocaleString('en-CA')}`;
-}
-
-/**
- * animateGrantAmount - counts element text from 0 to target with ease-out cubic.
- *
- * Uses a generation counter so a newer animation cancels an in-flight one.
- * Respects reduced motion by setting the final value immediately.
- *
- * @param element - amount display node
- * @param target - final dollar amount
- * @param generation - current animation generation for this element
- * @param getGeneration - returns the latest generation (mismatch cancels)
- * @param reducedMotion - skip animation when true
- */
-function animateGrantAmount(
-	element: HTMLElement,
-	target: number,
-	generation: number,
-	getGeneration: () => number,
-	reducedMotion: boolean
-): void {
-	const capped = Math.max(0, Math.floor(target));
-	element.setAttribute('aria-live', 'off');
-
-	if (reducedMotion) {
-		element.textContent = formatGrantCurrency(capped);
-		element.setAttribute('aria-live', 'polite');
-		return;
-	}
-
-	const durationMs = GRANT_COUNT_DURATION_MS;
-	const startTime = performance.now();
-
-	const tick = (now: number): void => {
-		if (getGeneration() !== generation) {
-			return;
-		}
-		const t = Math.min(1, (now - startTime) / durationMs);
-		const eased = 1 - Math.pow(1 - t, 3);
-		element.textContent = formatGrantCurrency(Math.round(capped * eased));
-		if (t < 1) {
-			requestAnimationFrame(tick);
-		} else {
-			element.textContent = formatGrantCurrency(capped);
-			element.setAttribute('aria-live', 'polite');
-		}
-	};
-
-	element.textContent = formatGrantCurrency(0);
-	requestAnimationFrame(tick);
-}
-
-/**
- * transitionGrantAmount - fades the amount label to a new value without counting digits.
- *
- * Used after the one-time count-up when switching Year 1 / Year 2 / Total.
- *
- * @param element - amount display node
- * @param target - final dollar amount
- * @param generation - current animation generation for this element
- * @param getGeneration - returns the latest generation (mismatch cancels)
- * @param reducedMotion - skip animation when true
- */
-function transitionGrantAmount(
-	element: HTMLElement,
-	target: number,
-	generation: number,
-	getGeneration: () => number,
-	reducedMotion: boolean
-): void {
-	const capped = Math.max(0, Math.floor(target));
-	const nextText = formatGrantCurrency(capped);
-
-	if (reducedMotion || element.textContent === nextText) {
-		element.textContent = nextText;
-		element.style.opacity = '1';
-		element.setAttribute('aria-live', 'polite');
-		return;
-	}
-
-	element.setAttribute('aria-live', 'off');
-	element.style.transition = 'opacity 160ms ease';
-	element.style.opacity = '0';
-
-	window.setTimeout(() => {
-		if (getGeneration() !== generation) {
-			return;
-		}
-		element.textContent = nextText;
-		element.style.opacity = '1';
-		element.setAttribute('aria-live', 'polite');
-	}, 160);
-}
-
-/**
- * setupGrantFunding - wires Year 1 / Year 2 / Total selector and count-up on scroll into view.
- *
- * Amounts come from `data-grant-amount` on each option. Total is the default.
- * Count-up from zero runs once; later option changes fade the amount text.
- * The underline ink bar slides to the active option on select and on resize.
- */
-function setupGrantFunding(): void {
-	const stat = document.getElementById('home-grant-stat');
-	const amountEl = document.getElementById('home-grant-amount');
-	const periodEl = document.getElementById('home-grant-period');
-	const selector = stat?.querySelector('.home-grant-selector') as HTMLElement | null;
-	if (!stat || !amountEl) {
-		return;
-	}
-
-	const options = Array.from(stat.querySelectorAll<HTMLButtonElement>('.home-grant-option'));
-	if (options.length === 0) {
-		return;
-	}
-
-	const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-	let generation = 0;
-	let hasInitialCountUp = false;
-	let observer: IntersectionObserver | null = null;
-
-	/** Inset so the bar sits under the label, not the full padded button width. */
-	const INK_INSET_PX = 18;
-
-	const syncInk = (): void => {
-		if (!selector) {
-			return;
-		}
-		// Grant lives inside #home-more [hidden] until Learn more — skip until laid out
-		if (selector.offsetParent === null && selector.offsetWidth === 0) {
-			return;
-		}
-		const active =
-			options.find((btn) => btn.getAttribute('aria-pressed') === 'true') ??
-			options.find((btn) => btn.classList.contains('is-active')) ??
-			options[options.length - 1];
-		const width = Math.max(0, active.offsetWidth - INK_INSET_PX * 2);
-		selector.style.setProperty('--grant-ink-left', `${active.offsetLeft + INK_INSET_PX}px`);
-		selector.style.setProperty('--grant-ink-width', `${width}px`);
-	};
-
-	refreshGrantInk = syncInk;
-
-	const readActiveTarget = (): { amount: number; label: string } => {
-		const active =
-			options.find((btn) => btn.getAttribute('aria-pressed') === 'true') ??
-			options.find((btn) => btn.dataset.grantKey === 'total') ??
-			options[options.length - 1];
-		const amount = Math.max(0, Math.floor(Number(active.dataset.grantAmount ?? '0')));
-		const label = active.dataset.grantLabel ?? active.textContent?.trim() ?? 'TLEF funding';
-		return { amount, label };
-	};
-
-	const updateAmount = (useCountUp: boolean): void => {
-		const { amount, label } = readActiveTarget();
-		if (periodEl) {
-			periodEl.textContent = label;
-		}
-		generation += 1;
-		const current = generation;
-
-		if (useCountUp && !hasInitialCountUp) {
-			hasInitialCountUp = true;
-			observer?.disconnect();
-			observer = null;
-			animateGrantAmount(amountEl, amount, current, () => generation, reducedMotion);
-			return;
-		}
-
-		if (!hasInitialCountUp) {
-			hasInitialCountUp = true;
-			amountEl.textContent = formatGrantCurrency(amount);
-			amountEl.setAttribute('aria-live', 'polite');
-			return;
-		}
-
-		transitionGrantAmount(amountEl, amount, current, () => generation, reducedMotion);
-	};
-
-	const selectOption = (chosen: HTMLButtonElement): void => {
-		for (const btn of options) {
-			const isActive = btn === chosen;
-			btn.classList.toggle('is-active', isActive);
-			btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-		}
-		syncInk();
-		updateAmount(false);
-	};
-
-	for (const btn of options) {
-		btn.addEventListener('click', () => {
-			if (btn.getAttribute('aria-pressed') === 'true') {
-				return;
-			}
-			selectOption(btn);
-		});
-	}
-
-	syncInk();
-	window.addEventListener('resize', syncInk, { passive: true });
-
-	observer = new IntersectionObserver(
-		(entries) => {
-			const entry = entries[0];
-			if (!entry?.isIntersecting) {
-				return;
-			}
-			// Re-measure once visible — initial syncInk ran while #home-more was [hidden]
-			syncInk();
-			if (hasInitialCountUp) {
-				return;
-			}
-			updateAmount(true);
-		},
-		{ threshold: 0.35 }
-	);
-
-	observer.observe(stat);
-}
-
-/**
- * setupTestimonialsMarquee - runs the student testimonials marquee only while visible.
- *
- * Pauses and resets when the section leaves the viewport or the tab is hidden;
- * restarts from the beginning when the user returns.
- */
-function setupTestimonialsMarquee(): void {
-	const marquee = document.querySelector('.home-testimonials-marquee');
-	const track = marquee?.querySelector('.home-testimonials-track') as HTMLElement | null;
-	if (!marquee || !track) {
-		return;
-	}
-
-	if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-		return;
-	}
-
-	let inViewport = false;
-	let pageVisible = document.visibilityState === 'visible';
-
-	const stopMarquee = (): void => {
-		track.classList.remove('is-active');
-		track.style.transform = 'translateX(0)';
-	};
-
-	const startMarquee = (): void => {
-		track.classList.remove('is-active');
-		track.style.transform = '';
-		// Force animation restart from the first frame
-		void track.offsetWidth;
-		track.classList.add('is-active');
-	};
-
-	const syncMarquee = (): void => {
-		if (inViewport && pageVisible) {
-			startMarquee();
-		} else {
-			stopMarquee();
-		}
-	};
-
-	const observer = new IntersectionObserver(
-		(entries) => {
-			inViewport = entries[0]?.isIntersecting ?? false;
-			syncMarquee();
-		},
-		{ threshold: 0.15 }
-	);
-
-	observer.observe(marquee);
-	document.addEventListener('visibilitychange', () => {
-		pageVisible = document.visibilityState === 'visible';
-		syncMarquee();
-	});
-}
-
-/**
  * isHomeSectionHash - true when hash id is a footer About / Funding target.
  *
  * @param id - location hash without leading #
@@ -864,7 +575,6 @@ function setupLearnMore(): void {
 		// Wait for layout after [hidden]→visible before measuring the features scrub
 		afterNextPaint(() => {
 			refreshFeaturesScroll?.();
-			refreshGrantInk?.();
 			const behavior = scrollBehaviorForHome(reducedMotion);
 			if (scrollTo) {
 				const target = document.getElementById(scrollTo);
@@ -878,7 +588,6 @@ function setupLearnMore(): void {
 			// Re-measure once layout / smooth scroll settles
 			window.setTimeout(() => {
 				refreshFeaturesScroll?.();
-				refreshGrantInk?.();
 				if (scrollTo) {
 					document.getElementById(scrollTo)?.scrollIntoView({ behavior, block: 'start' });
 				}

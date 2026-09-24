@@ -39,7 +39,6 @@ export async function sendMessageToServer(text: string): Promise<MessageReply> {
  * chat-window, 
  * flag-history, 
  * profile, 
- * disclaimer, 
  * flag-instructor, 
  * monitor-instructor, 
  * documents-instructor, 
@@ -61,7 +60,6 @@ export async function loadComponentHTML(
                     | 'chat-window' 
                     | 'flag-history'
                     | 'profile'
-                    | 'disclaimer'
                     | 'flag-instructor'
                     | 'monitor-instructor'
                     | 'documents-instructor'
@@ -69,6 +67,9 @@ export async function loadComponentHTML(
                     | 'writing-feedback'
                     | 'course-setup'
                     | 'document-setup'
+                    | 'scenario-generation-setup'
+                    | 'writing-feedback-setup'
+                    | 'guided-pathway-setup'
                     | 'flag-setup'
                     | 'monitor-setup'
                     | 'student-onboarding'
@@ -88,7 +89,6 @@ export async function loadComponentHTML(
         case 'welcome-screen':
         case 'chat-window' :
         case 'flag-history':
-        case 'disclaimer':
             response = await fetch(`/components/chat/${componentName}.html`); 
             break;
         case 'profile':
@@ -111,6 +111,9 @@ export async function loadComponentHTML(
             break;
         case 'course-setup':
         case 'document-setup':
+        case 'scenario-generation-setup':
+        case 'writing-feedback-setup':
+        case 'guided-pathway-setup':
         case 'flag-setup':
         case 'monitor-setup':
         case 'student-onboarding':

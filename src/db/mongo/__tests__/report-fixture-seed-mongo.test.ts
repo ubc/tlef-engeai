@@ -199,6 +199,7 @@ function makeCtx(state: {
                     scenarioQuestions: `${REPORT_FIXTURE_TARGET_COURSE_NAME}_scenario_questions`,
                     scenarioProgress: `${REPORT_FIXTURE_TARGET_COURSE_NAME}_scenario_progress`,
                     pathways: `${REPORT_FIXTURE_TARGET_COURSE_NAME}_pathways`,
+                    guidedPathwayFlags: `${REPORT_FIXTURE_TARGET_COURSE_NAME}_guided-pathway-flags`,
                 }
             ]
         ]),

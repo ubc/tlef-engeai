@@ -18,3 +18,12 @@ export const ACADEMIC_PERIODS_COLLECTION = 'academic-periods';
 
 /** MongoDB collection name for period-scoped instructor course allow-lists. */
 export const INSTRUCTOR_PERIOD_ALLOWANCES_COLLECTION = 'instructor-period-allowances';
+
+/** MongoDB collection for cross-process operational migration leases and completion records. */
+export const APPLICATION_MIGRATIONS_COLLECTION = 'application-migrations';
+
+/** Legacy shared Guided Pathway collection retained as a GPF-002 migration source. */
+export const GUIDED_PATHWAY_FLAGS_COLLECTION = 'guided-pathway-flags';
+
+/** MongoDB collection for per-course LMS roster snapshots (`course-lms-rosters`). */
+export const COURSE_LMS_ROSTERS_COLLECTION = 'course-lms-rosters';

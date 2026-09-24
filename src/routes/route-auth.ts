@@ -13,10 +13,12 @@ import { appLogger } from '../utils/logger';
 import { passport, ubcShibStrategy, isSamlAvailable } from '../middleware/passport';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { sanitizeGlobalUserForFrontend } from '../utils/user-utils';
-import { resolveAffiliation } from '../utils/affiliation';
+import { isAppEntryBlockedAffiliation, resolveAffiliation, type AffiliationValue } from '../utils/affiliation';
 import { isAdminName, isAdminUser } from '../utils/admin';
 import { getCourseSelectionRedirectPath } from '../helpers/course-selection-redirect';
 import { sendHtmlPageWithBuildComment } from '../utils/build-info';
+import { teardownSession, clearSessionCookie } from '../helpers/session-teardown';
+import { applyRosterEnrollment } from '../helpers/apply-roster-enrollment';
 
 const router = express.Router();
 
@@ -115,6 +117,11 @@ const samlCallbackHandler = [
             }
         }
 
+        // Grant any courses whose imported LMS roster names this user. Runs before the session is
+        // stored so `coursesEnrolled` is current on the very first page after login rather than
+        // one sign-in behind. Never throws — see applyRosterEnrollment.
+        globalUser = await applyRosterEnrollment(mongoDB, globalUser);
+
         // Store GlobalUser in session (backend only - PUID is safe here)
         // NOTE: PUID is stored in session for backend use only
         // When sending to frontend, we MUST sanitize using sanitizeGlobalUserForFrontend()
@@ -127,7 +134,7 @@ const samlCallbackHandler = [
                 return res.redirect('/');
             }
 
-            const redirectPath = (affiliation === 'staff' || affiliation === 'empty') && !isAdminUser(globalUser)
+            const redirectPath = isAppEntryBlockedAffiliation(affiliation as AffiliationValue) && !isAdminUser(globalUser)
                 ? '/role-restricted'
                 : getCourseSelectionRedirectPath(globalUser);
             appLogger.log('[AUTH] 🚀 Session saved, redirecting to', redirectPath);
@@ -241,6 +248,10 @@ router.post('/login', (req: express.Request, res: express.Response, next: expres
                         }
                     }
 
+                    // Same roster enrollment as the SAML path — both login paths must agree, or a
+                    // dev-mode sign-in would silently behave differently from production.
+                    globalUser = await applyRosterEnrollment(mongoDB, globalUser);
+
                     // Store GlobalUser in session (backend only - PUID is safe here)
                     // NOTE: PUID is stored in session for backend use only
                     // When sending to frontend, we MUST sanitize using sanitizeGlobalUserForFrontend()
@@ -253,7 +264,7 @@ router.post('/login', (req: express.Request, res: express.Response, next: expres
                             return next(saveErr);
                         }
 
-                        const redirectPath = (affiliation === 'staff' || affiliation === 'empty') && !isAdminUser(globalUser)
+                        const redirectPath = isAppEntryBlockedAffiliation(affiliation as AffiliationValue) && !isAdminUser(globalUser)
                             ? '/role-restricted'
                             : getCourseSelectionRedirectPath(globalUser);
                         appLogger.log('[AUTH-LOCAL] 🚀 Redirecting to', redirectPath);
@@ -294,19 +305,43 @@ router.get('/login-failed', (req: express.Request, res: express.Response) => {
 /**
  * GET /logout
  * Terminates session. For SAML: destroys local session and redirects to IdP logout; for local: destroys session and redirects home.
+ * `?reason=inactivity` is logged only; uses the same SAML SLO path as manual logout when req.user exists.
+ * When req.user is absent, runs local teardown and clears engeai.sid.
  *
  * @route GET /auth/logout
  * @returns {void} Redirects to IdP logout URL or home
  * @response 302 - Redirect to IdP or /
  */
 router.get('/logout', (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const reason = typeof req.query.reason === 'string' ? req.query.reason : '';
+    const inactivityLogout = reason === 'inactivity';
+
+    const redirectHome = () => {
+        res.redirect('/');
+    };
+
+    const localTeardownAndRedirect = () => {
+        teardownSession(req, res, (err) => {
+            if (err) {
+                appLogger.error('[AUTH] Local session teardown error:', err);
+                return next(err);
+            }
+            redirectHome();
+        });
+    };
+
     if (!(req as any).user) {
-        return res.redirect('/');
+        appLogger.log('[AUTH] Logout without req.user — clearing session cookie');
+        localTeardownAndRedirect();
+        return;
     }
 
     if (ubcShibStrategy) {
-        // SAML Single Log-Out flow
-        appLogger.log('[AUTH] Initiating SAML logout...');
+        if (inactivityLogout) {
+            appLogger.log('[AUTH] Inactivity logout — initiating SAML logout...');
+        } else {
+            appLogger.log('[AUTH] Initiating SAML logout...');
+        }
 
         ubcShibStrategy.logout(req as any, (err: any, requestUrl?: string | null) => {
             if (err) {
@@ -326,6 +361,7 @@ router.get('/logout', (req: express.Request, res: express.Response, next: expres
                         appLogger.error('[AUTH] Session destruction error:', sessionErr);
                         return next(sessionErr);
                     }
+                    clearSessionCookie(res);
                     // 3. Redirect to the SAML IdP to terminate that session
                     if (requestUrl) {
                         res.redirect(requestUrl);
@@ -336,8 +372,11 @@ router.get('/logout', (req: express.Request, res: express.Response, next: expres
             });
         });
     } else {
-        // Local authentication logout - simple session destruction
-        appLogger.log('[AUTH-LOCAL] 🚪 Logging out local user...');
+        if (inactivityLogout) {
+            appLogger.log('[AUTH-LOCAL] Inactivity logout — logging out local user...');
+        } else {
+            appLogger.log('[AUTH-LOCAL] 🚪 Logging out local user...');
+        }
 
         (req as any).logout((logoutErr: any) => {
             if (logoutErr) {
@@ -351,6 +390,7 @@ router.get('/logout', (req: express.Request, res: express.Response, next: expres
                     return next(sessionErr);
                 }
 
+                clearSessionCookie(res);
                 appLogger.log('[AUTH-LOCAL] ✅ Logout successful');
                 res.redirect('/');
             });

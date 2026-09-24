@@ -1,7 +1,8 @@
 import {
     buildCourseSelectionByPeriod,
     filterAccessibleCourses,
-    isCourseAccessible
+    isCourseAccessible,
+    mapFacultyInstructorDisplay
 } from '../course-access';
 import type { AcademicPeriodDocument, activeCourse, GlobalUser } from '../../types/shared';
 
@@ -90,5 +91,24 @@ describe('course-access', () => {
         expect(payload.periods[0].courses[0].id).toBe('course-a');
         expect(payload.periods[1].courseCount).toBe(0);
         expect(payload.defaultPeriodId).toBe('period-2026');
+    });
+
+    it('mapFacultyInstructorDisplay excludes platform admins and TAs', () => {
+        const courseWithMixedStaff = {
+            id: 'course-c',
+            courseName: 'ENGR 303',
+            instructors: [
+                { userId: 'fac-1', name: 'Dr. Smith' },
+                { userId: 'admin-1', name: 'Platform Admin' },
+                { userId: 'ta-1', name: 'TA Pat' }
+            ],
+            teachingAssistants: [{ userId: 'ta-1', name: 'TA Pat' }]
+        } as activeCourse;
+
+        const display = mapFacultyInstructorDisplay(
+            courseWithMixedStaff,
+            new Set(['admin-1'])
+        );
+        expect(display).toBe('Dr. Smith');
     });
 });

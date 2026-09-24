@@ -1,18 +1,19 @@
 <!-- DASHBOARD — instructor home with feature cards + Advanced Settings -->
 <link rel="stylesheet" href="/styles/instructor-components/dashboard.css">
 
-<div class="dashboard-content-area">
-    <div class="dashboard-grid-view">
-        <header class="dashboard-page-header dashboard-topbar" id="dashboard-topbar">
+<div class="dashboard-content-area page-frame">
+    <div class="dashboard-grid-view page-shell">
+        <header class="dashboard-page-header dashboard-topbar page-header mobile-header-bar" id="dashboard-topbar">
             <div class="dashboard-topbar-main">
                 <div class="dashboard-topbar-title-row">
-                    <button id="instructor-hamburger-btn" class="instructor-mobile-hamburger-btn icon-btn dashboard-mobile-menu-btn" title="Open menu" aria-label="Open menu">
+                    <button id="instructor-hamburger-btn" class="instructor-mobile-hamburger-btn icon-btn" title="Open menu" aria-label="Open menu">
                         <i data-feather="menu"></i>
                     </button>
-                    <h1 class="dashboard-page-title">Dashboard</h1>
+                    <h1 class="mobile-header-title">Dashboard</h1>
                 </div>
             </div>
-            <div class="dashboard-code-flip" id="dashboard-code-flip">
+            <div class="dashboard-topbar-aside">
+                <div class="dashboard-code-flip" id="dashboard-code-flip">
                 <span class="dashboard-code-title">Course Code</span>
                 <div class="dashboard-code-body-flip">
                     <div class="dashboard-code-body-flip-inner">
@@ -51,6 +52,23 @@
                     </div>
                 </div>
             </div>
+
+            <!--
+                Canvas roster sync. Hidden unless the course was imported from Canvas — an
+                admin-created course has no roster.
+            -->
+                <button
+                    type="button"
+                    class="dashboard-roster-sync-btn"
+                    id="syncCanvasRoster"
+                    title="Sync roster with Canvas"
+                    aria-label="Sync roster with Canvas"
+                    hidden
+                >
+                    <i data-feather="refresh-cw" aria-hidden="true"></i>
+                    <span>Sync roster with Canvas</span>
+                </button>
+            </div>
         </header>
 
         <div class="dashboard-main-content" id="dashboard-main-content">
@@ -73,7 +91,7 @@
                             aria-expanded="false"
                             aria-controls="dashboard-model-body"
                         >
-                            <span>Model Settings</span>
+                            <span>Change model settings</span>
                             <i data-feather="chevron-down" class="dashboard-accordion-chevron" aria-hidden="true"></i>
                         </button>
                         <div class="dashboard-accordion-body" id="dashboard-model-body">
@@ -100,7 +118,7 @@
                             aria-expanded="false"
                             aria-controls="dashboard-features-body"
                         >
-                            <span>Extra Feature</span>
+                            <span>Manage features</span>
                             <i data-feather="chevron-down" class="dashboard-accordion-chevron" aria-hidden="true"></i>
                         </button>
                         <div class="dashboard-accordion-body" id="dashboard-features-body">
@@ -109,17 +127,17 @@
                                     Only an instructor or platform admin can change extra features.
                                 </p>
                                 <fieldset class="form-group dashboard-features">
+                                    <label class="dashboard-feature-row" for="settingsScenarioGeneration">
+                                        <span class="dashboard-feature-title">Scenario Questions</span>
+                                        <span class="dashboard-feature-toggle">
+                                            <input type="checkbox" id="settingsScenarioGeneration">
+                                        </span>
+                                    </label>
+
                                     <label class="dashboard-feature-row" for="settingsWritingFeedback">
                                         <span class="dashboard-feature-title">Writing Feedback</span>
                                         <span class="dashboard-feature-toggle">
                                             <input type="checkbox" id="settingsWritingFeedback">
-                                        </span>
-                                    </label>
-
-                                    <label class="dashboard-feature-row" for="settingsMemoryAgent">
-                                        <span class="dashboard-feature-title">Memory Agent</span>
-                                        <span class="dashboard-feature-toggle">
-                                            <input type="checkbox" id="settingsMemoryAgent">
                                         </span>
                                     </label>
 
@@ -130,10 +148,10 @@
                                         </span>
                                     </label>
 
-                                    <label class="dashboard-feature-row" for="settingsScenarioGeneration">
-                                        <span class="dashboard-feature-title">Scenario Generation</span>
+                                    <label class="dashboard-feature-row" for="settingsMemoryAgent">
+                                        <span class="dashboard-feature-title">Memory Agent</span>
                                         <span class="dashboard-feature-toggle">
-                                            <input type="checkbox" id="settingsScenarioGeneration">
+                                            <input type="checkbox" id="settingsMemoryAgent">
                                         </span>
                                     </label>
 
@@ -156,7 +174,7 @@
                             aria-expanded="false"
                             aria-controls="dashboard-course-info-body"
                         >
-                            <span>Course Information</span>
+                            <span>View course information</span>
                             <i data-feather="chevron-down" class="dashboard-accordion-chevron" aria-hidden="true"></i>
                         </button>
                         <div class="dashboard-accordion-body" id="dashboard-course-info-body">

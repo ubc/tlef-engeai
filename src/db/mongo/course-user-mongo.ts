@@ -9,6 +9,7 @@ import type { Document } from 'mongodb';
 import type { CourseUser } from '../../types/shared';
 import { getCollectionNames } from './collection-registry-mongo';
 import type { MongoDalContext } from './mongo-context';
+import { withoutTestStudents } from './student-view-filter';
 import { appLogger } from '../../utils/logger';
 
 /** Roster metrics for instructor course summary (aligned with conversation ZIP export filters). */
@@ -29,9 +30,12 @@ export function courseSummaryEngagementFacetPipeline(): Document[] {
     return [
         {
             $facet: {
-                studentFacet: [{ $match: { affiliation: 'student' } }, { $count: 'count' }],
+                studentFacet: [
+                    { $match: withoutTestStudents({ affiliation: 'student' }) },
+                    { $count: 'count' }
+                ],
                 chatFacet: [
-                    { $match: { affiliation: 'student' } },
+                    { $match: withoutTestStudents({ affiliation: 'student' }) },
                     { $unwind: { path: '$chats', preserveNullAndEmptyArrays: false } },
                     {
                         $match: {
@@ -146,17 +150,24 @@ export async function batchFindUsersByUserIds(
     ctx: MongoDalContext,
     courseName: string,
     userIds: readonly (string | number)[]
-): Promise<Map<string, { name: string; affiliation: string; userId: string }>> {
+): Promise<
+    Map<string, { name: string; affiliation: string; userId: string; isTestStudent: boolean }>
+> {
     appLogger.log(`[MONGODB] 🔍 Batch finding ${userIds.length} users in course: ${courseName}`);
     try {
         const userCollection = await getCourseUsersMongoCollection(ctx, courseName);
         const users = await userCollection.find({ userId: { $in: userIds as unknown[] } }).toArray();
-        const userMap = new Map<string, { name: string; affiliation: string; userId: string }>();
+        const userMap = new Map<
+            string,
+            { name: string; affiliation: string; userId: string; isTestStudent: boolean }
+        >();
         for (const user of users) {
             userMap.set(String(user.userId), {
                 name: user.name,
                 affiliation: user.affiliation,
-                userId: user.userId
+                userId: user.userId,
+                // Student View flags stay visible to staff; the tag is how they are told apart.
+                isTestStudent: user.isTestStudent === true
             });
         }
         appLogger.log(`[MONGODB] ✅ Batch lookup found ${userMap.size} out of ${userIds.length} users`);

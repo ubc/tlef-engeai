@@ -1,0 +1,132 @@
+/**
+ * Reusable page shell + sticky page header (Dashboard-aligned).
+ * Link from any app shell; override tokens on .page-shell when needed.
+ */
+
+.page-shell {
+    --page-shell-max-width: 1200px;
+    --page-shell-pad-x: 3rem;
+    --page-shell-pad-bottom: 20px;
+    --page-header-pad-top: 1.5rem;
+    --page-header-pad-bottom: 1rem;
+    --page-header-margin-bottom: 3rem;
+    --page-header-title-size: 2rem;
+    --page-header-title-weight: 700;
+
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    max-width: var(--page-shell-max-width);
+    margin: 0 auto;
+    padding: 0 var(--page-shell-pad-x) var(--page-shell-pad-bottom);
+    box-sizing: border-box;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+    scrollbar-color: rgba(0, 0, 0, 0.22) transparent;
+}
+
+.page-frame {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    background-color: var(--chat-bg);
+}
+
+.page-shell.page-shell--wide {
+    --page-shell-max-width: 1680px;
+}
+
+#main-content-area > .page-frame,
+#main-content-area > .page-shell {
+    height: 100%;
+    min-height: 0;
+}
+
+.page-shell.page-shell--column {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.page-shell.page-shell--column > .page-shell-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    overflow-y: hidden;
+}
+
+.page-shell::-webkit-scrollbar,
+.page-shell.page-shell--column > .page-shell-body::-webkit-scrollbar {
+    width: 8px;
+    background: transparent;
+}
+
+.page-shell::-webkit-scrollbar-track,
+.page-shell.page-shell--column > .page-shell-body::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.page-shell::-webkit-scrollbar-thumb,
+.page-shell.page-shell--column > .page-shell-body::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.22);
+    border-radius: 4px;
+}
+
+@keyframes page-header-in {
+    from {
+        opacity: 0;
+        transform: translateY(-1.25rem);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+.page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    margin: calc(-1 * var(--page-header-pad-top)) calc(-1 * var(--page-shell-pad-x)) var(--page-header-margin-bottom);
+    padding: var(--page-header-pad-top) var(--page-shell-pad-x) var(--page-header-pad-bottom);
+    background-color: var(--chat-bg);
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    animation: page-header-in 0.45s ease-out both;
+}
+
+.page-header h1,
+.page-header .mobile-header-title {
+    margin: 0;
+    flex: 1;
+    min-width: 0;
+    color: var(--color-chbe-green);
+    font-size: var(--page-header-title-size);
+    font-weight: var(--page-header-title-weight);
+    line-height: 1.2;
+}
+
+@media (max-width: 768px) {
+    .page-shell {
+        --page-shell-pad-x: 1rem;
+        --page-header-pad-top: 1.25rem;
+        --page-header-pad-bottom: 0.75rem;
+        padding: 0 var(--page-shell-pad-x) 2rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .page-header {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+    }
+}

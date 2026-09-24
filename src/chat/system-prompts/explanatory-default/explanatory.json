@@ -1,5 +1,5 @@
 {
-  "version": "1.4.0",
+  "version": "1.6.4",
   "conversationMode": "explanatory",
   "systemModules": [],
   "instructorModules": [
@@ -8,24 +8,24 @@
       "bodyFile": "shared-default/system_prompt_guidance.md"
     },
     {
-      "id": "text list formatting",
-      "bodyFile": "shared-default/text_list_formatting.md"
+      "id": "course main intro",
+      "bodyFile": "shared-default/course_main_intro.md"
     },
     {
-      "id": "latex formatting",
-      "bodyFile": "shared-default/latex_formatting.md"
+      "id": "course material referencing",
+      "bodyFile": "shared-default/course_material_referencing.md"
     },
     {
-      "id": "diagram and mermaid",
-      "bodyFile": "shared-default/diagram_and_mermaid.md"
+      "id": "markdown synthax",
+      "bodyFile": "shared-default/markdown_synthax.md"
+    },
+    {
+      "id": "mermaid synthax",
+      "bodyFile": "shared-default/mermaid_synthax.md"
     },
     {
       "id": "explanatory diagram followup",
       "bodyFile": "explanatory_diagram_followup.md"
-    },
-    {
-      "id": "correctness restrictions",
-      "bodyFile": "shared-default/correctness_restrictions.md"
     },
     {
       "id": "explanatory prose",
@@ -34,10 +34,6 @@
     {
       "id": "explanatory correctness restrictions",
       "bodyFile": "explanatory_correctness_restrictions.md"
-    },
-    {
-      "id": "course main intro",
-      "bodyFile": "shared-default/course_main_intro.md"
     }
   ]
 }

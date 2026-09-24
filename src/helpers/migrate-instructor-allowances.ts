@@ -2,7 +2,7 @@
  * migrate-instructor-allowances.ts
  *
  * One-time idempotent migration: `instructor-allowed-courses` → `instructor-period-allowances`
- * scoped to default `2025W2` period.
+ * Invoked by `npm run migrate` op A (not server start).
  */
 
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';

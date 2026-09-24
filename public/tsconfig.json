@@ -9,5 +9,7 @@
     "esModuleInterop": true,
     "skipLibCheck": true
   },
-  "include": ["scripts/**/*"]
+  "include": ["scripts/**/*"],
+  "//exclude": "Jest specs are compiled by tsconfig.jest.json, never shipped to the browser. They may import from src/ (Node, zod, CommonJS), which this DOM/ES6 project cannot resolve.",
+  "exclude": ["scripts/**/__tests__/**"]
 }

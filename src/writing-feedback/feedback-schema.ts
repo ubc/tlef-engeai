@@ -1,54 +1,178 @@
 /**
  * Feedback schema — structured model validation and exact-evidence reconciliation
  *
- * Validates the complete four-criterion A2 result and constrains generated evidence to a
+ * Validates a rubric-complete assignment result and constrains generated evidence to a
  * focused clause or sentence. Cosmetic model drift may be reconciled through a UTF-16
  * source map, but paraphrases and unmatched evidence fail instead of being invented.
  *
  * @author: @rdschrs
  * @date: 2026-07-18
  * @version: 1.0.0
- * @description: Enforces structured A2 output, exact evidence, and safe numeric mapping.
+ * @description: Enforces rubric-driven output, exact evidence, and safe numeric mapping.
  */
 
 import { z } from 'zod';
-import type { A2FeedbackResult } from './contracts';
+import { modelAssessedCriteria } from './criterion-assessment';
+import type {
+    WritingFeedbackResult,
+    WritingGlossarySnapshot,
+    WritingRubricDefinition
+} from './contracts';
 
-const level = z.enum(['emerging', 'developing', 'competent', 'strong']);
+/** Maximum evidence items per criterion so a criterion seeds a selective annotation set. */
+export const MAX_EVIDENCE_PER_CRITERION = 3;
 
 /** Maximum model evidence span so seeded annotations stay clause- or sentence-focused. */
 export const MAX_EVIDENCE_QUOTE_LENGTH = 280;
 
-/** Structured-output contract for one complete, bounded A2 model draft. */
-export const a2FeedbackSchema = z.object({
-    criteria: z.array(z.object({
-        criterion: z.enum(['organization', 'content', 'interpersonal_positioning', 'task_constraints']),
-        suggestedLevel: level,
-        evidence: z.array(z.object({
-            quote: z.string().min(1).max(MAX_EVIDENCE_QUOTE_LENGTH),
-            rationale: z.string().min(1)
-        })).min(1),
-        explanation: z.string().min(1),
-        confidence: z.number().min(0).max(1)
-    })).length(4),
-    strengths: z.array(z.string().min(1)).max(5),
-    revisionGoals: z.array(z.object({
-        skillTag: z.string().min(1),
-        goal: z.string().min(1),
-        guidedQuestion: z.string().min(1)
-    })).max(3),
-    internalFlags: z.array(z.string()).max(8)
-}).superRefine((feedback, ctx) => {
-    // Array length alone is insufficient: require every criterion exactly once.
-    const criterionIds = feedback.criteria.map((criterion) => criterion.criterion);
-    if (new Set(criterionIds).size !== 4) {
-        ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: 'Feedback must contain each A2 criterion exactly once',
-            path: ['criteria']
-        });
-    }
+// .nullish() (optional + nullable), not .optional(): OpenAI's structured-output
+// JSON-schema mode requires every non-required field to accept null explicitly.
+// `stripNulls` (applied where this schema's parsed output is consumed) omits a
+// null-valued key entirely, matching the plain-optional contracts these types declare.
+// No explicit z.ZodType<CourseMaterialMention> annotation: this schema's optional
+// fields are .nullish() (structured-output requires it), so its inferred type includes
+// null; stripNulls narrows the parsed result back to CourseMaterialMention at the one
+// point it's consumed (feedback-engine.ts/technical-feedback-engine.ts), not here.
+// Built per use site, never shared. Reusing one Zod object instance at two points in a
+// schema makes zod-to-json-schema deduplicate the second into a `$ref` pointing at the
+// definition currently being emitted, so each `.nullish()` field degenerates into a
+// self-referential `anyOf: [{"not":{}}, {"$ref": <itself>}]`. That node has no `type`,
+// and the provider rejects the whole request with a 400. A fresh instance per call site
+// keeps the schema inline and typed. Pinned by __tests__/structured-output-schema.test.ts.
+const courseMaterialMentionSchema = () => z.object({
+    id: z.string().trim().min(1).max(120),
+    label: z.string().trim().min(1).max(240),
+    courseId: z.string().trim().min(1).max(120).nullish(),
+    topicOrWeekId: z.string().trim().min(1).max(120).nullish(),
+    topicOrWeekTitle: z.string().trim().min(1).max(160).nullish(),
+    itemId: z.string().trim().min(1).max(120).nullish(),
+    itemTitle: z.string().trim().min(1).max(160).nullish(),
+    materialId: z.string().trim().min(1).max(120).nullish(),
+    materialName: z.string().trim().min(1).max(160).nullish(),
+    version: z.string().trim().min(1).max(120).nullish()
 });
+
+const glossarySnapshotSchema: z.ZodType<WritingGlossarySnapshot> = z.object({
+    id: z.string().trim().min(1).max(120),
+    term: z.string().trim().min(1).max(80),
+    definition: z.string().trim().min(1).max(600),
+    version: z.number().int().min(1).max(1000000)
+});
+
+const evidenceSchema = z.object({
+    quote: z.string().min(1).max(MAX_EVIDENCE_QUOTE_LENGTH),
+    rationale: z.string().min(1),
+    revisionGuidance: z.string().min(1),
+    sflFindingIds: z.array(z.string().trim().min(1).max(80)).max(6).nullish(),
+    courseMaterialMention: courseMaterialMentionSchema().nullish(),
+    glossaryEntryId: z.string().trim().min(1).max(120).nullish(),
+    glossarySnapshot: glossarySnapshotSchema.nullish()
+});
+
+const revisionGoalSchema = z.object({
+    skillTag: z.string().min(1),
+    goal: z.string().min(1),
+    guidedQuestion: z.string().min(1)
+});
+
+/** Why a schema cannot be built for a rubric the model is asked nothing about. */
+export const NO_MODEL_CRITERIA_MESSAGE =
+    'This rubric has no criteria for the model to assess. Mark at least one criterion as AI-drafted.';
+
+/**
+ * buildFeedbackSchema - builds structured output validation from one approved rubric.
+ *
+ * Allowed criterion and level ids come only from the assignment rubric, and only from
+ * the criteria the model is asked about: a staff-assessed criterion is absent from the
+ * schema, so the model can neither fill it nor be refused for omitting it. Output order
+ * is flexible, but every model-assessed criterion must appear exactly once.
+ *
+ * @param rubric - Assignment rubric governing the pending generation run
+ * @returns Zod schema accepting only a complete result for that rubric's model criteria
+ * @throws Error when a rubric has no levels, no criteria, or none the model assesses
+ */
+export function buildFeedbackSchema(rubric: WritingRubricDefinition) {
+    const criterionIds = modelAssessedCriteria(rubric).map((criterion) => criterion.id);
+    const levelIds = rubric.levels.map((level) => level.id);
+    if (!rubric.criteria.length || !levelIds.length) {
+        throw new Error('An approved rubric requires criteria and performance levels');
+    }
+    if (!criterionIds.length) throw new Error(NO_MODEL_CRITERIA_MESSAGE);
+    const allowedCriteria = new Set(criterionIds);
+    const allowedLevels = new Set(levelIds);
+    return z.object({
+        schemaVersion: z.string().trim().min(1).max(80).nullish(),
+        criteria: z.array(z.object({
+            criterion: z.string().refine((value) => allowedCriteria.has(value), 'Criterion is not part of the approved rubric'),
+            suggestedLevel: z.string().refine((value) => allowedLevels.has(value), 'Performance level is not part of the approved rubric'),
+            // Capped at three: every evidence item becomes one anchored annotation on the
+            // student PDF, and an unbounded list produced dense, repetitive commentary. A
+            // criterion that needs more than three passages to make its point is making
+            // more than one point, which belongs in the criterion explanation instead.
+            evidence: z.array(evidenceSchema).min(1).max(MAX_EVIDENCE_PER_CRITERION),
+            explanation: z.string().min(1),
+            confidence: z.number().min(0).max(1)
+        })).length(criterionIds.length),
+        strengths: z.array(z.string().min(1)).max(2),
+        revisionGoals: z.array(revisionGoalSchema).min(1).max(3),
+        internalFlags: z.array(z.string()).max(8),
+        courseMaterialMentions: z.array(courseMaterialMentionSchema()).max(5).nullish()
+    }).superRefine((feedback, ctx) => {
+        const returnedIds = feedback.criteria.map((criterion) => criterion.criterion);
+        if (new Set(returnedIds).size !== criterionIds.length) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: 'Feedback must contain each approved criterion exactly once',
+                path: ['criteria']
+            });
+        }
+    });
+}
+
+/**
+ * buildSummaryRedraftSchema - structured output for a writer-only summary redraft (D-125).
+ *
+ * No evidence field: quotes come from staff annotations, so the model cannot invent any.
+ * Staff-assessed criteria are excluded here for the same reason they are excluded from
+ * generation: a redraft must not overwrite what staff wrote themselves.
+ *
+ * @param rubric - Approved rubric for the lens being redrafted
+ * @returns Zod schema accepting one explanation and level per model-assessed criterion,
+ *          strengths, and goals
+ * @throws Error when the rubric has no levels, no criteria, or none the model assesses
+ */
+export function buildSummaryRedraftSchema(rubric: WritingRubricDefinition) {
+    const criterionIds = modelAssessedCriteria(rubric).map((criterion) => criterion.id);
+    const levelIds = rubric.levels.map((level) => level.id);
+    if (!rubric.criteria.length || !levelIds.length) {
+        throw new Error('An approved rubric requires criteria and performance levels');
+    }
+    if (!criterionIds.length) throw new Error(NO_MODEL_CRITERIA_MESSAGE);
+    const allowedCriteria = new Set(criterionIds);
+    const allowedLevels = new Set(levelIds);
+    return z.object({
+        criteria: z.array(z.object({
+            criterion: z.string().refine((value) => allowedCriteria.has(value), 'Criterion is not part of the approved rubric'),
+            suggestedLevel: z.string().refine((value) => allowedLevels.has(value), 'Performance level is not part of the approved rubric'),
+            explanation: z.string().min(1),
+            confidence: z.number().min(0).max(1)
+        })).length(criterionIds.length),
+        strengths: z.array(z.string().min(1)).max(2),
+        revisionGoals: z.array(z.object({
+            skillTag: z.string().min(1),
+            goal: z.string().min(1),
+            guidedQuestion: z.string().min(1)
+        })).min(1).max(3)
+    }).superRefine((redraft, ctx) => {
+        if (new Set(redraft.criteria.map((criterion) => criterion.criterion)).size !== criterionIds.length) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: 'Redraft must contain each approved criterion exactly once',
+                path: ['criteria']
+            });
+        }
+    });
+}
 
 /**
  * validateExactEvidence — enforces the no-invented-evidence invariant.
@@ -58,7 +182,7 @@ export const a2FeedbackSchema = z.object({
  * @returns The unchanged result when every quote is an exact substring
  * @throws Error when any quote is absent from the verified source
  */
-export function validateExactEvidence(result: A2FeedbackResult, verifiedText: string): A2FeedbackResult {
+export function validateExactEvidence(result: WritingFeedbackResult, verifiedText: string): WritingFeedbackResult {
     for (const criterion of result.criteria) {
         for (const evidence of criterion.evidence) {
             if (!verifiedText.includes(evidence.quote)) {
@@ -75,9 +199,24 @@ interface NormalizedText {
     map: number[];
 }
 
-const QUOTE_SINGLE = /[‘’‚‛′]/;
-const QUOTE_DOUBLE = /[“”„‟″]/;
-const DASH = /[–—−]/;
+/** Typographic variants folded to their ASCII equivalent before matching. */
+const CANONICAL_CHARS = new Map<string, string>([
+    ['‘', "'"], // left single quotation mark
+    ['’', "'"], // right single quotation mark
+    ['‚', "'"], // single low-9 quotation mark
+    ['‛', "'"], // single high-reversed-9 quotation mark
+    ['′', "'"], // prime
+    ['“', '"'], // left double quotation mark
+    ['”', '"'], // right double quotation mark
+    ['„', '"'], // double low-9 quotation mark
+    ['‟', '"'], // double high-reversed-9 quotation mark
+    ['″', '"'], // double prime
+    ['–', '-'], // en dash
+    ['—', '-'], // em dash
+    ['−', '-'] // minus sign
+]);
+
+const WHITESPACE = /\s/;
 
 /**
  * Canonicalizes cosmetic variation (typographic quotes/dashes, whitespace runs)
@@ -91,43 +230,45 @@ function normalizeWithMap(source: string): NormalizedText {
     const chars: string[] = [];
     const map: number[] = [];
     let pendingSpace = false;
+    // Indexed loop rather than for...of: iteration must advance one UTF-16 code
+    // unit at a time so recorded indices stay slice()-compatible.
     for (let index = 0; index < source.length; index++) {
-        let char = source[index];
-        if (/\s/.test(char)) {
+        const char = source[index];
+        // Collapse whitespace runs to one space, and drop leading whitespace entirely.
+        if (WHITESPACE.test(char)) {
             pendingSpace = chars.length > 0;
             continue;
         }
-        if (QUOTE_SINGLE.test(char)) char = "'";
-        else if (QUOTE_DOUBLE.test(char)) char = '"';
-        else if (DASH.test(char)) char = '-';
         if (pendingSpace) {
+            // Anchor the collapsed space at the run's first surviving character.
             chars.push(' ');
             map.push(index);
             pendingSpace = false;
         }
-        chars.push(char);
+        chars.push(CANONICAL_CHARS.get(char) ?? char);
         map.push(index);
     }
     return { text: chars.join(''), map };
 }
 
 /**
- * Tolerant counterpart to {@link validateExactEvidence}: when a model quote is
- * not an exact substring (curly quotes, dash variants, collapsed whitespace,
- * stray wrapping quotation marks), re-locate it in the verified text and
- * replace it with the exact original slice. The stored evidence therefore
- * always satisfies the exact-substring invariant; quotes that cannot be
- * re-located (paraphrase, truncation) still fail the run.
+ * createQuoteRelocator — builds a reusable relocator bound to one verified text.
  *
- * @param result - Schema-validated model result whose quote typography may have drifted
+ * Normalizes the source once, then maps a model quote whose typography or whitespace
+ * has drifted (curly quotes, dash variants, collapsed whitespace, stray wrapping
+ * quotation marks) back to the exact original slice it came from. Returns undefined
+ * for a quote that cannot be located, which is the paraphrase/hallucination case.
+ *
+ * Shared by the feedback writer ({@link reconcileExactEvidence}) and the SFL analyzer
+ * so both model calls apply identical evidence tolerance.
+ *
  * @param verifiedText - Staff-verified source and final evidence authority
- * @returns Cloned feedback containing exact original source slices
- * @throws Error when a quote cannot be mapped back to verified text
+ * @returns Relocator returning an exact substring of `verifiedText`, or undefined
  */
-export function reconcileExactEvidence(result: A2FeedbackResult, verifiedText: string): A2FeedbackResult {
+export function createQuoteRelocator(verifiedText: string): (quote: string) => string | undefined {
     // Normalize the source once, retaining an index back to every original code unit.
     const normalizedText = normalizeWithMap(verifiedText);
-    const relocate = (quote: string): string | undefined => {
+    return (quote: string): string | undefined => {
         if (verifiedText.includes(quote)) return quote;
         // Try conservative wrapper trimming before typography/whitespace normalization.
         const candidates = [quote, quote.trim(), quote.trim().replace(/^["'‘’“”]+|["'‘’“”]+$/g, '')];
@@ -145,7 +286,24 @@ export function reconcileExactEvidence(result: A2FeedbackResult, verifiedText: s
         }
         return undefined;
     };
-    const reconciled: A2FeedbackResult = {
+}
+
+/**
+ * Tolerant counterpart to {@link validateExactEvidence}: when a model quote is
+ * not an exact substring (curly quotes, dash variants, collapsed whitespace,
+ * stray wrapping quotation marks), re-locate it in the verified text and
+ * replace it with the exact original slice. The stored evidence therefore
+ * always satisfies the exact-substring invariant; quotes that cannot be
+ * re-located (paraphrase, truncation) still fail the run.
+ *
+ * @param result - Schema-validated model result whose quote typography may have drifted
+ * @param verifiedText - Staff-verified source and final evidence authority
+ * @returns Cloned feedback containing exact original source slices
+ * @throws Error when a quote cannot be mapped back to verified text
+ */
+export function reconcileExactEvidence(result: WritingFeedbackResult, verifiedText: string): WritingFeedbackResult {
+    const relocate = createQuoteRelocator(verifiedText);
+    const reconciled: WritingFeedbackResult = {
         ...result,
         criteria: result.criteria.map((criterion) => ({
             ...criterion,
@@ -169,12 +327,15 @@ export function reconcileExactEvidence(result: A2FeedbackResult, verifiedText: s
  * @returns Two-decimal mean, or undefined when any required mapping is absent
  */
 export function resolveNumericGrade(
-    result: A2FeedbackResult,
-    gradeMapping: Partial<Record<'emerging' | 'developing' | 'competent' | 'strong', number>> | undefined
+    result: WritingFeedbackResult,
+    gradeMapping: Record<string, number> | undefined
 ): number | undefined {
-    if (!gradeMapping || result.criteria.some((criterion) => gradeMapping[criterion.suggestedLevel] === undefined)) {
+    // A criterion with no level cannot be mapped to points, and averaging the rest would
+    // quietly report a grade for a rubric only partly assessed.
+    if (!gradeMapping || result.criteria.some((criterion) =>
+        criterion.suggestedLevel === undefined || gradeMapping[criterion.suggestedLevel] === undefined)) {
         return undefined;
     }
-    const points = result.criteria.map((criterion) => gradeMapping[criterion.suggestedLevel]!);
+    const points = result.criteria.map((criterion) => gradeMapping[criterion.suggestedLevel!]!);
     return Math.round((points.reduce((sum, point) => sum + point, 0) / points.length) * 100) / 100;
 }

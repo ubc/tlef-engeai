@@ -1,11 +1,11 @@
 // public/scripts/feature/writing-feedback.ts
 /**
- * Writing Feedback Workspace — entry point and assignment landing view
+ * Writing Feedback Workspace — entry point and assignment queue
  *
- * The landing view lists assignment cards (Canvas-imported or manually created).
- * Each card expands into its submission list; opening a submission moves to the
- * review view and "Edit rubric" opens the full-page rubric editor. The rubric and
- * review views live in sibling modules registered through the shared view registry.
+ * The queue lists assignment cards (Canvas-imported or manually created) and creates new
+ * ones. Opening a card moves to that assignment's own page, which owns its submissions and
+ * every action on them. The assignment, rubric, and review pages live in sibling modules
+ * registered through the shared view registry.
  *
  * @author: @rdschrs
  * @date: 2026-07-20
@@ -14,55 +14,99 @@
  */
 
 import type { activeCourse } from '../types.js';
-import { showSuccessToast } from '../ui/toast-notification.js';
+import { showSuccessToast, showToast } from '../ui/toast-notification.js';
 import { showDeleteConfirmationModal, showConfirmModal } from '../ui/modal-overlay.js';
 import {
     Assignment,
+    assignmentOriginText,
     CanvasAssignment,
+    CanvasAccountMismatchError,
+    CanvasAuthRequiredError,
     CanvasImportResult,
     CanvasStatus,
-    STATUS_LABELS,
-    STATUS_TONES,
     Submission,
+    WfViewName,
     WorkspaceContext,
-    baseUrl,
+    canvasOutcomeNotes,
     chip,
+    closeActionPanel,
     confirmDiscardDirty,
     createButton,
     createIconButton,
     createText,
-    createZoomControl,
     element,
     field,
     formatDate,
     handleActionError,
     inputControl,
     jsonRequest,
+    openActionPanel,
     queryState,
     refreshIcons,
+    rememberDisplayedUrl,
     request,
+    restoreDisplayedUrl,
+    runButtonAction,
+    savedScrollTop,
+    scrollingAncestor,
     setQueryState,
     setView,
     setWorkspaceMessage,
+    clearWorkspaceMessage,
     state,
     textAreaControl,
     views
 } from './writing-feedback-shared.js';
+import { openAssignmentPage } from './writing-feedback-assignment-page.js';
 import { openRubricPage } from './writing-feedback-rubric.js';
 import { openReview } from './writing-feedback-review.js';
+import { setWritingFeedbackDemoMode } from './writing-feedback-demo-mode.js';
+import { oldestPendingAssignment } from './writing-feedback-assignment-type-state.js';
+import { connectUrlReturningTo } from './writing-feedback-canvas-connect.js';
+import { stopFollowingGeneration } from './writing-feedback-batch.js';
+
+/** Mount the shared setup panel is moved into while the queue is the page on screen. */
+const ACTION_MOUNT_ID = 'wf-landing-action-mount';
 
 // ---------------------------------------------------------------------------
-// Landing view
+// Assignment queue
 // ---------------------------------------------------------------------------
 
-async function loadLanding(): Promise<void> {
+async function loadLanding(mode: 'push' | 'replace' = 'push'): Promise<void> {
+    stopFollowingGeneration();
     setView('landing');
-    setQueryState({ wfSubmission: null, wfView: null });
+    // The queue is about no one assignment, so it drops the assignment parameter too: what
+    // stays in the address is what the page on screen actually shows.
+    setQueryState({ wfSubmission: null, wfView: null, wfAssignment: null }, mode);
+    state.activeAssignmentId = null;
+    state.currentAssignment = null;
     const list = element<HTMLDivElement>('wf-assignment-list');
     list.setAttribute('aria-busy', 'true');
     list.replaceChildren(createText('p', 'Loading assignments…', 'wf-muted-note'));
     state.assignments = await request<Assignment[]>('/assignments');
     renderLanding();
+
+    // An assignment left without a type (the page was closed before staff answered) is asked
+    // about again here, oldest first, and then opened on its rubric page (D-123).
+    const pending = oldestPendingAssignment(state.assignments);
+    if (pending && state.workspace?.permissions.canManageRubric) {
+        await openNewAssignment(pending);
+    }
+}
+
+/**
+ * openNewAssignment - opens a new assignment's rubric page, which asks for its type.
+ *
+ * The question is asked from the rubric view rather than here: a lab report then waits on
+ * the auto-fill of its writing rubric, and that wait must show the rubric page loading,
+ * not the stale assignment list the import started from.
+ *
+ * @param assignment - Newly created or imported assignment, or one still pending
+ */
+async function openNewAssignment(assignment: Assignment): Promise<void> {
+    state.activeAssignmentId = assignment.id;
+    state.assignments = await request<Assignment[]>('/assignments');
+    await openRubricPage(assignment.id);
 }
 
 function renderLanding(): void {
@@ -71,216 +115,128 @@ function renderLanding(): void {
     list.replaceChildren();
 
     if (!state.assignments.length) {
-        const empty = document.createElement('div');
-        empty.className = 'wf-card';
-        empty.append(
-            createText('p', 'No assignments yet. Pull writing assignments from Canvas, or create one manually and paste student submissions.', 'wf-muted-note')
-        );
-        const actions = document.createElement('div');
-        actions.className = 'wf-button-row';
-        actions.append(
-            createButton('Import from Canvas', 'primary', async () => showCanvasImport()),
-            createButton('Add assignment (manually)', 'secondary', async () => showAddAssignment())
-        );
-        empty.append(actions);
-        list.append(empty);
+        // A plain line, the way the flags page reports an empty list. The box this replaces
+        // repeated the header's Import and Add buttons directly beneath them; the header
+        // already offers Import to every staff member and Add to those who can create one.
+        list.append(createText('p', 'No assignments yet.', 'wf-assignment-list-empty'));
         return;
     }
 
     state.assignments.forEach((assignment) => list.append(renderAssignmentCard(assignment)));
     refreshIcons();
-
-    if (state.expandedAssignmentId && state.assignments.some((assignment) => assignment.id === state.expandedAssignmentId)) {
-        void expandAssignment(state.expandedAssignmentId).catch(handleActionError);
-    }
 }
 
+/**
+ * renderAssignmentCard - one row of the queue, which opens that assignment's page
+ *
+ * The card answers only which assignment this is, where it came from, how much work is
+ * waiting in it, and whether it should exist at all. Everything done *inside* an assignment
+ * lives on its own page, so a course with many assignments still reads as a short list.
+ *
+ * @param assignment - Assignment to summarize
+ * @returns Detached card
+ */
 function renderAssignmentCard(assignment: Assignment): HTMLElement {
     const card = document.createElement('article');
     card.className = 'wf-assignment';
     card.dataset.assignmentId = assignment.id;
-    const panelId = `wf-assignment-panel-${assignment.id}`;
 
-    // The expandable card header mirrors a disclosure control: mouse, Enter,
-    // and Space all update the same panel and aria-expanded state.
+    // The header is the object, so the header opens it: the same mouse/Enter/Space contract
+    // the submission rows on the assignment page use. Delete stops its own propagation.
     const header = document.createElement('div');
     header.className = 'wf-assignment-header';
     header.setAttribute('role', 'button');
     header.setAttribute('tabindex', '0');
-    header.setAttribute('aria-expanded', String(state.expandedAssignmentId === assignment.id));
-    header.setAttribute('aria-controls', panelId);
+    header.setAttribute('aria-label', `Open assignment "${assignment.title}"`);
 
     const heading = document.createElement('div');
     heading.className = 'wf-assignment-title-group';
-    heading.append(createText('h2', assignment.title));
+    const title = createText('h2', assignment.title);
+    // The kind sits inside the heading so it trails the last word of a wrapped title. Writing
+    // is the default kind, so only the exception is labelled.
+    if (assignment.isLabReport) title.append(chip('Lab report', 'blue'));
+    heading.append(title);
     const meta = document.createElement('p');
     meta.className = 'wf-assignment-meta';
+    // Provenance rides on the date rather than a separate badge: the record is created at the
+    // moment it is imported, so one line answers both "where did this come from" and "when".
+    const submissionCount = assignment.submissionCount ?? 0;
     meta.append(
-        createText('span', `Created ${formatDate(assignment.createdAt)}`),
-        createText('span', assignment.dueAt ? `Deadline ${formatDate(assignment.dueAt, true)}` : 'No deadline')
+        createText('span', assignmentOriginText(assignment)),
+        createText('span', `${submissionCount} submission${submissionCount === 1 ? '' : 's'}`)
     );
+    // A deadline is imported from Canvas whenever the assignment carries one, so its absence
+    // means Canvas has none set. Saying "No deadline" spends a segment on that, so the
+    // segment is omitted instead.
+    if (assignment.dueAt) {
+        meta.append(createText('span', `Deadline ${formatDate(assignment.dueAt, true)}`));
+    }
     heading.append(meta);
 
     const controls = document.createElement('div');
     controls.className = 'wf-assignment-controls';
-    controls.append(
-        chip(assignment.canvasAssignmentId ? 'Canvas import' : 'Manual', assignment.canvasAssignmentId ? 'blue' : 'neutral'),
-        chip(`${assignment.submissionCount ?? 0} submissions`, 'green')
-    );
-    const rubricButton = createButton('Edit rubric', 'secondary', async () => openRubricPage(assignment.id));
-    rubricButton.addEventListener('click', (event) => event.stopPropagation());
-    controls.append(rubricButton);
     const deleteButton = createIconButton('trash-2', `Delete assignment "${assignment.title}"`, 'danger', async () => {
-        const result = await showDeleteConfirmationModal('assignment', assignment.title);
-        if (result.action !== 'delete') return;
+        // Deleting the assignment deletes its submissions too, so say how much work goes with it.
+        const submissions = await request<Submission[]>(`/submissions?assignmentId=${encodeURIComponent(assignment.id)}`);
+        if (submissions.length) {
+            const releasedCount = submissions.filter((item) => item.status === 'released').length;
+            const releasedNote = releasedCount
+                ? ` Feedback for ${releasedCount} of them was already released to Canvas; it stays in Canvas, but its record here is deleted.`
+                : '';
+            const result = await showConfirmModal(
+                'Delete assignment',
+                `Delete "${assignment.title}" and its ${submissions.length} submission${submissions.length === 1 ? '' : 's'}, including their feedback?${releasedNote} This cannot be undone.`,
+                'Delete assignment',
+                'Cancel',
+                'danger'
+            );
+            if (result.action !== 'delete-assignment') return;
+        } else {
+            const result = await showDeleteConfirmationModal('assignment', assignment.title);
+            if (result.action !== 'delete') return;
+        }
         await jsonRequest(`/assignments/${encodeURIComponent(assignment.id)}`, 'DELETE');
         state.assignments = state.assignments.filter((item) => item.id !== assignment.id);
-        if (state.expandedAssignmentId === assignment.id) state.expandedAssignmentId = null;
         renderLanding();
         showSuccessToast('Assignment deleted.');
     });
     controls.append(deleteButton);
-    const expandIcon = document.createElement('span');
-    expandIcon.className = 'wf-expand-icon';
-    expandIcon.innerHTML = '<i data-feather="chevron-down" aria-hidden="true"></i>';
-    controls.append(expandIcon);
+    // Affordance only: the header carries the click, so this must not take focus or be read
+    // out as a second control.
+    const openIcon = document.createElement('span');
+    openIcon.className = 'wf-submission-open-icon';
+    openIcon.setAttribute('aria-hidden', 'true');
+    openIcon.innerHTML = '<i data-feather="chevron-right"></i>';
+    controls.append(openIcon);
 
     header.append(heading, controls);
-    const toggle = () => void toggleAssignmentExpand(assignment.id).catch(handleActionError);
-    header.addEventListener('click', toggle);
+    const open = () => void openAssignmentPage(assignment.id).catch(handleActionError);
+    header.addEventListener('click', open);
     header.addEventListener('keydown', (event) => {
         if (event.target !== header) return;
         if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault();
-            toggle();
+            open();
         }
     });
     card.append(header);
-
-    const panel = document.createElement('div');
-    panel.className = 'wf-submission-panel';
-    panel.id = panelId;
-    panel.hidden = state.expandedAssignmentId !== assignment.id;
-    card.append(panel);
     return card;
-}
-
-async function toggleAssignmentExpand(assignmentId: string): Promise<void> {
-    if (state.expandedAssignmentId === assignmentId) {
-        state.expandedAssignmentId = null;
-        setQueryState({ wfAssignment: null });
-        renderLanding();
-        return;
-    }
-    state.expandedAssignmentId = assignmentId;
-    setQueryState({ wfAssignment: assignmentId });
-    document.querySelectorAll<HTMLElement>('.wf-submission-panel').forEach((panel) => { panel.hidden = true; });
-    document.querySelectorAll<HTMLElement>('.wf-assignment-header').forEach((header) => {
-        header.setAttribute('aria-expanded', String(header.getAttribute('aria-controls') === `wf-assignment-panel-${assignmentId}`));
-    });
-    await expandAssignment(assignmentId);
-}
-
-async function expandAssignment(assignmentId: string): Promise<void> {
-    const panel = document.getElementById(`wf-assignment-panel-${assignmentId}`);
-    const assignment = state.assignments.find((item) => item.id === assignmentId);
-    if (!panel || !assignment) return;
-    panel.hidden = false;
-    panel.replaceChildren(createText('p', 'Loading submissions…', 'wf-muted-note'));
-    const submissions = await request<Submission[]>(`/submissions?assignmentId=${encodeURIComponent(assignmentId)}`);
-    panel.replaceChildren();
-
-    if (!submissions.length) {
-        const emptyWrap = document.createElement('div');
-        emptyWrap.className = 'wf-submission-row';
-        emptyWrap.append(createText('p', 'No submissions yet. Add one manually or import from Canvas.', 'wf-muted-note'));
-        panel.append(emptyWrap);
-    }
-    submissions.forEach((submission) => {
-        const row = document.createElement('div');
-        row.className = 'wf-submission-row';
-        const late = Boolean(assignment.dueAt && new Date(submission.createdAt) > new Date(assignment.dueAt));
-
-        const info = document.createElement('div');
-        info.className = 'wf-submission-info';
-        info.append(createText('strong', submission.studentLabel || 'Unlabelled student'));
-        const rowMeta = document.createElement('span');
-        rowMeta.className = 'wf-submission-meta';
-        rowMeta.append(createText('span', `Submitted ${formatDate(submission.createdAt, true)}`));
-        if (late) rowMeta.append(createText('span', 'Late', 'wf-late-flag'));
-        rowMeta.append(
-            createText('span', `Attempt ${submission.attempt}`),
-            chip(STATUS_LABELS[submission.status], STATUS_TONES[submission.status])
-        );
-        info.append(rowMeta);
-
-        const actions = document.createElement('div');
-        actions.className = 'wf-submission-actions';
-        const label = submission.studentLabel || 'this submission';
-        actions.append(
-            createButton('Open submission', 'secondary', async () => openReview(submission.id)),
-            createIconButton('trash-2', `Delete submission for ${label}`, 'danger', async () => {
-                const extraWarning = submission.status === 'released'
-                    ? ' This submission was already released to the student; deleting it removes only the local record and cannot recall the release.'
-                    : '';
-                const result = await showConfirmModal(
-                    'Delete submission',
-                    `Are you sure you want to delete "${label}"? This action cannot be undone.${extraWarning}`,
-                    'Delete',
-                    'Cancel',
-                    'danger'
-                );
-                if (result.action !== 'delete') return;
-                await jsonRequest(`/submissions/${encodeURIComponent(submission.id)}`, 'DELETE');
-                row.remove();
-                const current = state.assignments.find((item) => item.id === assignmentId);
-                if (current && typeof current.submissionCount === 'number') {
-                    current.submissionCount = Math.max(0, current.submissionCount - 1);
-                }
-                showSuccessToast('Submission deleted.');
-            })
-        );
-        row.append(info, actions);
-        panel.append(row);
-    });
-
-    const footer = document.createElement('div');
-    footer.className = 'wf-add-submission-row';
-    footer.append(createButton('+ Add submission (manually)', 'quiet', async () => showManualImport(assignment)));
-    panel.append(footer);
-    refreshIcons();
 }
 
 // ---------------------------------------------------------------------------
 // Action panel forms
 // ---------------------------------------------------------------------------
 
-function openActionPanel(title: string): HTMLElement {
-    const panel = element<HTMLElement>('wf-action-panel');
-    element('wf-action-panel-title').textContent = title;
-    const content = element<HTMLElement>('wf-action-panel-content');
-    content.replaceChildren();
-    panel.hidden = false;
-    panel.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
-    return content;
-}
-
-async function closeActionPanel(confirm = true): Promise<void> {
-    // Never clear setup controls until the reviewer has resolved dirty state;
-    // successful submissions bypass the prompt only after persistence completes.
-    if (confirm && !(await confirmDiscardDirty('setup'))) return;
-    state.panelDirty = false;
-    element<HTMLElement>('wf-action-panel').hidden = true;
-    element('wf-action-panel-content').replaceChildren();
-}
-
 async function showAddAssignment(): Promise<void> {
+    if (!state.workspace?.permissions.canManageRubric) {
+        throw new Error('Only instructors and administrators can create manual assignments.');
+    }
     if (!(await confirmDiscardDirty('setup'))) return;
     state.panelDirty = false;
-    const content = openActionPanel('Add a writing assignment');
+    const content = openActionPanel('Add a writing assignment', ACTION_MOUNT_ID);
     content.append(createText(
         'p',
-        'Manual assignments start from the approved internal rubric profile. You can adjust the rubric before generating feedback.',
+        'Add the directions students receive. The assignment starts with an editable rubric draft that must be approved before feedback can be generated.',
         'wf-panel-intro'
     ));
 
@@ -295,23 +251,70 @@ async function showAddAssignment(): Promise<void> {
         field('Assignment title', title, undefined, true),
         field('Submission deadline', deadline, 'Optional. Used to flag late submissions in the list.')
     );
+    const instructions = textAreaControl('', 10);
+    instructions.placeholder = 'Paste the assignment prompt, requirements, audience, purpose, and any grading directions.';
+    instructions.maxLength = 30000;
+    const instructionsFile = inputControl('', 'file');
+    instructionsFile.accept = '.txt,.md,.markdown,.docx,.pdf,.html,.htm';
+    const extractionState = createText('p', '', 'wf-help-text');
+    extractionState.setAttribute('role', 'status');
+    extractionState.setAttribute('aria-live', 'polite');
+    let extractedFile: File | null = null;
+    const extractInstructions = async (): Promise<void> => {
+        const selectedFile = instructionsFile.files?.[0];
+        if (!selectedFile) throw new Error('Choose an assignment-instructions file first.');
+        const payload = new FormData();
+        payload.append('file', selectedFile);
+        const extracted = await request<{ text: string }>('/instructions/extract', {
+            method: 'POST',
+            body: payload
+        });
+        instructions.value = extracted.text;
+        extractedFile = selectedFile;
+        state.panelDirty = true;
+        extractionState.textContent = `Extracted ${selectedFile.name}. Review the text before creating the assignment.`;
+        instructions.focus();
+    };
+    instructionsFile.addEventListener('change', () => {
+        extractedFile = null;
+        state.panelDirty = true;
+        extractionState.textContent = instructionsFile.files?.length
+            ? 'File selected. Extract it to review and use its text.'
+            : '';
+    });
+    const fileActions = document.createElement('div');
+    fileActions.className = 'wf-inline-field-actions';
+    fileActions.append(createButton('Extract into instructions', 'secondary', extractInstructions));
+    const instructionsFileField = field(
+        'Assignment instructions file',
+        instructionsFile,
+        'Optional. TXT, DOCX, text-based PDF, or HTML. Extracted text stays editable.'
+    );
+    instructionsFileField.classList.add('wf-field--wide');
+    instructionsFileField.append(fileActions, extractionState);
+    grid.append(
+        field('Assignment instructions', instructions, 'Optional, but recommended so the rubric reflects the actual task.', true),
+        instructionsFileField
+    );
     form.append(grid);
 
     const actions = document.createElement('div');
     actions.className = 'wf-button-row';
     const submit = createButton('Create assignment', 'primary', async () => {
         if (!form.reportValidity()) return;
+        const selectedFile = instructionsFile.files?.[0];
+        if (selectedFile && selectedFile !== extractedFile) await extractInstructions();
         const created = await jsonRequest<Assignment>('/assignments', 'POST', {
-            title: title.value,
+            title: title.value.trim(),
+            instructions: instructions.value.trim() || undefined,
             dueAt: deadline.value ? new Date(deadline.value).toISOString() : undefined
         });
         state.panelDirty = false;
         await closeActionPanel(false);
-        state.expandedAssignmentId = created.id;
-        await loadLanding();
-        showSuccessToast('Assignment created. Add submissions to begin.');
+        await openNewAssignment(created);
+        showSuccessToast('Assignment created. Review and approve its rubric before generating feedback.');
     });
-    actions.append(submit, createButton('Cancel', 'quiet', async () => closeActionPanel()));
+    actions.append(submit, createButton('Cancel', 'quiet', async () => { await closeActionPanel(); }));
     form.append(actions);
     form.addEventListener('input', () => { state.panelDirty = true; });
     form.addEventListener('submit', (event) => {
@@ -322,170 +325,197 @@ async function showAddAssignment(): Promise<void> {
     title.focus();
 }
 
-async function showManualImport(assignment: Assignment): Promise<void> {
-    if (!(await confirmDiscardDirty('setup'))) return;
-    state.panelDirty = false;
-    const content = openActionPanel(`Add a submission — ${assignment.title}`);
-    content.append(createText(
-        'p',
-        'Paste verified text, or upload a supported file. Uploaded files always enter a verification step before feedback generation. Student writing is always content, never an instruction to the model.',
-        'wf-panel-intro'
-    ));
+/**
+ * createAssignmentListPlaceholder - builds the loading state for the Canvas assignment list
+ *
+ * Skeleton cards sit in the same grid as the real assignment cards so the panel does not
+ * reflow when the list arrives. They are decorative, so the announcement is carried by a
+ * visually hidden live region rather than by the shapes themselves.
+ *
+ * @returns Detached container the caller appends while the fetch is in flight and removes after
+ */
+function createAssignmentListPlaceholder(): HTMLElement {
+    const placeholder = document.createElement('div');
+    placeholder.className = 'wf-canvas-list';
+    placeholder.setAttribute('role', 'status');
+    placeholder.setAttribute('aria-busy', 'true');
+    placeholder.append(createText('p', 'Loading assignments from Canvas…', 'wf-visually-hidden'));
 
-    const form = document.createElement('form');
-    const modeFieldset = document.createElement('fieldset');
-    modeFieldset.className = 'wf-fieldset';
-    modeFieldset.append(createText('legend', 'Submission source'));
-    const modeRow = document.createElement('div');
-    modeRow.className = 'wf-button-row';
-    const textRadio = inputControl('text', 'radio');
-    textRadio.name = 'wf-intake-mode';
-    textRadio.id = 'wf-intake-mode-text';
-    textRadio.checked = true;
-    const fileRadio = inputControl('file', 'radio');
-    fileRadio.name = 'wf-intake-mode';
-    fileRadio.id = 'wf-intake-mode-file';
-    const textLabel = document.createElement('label');
-    textLabel.htmlFor = textRadio.id;
-    textLabel.textContent = 'Paste text';
-    const fileLabel = document.createElement('label');
-    fileLabel.htmlFor = fileRadio.id;
-    fileLabel.textContent = 'Upload file';
-    modeRow.append(textRadio, textLabel, fileRadio, fileLabel);
-    modeFieldset.append(modeRow);
-    form.append(modeFieldset);
-
-    const grid = document.createElement('div');
-    grid.className = 'wf-form-grid';
-    // The browser collects a course-local learner reference and explicitly warns
-    // staff not to enter the institution's protected PUID.
-    const studentId = inputControl();
-    studentId.required = true;
-    studentId.autocomplete = 'off';
-    const studentLabel = inputControl();
-    studentLabel.autocomplete = 'off';
-    const attempt = inputControl('1', 'number');
-    attempt.min = '1';
-    attempt.step = '1';
-    grid.append(
-        field('Internal learner reference', studentId, 'Use a course-local code. Do not enter a PUID.'),
-        field('Staff-visible student label', studentLabel, 'Optional; visible only in this staff workspace.'),
-        field('Attempt', attempt)
-    );
-
-    const text = textAreaControl('', 10);
-    text.classList.add('wf-intake-text');
-    const textField = field('Verified student submission', text, 'Paste the complete submission exactly as it should be evaluated.', true);
-    const zoomRow = document.createElement('div');
-    zoomRow.className = 'wf-field-toolbar';
-    zoomRow.append(createZoomControl(text));
-    textField.insertBefore(zoomRow, text);
-    const file = inputControl('', 'file');
-    file.accept = '.txt,.docx,.pdf,.html,.htm';
-    const fileField = field('Student file', file, 'TXT, DOCX, text-based PDF, or HTML. Scanned handwriting remains a later verified-OCR workflow.', true);
-    fileField.hidden = true;
-    grid.append(textField, fileField);
-    form.append(grid);
-
-    const syncMode = () => {
-        const isFile = fileRadio.checked;
-        textField.hidden = isFile;
-        fileField.hidden = !isFile;
-        text.required = !isFile;
-        file.required = isFile;
-    };
-    [textRadio, fileRadio].forEach((radio) => radio.addEventListener('change', syncMode));
-    syncMode();
-
-    const actions = document.createElement('div');
-    actions.className = 'wf-button-row';
-    const submit = createButton('Add submission', 'primary', async () => {
-        if (!form.reportValidity()) return;
-        let stored: Submission;
-        // Files use multipart extraction and always return through transcript
-        // verification; pasted text uses the JSON path as already-verified content.
-        if (fileRadio.checked && file.files?.[0]) {
-            const formData = new FormData();
-            formData.append('assignmentId', assignment.id);
-            formData.append('studentId', studentId.value);
-            formData.append('studentLabel', studentLabel.value);
-            formData.append('attempt', attempt.value);
-            formData.append('file', file.files[0]);
-            const response = await fetch(`${baseUrl()}/submissions/file`, {
-                method: 'POST', credentials: 'same-origin', body: formData
-            });
-            const body = await response.json().catch(() => ({}));
-            if (!response.ok || !body.success) throw new Error(body.error || 'Digital file extraction failed');
-            stored = body.data as Submission;
-        } else {
-            stored = await jsonRequest<Submission>('/submissions', 'POST', {
-                assignmentId: assignment.id,
-                studentId: studentId.value,
-                studentLabel: studentLabel.value,
-                attempt: Number(attempt.value),
-                text: text.value
-            });
+    // Three cards: enough to read as a list without implying a count the fetch may not match.
+    for (let cardIndex = 0; cardIndex < 3; cardIndex += 1) {
+        const card = document.createElement('div');
+        card.className = 'wf-canvas-assignment wf-canvas-assignment--skeleton';
+        card.setAttribute('aria-hidden', 'true');
+        const lines = document.createElement('div');
+        lines.className = 'wf-skeleton-lines';
+        for (let lineIndex = 0; lineIndex < 3; lineIndex += 1) {
+            lines.append(createText('span', '', 'wf-skeleton-line'));
         }
-        state.panelDirty = false;
-        await closeActionPanel(false);
-        state.expandedAssignmentId = assignment.id;
-        await loadLanding();
-        showSuccessToast(stored.requiresVerification
-            ? 'File extracted. Verify its text before generation.'
-            : 'Verified text added to the assignment.');
-    });
-    actions.append(submit, createButton('Cancel', 'quiet', async () => closeActionPanel()));
-    form.append(actions);
-    form.addEventListener('input', () => { state.panelDirty = true; });
-    form.addEventListener('submit', (event) => {
-        event.preventDefault();
-        submit.click();
-    });
-    content.append(form);
-    studentId.focus();
+        card.append(lines);
+        placeholder.append(card);
+    }
+    return placeholder;
 }
 
+/** Query marker on the Canvas authorization return address that reopens the import panel. */
+const CANVAS_IMPORT_RETURN_PARAM = 'wfImport';
+
+/**
+ * The page staff are on, as the same-site path Canvas authorization should return to.
+ *
+ * Carries {@link CANVAS_IMPORT_RETURN_PARAM} so the workspace reopens the import panel on
+ * arrival: staff connected Canvas in order to import, and would otherwise have to find the
+ * button again.
+ */
+function canvasImportReturnPath(): string {
+    const url = new URL(window.location.href);
+    url.searchParams.set(CANVAS_IMPORT_RETURN_PARAM, 'canvas');
+    return `${url.pathname}${url.search}${url.hash}`;
+}
+
+/**
+ * Removes the import-return marker from the address bar and reports whether it was there.
+ *
+ * Removed before anything renders so a refresh or a copied link does not reopen the panel.
+ */
+function consumeCanvasImportReturn(): boolean {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get(CANVAS_IMPORT_RETURN_PARAM) !== 'canvas') return false;
+    url.searchParams.delete(CANVAS_IMPORT_RETURN_PARAM);
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    return true;
+}
+
+/**
+ * showCanvasImport - opens the assignment chooser for the active Canvas adapter
+ *
+ * The same panel serves three states, and the copy must not blur them: a live Canvas course
+ * reads real student submissions, the local demo reads synthetic fixtures, and an unconnected
+ * or unlinked course offers the one action that would change that. Status is therefore fetched
+ * and acted on *before* assignments — listing assignments in a live course requires a Canvas
+ * authorization this staff member may not have, and that call answers `401`, not an empty list.
+ */
 async function showCanvasImport(): Promise<void> {
     if (!(await confirmDiscardDirty('setup'))) return;
     state.panelDirty = false;
     const workspace = state.workspace!;
-    const content = openActionPanel(workspace.canvas.mode === 'demo' ? 'Try the Canvas import workflow' : 'Import assignments from Canvas');
+    const content = openActionPanel(
+        workspace.canvas.mode === 'demo' ? 'Try the Canvas import workflow' : 'Select assignment to import from Canvas',
+        ACTION_MOUNT_ID
+    );
     content.append(createText('p', 'Checking Canvas availability…', 'wf-muted-note'));
 
-    // Refresh integration truth on every open. The UI must distinguish synthetic
-    // demo data from an unavailable production connection before showing import actions.
-    const [status, canvasAssignments] = await Promise.all([
-        request<CanvasStatus>('/canvas/status'),
-        request<CanvasAssignment[]>('/canvas/assignments')
-    ]);
+    // Refresh integration truth on every open. The UI must distinguish synthetic demo data
+    // from a live Canvas course and from an unavailable connection before showing any action.
+    const status = await request<CanvasStatus>('/canvas/status');
     workspace.canvas = status;
     content.replaceChildren();
 
-    const callout = document.createElement('div');
-    callout.className = `wf-callout${status.canImport ? ' wf-callout--success' : ' wf-callout--warning'}`;
-    callout.append(createText('strong', status.label), createText('span', status.message));
-    content.append(callout);
+    const isDemo = status.mode === 'demo';
+    const isLive = status.mode === 'live';
 
     if (!status.canImport) {
-        // Capability/connection failure is a durable inline state, not an attempt
-        // to call Canvas or a misleading disabled demo.
-        content.append(
-            createText('p', status.nextStep || 'Canvas connection setup is required.', 'wf-panel-intro'),
-            createText(
+        // Capability/connection failure is a durable inline state, not an attempt to call
+        // Canvas or a misleading disabled demo. Only this path reports the integration's
+        // own status text, because only here does the reason for it drive what to do next.
+        const blocked = document.createElement('div');
+        blocked.className = 'wf-callout wf-callout--warning';
+        blocked.append(createText('strong', status.label), createText('span', status.message));
+        content.append(blocked);
+        content.append(createText('p', status.nextStep || 'Canvas connection setup is required.', 'wf-panel-intro'));
+        if (status.connectUrl) {
+            // Authorization is the only blocker, and it is one this staff member can clear.
+            const connectRow = document.createElement('div');
+            connectRow.className = 'wf-button-row';
+            const connect = document.createElement('a');
+            connect.className = 'wf-button wf-button--primary';
+            connect.href = connectUrlReturningTo(status.connectUrl, canvasImportReturnPath());
+            connect.textContent = 'Connect Canvas';
+            connectRow.append(connect);
+            content.append(connectRow);
+        } else {
+            content.append(createText(
                 'p',
                 workspace.permissions.canManageRubric
                     ? 'Next production gate: configure a scoped developer key, encrypted user OAuth tokens, an approved retention policy, and a Canvas sandbox.'
                     : 'Ask the course instructor to complete the institutionally approved Canvas connection setup.'
-            )
-        );
+            ));
+        }
         return;
     }
 
-    content.append(createText(
-        'p',
-        'Choose an assignment. Importing adds it to this workspace with an internal A2 rubric; a detected Canvas rubric is shown but is not silently copied or changed.',
-        'wf-panel-intro'
+    // Once importing is possible, the connection is not the reviewer's problem. The callout
+    // spends itself on what import does and on why the list may be shorter than Canvas.
+    // Phrased as "only ... appear below" on purpose: the gateway also hides assignments that
+    // take no text or file entry and ones graded anonymously, so a sentence claiming the
+    // submission count is what hides them would send staff looking for the wrong cause.
+    const callout = document.createElement('div');
+    callout.className = 'wf-callout wf-callout--success';
+    callout.append(createText(
+        'span',
+        "This will import all of the selected assignment's submissions. Only assignments with at least one submission appear below. To import late submissions, use Sync submissions on the assignment."
     ));
+    content.append(callout);
+
+    // Listing assignments is the slower of the two Canvas calls, and the status check's
+    // own placeholder was cleared above. Without one here the panel looks finished and
+    // empty for a second or two, which reads as "this course has no assignments".
+    const loading = createAssignmentListPlaceholder();
+    content.append(loading);
+
+    let canvasAssignments: CanvasAssignment[];
+    try {
+        canvasAssignments = await request<CanvasAssignment[]>('/canvas/assignments');
+    } catch (error) {
+        // A connection refused as someone else's still exists, so offer connecting again instead.
+        if (error instanceof CanvasAccountMismatchError) {
+            const connectRow = document.createElement('div');
+            connectRow.className = 'wf-button-row';
+            const connect = document.createElement('a');
+            connect.className = 'wf-button wf-button--primary';
+            connect.href = connectUrlReturningTo(error.connectUrl, canvasImportReturnPath());
+            connect.textContent = 'Connect Canvas';
+            connectRow.append(connect);
+            content.append(createText('p', error.message, 'wf-panel-intro'), connectRow);
+            return;
+        }
+        // A credential revoked between the status check and this call lands here.
+        if (error instanceof CanvasAuthRequiredError) {
+            const connectRow = document.createElement('div');
+            connectRow.className = 'wf-button-row';
+            const connect = document.createElement('a');
+            connect.className = 'wf-button wf-button--primary';
+            connect.href = connectUrlReturningTo(error.connectUrl, canvasImportReturnPath());
+            connect.textContent = 'Connect Canvas';
+            connectRow.append(connect);
+            content.append(createText('p', error.message, 'wf-panel-intro'), connectRow);
+            return;
+        }
+        throw error;
+    } finally {
+        loading.remove();
+    }
+
+    if (canvasAssignments.length === 0) {
+        if (!isLive) {
+            content.append(createText('p', 'No assignments are available to import.', 'wf-muted-note'));
+            return;
+        }
+        content.append(createText(
+            'p',
+            'No assignments in this Canvas course can be imported. An assignment appears only if it accepts text entry or file uploads, has at least one submission, and is not anonymously graded.',
+            'wf-muted-note'
+        ));
+        // Canvas answers an invited-but-unaccepted enrollment with an empty assignment list, not
+        // an error, so from here it is indistinguishable from a course with nothing to import.
+        content.append(createText(
+            'p',
+            'If you were recently added to this Canvas course, accept the course invitation in Canvas first. Until you do, Canvas shows you no assignments.',
+            'wf-muted-note'
+        ));
+        return;
+    }
+
     const list = document.createElement('div');
     list.className = 'wf-canvas-list';
     canvasAssignments.forEach((assignment, index) => {
@@ -499,10 +529,18 @@ async function showCanvasImport(): Promise<void> {
         radio.checked = index === 0;
         const label = document.createElement('label');
         label.htmlFor = radio.id;
-        const due = assignment.dueAt ? formatDate(assignment.dueAt) : 'No due date';
+        // Canvas cannot report a submitted count without a request per assignment, so the
+        // segment appears only when the list call happened to carry one. A due date is
+        // likewise shown only when Canvas holds one; neither absence is worth a placeholder.
+        const summary: string[] = [];
+        if (assignment.submissionCount !== undefined) {
+            summary.push(`${assignment.submissionCount} submissions`);
+        }
+        summary.push(`${assignment.pointsPossible ?? '—'} points`);
+        if (assignment.dueAt) summary.push(formatDate(assignment.dueAt));
         label.append(
             createText('strong', assignment.title),
-            createText('span', `${assignment.submissionCount} submissions · ${assignment.pointsPossible ?? '—'} points · ${due}`),
+            createText('span', summary.join(' · ')),
             createText('span', assignment.rubricState === 'canvas_rubric' ? 'Canvas rubric detected' : 'No Canvas rubric')
         );
         card.append(radio, label);
@@ -510,20 +548,9 @@ async function showCanvasImport(): Promise<void> {
     });
     content.append(list);
 
-    const previewState = document.createElement('div');
-    previewState.className = 'wf-release-state';
-    previewState.setAttribute('role', 'status');
     const actions = document.createElement('div');
     actions.className = 'wf-button-row';
     actions.append(
-        createButton('Preview import', 'secondary', async () => {
-            const selected = content.querySelector<HTMLInputElement>('input[name="wf-canvas-assignment"]:checked');
-            if (!selected) throw new Error('Choose an assignment first');
-            const preview = await request<{ assignment: CanvasAssignment; submissions: unknown[] }>(
-                `/canvas/assignments/${encodeURIComponent(selected.value)}/preview`
-            );
-            previewState.textContent = `${preview.submissions.length} synthetic submissions are eligible. Import does not generate or release feedback.`;
-        }),
         createButton('Import selected assignment', 'primary', async () => {
             const selected = content.querySelector<HTMLInputElement>('input[name="wf-canvas-assignment"]:checked');
             if (!selected) throw new Error('Choose an assignment first');
@@ -533,16 +560,29 @@ async function showCanvasImport(): Promise<void> {
                 canvasAssignmentId: selected.value
             });
             await closeActionPanel(false);
-            state.expandedAssignmentId = result.targetAssignment.id;
-            await loadLanding();
-            setWorkspaceMessage(
-                `${result.importedCount} submissions imported; ${result.skippedCount} unchanged attempts skipped. No feedback was generated automatically.`,
-                'success'
-            );
-            showSuccessToast(`Imported ${result.importedCount} submissions from the Canvas demo.`);
+            // Only a newly created assignment is pending; a re-import returns the existing one.
+            if (result.targetAssignment.assignmentTypePending) {
+                await openNewAssignment(result.targetAssignment);
+            } else {
+                await openAssignmentPage(result.targetAssignment.id);
+            }
+
+            // One report of the outcome, in the toast the instructor is already
+            // watching for. The counts ride along with it rather than in a second
+            // banner that would outlive the action that produced it.
+            const notes = [
+                `${result.importedCount} submissions imported${isDemo ? ' from the Canvas demo' : ''}`,
+                `${result.skippedCount} unchanged attempts skipped`,
+                ...canvasOutcomeNotes(result)
+            ];
+            const summary = `${notes.join('; ')}. No feedback was generated automatically.`;
+            // Longer than the 3s default: the count list takes longer to read, and
+            // a partial failure is the case the instructor most needs to catch.
+            if (result.failedCount > 0) showToast(summary, 8000, 'top-right', 'error');
+            else showSuccessToast(summary, 6000);
         })
     );
-    content.append(previewState, actions);
+    content.append(actions);
 }
 
 // ---------------------------------------------------------------------------
@@ -550,31 +590,134 @@ async function showCanvasImport(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 function bindStaticActions(): void {
-    element<HTMLButtonElement>('wf-import-canvas').addEventListener('click', () => void showCanvasImport().catch(handleActionError));
+    // Routed through runButtonAction rather than a bare listener so the header control
+    // shows a busy state while Canvas is being reached.
+    const importCanvas = element<HTMLButtonElement>('wf-import-canvas');
+    importCanvas.addEventListener('click', () => void runButtonAction(importCanvas, showCanvasImport));
     element<HTMLButtonElement>('wf-add-assignment').addEventListener('click', () => void showAddAssignment().catch(handleActionError));
-    element<HTMLButtonElement>('wf-action-panel-close').addEventListener('click', () => void closeActionPanel());
+    element<HTMLButtonElement>('wf-action-panel-close').addEventListener('click', () => void closeActionPanel().catch(handleActionError));
+    element<HTMLButtonElement>('wf-workspace-message-dismiss').addEventListener('click', clearWorkspaceMessage);
+}
+
+/**
+ * showPageFromUrl - renders the workspace page the current URL names
+ *
+ * Restores exactly one page; each opener reloads its own server-authoritative data rather
+ * than trusting stale browser state. The URL already names the page, so nothing here adds
+ * a history entry.
+ *
+ * @returns Which page was shown
+ */
+async function showPageFromUrl(): Promise<WfViewName> {
+    const requestedAssignment = queryState('wfAssignment');
+    state.activeAssignmentId = requestedAssignment;
+    const requestedSubmission = queryState('wfSubmission');
+    if (requestedSubmission) {
+        state.assignments = await request<Assignment[]>('/assignments');
+        await openReview(requestedSubmission);
+        return 'review';
+    }
+    const requestedView = queryState('wfView');
+    if (requestedView === 'rubric' && requestedAssignment) {
+        state.assignments = await request<Assignment[]>('/assignments');
+        await openRubricPage(requestedAssignment);
+        return 'rubric';
+    }
+    if (requestedView === 'assignment' && requestedAssignment) {
+        state.assignments = await request<Assignment[]>('/assignments');
+        await openAssignmentPage(requestedAssignment);
+        return 'assignment';
+    }
+    await loadLanding('replace');
+    return 'landing';
+}
+
+/**
+ * isWritingFeedbackMounted - whether the workspace is the component on screen
+ *
+ * @returns True once {@link initializeWritingFeedback} has run against mounted markup
+ */
+export function isWritingFeedbackMounted(): boolean {
+    return state.course !== null && document.getElementById('wf-view-landing') !== null;
+}
+
+/**
+ * confirmLeaveWritingFeedbackPage - resolves unsaved edits before the page on screen changes
+ *
+ * Asks about unsaved staff feedback and setup edits in turn, and clears both once staff
+ * agree to discard them.
+ *
+ * @returns True when there was nothing unsaved or staff chose to discard it
+ */
+export async function confirmLeaveWritingFeedbackPage(): Promise<boolean> {
+    if (!(await confirmDiscardDirty('review')) || !(await confirmDiscardDirty('setup'))) return false;
+    state.reviewDirty = false;
+    state.panelDirty = false;
+    return true;
+}
+
+/**
+ * syncWritingFeedbackFromUrl - follows browser Back/Forward between workspace pages
+ *
+ * The browser has already changed the address when this runs and cannot be stopped, so
+ * choosing "Keep editing" puts the on-screen page's address back instead. Returning to a
+ * list page restores the scroll position staff left it at.
+ *
+ * @returns False when the workspace is not mounted and the shell must load it instead
+ */
+export async function syncWritingFeedbackFromUrl(): Promise<boolean> {
+    if (!isWritingFeedbackMounted()) return false;
+    if (!(await confirmLeaveWritingFeedbackPage())) {
+        restoreDisplayedUrl();
+        return true;
+    }
+    const scrollTop = savedScrollTop();
+    try {
+        const page = await showPageFromUrl();
+        // Both list pages can be long enough to have been scrolled; the rubric and review
+        // pages open at their own top.
+        const scroller = page === 'landing' ? 'wf-view-landing' : page === 'assignment' ? 'wf-view-assignment' : null;
+        if (scroller && scrollTop !== null) {
+            // After layout, once the list has rendered to full height.
+            requestAnimationFrame(() => {
+                scrollingAncestor(element(scroller)).scrollTop = scrollTop;
+            });
+        }
+    } catch (error) {
+        await handleActionError(error);
+    }
+    return true;
 }
 
 /**
  * initializeWritingFeedback - boots the course-scoped instructor workspace
  *
  * Resets module state, registers sibling view openers, loads capability-aware
- * workspace context, and restores a URL-addressed landing, rubric, or review view.
+ * workspace context, and restores the URL-addressed queue, assignment, rubric, or
+ * review page.
  * The instructor shell calls this only after confirming that the course feature
  * is enabled; operational API authorization remains server-enforced.
  *
  * @param currentClass - Active course used to scope every Writing Feedback request
  */
 export async function initializeWritingFeedback(currentClass: activeCourse): Promise<void> {
+    // A tutorial may have armed demo mode and been abandoned without completing.
+    // Clearing unconditionally here is what guarantees the real staff workspace
+    // can always save, however the tutorial was left.
+    setWritingFeedbackDemoMode(false);
+
     // Reset all cross-view state because the instructor shell can replace the
     // component while switching courses without reloading the browser tab.
     state.course = currentClass;
     state.assignments = [];
-    state.expandedAssignmentId = queryState('wfAssignment');
+    state.activeAssignmentId = queryState('wfAssignment');
+    const returningFromCanvasConnect = consumeCanvasImportReturn();
     state.currentAssignment = null;
     state.reviewDirty = false;
     state.panelDirty = false;
+    rememberDisplayedUrl();
     views.showLanding = loadLanding;
+    views.showAssignment = openAssignmentPage;
     views.showRubric = openRubricPage;
     views.showReview = openReview;
     bindStaticActions();
@@ -582,24 +725,18 @@ export async function initializeWritingFeedback(currentClass: activeCourse): Pro
         // Workspace context supplies permission and Canvas-mode truth before any
         // deep link is restored, preventing actions from rendering optimistically.
         state.workspace = await request<WorkspaceContext>('/workspace-context');
-        setWorkspaceMessage(
-            state.workspace.canvas.mode === 'demo'
-                ? 'Local demo mode is active: Canvas import and release use synthetic data only. Every student-facing result still requires staff approval.'
-                : `${state.workspace.canvas.message} Manual intake, review, approval, and PDF download remain available.`,
-            state.workspace.canvas.mode === 'demo' ? 'warning' : 'info'
-        );
-        // Restore exactly one URL-addressed view; each opener reloads its own
-        // server-authoritative data rather than trusting stale browser state.
-        const requestedSubmission = queryState('wfSubmission');
-        const requestedView = queryState('wfView');
-        if (requestedSubmission) {
-            state.assignments = await request<Assignment[]>('/assignments');
-            await openReview(requestedSubmission);
-        } else if (requestedView === 'rubric' && state.expandedAssignmentId) {
-            state.assignments = await request<Assignment[]>('/assignments');
-            await openRubricPage(state.expandedAssignmentId);
-        } else {
-            await loadLanding();
+        element<HTMLButtonElement>('wf-add-assignment').hidden = !state.workspace.permissions.canManageRubric;
+        // Canvas mode and its data-handling terms are stated where they apply —
+        // the import dialog and the release control — so the workspace opens
+        // without a standing banner repeating them on every view.
+        const page = await showPageFromUrl();
+        if (page === 'landing') {
+            if (returningFromCanvasConnect) {
+                // Through the button's own action wrapper, so a Canvas failure is reported
+                // the way a click would report it rather than as "workspace unavailable".
+                const importCanvas = element<HTMLButtonElement>('wf-import-canvas');
+                void runButtonAction(importCanvas, showCanvasImport);
+            }
         }
     } catch (error) {
         // Keep the component mounted with a durable, non-sensitive error state;

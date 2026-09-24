@@ -8,7 +8,7 @@
  */
 
 import { loadComponentHTML, renderFeatherIcons } from "../api/api.js";
-import { createNewChat, sendMessageToChat, deleteChat, dismissUnstruggleBlock, updateChatConversationMode } from "../api/chat-api.js";
+import { createNewChat, deleteChat, dismissUnstruggleBlock, updateChatConversationMode } from "../api/chat-api.js";
 import {
     Chat,
     ChatMessage,
@@ -22,7 +22,7 @@ import {
 } from "../types.js";
 import { ConversationModePicker } from "./conversation-mode-picker.js";
 import { RenderChat } from "./render-chat.js";
-import { showDisclaimerModal, showDeleteConfirmationModal, showSimpleErrorModal } from "../ui/modal-overlay.js";
+import { showDeleteConfirmationModal, showSimpleErrorModal } from "../ui/modal-overlay.js";
 import { getCourseIdFromURL, navigateToStudentScenarios } from "../utils/url-parser.js";
 import {
     clearChatDraftPrefill,
@@ -184,6 +184,11 @@ export class ChatManager {
     private selectedConversationMode: ConversationModeId = 'socratic';
     private conversationModePicker: ConversationModePicker | null = null;
     private isConversationModeUpdatePending = false;
+    private failedTransportAttempt: {
+        chatId: string;
+        messageText: string;
+        clientMessageId: string;
+    } | null = null;
     
     // ===== LOGGING HELPER METHODS =====
     
@@ -653,6 +658,21 @@ export class ChatManager {
             return;
         }
         const selectedModeForSend = this.selectedConversationMode;
+        const chatIdForSend = activeChat.id;
+        const retryAttempt = this.failedTransportAttempt;
+        const isManualRetry = Boolean(
+            retryAttempt &&
+            retryAttempt.chatId === chatIdForSend &&
+            retryAttempt.messageText === text
+        );
+        const clientMessageId = isManualRetry
+            ? retryAttempt!.clientMessageId
+            : crypto.randomUUID();
+
+        // A different chat/text is a deliberate new send and receives a fresh request id.
+        if (!isManualRetry) {
+            this.failedTransportAttempt = null;
+        }
 
         // console.log('[CHAT-MANAGER] 💬 Sending message...'); // 🟢 MEDIUM: Debug info - keep for monitoring
 
@@ -694,9 +714,10 @@ export class ChatManager {
 
         // Show loading state immediately
         onChunk?.('Thinking...', false);
+        let requestProcessed = false;
 
         try {
-            const response = await fetch(`/api/chat/${this.activeChatId}`, {
+            const response = await fetch(`/api/chat/${chatIdForSend}`, {
                 method: 'POST',
                 credentials: 'same-origin', 
                 headers: {
@@ -704,6 +725,7 @@ export class ChatManager {
                 },
                 body: JSON.stringify({
                     message: text,
+                    clientMessageId,
                     userId: this.config.userContext.userId,
                     courseName: this.config.userContext.courseName,
                     conversationMode: selectedModeForSend,
@@ -719,6 +741,10 @@ export class ChatManager {
             if (!data.success) {
                 throw new Error(data.error || 'Failed to send message');
             }
+
+            // Successful processing closes the retry window; a later send is a new message.
+            requestProcessed = true;
+            this.failedTransportAttempt = null;
 
             // console.log('[CHAT-MANAGER] ✅ Message sent successfully'); // 🟢 MEDIUM: Success info - keep for monitoring
             const persistedMode = data.conversationMode ?? selectedModeForSend;
@@ -773,6 +799,15 @@ export class ChatManager {
 
         } catch (error) {
             // console.error('[CHAT-MANAGER] 🚨 Error sending message:', error);
+
+            // Reuse this id only when transport/server processing did not complete.
+            if (!requestProcessed) {
+                this.failedTransportAttempt = {
+                    chatId: chatIdForSend,
+                    messageText: text,
+                    clientMessageId,
+                };
+            }
             
             // Remove placeholder messages from DOM and data using incremental updates
             this.removeMessageFromDOM(botMessageId);
@@ -1208,21 +1243,6 @@ export class ChatManager {
             performScroll();
         }
     }
-
-    /**
-     * Open disclaimer modal using the proper modal-overlay system
-     */
-    public async openDisclaimerModal(): Promise<void> {
-        const disclaimerContent = `
-            <p><strong>Purpose:</strong> This AI is designed as a study assistant to help you understand course materials. It is not a substitute for attending lectures, completing assignments, or your own critical thinking.</p>
-            <p><strong>Accuracy:</strong> While we strive for accuracy, the AI can make mistakes, misunderstand context, or generate incorrect information. Always verify critical information against your course materials and lectures.</p>
-            <p><strong>Academic Integrity:</strong> You are responsible for your own work. Do not submit AI-generated responses as your own. Use this tool to learn, not to cheat.</p>
-            <p><strong>Privacy:</strong> Your conversations may be reviewed for quality assurance and to improve the system. Do not share personal or sensitive information.</p>
-        `;
-        
-        await showDisclaimerModal('AI Assistant Disclaimer', disclaimerContent);
-    }
-
 
     // Artefact panel loading removed - now embedded in chat-window.html
 
@@ -1751,16 +1771,6 @@ export class ChatManager {
     }
 
     private bindModalEvents(): void {
-        // Use event delegation to handle dynamically loaded disclaimer links
-        document.addEventListener('click', (e) => {
-            const target = e.target as HTMLElement;
-            const disclaimerLink = target.closest('#disclaimer a') as HTMLAnchorElement | null;
-            if (disclaimerLink) {
-                e.preventDefault();
-                this.openDisclaimerModal();
-            }
-        });
-        
         // Use event delegation to handle questionUnstruggle button clicks
         document.addEventListener('click', async (e) => {
             const target = e.target as HTMLElement;

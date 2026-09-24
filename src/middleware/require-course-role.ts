@@ -109,6 +109,40 @@ export function requireInstructorForCourseAPI(sources: CourseIdSource[] = ['para
 }
 
 /**
+ * requireInstructorOrAdminForCourseAPI - Requires course-owner review permission.
+ *
+ * Platform administrators and faculty listed in `course.instructors` pass.
+ * Teaching assistants remain course staff for other features but are denied here.
+ *
+ * @param sources - Ordered request locations used to resolve the course id
+ * @returns Express middleware with JSON 401/403/404 failures
+ */
+export function requireInstructorOrAdminForCourseAPI(
+    sources: CourseIdSource[] = ['params', 'paramsId', 'body', 'session']
+) {
+    return async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const ctx = await loadCourseContext(req, sources);
+            if (!ctx.ok) {
+                return res.status(ctx.status).json({ error: ctx.error });
+            }
+
+            if (!canManageCourseRoster(ctx.course, ctx.globalUser)) {
+                appLogger.log(
+                    `[RBAC] User ${ctx.globalUser.userId} denied instructor/admin API access for course ${ctx.courseId}`
+                );
+                return res.status(403).json({ error: 'Instructor or administrator access required' });
+            }
+
+            next();
+        } catch (error) {
+            appLogger.error('[RBAC] Error in requireInstructorOrAdminForCourseAPI:', error);
+            res.status(500).json({ error: 'Internal server error' });
+        }
+    };
+}
+
+/**
  * Middleware: Require student role for course-scoped API endpoints
  * Returns 403 JSON if user is not enrolled or is course staff.
  */
@@ -130,6 +164,49 @@ export function requireStudentForCourseAPI(sources: CourseIdSource[] = ['params'
             next();
         } catch (error) {
             appLogger.error('[RBAC] Error in requireStudentForCourseAPI:', error);
+            res.status(500).json({ error: 'Internal server error' });
+        }
+    };
+}
+
+/**
+ * requireSelfOrInstructorForCourseAPI - Restricts a per-student record to its owner or course staff.
+ *
+ * Used by endpoints that carry a target user id in the path and serve two
+ * audiences: a student reading their own record, and staff reviewing any
+ * student in the course. Authentication alone is not sufficient, because the
+ * target user id is caller-supplied and would otherwise expose other students.
+ *
+ * @param userIdParam - Route parameter naming the record owner (for example `userId`)
+ * @param sources - Ordered request locations used to resolve the course id
+ * @returns Express middleware with JSON 401/403/404 failures
+ */
+export function requireSelfOrInstructorForCourseAPI(
+    userIdParam: string,
+    sources: CourseIdSource[] = ['params', 'paramsId', 'body', 'session']
+) {
+    return async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const ctx = await loadCourseContext(req, sources);
+            if (!ctx.ok) {
+                return res.status(ctx.status).json({ error: ctx.error });
+            }
+
+            // Stored user ids are numeric for some records and string for others,
+            // while a path parameter is always a string; compare on the string form.
+            const targetUserId = String((req.params as Record<string, unknown>)?.[userIdParam] ?? '');
+            const isSelf = targetUserId !== '' && String(ctx.globalUser.userId) === targetUserId;
+
+            if (!isSelf && !isCourseStaff(ctx.course, ctx.globalUser)) {
+                appLogger.log(
+                    `[RBAC] User ${ctx.globalUser.userId} denied self-or-instructor API access for course ${ctx.courseId}`
+                );
+                return res.status(403).json({ error: 'Instructor access required' });
+            }
+
+            next();
+        } catch (error) {
+            appLogger.error('[RBAC] Error in requireSelfOrInstructorForCourseAPI:', error);
             res.status(500).json({ error: 'Internal server error' });
         }
     };

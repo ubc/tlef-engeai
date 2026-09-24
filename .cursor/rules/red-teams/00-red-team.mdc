@@ -24,7 +24,7 @@ Act as adversary: probe APIs, auth boundaries, data leaks. **Advisory only** —
 - Session fixation / cookie flags across envs
 - Admin reset endpoints
 - Prompt injection affecting server behavior
-- Student PUID or private data in responses
+- Student PUID or private data in student-facing responses or logs
 
 ## Methods
 

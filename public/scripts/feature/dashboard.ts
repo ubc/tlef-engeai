@@ -2,8 +2,8 @@
 /**
  * Dashboard — instructor home cards, course-code topbar, and Advanced Settings.
  *
- * Renders curated navigation cards; Writing Feedback and Pathway Library appear
- * only when their course capabilities are enabled. Owns click-to-reveal course
+ * Renders curated navigation cards; Scenario Questions, Writing Feedback, and
+ * Pathway Library appear only when their course capabilities are enabled. Owns click-to-reveal course
  * code for all staff, and Advanced Settings (feature toggles + course metadata)
  * for faculty instructors and platform admins. Extra Feature Save is dirty-gated
  * like Model Settings. Dispatches `course-feature-changed` after successful
@@ -22,12 +22,15 @@ import { authService } from '../services/auth-service.js';
 import { showErrorModal } from '../ui/modal-overlay.js';
 import { showErrorToast, showSuccessToast } from '../ui/toast-notification.js';
 import { initializeModelSettings, refreshModelSettingsVisibility } from './model-setting.js';
+import { courseFeatureSnapshotFromDefaults, isBrowserCourseFeatureEnabled } from '../utils/course-features.js';
+import { wireCanvasRosterSync } from './canvas-roster-sync.js';
 
 interface DashboardCardDef {
     view: string;
     title: string;
     feather: string;
-    feature?: 'writingFeedback' | 'guidedPathway';
+    feature?: 'writingFeedback' | 'guidedPathway' | 'scenarioGeneration';
+    managerOnly?: boolean;
 }
 
 type FeatureKey = keyof CourseFeatures;
@@ -35,11 +38,13 @@ type FeatureKey = keyof CourseFeatures;
 const CARD_DEFS: DashboardCardDef[] = [
     { view: 'documents', title: 'Documents', feather: 'file-text' },
     { view: 'chat', title: 'Chat with EngE-AI', feather: 'message-circle' },
-    { view: 'assistant-prompts', title: 'Initial Assistant Prompt', feather: 'sun' },
-    { view: 'system-prompts', title: 'System Prompt', feather: 'sliders' },
-    { view: 'monitor', title: 'Monitor', feather: 'monitor' },
+    { view: 'scenario-questions', title: 'Scenario Questions', feather: 'clipboard', feature: 'scenarioGeneration' },
     { view: 'writing-feedback', title: 'Writing Feedback', feather: 'edit-3', feature: 'writingFeedback' },
-    { view: 'pathway-library', title: 'Pathway Library', feather: 'git-branch', feature: 'guidedPathway' }
+    { view: 'pathway-library', title: 'Pathway Library', feather: 'git-branch', feature: 'guidedPathway', managerOnly: true },
+    { view: 'flags', title: 'Flag Management', feather: 'alert-triangle' },
+    { view: 'monitor', title: 'Monitor', feather: 'monitor' },
+    { view: 'assistant-prompts', title: 'Initial Assistant Prompts', feather: 'sun' },
+    { view: 'system-prompts', title: 'System Prompts', feather: 'sliders' }
 ];
 
 const FEATURE_ENDPOINTS: Record<FeatureKey, string> = {
@@ -61,11 +66,14 @@ const FEATURE_INPUT_IDS: Record<FeatureKey, string> = {
  *
  * @param currentClass - Active course used for feature gating and metadata
  */
-export async function initializeDashboard(currentClass: activeCourse): Promise<void> {
+export async function initializeDashboard(
+    currentClass: activeCourse,
+    canManageCourse: boolean
+): Promise<void> {
     renderWelcomeHeader();
-    renderDashboardCards(currentClass);
+    renderDashboardCards(currentClass, canManageCourse);
     wireCourseCodeFlip(currentClass);
-    await wireAdvancedSettings(currentClass);
+    await wireAdvancedSettings(currentClass, canManageCourse);
     renderFeatherIcons();
 }
 
@@ -205,18 +213,19 @@ function syncDashboardCardOrder(
 /**
  * renderDashboardCards - rebuild the card grid from current course features.
  *
- * Optional Writing Feedback / Pathway Library cards animate out when disabled
+ * Optional Scenario Questions / Writing Feedback / Pathway Library cards animate out when disabled
  * and animate in when enabled (skipped when prefers-reduced-motion).
  *
  * @param currentClass - Active course whose features gate optional cards
  */
-export function renderDashboardCards(currentClass: activeCourse): void {
+export function renderDashboardCards(currentClass: activeCourse, canManageCourse: boolean): void {
     const container = document.getElementById('dashboard-cards');
     if (!container) return;
 
     const desired = CARD_DEFS.filter((card) => {
+        if (card.managerOnly && !canManageCourse) return false;
         if (!card.feature) return true;
-        return currentClass.features?.[card.feature]?.enabled === true;
+        return isBrowserCourseFeatureEnabled(currentClass, card.feature);
     });
     const desiredViews = new Set(desired.map((card) => card.view));
     const existing = [...container.querySelectorAll<HTMLButtonElement>('.dashboard-card')];
@@ -375,9 +384,8 @@ function bindAccordionToggle(itemId: string, toggleId: string, bodyId: string, c
  *
  * @param currentClass - Active course for toggles and metadata
  */
-async function wireAdvancedSettings(currentClass: activeCourse): Promise<void> {
+async function wireAdvancedSettings(currentClass: activeCourse, canManage: boolean): Promise<void> {
     const featuresTaNote = document.getElementById('dashboard-features-ta-note');
-    const canManage = await resolveCanManage(currentClass);
 
     fillCourseMetadata(currentClass);
 
@@ -390,26 +398,7 @@ async function wireAdvancedSettings(currentClass: activeCourse): Promise<void> {
     if (featuresTaNote) featuresTaNote.hidden = canManage;
 
     await wireFeatureToggles(currentClass, canManage);
-}
-
-/**
- * resolveCanManage - faculty instructor or platform admin (not TA).
- *
- * @param currentClass - Course whose instructors list is checked
- * @returns Whether the current user may edit capabilities / open Advanced Settings
- */
-async function resolveCanManage(currentClass: activeCourse): Promise<boolean> {
-    try {
-        const currentUserResponse = await fetch('/auth/current-user', { credentials: 'same-origin' });
-        const currentUserData = currentUserResponse.ok ? await currentUserResponse.json() : {};
-        const currentUser = currentUserData.globalUser;
-        const instructorIds = (currentClass.instructors ?? []).map((item: string | InstructorInfo) =>
-            typeof item === 'string' ? item : item.userId
-        );
-        return Boolean(currentUser?.isAdmin === true || instructorIds.includes(currentUser?.userId));
-    } catch {
-        return false;
-    }
+    wireCanvasRosterSync(currentClass, canManage);
 }
 
 /**
@@ -468,11 +457,7 @@ function readFeatureCheckboxSnapshot(): FeatureEnabledSnapshot {
  * featureSnapshotFromCourse - enabled flags from persisted course features.
  */
 function featureSnapshotFromCourse(currentClass: activeCourse): FeatureEnabledSnapshot {
-    const snapshot = {} as FeatureEnabledSnapshot;
-    for (const key of Object.keys(FEATURE_INPUT_IDS) as FeatureKey[]) {
-        snapshot[key] = currentClass.features?.[key]?.enabled === true;
-    }
-    return snapshot;
+    return courseFeatureSnapshotFromDefaults(currentClass.features);
 }
 
 /**
@@ -536,7 +521,7 @@ async function wireFeatureToggles(currentClass: activeCourse, canManage: boolean
             for (const key of keys) {
                 const input = document.getElementById(FEATURE_INPUT_IDS[key]) as HTMLInputElement;
                 const desired = input.checked;
-                const already = currentClass.features?.[key]?.enabled === true;
+                const already = isBrowserCourseFeatureEnabled(currentClass, key);
                 if (desired === already) continue;
 
                 const response = await fetch(
@@ -563,17 +548,17 @@ async function wireFeatureToggles(currentClass: activeCourse, canManage: boolean
                 );
             }
             persistedFeatures = featureSnapshotFromCourse(currentClass);
-            showSuccessToast('Extra Feature settings saved.');
-            renderDashboardCards(currentClass);
+            showSuccessToast('Feature settings saved.');
+            renderDashboardCards(currentClass, canManage);
             refreshModelSettingsVisibility(currentClass);
         } catch (error) {
             currentClass.features = snapshot;
             for (const key of Object.keys(FEATURE_INPUT_IDS) as FeatureKey[]) {
                 const input = document.getElementById(FEATURE_INPUT_IDS[key]) as HTMLInputElement | null;
-                if (input) input.checked = currentClass.features?.[key]?.enabled === true;
+                if (input) input.checked = isBrowserCourseFeatureEnabled(currentClass, key);
             }
             persistedFeatures = featureSnapshotFromCourse(currentClass);
-            renderDashboardCards(currentClass);
+            renderDashboardCards(currentClass, canManage);
             refreshModelSettingsVisibility(currentClass);
             await showErrorModal(
                 'Save Failed',
@@ -581,8 +566,8 @@ async function wireFeatureToggles(currentClass: activeCourse, canManage: boolean
             );
             showErrorToast(
                 appliedAny
-                    ? 'Some Extra Feature updates may have been applied. Reload and retry.'
-                    : 'Extra Feature settings were not changed.'
+                    ? 'Some feature updates may have been applied. Reload and retry.'
+                    : 'Feature settings were not changed.'
             );
         } finally {
             isSaving = false;

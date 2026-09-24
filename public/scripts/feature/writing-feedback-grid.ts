@@ -1,0 +1,1182 @@
+// public/scripts/feature/writing-feedback-grid.ts
+/**
+ * Writing Feedback Grid — criteria as rows, performance levels as columns
+ *
+ * One table replaces the two lists staff used to fill in separately. Every row is
+ * a criterion, every column a performance level, and every cell carries the points
+ * range that criterion awards at that level over the descriptor staff wrote for it.
+ * The last column holds the criterion's weight, and the table foots with the total
+ * those weights add up to.
+ *
+ * Bands are whole points. A weight too small to give every level its own range is
+ * unavoidable arithmetic rather than a defect, so the grid says so and still saves.
+ *
+ * Criterion and performance-level slugs are internal. They are derived from the
+ * label when a row or column is created and are never rendered.
+ *
+ * @author: @rdschrs
+ * @date: 2026-08-23
+ * @version: 1.0.0
+ * @description: Renders and edits one rubric as a single criteria-by-levels table.
+ */
+
+import { showConfirmModal } from '../ui/modal-overlay.js';
+import {
+    RubricCell,
+    RubricCriterion,
+    RubricDefinition,
+    RubricLevel,
+    autoGrow,
+    createButton,
+    createIconButton,
+    createText,
+    inputControl,
+    refreshIcons,
+    textAreaControl
+} from './writing-feedback-shared.js';
+
+/** Fewest criteria a rubric may carry. */
+export const MIN_CRITERIA = 1;
+/** Most criteria a rubric may carry. */
+export const MAX_CRITERIA = 10;
+/** Fewest performance levels a rubric may carry. */
+export const MIN_LEVELS = 2;
+/** Most performance levels a rubric may carry. */
+export const MAX_LEVELS = 8;
+/** Slug shape the rubric schema enforces on every criterion and performance-level id. */
+export const RUBRIC_SLUG = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
+
+const MAX_SLUG_LENGTH = 64;
+const MAX_CRITERION_LABEL = 80;
+const MAX_LEVEL_LABEL = 60;
+const MAX_DESCRIPTOR = 400;
+const MAX_TEXT = 1200;
+
+/* ------------------------------------------------------------------------- *
+ * Band arithmetic
+ *
+ * Mirrored from src/writing-feedback/rubric-bands.ts, which the browser bundle
+ * cannot import: public/scripts/ never reaches into src/. Behaviour here is
+ * identical, the same way public/scripts/types.ts mirrors src/types/shared.ts.
+ * Change one and change the other; src/writing-feedback/__tests__/rubric-bands.test.ts
+ * pins the behaviour both copies must have.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * spaceBandsEvenly - divides a criterion's weight into a contiguous band per level.
+ *
+ * Each level takes a slice of the weight, the slices touch so every whole point from
+ * zero to the weight falls in exactly one band, and the top level's band ends on the
+ * weight so rounding never loses a point. A weight smaller than the number of levels
+ * cannot give each level its own slice — whole points cannot be divided more finely
+ * than one apiece — so adjacent levels share a band. That is a real state, not an
+ * error, but callers that render these should warn staff it has happened.
+ *
+ * @param points - Maximum points the criterion contributes
+ * @param levels - Levels of the rubric, in any order; rank decides the sequence
+ * @returns Bands per level id, or an empty map when the criterion carries no weight
+ */
+export function spaceBandsEvenly(
+    points: number,
+    levels: ReadonlyArray<RubricLevel>
+): Record<string, RubricCell> {
+    if (!points || points <= 0 || levels.length === 0) return {};
+
+    const ordered = [...levels].sort((left, right) => left.rank - right.rank);
+    const bands: Record<string, RubricCell> = {};
+    let previousTop = -1;
+
+    ordered.forEach((level, index) => {
+        // The top level ends on the weight exactly; the rest take their proportional
+        // share rounded down, which is what makes the slices whole points.
+        const top = index === ordered.length - 1
+            ? points
+            : Math.floor((points * (index + 1)) / ordered.length);
+        // Where the weight is too small to advance, the band collapses onto its
+        // neighbour's value rather than starting above where it ends -- which the
+        // draft schema rejects outright.
+        const min = Math.min(previousTop + 1, top);
+        bands[level.id] = { min, max: top };
+        previousTop = top;
+    });
+
+    return bands;
+}
+
+/**
+ * resolveBand - the band a criterion awards at one level.
+ *
+ * @param criterion - Criterion whose band is wanted
+ * @param levelId - Level being resolved
+ * @param levels - Complete level set, used only when the band must be derived
+ * @returns The authored band, a derived one, or undefined when the criterion is
+ *          ordinal only or deliberately omits this level
+ */
+export function resolveBand(
+    criterion: RubricCriterion,
+    levelId: string,
+    levels: ReadonlyArray<RubricLevel>
+): RubricCell | undefined {
+    // An authored cells map is exhaustive for that criterion: a missing key means the
+    // criterion has no band at this level, not that one should be invented.
+    if (criterion.cells) return criterion.cells[levelId];
+    if (criterion.points === undefined) return undefined;
+    return spaceBandsEvenly(criterion.points, levels)[levelId];
+}
+
+/**
+ * respaceBandsEvenly - what "Spread points evenly" does to the grid, without touching it
+ *
+ * Every criterion that carries points gets evenly spaced bands in place of the ones it
+ * has. The rating titles and descriptions staff or Canvas wrote stay on their cells: only
+ * the numbers are the button's to replace.
+ *
+ * A column this criterion does not use is left empty rather than given a band. That is
+ * the same cell the grid shows as n/a -- an empty cell past the end of the row's ratings,
+ * in a column some other criterion does use -- so a short Canvas row keeps its shape. A
+ * gap in the middle of a row, and a column no criterion uses yet, are filled, because
+ * both are still owed.
+ *
+ * @param criteria - Criteria as the form currently holds them
+ * @param levels - The grid's rating columns
+ * @returns New criteria; the input is not modified
+ */
+export function respaceBandsEvenly(criteria: RubricCriterion[], levels: RubricLevel[]): RubricCriterion[] {
+    const ordered = [...levels].sort((left, right) => left.rank - right.rank);
+    const columnUsed = ordered.map((level) =>
+        criteria.some((criterion) => resolveBand(criterion, level.id, levels) !== undefined)
+    );
+
+    return criteria.map((criterion) => {
+        if (criterion.points === undefined || criterion.points <= 0) return criterion;
+
+        // Step 1: find the columns this row leaves unused, by the grid's own n/a rule.
+        const bands = ordered.map((level) => resolveBand(criterion, level.id, levels));
+        const lastFilled = bands.reduce((last, band, index) => (band ? index : last), -1);
+        const kept = ordered.filter((_, index) => {
+            const unused = bands[index] === undefined
+                && index > lastFilled
+                && lastFilled + 1 >= MIN_LEVELS
+                && columnUsed[index];
+            return !unused;
+        });
+
+        // Step 2: space the points across the columns that remain.
+        const spaced = spaceBandsEvenly(criterion.points, kept);
+
+        // Step 3: carry each cell's title and description onto its new band.
+        const cells: Record<string, RubricCell> = {};
+        kept.forEach((level) => {
+            const band = spaced[level.id];
+            if (!band) return;
+            const prior = criterion.cells?.[level.id];
+            cells[level.id] = {
+                ...band,
+                ...(prior?.label ? { label: prior.label } : {}),
+                ...(prior?.descriptor ? { descriptor: prior.descriptor } : {})
+            };
+        });
+        return { ...criterion, cells };
+    });
+}
+
+/**
+ * totalRubricPoints - sum of the criterion weights.
+ *
+ * @param criteria - Criteria of one rubric
+ * @returns Total points, counting only criteria that carry a weight
+ */
+export function totalRubricPoints(criteria: ReadonlyArray<RubricCriterion>): number {
+    return criteria.reduce((total, criterion) => total + (criterion.points ?? 0), 0);
+}
+
+/**
+ * earnedLevelFor - the level a staff-final grade falls in.
+ *
+ * Resolves through {@link resolveBand}, so a criterion that authored no cells still
+ * awards a level rather than none: `cells` is sparse, and reading it directly left
+ * every unbanded criterion unmarked wherever this answer is drawn.
+ *
+ * Bands do not always cover the criterion. An imported rubric can leave gaps, a rubric
+ * stored under the superseded single-value rule has `min === max` at every level, and a
+ * grade may be fractional. In each case the points fall in no band at all, so the answer
+ * clamps: the highest-ranked level the points reach, or the lowest banded level when
+ * they reach none. No band is invented -- every band here is one the rubric page already
+ * shows staff.
+ *
+ * @param criterion - Criterion the grade was awarded against
+ * @param levels - Complete level set of the rubric
+ * @param points - Staff-final points awarded for this criterion
+ * @returns The level earned, or undefined when the criterion has no bands to compare
+ */
+export function earnedLevelFor(
+    criterion: RubricCriterion,
+    levels: ReadonlyArray<RubricLevel>,
+    points: number
+): RubricLevel | undefined {
+    if (!Number.isFinite(points)) return undefined;
+
+    const banded = [...levels]
+        .sort((left, right) => left.rank - right.rank)
+        .map((level) => ({ level, band: resolveBand(criterion, level.id, levels) }))
+        .filter((entry): entry is { level: RubricLevel; band: RubricCell } => entry.band !== undefined);
+    if (!banded.length) return undefined;
+
+    const containing = banded.find((entry) => points >= entry.band.min && points <= entry.band.max);
+    if (containing) return containing.level;
+
+    // No band contains the points, so award the highest level they reach. Below every
+    // band, that is the lowest level the criterion offers.
+    const reached = banded.filter((entry) => points >= entry.band.min);
+    return reached.length ? reached[reached.length - 1].level : banded[0].level;
+}
+
+/* ------------------------------- End mirror ------------------------------- */
+
+/** Inclusive range typed by staff: a hyphen, an en or em dash, or the word "to". */
+const BAND_RANGE = /^(\d+(?:\.\d+)?)\s*(?:-|–|—|to)\s*(\d+(?:\.\d+)?)$/i;
+
+/**
+ * withinBandLimits - whether a number is a points value the draft schema will accept
+ *
+ * @param value - Candidate points value
+ * @returns True when finite and within 0..1000 inclusive
+ */
+function withinBandLimits(value: number): boolean {
+    return Number.isFinite(value) && value >= 0 && value <= 1000;
+}
+
+/**
+ * formatBand - the staff-facing text for the points one cell awards
+ *
+ * A band that collapsed onto a single value reads as that value; a real range reads
+ * as both ends, which is the number a marker actually needs -- "16-22" says what
+ * latitude the level allows in a way "22" cannot.
+ *
+ * @param cell - Cell to display
+ * @returns One number, or an inclusive range joined by an en dash
+ */
+export function formatBand(cell: RubricCell): string {
+    return cell.min === cell.max ? String(cell.max) : `${cell.min}–${cell.max}`;
+}
+
+/**
+ * parseBand - reads the points typed by staff into one cell
+ *
+ * Accepts one number, or a range written any of the ways staff actually write one.
+ * A range given high-end-first is normalised rather than refused; anything else is
+ * rejected rather than guessed at, so the cell reads as empty and its hint asks for
+ * points.
+ *
+ * @param text - Raw control value
+ * @returns The cell, or undefined when the text is blank or is not points
+ */
+export function parseBand(text: string): RubricCell | undefined {
+    const normalized = text.trim();
+    if (!normalized) return undefined;
+
+    const range = BAND_RANGE.exec(normalized);
+    if (range) {
+        const first = Number(range[1]);
+        const second = Number(range[2]);
+        if (!withinBandLimits(first) || !withinBandLimits(second)) return undefined;
+        // Written either way round; the schema requires min <= max.
+        return first <= second ? { min: first, max: second } : { min: second, max: first };
+    }
+
+    const points = Number(normalized);
+    if (!withinBandLimits(points)) return undefined;
+    return { min: points, max: points };
+}
+
+/**
+ * slugFromLabel - derives a criterion or level id from the name staff gave it
+ *
+ * @param label - Staff-authored label
+ * @returns A slug matching {@link RUBRIC_SLUG}, or '' when the label carries no
+ *          usable letters
+ */
+export function slugFromLabel(label: string): string {
+    const candidate = label
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^[^a-z]+/, '')
+        .replace(/_+$/, '')
+        .slice(0, MAX_SLUG_LENGTH)
+        .replace(/_+$/, '');
+    return RUBRIC_SLUG.test(candidate) ? candidate : '';
+}
+
+/**
+ * uniqueSlug - the first free id built from a preferred slug
+ *
+ * @param preferred - Slug derived from the label, or '' when none could be derived
+ * @param fallback - Prefix used when the label yields nothing usable
+ * @param taken - Every id already spoken for, including ids retired by an approved version
+ * @returns A slug that no criterion, level, or retired id already uses
+ */
+function uniqueSlug(preferred: string, fallback: 'criterion' | 'level', taken: ReadonlyArray<string>): string {
+    const used = new Set(taken);
+    const base = preferred || fallback;
+    if (!used.has(base) && preferred) return base;
+    let suffix = preferred ? 2 : used.size + 1;
+    let candidate = `${base}_${suffix}`;
+    while (used.has(candidate)) {
+        suffix += 1;
+        candidate = `${base}_${suffix}`;
+    }
+    return candidate;
+}
+
+/**
+ * escapeHtml - makes staff-authored text safe for a modal body
+ *
+ * `showConfirmModal` writes its message with innerHTML, so a label is escaped
+ * before it is quoted back to the person removing it.
+ *
+ * @param value - Raw label text
+ * @returns The same text with HTML syntax neutralized
+ */
+function escapeHtml(value: string): string {
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+/** Options the rubric page supplies for one grid. */
+export interface RubricGridOptions {
+    /** Whether the current staff user may modify this rubric. */
+    canEdit: boolean;
+    /** Shows the linguistic focus line; true for the writing rubric only. */
+    /** Active approved version, when this rubric has been approved at least once. */
+    approvedVersion?: number;
+    /** Version a structural change lands in, quoted in the removal confirmation. */
+    nextVersion: number;
+    /** Library criteria offered for explicit addition. */
+    library: ReadonlyArray<RubricCriterion>;
+    /** Every id any approved version has ever used, so a new row never reuses one. */
+    reservedIds: ReadonlyArray<string>;
+    /** Reads the live controls back into the working copy before a structural change. */
+    syncFromForm: () => void;
+    /** Marks the page dirty and refreshes the section header. */
+    onChange: () => void;
+    /** Announces structural changes through the section's live region. */
+    announce: (message: string) => void;
+    /**
+     * Builds a callout shown directly above the grid toolbar. A factory, not a node:
+     * every structural change redraws this container from scratch.
+     */
+    notice?: () => HTMLElement;
+}
+
+function named<T extends HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
+    control: T,
+    name: string,
+    label: string
+): T {
+    control.name = name;
+    control.setAttribute('aria-label', label);
+    return control;
+}
+
+/**
+ * authorshipControl - who writes this criterion's feedback.
+ *
+ * Extraction yields verified text alone, so a criterion resting on how the document
+ * looks -- fonts, margins, spacing, the file itself -- has no evidence the model can
+ * reach. Marked "Teaching team", it is withheld from generation and staff write it
+ * during review instead.
+ *
+ * A two-option segmented control rather than a select: the default is the common case,
+ * and a collapsed select showing it reads as a status label rather than a choice, so an
+ * instructor scanning the grid would never learn the alternative exists. Both options
+ * stay on screen, under a visible label naming the question.
+ *
+ * @param criterion - Criterion the row renders
+ * @param rowIndex - Row position supplying the shared radio name
+ * @param gridId - Grid identity, so each row's label can be referenced by id
+ * @param canEdit - Whether this rubric is editable
+ * @param onChange - Dirty-marking callback shared by every grid control
+ * @returns The labelled radio group, ready to append to the row head
+ */
+function authorshipControl(
+    criterion: RubricCriterion,
+    rowIndex: number,
+    gridId: string,
+    canEdit: boolean,
+    onChange: () => void
+): HTMLElement {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'wf-grid-authorship';
+
+    const labelId = `${gridId}-authorship-${rowIndex}`;
+    const caption = createText('span', 'Feedback written by', 'wf-grid-authorship__label');
+    caption.id = labelId;
+
+    const group = document.createElement('div');
+    group.className = 'wf-grid-seg';
+    group.setAttribute('role', 'radiogroup');
+    group.setAttribute('aria-labelledby', labelId);
+
+    // Absent means model, the same default the server applies.
+    const selected = criterion.assessedBy === 'staff' ? 'staff' : 'model';
+    ([
+        ['model', 'EngE-AI'],
+        ['staff', 'Course staff']
+    ] as const).forEach(([value, text]) => {
+        const option = document.createElement('label');
+        // The hue is per option, not per state, so a row's answer is legible at a glance
+        // down a grid of ten: green where EngE-AI drafts, blue where course staff write.
+        option.className = `wf-grid-seg__option wf-grid-seg__option--${value}`;
+        const input = document.createElement('input');
+        input.type = 'radio';
+        input.className = 'wf-grid-seg__input';
+        input.name = `criterion.${rowIndex}.assessedBy`;
+        input.value = value;
+        input.checked = value === selected;
+        input.disabled = !canEdit;
+        input.addEventListener('change', onChange);
+        option.append(input, createText('span', text, 'wf-grid-seg__text'));
+        group.append(option);
+    });
+
+    wrapper.append(caption, group);
+    return wrapper;
+}
+
+/**
+ * relabel - keeps an icon button's accessible name on the label staff are typing
+ *
+ * @param button - Icon button built by createIconButton, which names it twice
+ * @param label - Replacement accessible name and tooltip
+ */
+function relabel(button: HTMLButtonElement, label: string): void {
+    button.setAttribute('aria-label', label);
+    button.title = label;
+}
+
+/**
+ * bandsDisagreeAt - the top of a criterion's authored bands when it contradicts the weight
+ *
+ * Derived bands always agree by construction, so only an authored `cells` map can
+ * disagree. Staff are told; saving is never blocked.
+ *
+ * @param criterion - Criterion to inspect
+ * @returns The highest authored band value when it differs from the weight, else undefined
+ */
+function bandsDisagreeAt(criterion: RubricCriterion): number | undefined {
+    if (criterion.points === undefined || !criterion.cells) return undefined;
+    const maxima = Object.values(criterion.cells).map((cell) => cell.max);
+    if (!maxima.length) return undefined;
+    const highest = Math.max(...maxima);
+    return highest === criterion.points ? undefined : highest;
+}
+
+
+/**
+ * renderRubricGrid - draws one rubric as a single criteria-by-levels table
+ *
+ * The grid owns every control for this rubric's criteria and levels and names them
+ * `criterion.{row}.*` / `level.{column}.*`, the convention `syncStructuredValues`
+ * in writing-feedback-rubric.ts reads back on save. Adding a name here without
+ * teaching that function to read it, or removing one without teaching it to carry
+ * the stored value through, loses data silently.
+ *
+ * @param container - Mount point inside the rubric section's form
+ * @param draft - Working copy for this rubric; mutated in place by structural edits
+ * @param options - Permissions, page-level callbacks, and approval context
+ */
+export function renderRubricGrid(
+    container: HTMLElement,
+    draft: RubricDefinition,
+    options: RubricGridOptions
+): void {
+    const gridId = `wf-grid-${crypto.randomUUID()}`;
+    const { canEdit, onChange, announce, syncFromForm } = options;
+    const rerender = (): void => renderRubricGrid(container, draft, options);
+
+    const focusRow = (index: number): void => {
+        window.requestAnimationFrame(() => {
+            const row = container.querySelector<HTMLElement>(`[data-criterion-index="${index}"]`);
+            row?.querySelector<HTMLInputElement>('input')?.focus();
+        });
+    };
+    const focusColumn = (index: number): void => {
+        window.requestAnimationFrame(() => {
+            // A column header carries only controls now, so the first editable thing in the
+            // column is the top cell's rating name. The header's own controls are the
+            // fallback, for a grid whose criteria all sit below the fold.
+            const firstName = container.querySelector<HTMLInputElement>(
+                `[name="criterion.0.cell.${index}.label"]`
+            );
+            if (firstName) {
+                firstName.focus();
+                return;
+            }
+            const head = container.querySelector<HTMLElement>(`[data-level-index="${index}"]`);
+            head?.querySelector<HTMLButtonElement>('button:not([disabled])')?.focus();
+        });
+    };
+
+    /** Ids created in this editing session, whose slug still follows the label. */
+    const pendingIds = new Set<string>(
+        (container.dataset.pendingIds ?? '').split(',').filter(Boolean)
+    );
+    const rememberPending = (): void => {
+        container.dataset.pendingIds = [...pendingIds].join(',');
+    };
+
+    const allIds = (): string[] => [
+        ...draft.criteria.map((criterion) => criterion.id),
+        ...draft.levels.map((level) => level.id),
+        ...options.reservedIds
+    ];
+
+    container.replaceChildren();
+
+    // Sits with the toolbar rather than at the top of the page so staff read it where
+    // they would act on it.
+    if (options.notice) container.append(options.notice());
+
+    /* Toolbar ------------------------------------------------------------- */
+
+    if (canEdit) {
+        const toolbar = document.createElement('div');
+        toolbar.className = 'wf-rubric-tools';
+
+        const addCriterion = createButton(
+            'Add a criterion',
+            'outline',
+            async () => {
+                syncFromForm();
+                const label = 'New criterion';
+                const id = uniqueSlug(slugFromLabel(label), 'criterion', allIds());
+                draft.criteria.push({ id, label, description: '' });
+                pendingIds.add(id);
+                rememberPending();
+                onChange();
+                rerender();
+                announce(`Criterion added. ${draft.criteria.length} criteria total.`);
+                focusRow(draft.criteria.length - 1);
+            },
+            draft.criteria.length >= MAX_CRITERIA
+        );
+
+        const addLevel = createButton(
+            'Add a rating',
+            'outline',
+            async () => {
+                syncFromForm();
+                const label = 'New rating';
+                const id = uniqueSlug(slugFromLabel(label), 'level', allIds());
+                draft.levels.push({ id, label, description: '', rank: draft.levels.length + 1 });
+                pendingIds.add(id);
+                rememberPending();
+                onChange();
+                rerender();
+                announce(`Performance level added at position ${draft.levels.length} of ${draft.levels.length}.`);
+                focusColumn(draft.levels.length - 1);
+            },
+            draft.levels.length >= MAX_LEVELS
+        );
+
+        const spreadEvenly = createButton(
+            'Spread points evenly',
+            'outline',
+            async () => {
+                syncFromForm();
+                // Autosave follows every edit within seconds, so an accidental click is
+                // saved before it can be noticed. The replacement is confirmed first.
+                const confirmation = await showConfirmModal(
+                    'Spread points evenly?',
+                    'Every criterion with points gets new, evenly spaced points ranges in place of the ones it has now. Rating titles and descriptions are kept, and cells marked n/a stay empty.',
+                    'Spread points',
+                    'Cancel',
+                    'danger'
+                );
+                // The modal resolves to its own slugified button label.
+                if (confirmation.action !== 'spread-points') return;
+                // In place: the grid's other actions and the page hold this same array.
+                draft.criteria.splice(0, draft.criteria.length, ...respaceBandsEvenly(draft.criteria, draft.levels));
+                onChange();
+                rerender();
+                announce('Points spaced evenly across every level.');
+            },
+            !draft.criteria.some((criterion) => (criterion.points ?? 0) > 0)
+        );
+
+        const available = options.library.filter(
+            (candidate) => !draft.criteria.some((criterion) => criterion.id === candidate.id)
+        );
+        const librarySelect = document.createElement('select');
+        librarySelect.className = 'wf-rubric-library-select';
+        librarySelect.setAttribute('aria-label', 'Criterion to add from the library');
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        // Says what the list holds and what choosing from it does. "Pick one…" named
+        // neither, so the control read as a filter or a setting rather than as a way to
+        // add a ready-made criterion.
+        placeholder.textContent = available.length ? 'Select a criterion to add…' : 'No more criteria to add';
+        librarySelect.append(placeholder);
+        available.forEach((candidate) => {
+            const option = document.createElement('option');
+            option.value = candidate.id;
+            option.textContent = candidate.label;
+            librarySelect.append(option);
+        });
+        librarySelect.disabled = !available.length || draft.criteria.length >= MAX_CRITERIA;
+        // Filled rather than outlined: disabled until a criterion is selected, and an
+        // outline at reduced opacity is too close to an outline at full opacity to tell
+        // the moment it becomes clickable.
+        const addFromLibrary = createButton(
+            'Add selected',
+            'primary',
+            async () => {
+                const candidate = available.find((entry) => entry.id === librarySelect.value);
+                if (!candidate) {
+                    librarySelect.focus();
+                    return;
+                }
+                syncFromForm();
+                draft.criteria.push({ ...candidate });
+                onChange();
+                rerender();
+                announce(`${candidate.label} added from the criterion library. Position ${draft.criteria.length} of ${draft.criteria.length}.`);
+                focusRow(draft.criteria.length - 1);
+            },
+            true
+        );
+        librarySelect.addEventListener('change', () => {
+            addFromLibrary.disabled = librarySelect.disabled || !librarySelect.value;
+        });
+        // The two "add" buttons are one segmented control: they do the same kind of
+        // thing to the same table, and the rest of the toolbar is pushed away from them.
+        const addGroup = document.createElement('div');
+        addGroup.className = 'wf-grid-tools__add';
+        addGroup.append(addCriterion, addLevel);
+
+        const spacer = document.createElement('span');
+        spacer.className = 'wf-grid-tools__spacer';
+
+        toolbar.append(addGroup, spacer, spreadEvenly, librarySelect, addFromLibrary);
+        container.append(toolbar);
+
+        const bandHint = createText(
+            'p',
+            'Points can be a single numeric value, or a range of values (e.g., 16–22).',
+            'wf-grid-band-hint'
+        );
+        bandHint.id = `${gridId}-band-hint`;
+
+        // The reason behind the per-row choice, stated once. Repeating it on every row
+        // would crowd the grid, and without it the control says what it does but never
+        // why an instructor would reach for it.
+        const authorshipHint = createText(
+            'p',
+            'The AI only receives the text of a submission. For a criterion that depends on how '
+            + 'the document looks \u2014 font, spacing, margins, the file itself \u2014 choose '
+            + '"Course staff" and write that feedback yourself during review.',
+            'wf-grid-band-hint'
+        );
+        authorshipHint.id = `${gridId}-authorship-hint`;
+        container.append(bandHint, authorshipHint);
+    }
+
+    /* Table --------------------------------------------------------------- */
+
+    const scroller = document.createElement('div');
+    scroller.className = 'wf-grid-scroll';
+    const table = document.createElement('table');
+    table.className = 'wf-grid';
+
+    // Canvas names a rating per row rather than per column, so the columns carry no names
+    // of their own: one "Ratings" heading spans them, as a Canvas rubric reads, and each
+    // cell names its own rating. The columns are still the scale -- their ids are what the
+    // feedback engine returns and what the bands resolve against -- so the controls that
+    // act on a column sit in a second header row, under the column each one acts on.
+    const head = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    // The text sits in a span, not straight in the cell: the headings beside it are bars
+    // as tall as their icon buttons, so a bare heading starts several pixels higher than
+    // they do. The span reproduces that box.
+    const criterionHead = document.createElement('th');
+    criterionHead.className = 'wf-grid-corner';
+    criterionHead.append(createText('span', 'Criterion', 'wf-grid-head-title'));
+    criterionHead.id = `${gridId}-criterion`;
+    criterionHead.setAttribute('scope', 'col');
+    criterionHead.rowSpan = 2;
+    headRow.append(criterionHead);
+
+    const ratingsHead = document.createElement('th');
+    ratingsHead.className = 'wf-grid-ratings-head';
+    ratingsHead.append(createText('span', 'Ratings', 'wf-grid-head-title'));
+    ratingsHead.id = `${gridId}-ratings`;
+    ratingsHead.setAttribute('scope', 'colgroup');
+    ratingsHead.colSpan = draft.levels.length;
+    headRow.append(ratingsHead);
+
+    // Rendered whether or not it carries controls: its cells are what the body cells'
+    // `headers` point at, and they hold each column's accessible name.
+    const controlsRow = document.createElement('tr');
+    controlsRow.className = 'wf-grid-controls-row';
+
+    draft.levels.forEach((level, index) => {
+        const cell = document.createElement('th');
+        cell.className = 'wf-grid-col-head';
+        cell.id = `${gridId}-l-${index}`;
+        cell.setAttribute('scope', 'col');
+        cell.dataset.levelIndex = String(index);
+
+        // The column has no visible name now, so its position is its accessible name, and
+        // the name every announcement about the column uses.
+        cell.append(createText('span', `Rating ${index + 1}`, 'wf-visually-hidden'));
+
+        const bar = document.createElement('div');
+        bar.className = 'wf-grid-head-bar';
+        // The level's own label is no longer edited here, because each cell names its own
+        // rating. It survives as the name a cell that was never named falls back to, and
+        // as what the remove confirmation and the icon buttons call this column.
+        const liveLabel = (): string => level.label.trim() || `Rating ${index + 1}`;
+
+        if (canEdit) {
+            const controls = document.createElement('div');
+            controls.className = 'wf-grid-head-controls';
+            const move = async (direction: -1 | 1): Promise<void> => {
+                const target = index + direction;
+                if (target < 0 || target >= draft.levels.length) return;
+                syncFromForm();
+                const [moved] = draft.levels.splice(index, 1);
+                draft.levels.splice(target, 0, moved);
+                draft.levels.forEach((entry, rankIndex) => { entry.rank = rankIndex + 1; });
+                onChange();
+                rerender();
+                announce(`${moved.label || 'Rating'} moved to position ${target + 1} of ${draft.levels.length}.`);
+                focusColumn(target);
+            };
+            const left = createIconButton('arrow-left', `Move rating ${liveLabel()} left`, 'neutral', async () => move(-1));
+            left.classList.add('wf-grid-affordance');
+            left.disabled = index === 0;
+            const right = createIconButton('arrow-right', `Move rating ${liveLabel()} right`, 'neutral', async () => move(1));
+            right.classList.add('wf-grid-affordance');
+            right.disabled = index === draft.levels.length - 1;
+            const remove = createIconButton('trash-2', `Remove rating ${liveLabel()}`, 'danger', async () => {
+                if (draft.levels.length <= MIN_LEVELS) {
+                    announce(`At least ${MIN_LEVELS} ratings are required.`);
+                    return;
+                }
+                if (!(await confirmRemoval('level', liveLabel(), options))) return;
+                syncFromForm();
+                const [removed] = draft.levels.splice(index, 1);
+                draft.levels.forEach((entry, rankIndex) => { entry.rank = rankIndex + 1; });
+                onChange();
+                rerender();
+                announce(`${removed.label || 'Rating'} removed. ${draft.levels.length} ratings remain.`);
+                focusColumn(Math.min(index, draft.levels.length - 1));
+            });
+            remove.classList.add('wf-grid-affordance');
+            remove.disabled = draft.levels.length <= MIN_LEVELS;
+            controls.append(left, right, remove);
+            bar.append(controls);
+        }
+
+        cell.append(bar);
+        controlsRow.append(cell);
+    });
+
+    const pointsHead = document.createElement('th');
+    pointsHead.className = 'wf-grid-points-head';
+    pointsHead.append(createText('span', 'Points', 'wf-grid-head-title'));
+    pointsHead.id = `${gridId}-points`;
+    pointsHead.setAttribute('scope', 'col');
+    pointsHead.rowSpan = 2;
+    headRow.append(pointsHead);
+    head.append(headRow, controlsRow);
+    table.append(head);
+
+    const body = document.createElement('tbody');
+    const totalCell = document.createElement('td');
+    totalCell.className = 'wf-grid-total';
+
+    // The total follows the weight controls while staff type, so it reads them back
+    // rather than the working copy, which only catches up on save.
+    const refreshTotal = (): void => {
+        const live = draft.criteria.map((criterion, index) => {
+            const control = container.querySelector<HTMLInputElement>(`[name="criterion.${index}.points"]`);
+            if (!control) return criterion;
+            const raw = control.value.trim();
+            const points = raw ? Number(raw) : undefined;
+            return { ...criterion, points: points !== undefined && Number.isFinite(points) ? points : undefined };
+        });
+        // An ordinal rubric carries no weights at all; it gets no total rather than a zero.
+        const weighted = live.some((criterion) => criterion.points !== undefined);
+        totalCell.textContent = weighted ? String(Number(totalRubricPoints(live).toFixed(2))) : '';
+    };
+
+    // Whether an empty cell is a rating the criterion does not use, or one nobody has
+    // filled in yet, is a fact about the whole grid: a column no criterion uses is a
+    // rating just added to every row, not a rating every row declines. So the points
+    // controls are registered by column, and any edit re-reads all of them.
+    const bandsByColumn: HTMLInputElement[][] = draft.levels.map(() => []);
+    const cellSyncers: Array<() => void> = [];
+    const syncGrid = (): void => { cellSyncers.forEach((sync) => sync()); };
+
+    draft.criteria.forEach((criterion, rowIndex) => {
+        const row = document.createElement('tr');
+        row.className = 'wf-grid-row';
+        row.dataset.criterionIndex = String(rowIndex);
+
+        const rowHead = document.createElement('th');
+        rowHead.className = 'wf-grid-row-head';
+        rowHead.id = `${gridId}-c-${rowIndex}`;
+        rowHead.setAttribute('scope', 'row');
+
+        const bar = document.createElement('div');
+        bar.className = 'wf-grid-head-bar';
+        const label = named(inputControl(criterion.label), `criterion.${rowIndex}.label`, `Criterion ${rowIndex + 1} name`);
+        label.maxLength = MAX_CRITERION_LABEL;
+        label.readOnly = !canEdit;
+        label.className = 'wf-grid-label-input';
+        label.addEventListener('input', onChange);
+        // A criterion added in this session still takes its slug from its name.
+        // Anything the server has already approved keeps the id it was approved with.
+        label.addEventListener('change', () => {
+            const current = draft.criteria[rowIndex];
+            if (!current || !pendingIds.has(current.id)) return;
+            const derived = slugFromLabel(label.value);
+            if (!derived || derived === current.id) return;
+            const others = allIds().filter((id) => id !== current.id);
+            const next = uniqueSlug(derived, 'criterion', others);
+            pendingIds.delete(current.id);
+            pendingIds.add(next);
+            rememberPending();
+            current.id = next;
+        });
+        bar.append(label);
+        const liveLabel = (): string => label.value.trim() || `Criterion ${rowIndex + 1}`;
+
+        if (canEdit) {
+            const remove = createIconButton('trash-2', `Remove criterion ${liveLabel()}`, 'danger', async () => {
+                if (draft.criteria.length <= MIN_CRITERIA) {
+                    announce('At least one criterion is required.');
+                    return;
+                }
+                if (!(await confirmRemoval('criterion', liveLabel(), options))) return;
+                syncFromForm();
+                const [removed] = draft.criteria.splice(rowIndex, 1);
+                pendingIds.delete(removed.id);
+                rememberPending();
+                onChange();
+                rerender();
+                announce(`${removed.label || 'Criterion'} removed. ${draft.criteria.length} criteria remain.`);
+                focusRow(Math.min(rowIndex, draft.criteria.length - 1));
+            });
+            remove.classList.add('wf-grid-affordance');
+            remove.disabled = draft.criteria.length <= MIN_CRITERIA;
+            bar.append(remove);
+            label.addEventListener('input', () => relabel(remove, `Remove criterion ${liveLabel()}`));
+        }
+
+        const description = named(
+            textAreaControl(criterion.description, 3),
+            `criterion.${rowIndex}.description`,
+            `Criterion ${rowIndex + 1} description`
+        );
+        description.maxLength = MAX_TEXT;
+        description.readOnly = !canEdit;
+        description.className = 'wf-grid-text';
+        autoGrow(description);
+        description.addEventListener('input', onChange);
+        rowHead.append(bar, description, authorshipControl(criterion, rowIndex, gridId, canEdit, onChange));
+
+        row.append(rowHead);
+
+        // Authored cells are exhaustive, so a missing key is an empty cell. A criterion
+        // with a weight but no authored cells is pinned to its derived bands here, so
+        // editing one cell cannot blank the rest of the row.
+        const bands = criterion.cells ?? (
+            criterion.points === undefined ? {} : spaceBandsEvenly(criterion.points, draft.levels)
+        );
+
+        // A cell also reads its own row, for where that row's ratings stop.
+        const rowBands: HTMLInputElement[] = [];
+
+        draft.levels.forEach((level, columnIndex) => {
+            const cell = document.createElement('td');
+            cell.className = 'wf-grid-cell';
+            cell.headers = `${gridId}-c-${rowIndex} ${gridId}-l-${columnIndex}`;
+
+            const band = bands[level.id];
+            // Canvas names its ratings per row, so the name lives in the cell. A cell with
+            // points but no name of its own -- any rubric not imported from Canvas -- starts
+            // with the column's label, the same name the prompt, the PDF and the review
+            // already give it, so the editor never shows a blank title that nothing else
+            // treats as blank. Saving writes it into the cell. A cell without points has no
+            // rating yet and stays empty.
+            const ratingName = named(
+                inputControl(band ? (band.label?.trim() || level.label) : ''),
+                `criterion.${rowIndex}.cell.${columnIndex}.label`,
+                `Rating name for criterion ${rowIndex + 1} at rating ${columnIndex + 1}`
+            );
+            ratingName.className = 'wf-grid-label-input wf-grid-cell-name';
+            ratingName.maxLength = MAX_LEVEL_LABEL;
+            ratingName.readOnly = !canEdit;
+
+            ratingName.addEventListener('input', onChange);
+
+            const bandInput = named(
+                inputControl(band ? formatBand(band) : ''),
+                `criterion.${rowIndex}.cell.${columnIndex}.band`,
+                `Points for criterion ${rowIndex + 1} at level ${columnIndex + 1}`
+            );
+            bandInput.className = 'wf-grid-band';
+            bandInput.readOnly = !canEdit;
+            bandInput.setAttribute('aria-describedby', `${gridId}-band-hint`);
+
+            const descriptor = named(
+                textAreaControl(band?.descriptor ?? '', 2),
+                `criterion.${rowIndex}.cell.${columnIndex}.descriptor`,
+                `Descriptor for criterion ${rowIndex + 1} at level ${columnIndex + 1}`
+            );
+            descriptor.maxLength = MAX_DESCRIPTOR;
+            descriptor.className = 'wf-grid-text';
+            autoGrow(descriptor);
+            descriptor.addEventListener('input', onChange);
+
+            // A descriptor is stored inside its band, so a cell with no range has
+            // nowhere to keep one. The control stays visible and reads as unavailable
+            // rather than accepting text that could not be saved; approval (not draft
+            // save) is what actually blocks on this, enforced separately by
+            // requireCompleteRubricCells on the server.
+            //
+            // What each control wants is said in the control, as a placeholder. A line
+            // of hint text underneath said the same two things a second time, in the
+            // same cell, and a rubric this wide cannot afford to say anything twice.
+            const syncCellState = (): void => {
+                const bandFilled = Boolean(parseBand(bandInput.value));
+                descriptor.readOnly = !canEdit || !bandFilled;
+                // The name is stored in the band beside the descriptor, so it is gated on
+                // the same prerequisite for the same reason.
+                ratingName.readOnly = !canEdit || !bandFilled;
+
+                // Past the last rating this row offers, with enough of them before it to
+                // separate any work, and in a column some other criterion does use: then
+                // the cell is one this criterion does not use. Every other empty cell is
+                // still owed -- a row just started, and a column just added to every row,
+                // are both prompted rather than excused.
+                const lastFilled = rowBands.reduce(
+                    (last, input, index) => (parseBand(input.value) ? index : last),
+                    -1
+                );
+                const columnUsed = bandsByColumn[columnIndex].some((input) => parseBand(input.value));
+                const unused = !bandFilled
+                    && columnIndex > lastFilled
+                    && lastFilled + 1 >= MIN_LEVELS
+                    && columnUsed;
+
+                // A cell locked for want of a range names the prerequisite rather than
+                // inviting text it cannot take; saying nothing at all was worse than
+                // either, since the field then reads as absent until someone happens to
+                // click it. A reader who cannot edit is told neither: both lines ask for
+                // an edit, and only staff with permission can make one.
+                descriptor.placeholder = !canEdit
+                    ? ''
+                    : (unused ? 'n/a' : (bandFilled ? 'Enter a description' : 'Add points first'));
+                bandInput.placeholder = !canEdit ? '' : (unused ? 'n/a' : 'Enter points');
+                // "Enter title", not the column's own label: a greyed-out level name reads
+                // as a value the cell already carries rather than as a box to fill.
+                ratingName.placeholder = !canEdit ? '' : (unused ? 'n/a' : 'Enter title');
+                cell.classList.toggle('wf-grid-cell--empty', !bandFilled);
+                cell.classList.toggle('wf-grid-cell--unused', unused);
+            };
+            rowBands.push(bandInput);
+            bandsByColumn[columnIndex].push(bandInput);
+            cellSyncers.push(syncCellState);
+
+            let lastValid = bandInput.value;
+            bandInput.addEventListener('input', () => {
+                // The whole grid, not this cell: filling or clearing a rating changes which
+                // cells after it in this row are unused, and whether its column is one any
+                // criterion uses at all.
+                syncGrid();
+                onChange();
+            });
+            bandInput.addEventListener('change', () => {
+                const raw = bandInput.value.trim();
+                const parsed = parseBand(raw);
+                if (raw && !parsed) bandInput.value = lastValid;
+                else bandInput.value = parsed ? formatBand(parsed) : '';
+                lastValid = bandInput.value;
+                syncGrid();
+            });
+            descriptor.addEventListener('input', syncCellState);
+
+            // Points first, then the rating's name, then what earns it.
+            cell.append(bandInput, ratingName, descriptor);
+            row.append(cell);
+        });
+
+
+
+        const weightCell = document.createElement('td');
+        weightCell.className = 'wf-grid-weight';
+        weightCell.headers = `${gridId}-c-${rowIndex} ${gridId}-points`;
+        const weight = named(
+            inputControl(criterion.points === undefined ? '' : String(criterion.points), 'number'),
+            `criterion.${rowIndex}.points`,
+            `Points for criterion ${rowIndex + 1}`
+        );
+        // No placeholder: 6rem clips anything longer than a couple of words, and the
+        // column heading already says what the number is. What an empty cell needed was
+        // not wording but a visible box, which .wf-grid-weight-input now draws.
+        weight.min = '0';
+        weight.max = '1000';
+        weight.step = '1';
+        weight.readOnly = !canEdit;
+        weight.className = 'wf-grid-weight-input';
+
+        const warnings = document.createElement('div');
+        warnings.className = 'wf-grid-warnings';
+        const refreshWarnings = (): void => {
+            warnings.replaceChildren();
+            const raw = weight.value.trim();
+            const points = raw ? Number(raw) : undefined;
+            if (points !== undefined && Number.isFinite(points) && points > 0 && points < draft.levels.length - 1) {
+                warnings.append(createText(
+                    'p',
+                    `This criterion needs at least ${draft.levels.length - 1} points to give every level its own range.`,
+                    'wf-grid-warning'
+                ));
+            }
+            const highest = bandsDisagreeAt({
+                ...criterion,
+                points,
+                cells: readAuthoredCells(row, draft, rowIndex)
+            });
+            if (highest !== undefined) {
+                warnings.append(createText(
+                    'p',
+                    `These bands top out at ${highest}, not ${points} points.`,
+                    'wf-grid-warning'
+                ));
+            }
+        };
+        weight.addEventListener('input', () => {
+            refreshTotal();
+            onChange();
+        });
+        // Both warnings depend on the weight and on every band in this row, so they
+        // are recomputed from whichever control in the row just changed.
+        row.addEventListener('input', refreshWarnings);
+        refreshWarnings();
+
+        weightCell.append(weight, warnings);
+        row.append(weightCell);
+        body.append(row);
+    });
+
+    // Deferred until every cell exists, because each one reads its row and its column.
+    syncGrid();
+
+    table.append(body);
+
+    const foot = document.createElement('tfoot');
+    const footRow = document.createElement('tr');
+    const totalLabel = document.createElement('th');
+    totalLabel.className = 'wf-grid-total-label';
+    totalLabel.scope = 'row';
+    totalLabel.colSpan = draft.levels.length + 1;
+    // The label spans every column left of the points, so the cell itself is wider than
+    // the scrollport and pinning it would do nothing. Its text is carried in a span that
+    // is pinned instead, which keeps the label beside the total it names at every scroll
+    // offset rather than only at the far right of a wide rubric.
+    totalLabel.append(createText('span', 'Total Points', 'wf-grid-total-label__text'));
+    footRow.append(totalLabel, totalCell);
+    foot.append(footRow);
+    table.append(foot);
+
+    scroller.append(table);
+    container.append(scroller);
+    refreshTotal();
+    refreshIcons();
+}
+
+/**
+ * readAuthoredCells - the bands one row currently shows, read back from its controls
+ *
+ * Warnings are recomputed while staff type, so they read the live controls rather
+ * than the working copy, which only catches up on save or a structural change.
+ *
+ * @param scope - Element holding this row's controls
+ * @param draft - Working copy supplying level ids for the column positions
+ * @param rowIndex - Row being inspected
+ * @returns Band map keyed by level id, or undefined when the row shows no bands
+ */
+function readAuthoredCells(
+    scope: ParentNode,
+    draft: RubricDefinition,
+    rowIndex: number
+): Record<string, RubricCell> | undefined {
+    const cells: Record<string, RubricCell> = {};
+    draft.levels.forEach((level, columnIndex) => {
+        const control = scope.querySelector<HTMLInputElement>(
+            `[name="criterion.${rowIndex}.cell.${columnIndex}.band"]`
+        );
+        const band = control ? parseBand(control.value) : undefined;
+        if (band) cells[level.id] = band;
+    });
+    return Object.keys(cells).length ? cells : undefined;
+}
+
+/**
+ * confirmRemoval - asks before a row or column leaves the rubric
+ *
+ * An unapproved draft is confirmed plainly. Once a version has been approved,
+ * removal creates the next version, so the confirmation names that version and
+ * says what staff must do about work already sitting on the current one.
+ *
+ * @param kind - Whether a criterion or a performance level is being removed
+ * @param label - Staff-visible name of the row or column
+ * @param options - Grid options carrying the approval context
+ * @returns True when staff confirmed the removal
+ */
+async function confirmRemoval(
+    kind: 'criterion' | 'level',
+    label: string,
+    options: RubricGridOptions
+): Promise<boolean> {
+    const noun = kind === 'criterion' ? 'criterion' : 'rating';
+    const quoted = escapeHtml(label);
+
+    if (options.approvedVersion === undefined) {
+        const plain = await showConfirmModal(
+            `Remove this ${noun}?`,
+            `Remove "${quoted}" from this rubric draft?`,
+            kind === 'criterion' ? 'Remove criterion' : 'Remove rating',
+            kind === 'criterion' ? 'Keep criterion' : 'Keep rating',
+            'danger'
+        );
+        // The modal resolves to its own slugified button label, so these two move together.
+        return plain.action === (kind === 'criterion' ? 'remove-criterion' : 'remove-rating');
+    }
+
+    const current = options.approvedVersion;
+    const next = options.nextVersion;
+    const carried = kind === 'criterion'
+        ? `Feedback already generated on v${current} keeps that version, and comments anchored to "${quoted}" keep their text.`
+        : `Feedback already generated on v${current} keeps that version and stays readable.`;
+    const confirmText = `Remove and create v${next}`;
+    const result = await showConfirmModal(
+        `Remove this ${noun} from an approved rubric?`,
+        [
+            `Removing "${quoted}" creates rubric v${next}. Approved rubric v${current} moves to history unchanged.`,
+            carried,
+            `Any unreleased draft feedback on v${current} must be regenerated before it can be approved.`
+        ].join('<br><br>'),
+        confirmText,
+        'Cancel',
+        'danger'
+    );
+    return result.action === confirmText.toLowerCase().replace(/\s+/g, '-');
+}

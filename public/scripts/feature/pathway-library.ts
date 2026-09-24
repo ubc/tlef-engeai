@@ -4,25 +4,36 @@
  * Pathway Library instructor feature — list/edit/reorder/enable/delete course pathways.
  */
 
-import type { activeCourse, GuidedPathway, PathwayCta } from '../types.js';
+import type { activeCourse, GuidedPathway, PathwayCta, PathwayEvaluationPromptConfig } from '../types.js';
 import { getCourseIdFromURL } from '../utils/url-parser.js';
 import {
     createPathway,
     deletePathway,
+    getPathwayEvaluationPrompt,
     listPathways,
     reorderPathways,
+    resetPathwayEvaluationPrompt,
     resetPathways,
     updatePathway,
+    updatePathwayEvaluationPrompt,
 } from '../api/pathways-api.js';
 import { showConfirmModal, showSimpleErrorModal } from '../ui/modal-overlay.js';
 import { showErrorToast, showSuccessToast } from '../ui/toast-notification.js';
 
 const DEFAULT_TITLE = 'Untitled';
 
+const EVAL_PROMPT_CAUTION =
+    'This Guided Pathway System prompt is carefully curated by the EngE-AI developers. Changing it can weaken safety and relevance classification for Guided Pathways. Prefer editing pathway trigger descriptions above unless you need a course-specific shell. You can Reset to platform defaults at any time.';
+
 let pathways: GuidedPathway[] = [];
 let courseId = '';
 let dragIndex: number | null = null;
 let flipBusy = false;
+let evaluationPrompt: PathwayEvaluationPromptConfig | null = null;
+let evaluationPromptLoadedBody = '';
+let evaluationPromptCautionAcked = false;
+let evaluationPromptCautionInFlight = false;
+let evaluationPromptSuppressFocusUntil = 0;
 
 function prefersReducedMotion(): boolean {
     return (
@@ -55,6 +66,7 @@ export async function initializePathwayLibrary(course: activeCourse): Promise<vo
     });
 
     wireKebab();
+    wireEvaluationPromptPanel();
 
     await reload();
     replaceFeatherIcons();
@@ -115,6 +127,7 @@ async function onResetDefaults(): Promise<void> {
     try {
         pathways = await resetPathways(courseId);
         renderList();
+        await loadEvaluationPrompt();
         setStatus('');
         showSuccessToast('Pathways reset to platform defaults');
     } catch (error: any) {
@@ -128,10 +141,150 @@ async function reload(): Promise<void> {
     try {
         pathways = await listPathways(courseId);
         renderList();
+        await loadEvaluationPrompt();
         setStatus('');
     } catch (error: any) {
         setStatus('');
         showErrorToast(error?.message || 'Failed to load pathways');
+    }
+}
+
+function applyEvaluationPromptToUi(config: PathwayEvaluationPromptConfig): void {
+    evaluationPrompt = config;
+    evaluationPromptLoadedBody = config.body;
+    const textarea = document.getElementById('pathway-eval-prompt-textarea') as HTMLTextAreaElement | null;
+    if (textarea) textarea.value = config.body;
+}
+
+async function loadEvaluationPrompt(): Promise<void> {
+    const config = await getPathwayEvaluationPrompt(courseId);
+    applyEvaluationPromptToUi(config);
+}
+
+async function confirmEvaluationPromptCaution(): Promise<boolean> {
+    if (evaluationPromptCautionAcked) return true;
+    if (evaluationPromptCautionInFlight) return false;
+    evaluationPromptCautionInFlight = true;
+    try {
+        const result = await showConfirmModal(
+            'Edit curated Guided Pathway System prompt?',
+            EVAL_PROMPT_CAUTION,
+            'Continue editing',
+            'Cancel',
+            'primary'
+        );
+        if (result.action !== 'continue-editing') {
+            evaluationPromptSuppressFocusUntil = Date.now() + 400;
+            return false;
+        }
+        evaluationPromptCautionAcked = true;
+        return true;
+    } finally {
+        evaluationPromptCautionInFlight = false;
+    }
+}
+
+function setEvaluationPromptExpanded(open: boolean): void {
+    const section = document.getElementById('pathway-eval-prompt');
+    const toggle = document.getElementById('pathway-eval-prompt-toggle');
+    const body = document.getElementById('pathway-eval-prompt-body');
+    if (!section || !toggle || !body) return;
+
+    section.classList.toggle('is-expanded', open);
+    toggle.classList.toggle('is-expanded', open);
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    body.setAttribute('aria-hidden', open ? 'false' : 'true');
+    if (open) {
+        body.removeAttribute('inert');
+    } else {
+        body.setAttribute('inert', '');
+    }
+    replaceFeatherIcons();
+}
+
+function wireEvaluationPromptPanel(): void {
+    const toggle = document.getElementById('pathway-eval-prompt-toggle');
+    const textarea = document.getElementById('pathway-eval-prompt-textarea') as HTMLTextAreaElement | null;
+    const saveBtn = document.getElementById('pathway-eval-prompt-save');
+    const resetBtn = document.getElementById('pathway-eval-prompt-reset');
+
+    setEvaluationPromptExpanded(false);
+
+    toggle?.addEventListener('click', () => {
+        const section = document.getElementById('pathway-eval-prompt');
+        const open = !section?.classList.contains('is-expanded');
+        setEvaluationPromptExpanded(!!open);
+    });
+
+    textarea?.addEventListener('focus', () => {
+        if (evaluationPromptCautionAcked) return;
+        if (evaluationPromptCautionInFlight) return;
+        if (Date.now() < evaluationPromptSuppressFocusUntil) {
+            textarea.blur();
+            return;
+        }
+        void confirmEvaluationPromptCaution().then((ok) => {
+            if (!ok) textarea.blur();
+        });
+    });
+
+    saveBtn?.addEventListener('click', () => {
+        void onSaveEvaluationPrompt();
+    });
+
+    resetBtn?.addEventListener('click', () => {
+        void onResetEvaluationPrompt();
+    });
+}
+
+async function onSaveEvaluationPrompt(): Promise<void> {
+    const textarea = document.getElementById('pathway-eval-prompt-textarea') as HTMLTextAreaElement | null;
+    if (!textarea) return;
+    const next = textarea.value.trim();
+    if (!next) {
+        showErrorToast('Guided Pathway System prompt cannot be empty');
+        return;
+    }
+    if (next === evaluationPromptLoadedBody.trim()) {
+        showSuccessToast('No changes to save');
+        return;
+    }
+    if (!(await confirmEvaluationPromptCaution())) return;
+
+    const confirmSave = await showConfirmModal(
+        'Save Guided Pathway System prompt?',
+        'Save this course-specific classifier shell? Pathway trigger cards above are still inserted at runtime via {{pathway_trigger_sections}}.',
+        'Save',
+        'Cancel',
+        'primary'
+    );
+    if (confirmSave.action !== 'save') return;
+
+    try {
+        const saved = await updatePathwayEvaluationPrompt(courseId, next);
+        applyEvaluationPromptToUi(saved);
+        showSuccessToast('Guided Pathway System prompt saved');
+    } catch (error: any) {
+        showErrorToast(error?.message || 'Failed to save Guided Pathway System prompt');
+    }
+}
+
+async function onResetEvaluationPrompt(): Promise<void> {
+    const result = await showConfirmModal(
+        'Reset Guided Pathway System prompt',
+        'Restore the developer-curated platform default classifier shell for this course?',
+        'Reset',
+        'Cancel',
+        'danger'
+    );
+    if (result.action !== 'reset') return;
+
+    try {
+        const reset = await resetPathwayEvaluationPrompt(courseId);
+        applyEvaluationPromptToUi(reset);
+        showSuccessToast('Guided Pathway System prompt reset to platform default');
+    } catch (error: any) {
+        showErrorToast(error?.message || 'Failed to reset Guided Pathway System prompt');
     }
 }
 
@@ -154,6 +307,7 @@ function renderList(): void {
         const article = node.querySelector('.pathway-block') as HTMLElement;
         article.dataset.pathwayId = pathway.id;
         applyEnabledVisual(article, pathway.enabled !== false);
+        applyNotificationVisual(article, pathway.notifyInstructorOnTrigger !== false);
 
         const titleText = article.querySelector('.pathway-block__title-text') as HTMLElement;
         const titleInput = article.querySelector('.pathway-block__title-input') as HTMLInputElement;
@@ -211,6 +365,11 @@ function renderList(): void {
         article.querySelector('.pathway-block__toggle-enabled')?.addEventListener('click', (e) => {
             e.stopPropagation();
             void onToggleEnabled(article, pathway.id);
+        });
+
+        article.querySelector('.pathway-block__toggle-notification')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            void onToggleNotification(article, pathway.id);
         });
 
         article.querySelector('.pathway-block__save')?.addEventListener('click', () => {
@@ -533,6 +692,21 @@ function isArticleEnabled(article: HTMLElement): boolean {
     return article.dataset.enabled !== 'false';
 }
 
+function applyNotificationVisual(article: HTMLElement, enabled: boolean): void {
+    article.dataset.notifyInstructorOnTrigger = enabled ? 'true' : 'false';
+    const toggle = article.querySelector('.pathway-block__toggle-notification') as HTMLButtonElement | null;
+    const state = article.querySelector('.pathway-block__notification-state') as HTMLElement | null;
+    if (toggle) {
+        toggle.setAttribute('aria-checked', String(enabled));
+        toggle.title = enabled ? 'Instructor notification on' : 'Instructor notification off';
+    }
+    if (state) state.textContent = enabled ? 'On' : 'Off';
+}
+
+function isArticleNotificationEnabled(article: HTMLElement): boolean {
+    return article.dataset.notifyInstructorOnTrigger !== 'false';
+}
+
 async function onToggleEnabled(article: HTMLElement, pathwayId: string): Promise<void> {
     const nextEnabled = !isArticleEnabled(article);
     try {
@@ -542,6 +716,29 @@ async function onToggleEnabled(article: HTMLElement, pathwayId: string): Promise
         showSuccessToast(updated.enabled ? 'Pathway activated' : 'Pathway deactivated');
     } catch (error: any) {
         showErrorToast(error?.message || 'Failed to update pathway status');
+    }
+}
+
+async function onToggleNotification(article: HTMLElement, pathwayId: string): Promise<void> {
+    const nextEnabled = !isArticleNotificationEnabled(article);
+    const toggle = article.querySelector('.pathway-block__toggle-notification') as HTMLButtonElement | null;
+    if (toggle) toggle.disabled = true;
+    try {
+        const updated = await updatePathway(courseId, pathwayId, {
+            notifyInstructorOnTrigger: nextEnabled,
+        });
+        const normalized = updated.notifyInstructorOnTrigger !== false;
+        pathways = pathways.map((pathway) =>
+            pathway.id === pathwayId
+                ? { ...updated, notifyInstructorOnTrigger: normalized }
+                : pathway
+        );
+        applyNotificationVisual(article, normalized);
+        showSuccessToast(normalized ? 'Instructor notification enabled' : 'Instructor notification disabled');
+    } catch (error: any) {
+        showErrorToast(error?.message || 'Failed to update instructor notification');
+    } finally {
+        if (toggle) toggle.disabled = false;
     }
 }
 
@@ -558,6 +755,7 @@ async function onSave(article: HTMLElement, pathwayId: string): Promise<void> {
         const updated = await updatePathway(courseId, pathwayId, {
             title,
             enabled: isArticleEnabled(article),
+            notifyInstructorOnTrigger: isArticleNotificationEnabled(article),
             triggerDescription,
             assistantResponse,
             ctas,
@@ -568,6 +766,7 @@ async function onSave(article: HTMLElement, pathwayId: string): Promise<void> {
         if (titleText) titleText.textContent = updated.title;
         if (titleInput) titleInput.value = updated.title;
         applyEnabledVisual(article, updated.enabled !== false);
+        applyNotificationVisual(article, updated.notifyInstructorOnTrigger !== false);
         article.classList.remove('is-editing-title');
         if (status) status.textContent = 'Saved';
         showSuccessToast('Pathway saved');
@@ -585,6 +784,7 @@ async function onAddPathway(): Promise<void> {
         const created = await createPathway(courseId, {
             title: DEFAULT_TITLE,
             enabled: true,
+            notifyInstructorOnTrigger: true,
             triggerDescription: '',
             assistantResponse: '',
             ctas: [],

@@ -1,81 +1,206 @@
 /**
- * Feedback schema tests — structured output, evidence, and numeric grading
+ * Feedback schema tests — assignment-specific output, evidence, and numeric grading
  *
- * Covers exact-evidence enforcement, normalized quote reconciliation, focused
- * annotation limits, complete criterion output, and all-or-nothing grade mapping.
+ * Covers rubric-derived criterion and level validation, exact-evidence enforcement,
+ * normalized quote reconciliation, focused annotation limits, and complete grading.
  *
  * @author: @rdschrs
  * @date: 2026-07-23
- * @version: 1.0.0
- * @description: Regression coverage for model-output and grading invariants.
+ * @version: 2.0.0
+ * @description: Regression coverage for dynamic model-output and grading invariants.
  */
 
+import type {
+    WritingFeedbackResult,
+    WritingRubricDefinition
+} from '../contracts';
+import { buildDefaultWritingRubric } from '../default-rubric-profile';
 import {
-    a2FeedbackSchema,
+    buildFeedbackSchema,
+    buildSummaryRedraftSchema,
     MAX_EVIDENCE_QUOTE_LENGTH,
     reconcileExactEvidence,
     resolveNumericGrade,
     validateExactEvidence
 } from '../feedback-schema';
-import type { A2FeedbackResult } from '../contracts';
 
 const verifiedText = 'The heat exchanger transfers thermal energy from the hot stream to the cold stream.';
-const feedback: A2FeedbackResult = {
-    criteria: [
-        { criterion: 'organization', suggestedLevel: 'competent', evidence: [{ quote: 'The heat exchanger', rationale: 'Opening subject.' }], explanation: 'Clear opening.', confidence: 0.8 },
-        { criterion: 'content', suggestedLevel: 'strong', evidence: [{ quote: 'transfers thermal energy', rationale: 'Technical relationship.' }], explanation: 'Precise process.', confidence: 0.8 },
-        { criterion: 'interpersonal_positioning', suggestedLevel: 'developing', evidence: [{ quote: 'hot stream', rationale: 'Terminology to define.' }], explanation: 'Consider the audience.', confidence: 0.6 },
-        { criterion: 'task_constraints', suggestedLevel: 'emerging', evidence: [{ quote: 'cold stream', rationale: 'Verified excerpt.' }], explanation: 'Check all constraints.', confidence: 0.6 }
-    ],
-    strengths: ['Technical process is named.'],
-    revisionGoals: [{ skillTag: 'audience-awareness', goal: 'Define the key term.', guidedQuestion: 'What does a reader need to know first?' }],
-    internalFlags: []
-};
 
-describe('A2 feedback validation', () => {
+function feedbackFor(
+    rubric: WritingRubricDefinition,
+    criterionIds: string[] = rubric.criteria.map((criterion) => criterion.id)
+): WritingFeedbackResult {
+    return {
+        criteria: criterionIds.map((criterion, index) => ({
+            criterion,
+            suggestedLevel: rubric.levels[index % rubric.levels.length].id,
+            evidence: [{
+                quote: 'transfers thermal energy',
+                rationale: 'Verified technical relationship.',
+                revisionGuidance: 'Name what the energy transfer shows for the reader.'
+            }],
+            explanation: 'Criterion-level formative guidance.',
+            confidence: 0.8
+        })),
+        strengths: ['Technical process is named.'],
+        revisionGoals: [{
+            skillTag: 'audience-awareness',
+            goal: 'Define the key term.',
+            guidedQuestion: 'What does a reader need to know first?'
+        }],
+        internalFlags: []
+    };
+}
+
+function sixCriterionRubric(): WritingRubricDefinition {
+    const rubric = buildDefaultWritingRubric('instructor-1', new Date('2026-01-01T00:00:00.000Z'));
+    return {
+        ...rubric,
+        criteria: [
+            ...rubric.criteria,
+            { id: 'task_constraints', label: 'Task Constraints', description: 'Required task features.' },
+            { id: 'sources_referencing', label: 'Sources and Referencing', description: 'Use and attribution of sources.' },
+            { id: 'genre_staging', label: 'Genre Staging', description: 'Expected stages for this assignment.' }
+        ]
+    };
+}
+
+function legacyFourCriterionRubric(): WritingRubricDefinition {
+    const rubric = buildDefaultWritingRubric('legacy-system', new Date('2026-01-01T00:00:00.000Z'));
+    return {
+        ...rubric,
+        criteria: [
+            ...rubric.criteria,
+            { id: 'task_constraints', label: 'Task Constraints', description: 'Legacy fourth criterion.' }
+        ],
+        levels: [
+            { id: 'emerging', label: 'Emerging', description: 'Legacy level.' },
+            { id: 'developing', label: 'Developing', description: 'Legacy level.' },
+            { id: 'competent', label: 'Competent', description: 'Legacy level.' },
+            { id: 'strong', label: 'Strong', description: 'Legacy level.' }
+        ]
+    } as unknown as WritingRubricDefinition;
+}
+
+describe('assignment-specific feedback validation', () => {
+    it('validates the default three-criterion rubric', () => {
+        const rubric = buildDefaultWritingRubric();
+        const parsed = buildFeedbackSchema(rubric).parse(feedbackFor(rubric));
+
+        expect(parsed.criteria).toHaveLength(3);
+        expect(parsed.criteria.map((criterion) => criterion.criterion)).toEqual([
+            'organization',
+            'content',
+            'interpersonal_positioning'
+        ]);
+    });
+
+    it('validates an expanded six-criterion rubric', () => {
+        const rubric = sixCriterionRubric();
+
+        expect(buildFeedbackSchema(rubric).safeParse(feedbackFor(rubric)).success).toBe(true);
+    });
+
+    it('accepts criterion judgments in arbitrary order', () => {
+        const rubric = sixCriterionRubric();
+        const reversedIds = rubric.criteria.map((criterion) => criterion.id).reverse();
+        const parsed = buildFeedbackSchema(rubric).parse(feedbackFor(rubric, reversedIds));
+
+        expect(parsed.criteria.map((criterion) => criterion.criterion)).toEqual(reversedIds);
+    });
+
+    it('rejects a performance level outside the assignment rubric', () => {
+        const rubric = buildDefaultWritingRubric();
+        const invalid = feedbackFor(rubric);
+        invalid.criteria[0].suggestedLevel = 'distinguished';
+
+        expect(buildFeedbackSchema(rubric).safeParse(invalid).success).toBe(false);
+    });
+
+    it('requires passage-specific revision guidance for each evidence item', () => {
+        const rubric = buildDefaultWritingRubric();
+        const invalid = feedbackFor(rubric);
+        delete (invalid.criteria[0].evidence[0] as { revisionGuidance?: string }).revisionGuidance;
+
+        expect(buildFeedbackSchema(rubric).safeParse(invalid).success).toBe(false);
+    });
+
+    it('requires each rubric criterion exactly once', () => {
+        const rubric = buildDefaultWritingRubric();
+        const invalid = feedbackFor(rubric);
+        invalid.criteria[1].criterion = invalid.criteria[0].criterion;
+
+        expect(buildFeedbackSchema(rubric).safeParse(invalid).success).toBe(false);
+    });
+
+    it('validates legacy four-criterion output against legacy ids without stored ranks', () => {
+        const rubric = legacyFourCriterionRubric();
+
+        expect(buildFeedbackSchema(rubric).safeParse(feedbackFor(rubric)).success).toBe(true);
+    });
+
     it('accepts exact evidence from verified text', () => {
+        const rubric = buildDefaultWritingRubric();
+        const feedback = feedbackFor(rubric);
+
         expect(validateExactEvidence(feedback, verifiedText)).toBe(feedback);
     });
 
     it('rejects invented evidence', () => {
-        const invalid = JSON.parse(JSON.stringify(feedback)) as A2FeedbackResult;
+        const rubric = buildDefaultWritingRubric();
+        const invalid = feedbackFor(rubric);
         invalid.criteria[0].evidence[0].quote = 'Invented sentence';
+
         expect(() => validateExactEvidence(invalid, verifiedText)).toThrow('did not match');
     });
 
-    it('requires each A2 criterion exactly once', () => {
-        const invalid = JSON.parse(JSON.stringify(feedback)) as A2FeedbackResult;
-        invalid.criteria[1].criterion = 'organization';
-        expect(a2FeedbackSchema.safeParse(invalid).success).toBe(false);
-    });
-
     it('rejects paragraph-length model evidence so seeded annotations stay focused', () => {
-        const invalid = JSON.parse(JSON.stringify(feedback)) as A2FeedbackResult;
+        const rubric = buildDefaultWritingRubric();
+        const invalid = feedbackFor(rubric);
         invalid.criteria[0].evidence[0].quote = 'a'.repeat(MAX_EVIDENCE_QUOTE_LENGTH + 1);
-        expect(a2FeedbackSchema.safeParse(invalid).success).toBe(false);
+        expect(buildFeedbackSchema(rubric).safeParse(invalid).success).toBe(false);
 
         invalid.criteria[0].evidence[0].quote = 'a'.repeat(MAX_EVIDENCE_QUOTE_LENGTH);
-        expect(a2FeedbackSchema.safeParse(invalid).success).toBe(true);
+        expect(buildFeedbackSchema(rubric).safeParse(invalid).success).toBe(true);
+    });
+
+    it('caps a criterion at three evidence items so annotations stay selective', () => {
+        const rubric = buildDefaultWritingRubric();
+        const feedback = feedbackFor(rubric);
+        const evidence = feedback.criteria[0].evidence[0];
+        feedback.criteria[0].evidence = [evidence, evidence, evidence];
+        expect(buildFeedbackSchema(rubric).safeParse(feedback).success).toBe(true);
+
+        feedback.criteria[0].evidence = [evidence, evidence, evidence, evidence];
+        expect(buildFeedbackSchema(rubric).safeParse(feedback).success).toBe(false);
     });
 
     it('blocks numeric grading without a complete instructor-approved mapping', () => {
+        const rubric = legacyFourCriterionRubric();
+        const feedback = feedbackFor(rubric);
+
         expect(resolveNumericGrade(feedback, undefined)).toBeUndefined();
-        expect(resolveNumericGrade(feedback, { emerging: 1, developing: 2, competent: 3, strong: 4 })).toBe(2.5);
+        expect(resolveNumericGrade(feedback, {
+            emerging: 1,
+            developing: 2,
+            competent: 3,
+            strong: 4
+        })).toBe(2.5);
     });
 });
 
 describe('reconcileExactEvidence', () => {
     const styledText = 'The “Endless track vehicle” uses two grips — one per ski —\nto change direction over snow.';
 
-    function withQuote(quote: string): A2FeedbackResult {
-        const copy = JSON.parse(JSON.stringify(feedback)) as A2FeedbackResult;
-        copy.criteria.forEach((criterion) => { criterion.evidence[0].quote = quote; });
-        return copy;
+    function withQuote(quote: string): WritingFeedbackResult {
+        const result = feedbackFor(buildDefaultWritingRubric());
+        result.criteria.forEach((criterion) => { criterion.evidence[0].quote = quote; });
+        return result;
     }
 
     it('keeps quotes that are already exact', () => {
-        const result = reconcileExactEvidence(feedback, verifiedText);
-        expect(result.criteria[0].evidence[0].quote).toBe('The heat exchanger');
+        const result = reconcileExactEvidence(feedbackFor(buildDefaultWritingRubric()), verifiedText);
+        expect(result.criteria[0].evidence[0].quote).toBe('transfers thermal energy');
     });
 
     it('re-locates quotes with straightened typographic quotes and dashes', () => {
@@ -98,5 +223,53 @@ describe('reconcileExactEvidence', () => {
     it('still rejects paraphrased evidence', () => {
         expect(() => reconcileExactEvidence(withQuote('The vehicle steers with handles.'), styledText))
             .toThrow('did not match');
+    });
+});
+
+describe('revisionGoals bounds', () => {
+    const rubric = buildDefaultWritingRubric('instructor-1', new Date('2026-01-01T00:00:00.000Z'));
+
+    it('rejects a result carrying no revision goals', () => {
+        // Goals are the student's next steps and the seed for the editable staff summary.
+        // Without a floor the model could return none and the section rendered empty.
+        const result = { ...feedbackFor(rubric), revisionGoals: [] };
+        expect(buildFeedbackSchema(rubric).safeParse(result).success).toBe(false);
+    });
+
+    it('accepts a result carrying one revision goal', () => {
+        expect(buildFeedbackSchema(rubric).safeParse(feedbackFor(rubric)).success).toBe(true);
+    });
+
+    it('still rejects more than three revision goals', () => {
+        const [goal] = feedbackFor(rubric).revisionGoals;
+        const result = { ...feedbackFor(rubric), revisionGoals: [goal, goal, goal, goal] };
+        expect(buildFeedbackSchema(rubric).safeParse(result).success).toBe(false);
+    });
+});
+
+describe('buildSummaryRedraftSchema', () => {
+    const rubric = buildDefaultWritingRubric('instructor-1', new Date('2026-01-01T00:00:00.000Z'));
+    const complete = () => ({
+        criteria: rubric.criteria.map((criterion) => ({
+            criterion: criterion.id, suggestedLevel: rubric.levels[0].id, explanation: 'Why.', confidence: 0.5
+        })),
+        strengths: ['One.'],
+        revisionGoals: [{ skillTag: 'x', goal: 'Goal.', guidedQuestion: 'Question?' }]
+    });
+
+    it('accepts a complete redraft', () => {
+        expect(buildSummaryRedraftSchema(rubric).safeParse(complete()).success).toBe(true);
+    });
+
+    it('rejects unknown ids, a missing criterion, too many strengths, and 0 or 4 goals', () => {
+        const schema = buildSummaryRedraftSchema(rubric);
+        const unknown = complete(); unknown.criteria[0].criterion = 'nope';
+        const missing = complete(); missing.criteria.pop();
+        const strengths = complete(); strengths.strengths = ['a', 'b', 'c'];
+        const noGoals = complete(); noGoals.revisionGoals = [];
+        const fourGoals = complete(); fourGoals.revisionGoals = Array(4).fill(complete().revisionGoals[0]);
+        for (const value of [unknown, missing, strengths, noGoals, fourGoals]) {
+            expect(schema.safeParse(value).success).toBe(false);
+        }
     });
 });

@@ -4,7 +4,7 @@
 
 import type { AcademicPeriodDocument, activeCourse, GlobalUser, InstructorInfo } from '../types/shared';
 import { isAdminUser } from '../utils/admin';
-import { isCourseStaff } from '../utils/course-staff';
+import { isCourseStaff, instructorEntryUserId } from '../utils/course-staff';
 import { coursePayloadForViewer } from '../dashboard-setting/course-student-view';
 
 /** True when user may enter or list this course (non-admin). */
@@ -29,14 +29,36 @@ export function filterAccessibleCourses(
     return allCourses.filter((c) => isCourseAccessible(c, globalUser));
 }
 
-function mapInstructorNames(course: activeCourse): string {
+/**
+ * mapFacultyInstructorDisplay - Comma-separated faculty instructor names for course cards.
+ *
+ * Excludes platform admin userIds and teaching assistants — cards show assigned faculty only.
+ *
+ * @param course - Active course catalog row
+ * @param platformAdminUserIds - Set of `GlobalUser.userId` values flagged `isAdmin`
+ * @returns Display string or `No instructors`
+ */
+export function mapFacultyInstructorDisplay(
+    course: activeCourse,
+    platformAdminUserIds: Set<string>
+): string {
+    const taIds = new Set(
+        (course.teachingAssistants ?? []).map((ta) => instructorEntryUserId(ta))
+    );
     const names =
-        course.instructors?.map((inst: InstructorInfo | string) => {
-            if (typeof inst === 'string') {
-                return inst;
-            }
-            return inst?.name ?? inst?.userId ?? 'Unknown';
-        }) ?? [];
+        course.instructors
+            ?.map((inst: InstructorInfo | string) => {
+                const userId = instructorEntryUserId(inst);
+                // Skip platform admins and TAs on the public instructor line
+                if (platformAdminUserIds.has(userId) || taIds.has(userId)) {
+                    return null;
+                }
+                if (typeof inst === 'string') {
+                    return inst;
+                }
+                return inst?.name ?? inst?.userId ?? 'Unknown';
+            })
+            .filter((name): name is string => Boolean(name)) ?? [];
     return names.join(', ') || 'No instructors';
 }
 
@@ -57,8 +79,10 @@ export function buildCourseSelectionByPeriod(
     periods: AcademicPeriodDocument[],
     allCourses: activeCourse[],
     globalUser: GlobalUser,
-    defaultPeriodId: string
+    defaultPeriodId: string,
+    platformAdminUserIds?: Set<string>
 ): CourseSelectionPayload {
+    const adminIds = platformAdminUserIds ?? new Set<string>();
     const accessible = filterAccessibleCourses(allCourses, globalUser);
     const coursesByPeriod = new Map<string, activeCourse[]>();
 
@@ -81,7 +105,7 @@ export function buildCourseSelectionByPeriod(
             courseCount: periodCourses.length,
             courses: periodCourses.map((c) => ({
                 ...coursePayloadForViewer(c, globalUser),
-                instructorDisplay: mapInstructorNames(c)
+                instructorDisplay: mapFacultyInstructorDisplay(c, adminIds)
             }))
         };
     });

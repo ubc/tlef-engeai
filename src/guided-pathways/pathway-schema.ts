@@ -13,10 +13,18 @@
 import { z } from 'zod';
 import type { GuidedPathway, PathwayCta } from '../types/shared';
 
+/** Backend-only snapshot of the winning pathway used when creating an instructor alert. */
+export interface PathwayTriggerSnapshot {
+    pathwayId: string;
+    pathwayTitle: string;
+    notifyInstructorOnTrigger: boolean;
+}
+
 /** Result returned to chat-app after evaluation and server-side resolution. */
 export interface PathwayEvaluationResult {
     triggered: boolean;
     winningPathwayId: string | null;
+    triggerSnapshot: PathwayTriggerSnapshot | null;
     responseText: string | null;
     ctas: PathwayCta[];
 }
@@ -24,6 +32,7 @@ export interface PathwayEvaluationResult {
 const NO_TRIGGER_RESULT: PathwayEvaluationResult = {
     triggered: false,
     winningPathwayId: null,
+    triggerSnapshot: null,
     responseText: null,
     ctas: [],
 };
@@ -95,6 +104,11 @@ export function buildPathwayResult(
     return {
         triggered: true,
         winningPathwayId: definition.id,
+        triggerSnapshot: {
+            pathwayId: definition.id,
+            pathwayTitle: definition.title,
+            notifyInstructorOnTrigger: definition.notifyInstructorOnTrigger,
+        },
         responseText: formatPathwayResponse(definition.assistantResponse, courseName),
         ctas: definition.ctas.map((c) => ({ ...c })),
     };

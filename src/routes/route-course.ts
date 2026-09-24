@@ -10,7 +10,7 @@ import path from 'path';
 import { appLogger } from '../utils/logger';
 import { asyncHandlerWithAuth } from '../middleware/async-handler';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
-import { isCourseStaff } from '../utils/course-staff';
+import { canManageCourseRoster, isCourseStaff } from '../utils/course-staff';
 import { isAdminUser } from '../utils/admin';
 import { normalizeRouteParams } from '../helpers/route-params';
 // @rdschrs: Implemented the capability-gated Writing Feedback instructor page.
@@ -55,6 +55,10 @@ async function validateCourseAccess(req: Request, res: Response, next: express.N
         // Verify user is enrolled or is course staff (faculty instructor, TA, or platform admin)
         const isInstructor = isCourseStaff(course as import('../types/shared').activeCourse, globalUser);
         const isEnrolled = globalUser.coursesEnrolled.includes(courseId);
+        const canManageCourse = canManageCourseRoster(
+            course as import('../types/shared').activeCourse,
+            globalUser
+        );
         
         if (!isInstructor && !isEnrolled) {
             appLogger.log(`[COURSE-ROUTES] User ${user.puid} not authorized for course ${courseId}, serving error page`);
@@ -67,7 +71,8 @@ async function validateCourseAccess(req: Request, res: Response, next: express.N
             courseName: course.courseName,
             course: course,
             isInstructor,
-            isEnrolled
+            isEnrolled,
+            canManageCourse
         };
         
         // Update session if needed
@@ -96,6 +101,25 @@ function requireInstructorForCourse(req: Request, res: Response, next: express.N
     if (!ctx?.isInstructor) {
         appLogger.log(`[COURSE-ROUTES] User attempted instructor route without instructor role, redirecting to course-selection`);
         return res.redirect('/course-selection');
+    }
+    next();
+}
+
+/**
+ * Middleware: Require faculty-instructor or platform-admin access for a course page.
+ *
+ * Runs after {@link validateCourseAccess}. Teaching assistants remain course staff for
+ * the shared instructor shell, but cannot open configuration pages such as Pathway Library.
+ */
+function requireInstructorOrAdminForCourse(
+    req: Request,
+    res: Response,
+    next: express.NextFunction
+) {
+    const ctx = (req as any).courseContext;
+    if (!ctx?.canManageCourse) {
+        const { courseId } = normalizeRouteParams(req.params);
+        return res.redirect(`/course/${courseId}/instructor/dashboard`);
     }
     next();
 }
@@ -358,6 +382,7 @@ router.get(
     '/course/:courseId/instructor/pathway-library',
     validateCourseAccess,
     requireInstructorForCourse,
+    requireInstructorOrAdminForCourse,
     requireCourseFeaturePage('guidedPathway'),
     serveInstructorShell()
 );
@@ -438,6 +463,52 @@ router.get('/course/:courseId/instructor/onboarding/document-setup', validateCou
  * @response 404 - Course not found
  */
 router.get('/course/:courseId/instructor/onboarding/flag-setup', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+
+
+/**
+ * GET /course/:courseId/instructor/onboarding/scenario-generation-setup
+ * Serves the Scenario Generation tutorial. Requires course access and instructor role.
+ *
+ * The stage renders only when the course has Scenario Generation enabled and its
+ * tutorial incomplete; that decision belongs to the shared stage resolver, so the
+ * shell route stays a plain instructor-scoped page like its four siblings.
+ *
+ * @route GET /course/:courseId/instructor/onboarding/scenario-generation-setup
+ * @param {string} courseId - Course ID (path param)
+ * @returns {void} Serves instructor-mode.html
+ * @response 200 - Scenario Generation onboarding page
+ * @response 301 - Redirect (auth/role failure)
+ * @response 404 - Course not found
+ */
+router.get('/course/:courseId/instructor/onboarding/scenario-generation-setup', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+
+
+/**
+ * GET /course/:courseId/instructor/onboarding/writing-feedback-setup
+ * Serves the Writing Feedback tutorial. Requires course access and instructor role.
+ *
+ * @route GET /course/:courseId/instructor/onboarding/writing-feedback-setup
+ * @param {string} courseId - Course ID (path param)
+ * @returns {void} Serves instructor-mode.html
+ * @response 200 - Writing Feedback onboarding page
+ * @response 301 - Redirect (auth/role failure)
+ * @response 404 - Course not found
+ */
+router.get('/course/:courseId/instructor/onboarding/writing-feedback-setup', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
+
+
+/**
+ * GET /course/:courseId/instructor/onboarding/guided-pathway-setup
+ * Serves the Guided Pathway tutorial. Requires course access and instructor role.
+ *
+ * @route GET /course/:courseId/instructor/onboarding/guided-pathway-setup
+ * @param {string} courseId - Course ID (path param)
+ * @returns {void} Serves instructor-mode.html
+ * @response 200 - Guided Pathway onboarding page
+ * @response 301 - Redirect (auth/role failure)
+ * @response 404 - Course not found
+ */
+router.get('/course/:courseId/instructor/onboarding/guided-pathway-setup', validateCourseAccess, requireInstructorForCourse, serveInstructorShell());
 
 
 /**

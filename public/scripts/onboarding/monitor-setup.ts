@@ -26,6 +26,10 @@
 import { loadComponentHTML } from "../api/api.js";
 import { activeCourse } from "../types.js";
 import { showErrorModal, showHelpModal } from "../ui/modal-overlay.js";
+import { updateStaffOnboardingProgress } from "./staff-onboarding-ui.js";
+import { completeInstructorOnboardingStage } from './onboarding-progress.js';
+import { renderTutorialChrome } from './onboarding-tutorial-chrome.js';
+import { offerSkipTutorial } from './onboarding-skip.js';
 
 // Make currentClass globally accessible
 declare global {
@@ -239,6 +243,16 @@ function setupNavigation(state: MonitorSetupState): void {
     const nextBtn = document.getElementById('nextBtn');
     const backBtn = document.getElementById('backBtn');
 
+    // Skip tutorial: available from every stage that only teaches. A refused or failed
+    // skip leaves the instructor exactly where they were.
+    document.getElementById('skipTutorialBtn')?.addEventListener('click', () => {
+        void (async () => {
+            if (await offerSkipTutorial() === 'skipped') {
+                window.dispatchEvent(new CustomEvent('instructorOnboardingSkipped'));
+            }
+        })();
+    });
+
     if (nextBtn) {
         nextBtn.addEventListener('click', async () => {
             console.log('[MONITOR-SETUP] Next button clicked, currentStep:', state.currentStep, 'totalSteps:', state.totalSteps);
@@ -293,6 +307,8 @@ async function showStep(state: MonitorSetupState, stepNumber: number): Promise<v
     // Update state
     state.currentStep = stepNumber;
     state.completedSteps.add(stepNumber);
+    updateStaffOnboardingProgress(state.currentStep, state.totalSteps);
+    renderTutorialChrome('monitor-setup', (window as any).currentClass);
 
     // Initialize step-specific functionality
     await initializeStepFunctionality(stepNumber);
@@ -1036,31 +1052,12 @@ async function completeMonitorSetup(): Promise<void> {
             throw new Error("Course ID is missing. Cannot update database.");
         }
         
-        // Update the course's monitorSetup status to true locally
-        currentCourse.monitorSetup = true;
+        // Record the tutorial against the instructor, not the course, so a colleague who
+        // is new to EngE-AI still gets taught on this same course.
+        await completeInstructorOnboardingStage('monitorSetup');
         
-        const response = await fetch(`/api/courses/${currentCourse.id}`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            credentials: 'same-origin',
-            body: JSON.stringify({
-                monitorSetup: true
-            })
-        });
-        
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ error: 'Failed to update course in database' }));
-            throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-        }
-        
-        const result = await response.json();
-        if (!result.success) {
-            throw new Error(result.error || 'Failed to update course in database');
-        }
-        
-        // Set instructorOnboardingCompleted on GlobalUser for skip-onboarding feature
+        // Set instructorOnboardingCompleted on GlobalUser — the coarse "has been onboarded
+        // at least once" signal, still used to seed new users (OB-002)
         try {
             const instructorCompletedRes = await fetch('/api/user/onboarding/instructor-completed', {
                 method: 'PATCH',
@@ -1090,11 +1087,6 @@ async function completeMonitorSetup(): Promise<void> {
         //START DEBUG LOG : DEBUG-CODE(013)
         console.error("❌ Error completing monitor setup:", error);
         //END DEBUG LOG : DEBUG-CODE(013)
-        
-        // Revert local change on error
-        if (window.currentClass) {
-            window.currentClass.monitorSetup = false;
-        }
         
         await showErrorModal("Completion Error", `Failed to complete monitor setup: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`);
     }
@@ -1184,4 +1176,3 @@ function setupResizeListener(state: MonitorSetupState): void {
 
 // Additional imports for instructor-mode integration
 import { renderFeatherIcons } from "../api/api.js";
-

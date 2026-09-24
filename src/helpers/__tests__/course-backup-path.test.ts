@@ -20,5 +20,6 @@ describe('course-backup-path', () => {
         expect(names.scheduledTasks).toBe(`${slug}_scheduled_tasks.json`);
         expect(names.users).toBe(`${slug}_users.json`);
         expect(names.memoryAgent).toBe(`${slug}_memory_agent.json`);
+        expect(names.guidedPathwayFlags).toBe(`${slug}_guided_pathway_flags.json`);
     });
 });

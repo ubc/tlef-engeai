@@ -1,4 +1,9 @@
-import { resolveAffiliation } from '../affiliation';
+import {
+    courseScopedAffiliation,
+    isAppEntryBlockedAffiliation,
+    joinsCourseAsStudent,
+    resolveAffiliation
+} from '../affiliation';
 
 describe('resolveAffiliation', () => {
     it('new user (no DB record) uses CWL affiliation as-is', () => {
@@ -30,5 +35,32 @@ describe('resolveAffiliation', () => {
     it('DB faculty, CWL empty — flags DB update to empty', () => {
         const result = resolveAffiliation('empty', 'faculty');
         expect(result).toEqual({ affiliation: 'empty', needsDbUpdate: true });
+    });
+});
+
+describe('isAppEntryBlockedAffiliation', () => {
+    it('blocks only empty affiliation', () => {
+        expect(isAppEntryBlockedAffiliation('empty')).toBe(true);
+        expect(isAppEntryBlockedAffiliation('student')).toBe(false);
+        expect(isAppEntryBlockedAffiliation('faculty')).toBe(false);
+        expect(isAppEntryBlockedAffiliation('staff')).toBe(false);
+    });
+});
+
+describe('joinsCourseAsStudent', () => {
+    it('includes student and staff affiliations', () => {
+        expect(joinsCourseAsStudent('student')).toBe(true);
+        expect(joinsCourseAsStudent('staff')).toBe(true);
+        expect(joinsCourseAsStudent('faculty')).toBe(false);
+        expect(joinsCourseAsStudent('empty')).toBe(false);
+    });
+});
+
+describe('courseScopedAffiliation', () => {
+    it('maps staff to student for course roster records', () => {
+        expect(courseScopedAffiliation('staff')).toBe('student');
+        expect(courseScopedAffiliation('student')).toBe('student');
+        expect(courseScopedAffiliation('faculty')).toBe('faculty');
+        expect(courseScopedAffiliation('empty')).toBe('student');
     });
 });

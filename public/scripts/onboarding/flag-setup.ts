@@ -26,6 +26,10 @@
 import { loadComponentHTML } from "../api/api.js";
 import { activeCourse } from "../types.js";
 import { showErrorModal, showHelpModal } from "../ui/modal-overlay.js";
+import { updateStaffOnboardingProgress } from "./staff-onboarding-ui.js";
+import { completeInstructorOnboardingStage } from './onboarding-progress.js';
+import { renderTutorialChrome } from './onboarding-tutorial-chrome.js';
+import { offerSkipTutorial } from './onboarding-skip.js';
 
 // ===========================================
 // TYPE DEFINITIONS
@@ -164,6 +168,16 @@ function setupResizeListener(state: FlagSetupState): void {
 function setupNavigationListeners(state: FlagSetupState, instructorCourse: activeCourse): void {
     const backBtn = document.getElementById('backBtn') as HTMLButtonElement;
     const nextBtn = document.getElementById('nextBtn') as HTMLButtonElement;
+
+    // Skip tutorial: available from every stage that only teaches. A refused or failed
+    // skip leaves the instructor exactly where they were.
+    document.getElementById('skipTutorialBtn')?.addEventListener('click', () => {
+        void (async () => {
+            if (await offerSkipTutorial() === 'skipped') {
+                window.dispatchEvent(new CustomEvent('instructorOnboardingSkipped'));
+            }
+        })();
+    });
 
     if (backBtn) {
         backBtn.addEventListener('click', () => handleBackNavigation(state));
@@ -647,33 +661,11 @@ async function handleFinalCompletion(state: FlagSetupState, instructorCourse: ac
             throw new Error("Course ID is missing. Cannot update database.");
         }
         
-        // Mark flag setup as complete locally
-        instructorCourse.flagSetup = true;
+        // Record the tutorial against the instructor, not the course, so a colleague who
+        // is new to EngE-AI still gets taught on this same course.
+        await completeInstructorOnboardingStage('flagSetup');
         
-        // Persist to database
-        // console.log(`📡 Updating database: setting flagSetup=true for course ${instructorCourse.id}`); // 🟡 HIGH: Course ID exposure
-        const response = await fetch(`/api/courses/${instructorCourse.id}`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            credentials: 'same-origin',
-            body: JSON.stringify({
-                flagSetup: true
-            })
-        });
-        
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ error: 'Failed to update course in database' }));
-            throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-        }
-        
-        const result = await response.json();
-        if (!result.success) {
-            throw new Error(result.error || 'Failed to update course in database');
-        }
-        
-        // console.log("✅ Flag setup status persisted to database successfully!"); // 🟢 MEDIUM: Database success
+        // console.log("✅ Flag setup progress persisted to database successfully!"); // 🟢 MEDIUM: Database success
         
         // DO NOT remove onboarding-active class - let instructor-mode.ts handle the flow
         // DO NOT show instructor sidebar - we need to proceed to monitor setup
@@ -685,8 +677,6 @@ async function handleFinalCompletion(state: FlagSetupState, instructorCourse: ac
         
     } catch (error) {
         console.error("❌ Error during final completion:", error);
-        // Revert local change on error
-        instructorCourse.flagSetup = false;
         await showErrorModal("Completion Error", `Failed to complete flag setup: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`);
     }
 }
@@ -718,6 +708,9 @@ function updateStepDisplay(state: FlagSetupState): void {
         // Check if content overflows and adjust justify-content accordingly
         setTimeout(() => adjustContentJustification(currentStepElement), 10);
     }
+
+    updateStaffOnboardingProgress(state.currentStep, state.totalSteps);
+    renderTutorialChrome('flag-setup', (window as any).currentClass);
 }
 
 /**
@@ -810,6 +803,7 @@ function updateNavigationButtons(state: FlagSetupState): void {
             setNextButtonText(nextBtn, 'Complete Setup');
             // Ensure button is enabled on final step
             nextBtn.disabled = false;
+            nextBtn.removeAttribute('aria-label');
         } else {
             setNextButtonText(nextBtn, 'Next');
             
@@ -821,12 +815,15 @@ function updateNavigationButtons(state: FlagSetupState): void {
                     const requiredStep = parseInt(requiresCompletion);
                     if (!state.completedSteps.has(requiredStep)) {
                         nextBtn.disabled = true;
-                        setNextButtonText(nextBtn, 'Complete Previous Step First');
+                        nextBtn.setAttribute('aria-label', 'Next, complete this step first');
+                        setNextButtonText(nextBtn, 'Next');
                     } else {
                         nextBtn.disabled = false;
+                        nextBtn.removeAttribute('aria-label');
                     }
                 } else {
                     nextBtn.disabled = false;
+                    nextBtn.removeAttribute('aria-label');
                 }
             } else {
                 nextBtn.disabled = false;

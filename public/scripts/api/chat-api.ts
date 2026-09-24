@@ -123,6 +123,7 @@ export async function createNewChat(chatRequest: CreateChatRequest): Promise<Cre
  * @param message string — Message content
  * @param userId string — User ID (instructor/student)
  * @param courseName string — Course name
+ * @param clientMessageId string — Opaque id reused only when retrying this transport request
  * @returns Promise<void>
  * POST to /api/chat/:chatId. Streaming is handled by ChatManager, not this function.
  */
@@ -130,7 +131,8 @@ export async function sendMessageToChat(
     chatId: string, 
     message: string, 
     userId: string, 
-    courseName: string
+    courseName: string,
+    clientMessageId: string
 ): Promise<void> {
     try {
         const response = await fetch(`/api/chat/${chatId}`, {
@@ -140,6 +142,7 @@ export async function sendMessageToChat(
             },
             body: JSON.stringify({
                 message,
+                clientMessageId,
                 userId,
                 courseName
             }),

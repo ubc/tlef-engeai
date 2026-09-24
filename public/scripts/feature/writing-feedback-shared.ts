@@ -15,35 +15,106 @@
 
 import type { activeCourse } from '../types.js';
 import { showConfirmModal, showErrorModal } from '../ui/modal-overlay.js';
+import { isWritingFeedbackDemoMode, WritingFeedbackDemoModeError } from './writing-feedback-demo-mode.js';
 
 /** Lifecycle state displayed in staff queues and enforced by server transitions. */
 export type SubmissionStatus = 'imported' | 'verification_needed' | 'generating' | 'draft_ready' | 'approved' | 'released' | 'failed';
 
-/** Fixed A2/SFL criterion identifiers shared by rubric and feedback responses. */
-export type A2CriterionId = 'organization' | 'content' | 'interpersonal_positioning' | 'task_constraints';
+/** Which feedback lens a rubric or run belongs to. */
+export type WritingFeedbackLens = 'linguistic' | 'technical';
 
-/** Ordered qualitative levels supported by the Writing Feedback rubric. */
-export type A2Level = 'emerging' | 'developing' | 'competent' | 'strong';
+/** Instructor-authored criterion slug, frozen after its first rubric approval. */
+export type WritingCriterionId = string;
+
+/** Instructor-authored performance-level slug, frozen after its first approval. */
+export type WritingLevelId = string;
+
+/** Staff-reviewed genre/register state used by SFL-founded feedback. */
+export type SflGenreProfileState = 'declared' | 'staff_confirmed' | 'custom' | 'composite' | 'needs_staff_input';
+
+/** Mirrors `CanvasRubricRefusal` in src/writing-feedback/contracts.ts. */
+export type CanvasRubricRefusal =
+    | 'no_rubric'
+    | 'too_few_ratings'
+    | 'too_many_criteria'
+    | 'too_many_levels';
+
+/**
+ * Mirrors `CanvasRubricIdMap` in src/writing-feedback/canvas-rubric-mapping.ts.
+ *
+ * The browser never builds one — it is written at import and read only by the release path —
+ * but the assignment carries it, so the type has to exist on this side of the mirror.
+ */
+export interface CanvasRubricIdMap {
+    [ourCriterionId: string]: {
+        criterionId: string; // Canvas criterion id, e.g. "_1234"
+        ratingIds: Record<string, string>; // our level id -> Canvas rating id
+    };
+}
+
+/** One staff-approved stage or move in the assignment profile. */
+export interface SflStage {
+    id: string; // stable stage key inside the rubric version
+    label: string; // staff-facing stage name
+    purpose: string; // communicative work expected of the stage
+    required?: boolean; // whether absence can matter for feedback
+    order?: number; // optional expected sequence
+}
+
+/** Staff-reviewed assignment context used by the V2 linguistic pipeline. */
+export interface SflContextProfile {
+    genreId?: string; // known SFL profile id or custom/composite label
+    genreLabel: string; // plain-language genre or document type
+    genreState: SflGenreProfileState; // confirmation state reviewed with the rubric
+    task: string; // assignment task profile
+    purpose: string; // communicative purpose profile
+    audience: string; // intended reader profile
+    field: string; // disciplinary subject/activity
+    tenor: string; // writer-reader relationship and stance
+    mode: string; // medium/format/production mode
+    actualEvaluator: string; // who reviews the work
+    productionConditions: string; // timed/take-home/resource/collaboration conditions
+    stages: SflStage[]; // confirmed stages or moves
+    embeddedGenres: string[]; // nested genres such as data commentary
+    taskRequirements: string[]; // explicit task objects
+    learningOutcomes: string[]; // outcomes the analyzer may connect to
+    approvedGlossaryTerms?: string[]; // optional terms relevant to the assignment
+}
+
+/** Mirror of WritingRubricCell. Rating name, points band, and descriptor for one grid cell. */
+export interface RubricCell {
+    min: number;
+    max: number;
+    label?: string;
+    descriptor?: string;
+}
 
 /** One instructor-visible criterion in an approved or draft rubric definition. */
 export interface RubricCriterion {
-    id: A2CriterionId; // stable key used to join rubric criteria to model feedback
+    id: WritingCriterionId; // stable key used to join rubric criteria to model feedback
     label: string; // student-facing criterion name editable by authorized staff
     description: string; // assignment-specific expectations supplied to generation
-    sflDimension: string; // locked linguistic lens enforced by the A2 profile
+    functionTag?: WfFunctionTag; // optional SFL communicative-function filter tag
+    sflDimension?: string; // optional instructor-authored linguistic lens
+    points?: number; // maximum points this criterion contributes
+    cells?: Record<string, RubricCell>; // sparse per-level bands, keyed by level id
+    /** Who writes this criterion's feedback; absent means 'model'. Staff-assessed criteria are never generated. */
+    assessedBy?: 'model' | 'staff';
 }
 
-/** One ordinal performance level, optionally participating in numeric release mapping. */
+/** One ordinal performance level, optionally carrying rubric point metadata. */
 export interface RubricLevel {
-    id: A2Level; // stable qualitative value emitted by structured feedback
+    id: WritingLevelId; // stable qualitative value emitted by structured feedback
     label: string; // student-facing name shown in rubric and PDF views
     description: string; // instructor-authored performance expectation
+    rank: number; // explicit worst-to-best order, contiguous from one
     points?: number; // present for every level or none; partial mappings are invalid
 }
 
 /** Versioned rubric snapshot returned by assignment and rubric endpoints. */
 export interface RubricDefinition {
     version: number; // immutable version used to detect stale feedback runs
+    approvedAt?: string; // when this version was approved; absent on drafts
     status: 'draft' | 'approved'; // separates editable work from active generation policy
     title: string; // staff/student display name for the rubric
     task: string; // assignment task context supplied to the feedback pipeline
@@ -52,9 +123,11 @@ export interface RubricDefinition {
     constraints: string[]; // explicit task requirements; never inferred by the model
     learningOutcomes: string[]; // instructor-approved outcomes governing feedback
     gradingIntent: string; // states formative/summative intent and grading boundaries
-    criteria: RubricCriterion[]; // fixed supported criteria with editable descriptions
+    sflContext?: SflContextProfile; // V2 linguistic genre/register profile approved with the rubric
+    criteria: RubricCriterion[]; // assignment-specific criteria and optional SFL lenses
     levels: RubricLevel[]; // complete ordinal scale and optional point mapping
     updatedAt: string; // server timestamp shown in rubric provenance/history
+    labContext?: string; // instructor-approved lab handout context supplied to the technical lens
 }
 
 /** Assignment summary used by the landing queue and current rubric context. */
@@ -62,10 +135,22 @@ export interface Assignment {
     id: string; // internal assignment key used in course-scoped routes
     title: string; // queue and review heading
     canvasAssignmentId?: string; // external key retained only for Canvas-linked intake/release
-    rubricSource: 'internal_profile' | 'canvas'; // provenance label; import never implies approval
-    gradeMapping?: Partial<Record<A2Level, number>>; // numeric release mapping derived from approved levels
-    rubric: RubricDefinition; // current approved definition used by generation
+    canvasRubricRefusal?: CanvasRubricRefusal; // why an imported Canvas rubric could not seed this grid
+    rubricSource: 'internal_profile' | 'canvas'; // provenance label for the WRITING lens; import never implies approval
+    /** Where the technical grid came from. Split per lens so a Canvas technical rubric does not silence writing auto-fill. */
+    technicalRubricSource?: 'canvas' | 'builtin';
+    /** The Canvas rubric as imported, kept unrouted until the lab-report flag decides which lens owns it. */
+    canvasRubricImport?: { ids: CanvasRubricIdMap; importedAt: string | Date };
+    instructions?: string; // instructor-approved assignment directions shown beside rubric setup
+    gradeMapping?: Record<WritingLevelId, number>; // legacy mapping derived from approved level points
+    rubric: RubricDefinition; // current rubric; new assignments begin with a draft
     rubricDraft?: RubricDefinition; // inactive staff draft, when one exists
+    rubricHistory?: RubricDefinition[]; // immutable prior approved versions used for review labels
+    assignmentTypePending?: boolean; // true until staff answer "What kind of assignment is this?" (D-123)
+    isLabReport?: boolean; // whether this assignment also receives technical (lab-report) feedback
+    technicalRubric?: RubricDefinition; // approved technical rubric; absent until first approval
+    technicalRubricDraft?: RubricDefinition; // editable staff draft of the technical rubric
+    technicalRubricHistory?: RubricDefinition[]; // immutable prior approved technical versions used for review labels
     dueAt?: string; // optional deadline used only for queue late-status display
     createdAt: string; // assignment creation timestamp for staff context
     submissionCount?: number; // summary count used before submissions are expanded
@@ -73,9 +158,18 @@ export interface Assignment {
 
 /** Structured model judgment for one supported rubric criterion. */
 export interface CriterionFeedback {
-    criterion: A2CriterionId; // joins the result to the approved rubric criterion
-    suggestedLevel: A2Level; // model draft level requiring human review
-    evidence: Array<{ quote: string; rationale: string }>; // exact verified-text quote and the model's rationale for citing it
+    criterion: WritingCriterionId; // joins the result to the approved rubric criterion
+    /** Model draft level requiring human review. Absent on a staff-assessed criterion on a lens that carries no grade. */
+    suggestedLevel?: WritingLevelId;
+    evidence: Array<{
+        quote: string;
+        rationale: string;
+        revisionGuidance?: string;
+        sflFindingIds?: string[];
+        courseMaterialMention?: CourseMaterialMention;
+        glossaryEntryId?: string;
+        glossarySnapshot?: GlossarySnapshot;
+    }>; // exact verified-text quote and the model's rationale for citing it
     explanation: string; // criterion-level formative explanation
     confidence: number; // staff-only diagnostic excluded from student output
 }
@@ -84,16 +178,81 @@ export interface CriterionFeedback {
 export interface FeedbackRun {
     id: string; // provenance key attached to subsequent staff revisions
     rubricVersion?: number; // approved rubric version used to detect stale runs
+    lens?: WritingFeedbackLens; // which feedback lens produced this run
     createdAt: string; // generation timestamp shown in review provenance
     result: {
+        schemaVersion?: string; // V2 result schema, absent on older runs
         criteria: CriterionFeedback[]; // supported criterion judgments with exact evidence
         strengths: string[]; // positive observations included in student-facing output
         revisionGoals: Array<{ skillTag: string; goal: string; guidedQuestion: string }>; // up to three actionable, Socratic priorities
         internalFlags: string[]; // staff-only warnings excluded from PDF/release payloads
+        courseMaterialMentions?: CourseMaterialMention[]; // deduplicated useful course resources
     }; // validated structured result; never edited in place by the browser
+    /** Everything retrieval found, published or not. Staff-only; never rendered to a student. */
+    staffCourseMaterialMentions?: CourseMaterialMention[];
+    /**
+     * Ids of the material a student may be pointed at. Sent because the student-facing list
+     * stops at five while the staff list does not, so the sixth published document would
+     * otherwise read as one the student cannot open.
+     */
+    citableCourseMaterialMentionIds?: string[];
+    redraftOfRunId?: string; // run this summary was redrafted from (D-125)
+    sourceComments?: AnchoredComment[]; // annotations the redraft was drafted from; staff-only
+    annotationsFingerprint?: string; // fingerprint of sourceComments, compared on Next
 }
 
-/** Academic Writing Matrix function used to categorize staff annotations. */
+/** Staff-edited summary sections for one lens, bound to the run they were edited against (D-126). */
+export interface StaffSummaryEdit {
+    lens: WritingFeedbackLens;
+    feedbackRunId: string; // run the edits were made against
+    strengths: string[]; // "What you did well", 0..5
+    criterionExplanations: Array<{ criterion: WritingCriterionId; explanation: string }>;
+    revisionGoalsText?: string; // technical lens only
+}
+
+/** Which run a lens's summary currently comes from, and the annotations it reflects. */
+export interface SummarySource {
+    runId: string;
+    annotationsFingerprint: string;
+}
+
+/** Server-resolved course material label safe for student-facing feedback. */
+export interface CourseMaterialMention {
+    id: string; // deterministic mention identity
+    label: string; // display label, e.g. Week · Item · Resource
+    courseId?: string;
+    topicOrWeekId?: string;
+    topicOrWeekTitle?: string;
+    itemId?: string;
+    itemTitle?: string;
+    materialId?: string;
+    materialName?: string;
+    version?: string;
+}
+
+/** Reusable course glossary entry returned by glossary endpoints. */
+export interface WritingGlossaryEntry {
+    id: string; // glossary entry id
+    courseId: string; // owning course
+    term: string; // display term
+    normalizedTerm: string; // uniqueness key
+    definition: string; // plain-language definition
+    version: number; // increments on update
+    createdAt: string; // server timestamp
+    createdBy: string; // internal actor
+    updatedAt: string; // server timestamp
+    updatedBy: string; // internal actor
+}
+
+/** Historical glossary snapshot stored on an annotation. */
+export interface GlossarySnapshot {
+    id: string; // glossary entry id
+    term: string; // term at selection time
+    definition: string; // definition at selection time
+    version: number; // selected glossary version
+}
+
+/** SFL communicative function used to categorize staff annotations. */
 export type WfFunctionTag = 'content' | 'interpersonal' | 'organizational';
 
 /** Textual scope used to categorize staff annotations. */
@@ -103,20 +262,33 @@ export type WfLevelTag = 'text' | 'section' | 'clause_word';
 export type WfPriority = 'high' | 'medium' | 'low';
 
 /** Exact verified-text annotation stored in model seeds and staff revision snapshots. */
+/** One published course material staff may name on an annotation. */
+export interface CourseMaterialTitle {
+    id: string; // stable material id from the course record
+    label: string; // "Topic · Item · Material", the same shape retrieval resolves
+}
+
 export interface AnchoredComment {
     id: string; // stable identity used to diff comments across review revisions
-    criterion?: A2CriterionId; // optional rubric link retained from a model seed
+    /** Which rubric this comment is about. Server defaults an absent value to 'linguistic'. */
+    lens: WritingFeedbackLens;
+    criterion?: WritingCriterionId; // optional rubric link, resolved against this comment's lens
     quote: string; // exact substring copied from the verified submission text
     startOffset: number; // inclusive UTF-16 offset into the verified text snapshot
     endOffset: number; // exclusive UTF-16 offset paired with the exact quote
     comment: string; // feedback exposed to the student after approval/release
     howToImprove?: string; // optional concrete revision direction
-    courseMaterialLink?: string; // optional staff-selected learning resource
+    courseMaterialLink?: string; // legacy staff link; never rendered as a link to a student
+    courseMaterialTitle?: string; // staff-authored lecture/reading title shown to the student
+    courseMaterialId?: string; // id of the picked course material, when picked rather than typed
+    courseMaterialMention?: CourseMaterialMention; // resolved course-material label preferred for V2
     glossaryDefinition?: { term: string; definition: string }; // optional disciplinary-language support
+    glossaryEntryId?: string; // selected glossary entry id
+    glossarySnapshot?: GlossarySnapshot; // definition retained for historical PDFs
     origin: 'model_seed' | 'staff'; // provenance label preserved in review history
     /** Server-stamped display name of the staff comment author; unset for model seeds. */
     authorName?: string;
-    /** Staff-facing triage metadata (Academic Writing Matrix taxonomy); excluded from the student PDF. */
+    /** Staff-facing triage metadata from model evidence or staff review; excluded from the student PDF. */
     functionTag?: WfFunctionTag;
     levelTag?: WfLevelTag;
     priority?: WfPriority;
@@ -124,7 +296,7 @@ export interface AnchoredComment {
     stale?: boolean;
 }
 
-/** Human-readable labels for Academic Writing Matrix function filters. */
+/** Human-readable labels for function filters. */
 export const FUNCTION_TAG_LABELS: Record<WfFunctionTag, string> = {
     content: 'Content',
     interpersonal: 'Interpersonal',
@@ -151,12 +323,40 @@ export interface ReviewRevision {
     studentFeedback: string; // summary text eligible for approved student output
     internalNote?: string; // staff-only note explicitly excluded from student output
     comments?: AnchoredComment[]; // complete annotation snapshot at save time
+    finalAssessment?: StaffFinalAssessment; // complete human-authored rubric result
+    assessmentDraft?: StaffAssessmentDraft; // grades saved before every criterion had one
+    feedbackRunId?: string; // linguistic run the revision was saved against
+    technicalFeedbackRunId?: string; // technical run the technical summary edits were saved against
+    summaryEdits?: StaffSummaryEdit[]; // editable summary sections bound to their runs (D-126)
     createdAt: string; // server timestamp used to order immutable revisions
 }
 
+/** One human-authored criterion score eligible for PDF and Canvas release. */
+export interface StaffCriterionAssessment {
+    criterionId: WritingCriterionId;
+    points: number;
+}
+
+/** Complete staff-final grade saved with an append-only review revision. */
+export interface StaffFinalAssessment {
+    /** Which rubric the grade was awarded against; a lab report is graded on its technical one. */
+    lens?: WritingFeedbackLens;
+    rubricVersion: number;
+    criteria: StaffCriterionAssessment[];
+    totalPoints: number;
+    maxPoints: number;
+}
+
+/** Staff-entered points for some criteria, saved while grading is unfinished; never approved or released. */
+export interface StaffAssessmentDraft {
+    lens?: WritingFeedbackLens;
+    rubricVersion: number;
+    criteria: StaffCriterionAssessment[];
+}
+
 const DIFF_FIELDS: Array<keyof AnchoredComment> = [
-    'quote', 'comment', 'howToImprove', 'courseMaterialLink', 'glossaryDefinition',
-    'functionTag', 'levelTag', 'priority'
+    'quote', 'comment', 'howToImprove', 'courseMaterialLink', 'courseMaterialTitle', 'courseMaterialId', 'courseMaterialMention',
+    'glossaryDefinition', 'glossaryEntryId', 'glossarySnapshot', 'functionTag', 'levelTag', 'priority'
 ];
 
 function commentsDiffer(a: AnchoredComment, b: AnchoredComment): boolean {
@@ -193,40 +393,110 @@ export interface Submission {
     studentId: string; // course-local learner reference; never a PUID
     studentLabel?: string; // optional staff-visible display label
     attempt: number; // assignment attempt used for idempotent Canvas import
+    submittedAt?: string; // Canvas submission time for display and lateness; absent for manual entries
     sourceType: 'manual' | 'canvas_text' | 'digital_file' | 'paper_scan'; // intake provenance controlling verification
     originalText: string; // parser/OCR output retained for staff comparison
     verifiedText?: string; // staff-confirmed source of truth for evidence offsets
     requiresVerification: boolean; // blocks generation until transcript confirmation
+    /** Who confirmed the transcript; `batch` means batch generation accepted it and no person checked it. */
+    transcriptConfirmedBy?: 'staff' | 'batch';
+    /** When staff last edited the confirmed text; feedback generated before it must be generated again. */
+    transcriptEditedAt?: string;
     status: SubmissionStatus; // server lifecycle state controlling available actions
     reviews?: ReviewRevision[]; // append-only staff revision audit history
-    createdAt: string; // submission/import timestamp used for queue ordering and lateness
+    createdAt: string; // import timestamp used for queue ordering; not when the student submitted
+    /** A newer Canvas attempt from the same student, waiting for staff to choose between them. */
+    pendingReplacement?: PendingReplacement;
+}
+
+/** Queue summary of a held newer attempt; mirrors `WritingPendingReplacement`. */
+export interface PendingReplacement {
+    submissionId: string;
+    attempt: number;
+    submittedAt?: string;
+    sourceType: Submission['sourceType'];
+}
+
+/** Staff choice between a submission and its held newer attempt. */
+export type ReplacementDecision = 'use_newer' | 'keep_current';
+
+/** What batch generation does with one submission; mirrors `WritingBatchCategory`. */
+export type BatchCategory = 'no_draft' | 'failed' | 'transcript' | 'stale' | 'needs_transcript' | 'in_progress' | 'done';
+
+/** Batch generation preview for the confirmation modal; mirrors `WritingBatchPreview`. */
+export interface BatchPreview {
+    counts: Record<BatchCategory, number>;
+    blockedReason?: string; // why nothing can be generated yet
+}
+
+/** What a started batch queued; mirrors `WritingBatchStartResult`. */
+export interface BatchStartResult {
+    queued: number;
+    transcriptsConfirmed: number;
+    skipped: number;
+}
+
+/** Result of syncing one linked assignment with Canvas. */
+export interface CanvasSyncResult {
+    importedCount: number; // new students added to the queue
+    heldCount: number; // resubmissions waiting for staff to choose
+    skippedCount: number; // attempts already handled
+    unsupportedCount: number; // submissions with no extractable text, or text past the limit
+    failedCount: number; // downloads or parses that failed and can be retried
+    integration: 'mock_canvas' | 'canvas';
 }
 
 /** Complete review payload combining a submission, model run, and annotation sources. */
 export interface SubmissionDetail {
     submission: Submission; // current server-authoritative submission and reviews
     feedbackRun: FeedbackRun | null; // latest immutable model result, if generated
+    technicalFeedbackRun: FeedbackRun | null; // latest immutable technical (lab-report) model result, if generated
     comments: AnchoredComment[]; // newest saved staff comment snapshot
     seedComments: AnchoredComment[]; // model-derived fallback used before the first save
+    /** Annotation working set resolved per lens: newest of saved revision or redraft, else seeds. */
+    workingComments?: AnchoredComment[];
+    /** Per lens, the run the summary comes from and the fingerprint of annotations it reflects. */
+    summarySources?: Partial<Record<WritingFeedbackLens, SummarySource>>;
+    release?: WritingReleaseSummary | null; // latest Canvas release/reconciliation state
+    /** How many times this submission's feedback has reached the student in Canvas. */
+    releaseCount?: number;
+    /** The cap, so the page names the limit rather than hard-coding it. */
+    maxReleases?: number;
+}
+
+/** Staff-visible release state returned with submission detail. */
+export interface WritingReleaseSummary {
+    status: 'previewed' | 'feedback_attached' | 'grade_queued' | 'released' | 'reconciliation_required' | 'failed' | 'reconciled';
+    /** Set while a queued job is carrying this release to Canvas. */
+    releaseLockedAt?: string;
+    grade?: number;
+    postManually?: boolean;
+    failureStage?: 'preflight' | 'feedback' | 'grade' | 'progress';
+    sanitizedError?: string;
+    /** Which release of this submission the record is, so staff can see a re-release as one. */
+    revision?: number;
+    updatedAt: string;
 }
 
 /** Canvas integration truth shown before any import or release action is offered. */
 export interface CanvasStatus {
-    mode: 'demo' | 'not_configured'; // visibly separates synthetic data from unavailable live OAuth
-    integration: 'mock_canvas' | 'none'; // adapter identity reported by the backend
+    mode: 'demo' | 'live' | 'not_configured'; // visibly separates synthetic data from a real Canvas course
+    integration: 'mock_canvas' | 'canvas' | 'none'; // adapter identity reported by the backend
     connected: boolean; // whether the current adapter has an active connection
     canImport: boolean; // authoritative UI gate for import/preview operations
     syntheticDataOnly: boolean; // prevents demo data from being described as production Canvas
     label: string; // concise mode heading for staff
     message: string; // durable explanation shown in workspace/import panels
     nextStep?: string; // configuration guidance when import is unavailable
+    connectUrl?: string; // Canvas authorization entry point when that is the only blocker
 }
 
 /** Assignment candidate returned by the Canvas preview/list adapter. */
 export interface CanvasAssignment {
     canvasAssignmentId: string; // external selection key submitted to the import endpoint
     title: string; // Canvas-provided assignment label shown before import
-    submissionCount: number; // eligible candidate count shown in the picker
+    description?: string; // Canvas-provided directions carried into local assignment context
+    submissionCount?: number; // eligible candidate count when the source reports one without a round trip
     pointsPossible?: number; // informational Canvas value; never inferred as rubric mapping
     dueAt?: string; // external due date preview
     rubricState: 'canvas_rubric' | 'no_canvas_rubric'; // provenance notice; no silent rubric import
@@ -241,10 +511,30 @@ export interface WorkspaceContext {
 
 /** Approved/draft rubric pair and history returned to the rubric page. */
 export interface RubricResponse {
-    approved: RubricDefinition; // active rubric used by generation and release
-    draft?: RubricDefinition; // inactive editable candidate, when present
+    lens: WritingFeedbackLens; // feedback lens this rubric response governs
+    approved?: RubricDefinition; // active rubric used by generation and release after first approval
+    draft?: RubricDefinition; // editable candidate; always present before the first approval
     history: RubricDefinition[]; // immutable prior versions available for provenance
+    library: RubricCriterion[]; // optional criteria available for explicit instructor addition
     permissions: { canEdit: boolean }; // server-derived mutation permission for the current staff user
+    /** Unreleased submissions whose latest feedback for this rubric used the approved version; approving a newer version means regenerating them. 0 before first approval. */
+    feedbackStaleOnApproval: number;
+}
+
+/** One submission shown in the pre-import preview, with no source identifiers or file URLs. */
+export interface CanvasPreviewSubmission {
+    studentLabel: string; // staff-only display label used to recognise the submission
+    attempt: number; // attempt number participating in import idempotency
+    submittedAt: string; // source submission timestamp
+    contentKind: 'text_entry' | 'file_upload' | 'unsupported'; // intake path this submission will take
+    attachmentNames: string[]; // file names to be downloaded and parsed, for uploads
+    synthetic: boolean; // marks local demo records as non-production data
+}
+
+/** Read-only preview returned before any local record is written. */
+export interface CanvasPreview {
+    assignment: CanvasAssignment; // source assignment the previewed submissions belong to
+    submissions: CanvasPreviewSubmission[]; // candidates, including ones import will skip
 }
 
 /** Result of an explicit idempotent Canvas-to-local assignment import. */
@@ -253,45 +543,64 @@ export interface CanvasImportResult {
     targetAssignment: Assignment; // local assignment created or reused by import
     importedCount: number; // new local attempts created
     skippedCount: number; // unchanged attempts omitted by idempotency checks
+    heldCount: number; // resubmissions waiting beside an existing submission for staff to choose
+    unsupportedCount: number; // submissions with no extractable text, or text past the 30,000-character limit
+    failedCount: number; // submissions whose download or parse failed and can be retried
     submissions: Submission[]; // resulting local submission summaries
-    rubricImport: 'not_imported'; // explicit guarantee that Canvas rubric data was not activated
+    /**
+     * How the Canvas rubric was treated. `seeded_draft`: it became this assignment's unapproved
+     * rubric draft. `unrepresentable`: Canvas held a rubric outside the grid contract, so the
+     * built-in profile seeded the draft instead. `existing_assignment`: the assignment already
+     * existed and its rubric was left alone.
+     */
+    rubricImport: 'seeded_draft' | 'unrepresentable' | 'no_canvas_rubric' | 'existing_assignment';
 }
 
-/** Staff-facing text for each submission lifecycle state. */
+/** Assignment brief imported from Canvas; reference material for staff. */
+export interface CanvasAssignmentDetails {
+    descriptionHtml?: string; // Canvas rich-editor HTML as delivered
+    descriptionText?: string; // plain-text rendering shown to staff
+    pointsPossible?: number; // Canvas assignment points
+    dueAt?: string; // Canvas due date at import time
+    importedAt: string; // when the brief was pulled
+}
+
+
+/**
+ * Staff-facing text for each submission lifecycle state.
+ *
+ * Grouped by what staff do next rather than one label per state: "Not started" covers text
+ * that still needs checking (the review page explains that step). "Generating" stays separate
+ * because batch generation can hold a submission there for a while, and it cannot be reviewed
+ * yet. "Ready to release" and "Released" stay distinct because only the second means the
+ * student has the feedback.
+ */
 export const STATUS_LABELS: Record<SubmissionStatus, string> = {
-    imported: 'Imported',
-    verification_needed: 'Verification needed',
+    imported: 'Not started',
+    verification_needed: 'Not started',
     generating: 'Generating',
-    draft_ready: 'Draft ready',
-    approved: 'Approved',
+    draft_ready: 'Needs review',
+    approved: 'Ready to release',
     released: 'Released',
     failed: 'Needs attention'
 };
 
-/** Staff-facing intake provenance labels. */
-export const SOURCE_LABELS: Record<Submission['sourceType'], string> = {
-    manual: 'Pasted text',
-    canvas_text: 'Canvas text',
-    digital_file: 'Digital file',
-    paper_scan: 'Paper scan'
-};
-
 /** Supported semantic color treatments for compact workspace chips. */
 export type WfChipTone =
-    | 'neutral' | 'green' | 'blue' | 'amber' | 'red' | 'purple';
+    | 'neutral' | 'green' | 'green-solid' | 'blue' | 'amber' | 'red' | 'purple';
 
-/** Status → chip tone, matching the app's status color semantics. */
+/** Status → chip tone; a filled chip marks the one state where staff have nothing left to do. */
 export const STATUS_TONES: Record<SubmissionStatus, WfChipTone> = {
-    imported: 'blue',
-    verification_needed: 'amber',
-    generating: 'blue',
+    imported: 'neutral',
+    verification_needed: 'neutral',
+    generating: 'purple',
     draft_ready: 'blue',
     approved: 'green',
-    released: 'green',
+    released: 'green-solid',
     failed: 'red'
 };
 
-/** Semantic chip tones for Academic Writing Matrix functions. */
+/** Semantic chip tones for function filters. */
 export const FUNCTION_TAG_TONES: Record<WfFunctionTag, WfChipTone> = {
     content: 'blue',
     interpersonal: 'purple',
@@ -325,14 +634,18 @@ export function refreshIcons(): void {
 }
 
 /** URL-addressable child view within the mounted Writing Feedback component. */
-export type WfViewName = 'landing' | 'rubric' | 'review';
+export type WfViewName = 'landing' | 'assignment' | 'rubric' | 'review';
 
 /** Mutable browser state shared only across Writing Feedback view modules. */
 interface WfState {
     course: activeCourse | null;
     workspace: WorkspaceContext | null;
     assignments: Assignment[];
-    expandedAssignmentId: string | null;
+    /**
+     * The assignment the staff member is working in: the one whose page is open, or the one
+     * the open rubric or review belongs to. Null only on the assignment queue.
+     */
+    activeAssignmentId: string | null;
     currentAssignment: Assignment | null;
     reviewDirty: boolean;
     panelDirty: boolean;
@@ -348,7 +661,7 @@ export const state: WfState = {
     course: null,
     workspace: null,
     assignments: [],
-    expandedAssignmentId: null,
+    activeAssignmentId: null,
     currentAssignment: null,
     reviewDirty: false,
     panelDirty: false
@@ -357,11 +670,12 @@ export const state: WfState = {
 /**
  * Late-bound sibling view openers.
  *
- * Registration during initialization avoids circular imports while giving
- * rubric/review modules a common way to return to the landing view.
+ * Registration during initialization avoids circular imports while giving each
+ * view module a common way to open the pages it links to.
  */
 export const views = {
     showLanding: async (): Promise<void> => {},
+    showAssignment: async (_assignmentId: string): Promise<void> => {},
     showRubric: async (_assignmentId: string): Promise<void> => {},
     showReview: async (_submissionId: string): Promise<void> => {}
 };
@@ -393,17 +707,69 @@ export function element<T extends HTMLElement>(id: string): T {
 /**
  * setView - shows exactly one workspace child view
  *
- * Landing-only intake actions are hidden in rubric and review views so actions
- * remain associated with the assignment queue.
+ * Landing-only intake actions are hidden in the assignment, rubric, and review views so
+ * actions remain associated with the assignment queue.
  *
  * @param view - Child view to expose
  */
 export function setView(view: WfViewName): void {
+    // A notice describes the action that produced it, so it must not follow the
+    // instructor into the next view.
+    clearWorkspaceMessage();
     element('wf-view-landing').hidden = view !== 'landing';
+    element('wf-view-assignment').hidden = view !== 'assignment';
     element('wf-view-rubric').hidden = view !== 'rubric';
     element('wf-view-review').hidden = view !== 'review';
-    // Header intake actions only make sense while browsing assignments.
-    element('wf-header-actions').hidden = view !== 'landing';
+    // The feature heading and its intake actions belong to the assignment list; every other
+    // page leads with its own back button instead, as Scenario Questions does.
+    element('wf-header').hidden = view !== 'landing';
+}
+
+/**
+ * openActionPanel - opens the shared inline setup panel inside the view that asked for it
+ *
+ * One panel serves the assignment queue (add an assignment, import from Canvas) and the
+ * assignment page (add a submission), so it is moved to the caller's mount rather than
+ * duplicated per view.
+ *
+ * @param title - Heading naming the action being set up
+ * @param hostId - Element id of the mount inside the visible view
+ * @returns The emptied content container for the caller's form
+ */
+export function openActionPanel(title: string, hostId: string): HTMLElement {
+    const panel = element<HTMLElement>('wf-action-panel');
+    const host = element<HTMLElement>(hostId);
+    if (panel.parentElement !== host) host.append(panel);
+    element('wf-action-panel-title').textContent = title;
+    const content = element<HTMLElement>('wf-action-panel-content');
+    content.replaceChildren();
+    panel.hidden = false;
+    // 'nearest' so the panel is only scrolled to when it is actually off-screen. Revealing
+    // it already pushes the content below it down; aligning its top to the viewport on top of
+    // that moved the page under the reviewer even when the panel was fully visible.
+    panel.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'nearest' });
+    return content;
+}
+
+/**
+ * closeActionPanel - clears the shared setup panel and returns it to its resting host
+ *
+ * Moving it out of the view it was opened in is what lets that view re-render freely: a page
+ * that replaced its children while the panel sat inside would take the panel with it.
+ *
+ * @param confirm - Whether unsaved setup edits must be resolved first
+ * @returns False when staff chose to keep editing, leaving the panel open
+ */
+export async function closeActionPanel(confirm = true): Promise<boolean> {
+    // Never clear setup controls until the reviewer has resolved dirty state;
+    // successful submissions bypass the prompt only after persistence completes.
+    if (confirm && !(await confirmDiscardDirty('setup'))) return false;
+    state.panelDirty = false;
+    const panel = element<HTMLElement>('wf-action-panel');
+    panel.hidden = true;
+    element('wf-action-panel-content').replaceChildren();
+    element<HTMLElement>('wf-action-panel-home').append(panel);
+    return true;
 }
 
 /**
@@ -414,10 +780,61 @@ export function setView(view: WfViewName): void {
  * @returns The typed `data` member from a successful API envelope
  * @throws Error when transport status or the API success flag indicates failure
  */
+/**
+ * Raised when Canvas refuses a call because this staff member has not authorized it.
+ *
+ * Distinct from a generic failure because the remedy is a specific link, not a retry. The
+ * server sends it as a `401` carrying `connectUrl`, which is the only shape that arrives
+ * without an `error` message to display.
+ */
+export class CanvasAuthRequiredError extends Error {
+    constructor(readonly connectUrl: string) {
+        super('Connect your Canvas account to continue.');
+        this.name = 'CanvasAuthRequiredError';
+    }
+}
+
+/**
+ * Raised when Canvas refuses the connected account because it belongs to someone else.
+ *
+ * Carries the server's message and a connect link. Connecting again with the right account is
+ * the fix, and the refused connection still exists, so the usual "not connected" prompt would
+ * never appear on its own.
+ */
+export class CanvasAccountMismatchError extends Error {
+    readonly status = 403;
+
+    constructor(message: string, readonly connectUrl: string) {
+        super(message);
+        this.name = 'CanvasAccountMismatchError';
+    }
+}
+
+/** A failed request, carrying the HTTP status alongside the server's message. */
+export interface WritingFeedbackRequestError extends Error {
+    status?: number;
+}
+
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const response = await fetch(`${baseUrl()}${path}`, { credentials: 'same-origin', ...init });
     const body = await response.json().catch(() => ({}));
-    if (!response.ok || !body.success) throw new Error(body.error || 'Writing Feedback request failed');
+    // The LMS package answers an unauthorized Canvas call with `connectUrl` and no `error`,
+    // so this must be recognised before the generic failure path swallows it.
+    if (response.status === 401 && typeof body.connectUrl === 'string') {
+        throw new CanvasAuthRequiredError(body.connectUrl);
+    }
+    // Only a refusal of someone else's Canvas account carries a connect link with its 403.
+    if (response.status === 403 && typeof body.connectUrl === 'string') {
+        throw new CanvasAccountMismatchError(body.error || 'The connected Canvas account is not yours.', body.connectUrl);
+    }
+    if (!response.ok || !body.success) {
+        // The status rides along with the message: an expired session reads
+        // "Authentication required", which no wording test would recognise, and the
+        // background autosave loop has to tell that apart from a retryable failure.
+        const failure = new Error(body.error || 'Writing Feedback request failed') as WritingFeedbackRequestError;
+        failure.status = response.status;
+        throw failure;
+    }
     return body.data as T;
 }
 
@@ -429,7 +846,17 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
  * @param body - Optional value serialized as JSON
  * @returns Typed API response data
  */
-export function jsonRequest<T>(path: string, method: 'POST' | 'PUT' | 'DELETE', body?: unknown): Promise<T> {
+export function jsonRequest<T>(path: string, method: 'POST' | 'PUT' | 'PATCH' | 'DELETE', body?: unknown): Promise<T> {
+    // Step 1: refuse every mutation while a tutorial is on screen. This covers
+    // all mutations that use the JSON envelope; the multipart upload in
+    // writing-feedback.ts guards itself with assertNotWritingFeedbackDemoMode
+    // for the same reason (it cannot route through jsonRequest, since it sends
+    // FormData rather than JSON).
+    if (isWritingFeedbackDemoMode()) {
+        return Promise.reject(new WritingFeedbackDemoModeError());
+    }
+
+    // Step 2: normal same-origin mutation through the shared envelope.
     return request<T>(path, {
         method,
         headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
@@ -438,29 +865,159 @@ export function jsonRequest<T>(path: string, method: 'POST' | 'PUT' | 'DELETE', 
 }
 
 /**
- * setWorkspaceMessage - updates the persistent, live-region workspace notice
+ * setWorkspaceMessage - shows the live-region notice for the action just taken
+ *
+ * The notice reports the outcome of a staff action, so it is scoped to the view
+ * that produced it: `setView` clears it on navigation and the dismiss control
+ * removes it on demand. Standing context about the workspace belongs in the view
+ * it applies to, not here.
  *
  * @param message - Staff-safe status text
  * @param tone - Semantic status used by the notice styling
  */
 export function setWorkspaceMessage(message: string, tone: 'info' | 'success' | 'warning' | 'error' = 'info'): void {
     const region = element<HTMLDivElement>('wf-workspace-message');
-    region.textContent = message;
+    element<HTMLSpanElement>('wf-workspace-message-text').textContent = message;
     region.dataset.tone = tone;
+    region.hidden = false;
 }
 
 /**
- * setQueryState - replaces Writing Feedback deep-link parameters without navigation
+ * clearWorkspaceMessage - removes the workspace notice and hides its banner
+ */
+export function clearWorkspaceMessage(): void {
+    const region = element<HTMLDivElement>('wf-workspace-message');
+    element<HTMLSpanElement>('wf-workspace-message-text').textContent = '';
+    region.hidden = true;
+}
+
+/** History-state key holding the page scroll offset of the entry being left. */
+const SCROLL_TOP_KEY = 'wfScrollTop';
+/** History-state key holding the address of the entry a pushed entry was opened from. */
+const CAME_FROM_KEY = 'wfCameFrom';
+
+/**
+ * URL of the workspace page currently on screen. Browser Back has already changed the
+ * address by the time the page hears about it, so this is what "Keep editing" restores.
+ */
+let displayedUrl = '';
+
+/**
+ * setQueryState - updates Writing Feedback deep-link parameters without reloading
+ *
+ * `replace` edits the current history entry, for changes within a page (expanding an
+ * assignment) or a refresh of the same page. `push` adds an entry so the browser's Back
+ * button returns to the page being left; it replaces instead when the URL would not
+ * change, so reopening the current page never stacks duplicate entries. Before pushing,
+ * the scroll offset of the page being left is saved on its own entry so Back can restore it.
  *
  * @param values - Parameters to set, or null values to remove
+ * @param mode - Whether the change is a new history entry or an edit of the current one
  */
-export function setQueryState(values: Partial<Record<'wfAssignment' | 'wfSubmission' | 'wfView', string | null>>): void {
+export function setQueryState(
+    values: Partial<Record<'wfAssignment' | 'wfSubmission' | 'wfView', string | null>>,
+    mode: 'replace' | 'push' = 'replace'
+): void {
     const url = new URL(window.location.href);
     Object.entries(values).forEach(([key, value]) => {
         if (value) url.searchParams.set(key, value);
         else url.searchParams.delete(key);
     });
-    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    const next = `${url.pathname}${url.search}${url.hash}`;
+    const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (mode === 'push' && next !== current) {
+        const leaving = document.querySelector<HTMLElement>('[id^="wf-view-"]:not([hidden])') ?? element('wf-view-landing');
+        window.history.replaceState(
+            { ...(window.history.state ?? {}), [SCROLL_TOP_KEY]: scrollingAncestor(leaving).scrollTop },
+            '',
+            current
+        );
+        window.history.pushState({ view: 'writing-feedback', [CAME_FROM_KEY]: current }, '', next);
+    } else {
+        window.history.replaceState(window.history.state, '', next);
+    }
+    displayedUrl = next;
+}
+
+/**
+ * rememberDisplayedUrl - records the current address as the page on screen
+ *
+ * Called once the workspace mounts, before any page has set its own parameters.
+ */
+export function rememberDisplayedUrl(): void {
+    displayedUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+}
+
+/**
+ * restoreDisplayedUrl - puts back the address of the page still on screen
+ *
+ * Used when staff cancel a Back/Forward navigation to keep unsaved edits: the browser
+ * cannot cancel it, so the page's address is pushed again to match what is shown.
+ */
+export function restoreDisplayedUrl(): void {
+    if (displayedUrl) window.history.pushState({ view: 'writing-feedback' }, '', displayedUrl);
+}
+
+/**
+ * cameFromParams - the deep-link parameters of the page this one was opened from
+ *
+ * @returns Query parameters of the recorded opener, or null when this page was reached
+ *          directly (a deep link, a reload, or Back/Forward)
+ */
+function cameFromParams(): URLSearchParams | null {
+    const cameFrom = (window.history.state as Record<string, unknown> | null)?.[CAME_FROM_KEY];
+    if (typeof cameFrom !== 'string') return null;
+    return new URL(cameFrom, window.location.origin).searchParams;
+}
+
+/**
+ * returnToLanding - goes back to the assignment list
+ *
+ * When this page was opened from the list, steps back through browser history so the
+ * list returns where staff left it and Back/Forward stay in step with the in-app button.
+ * Otherwise (a deep link or reload) opens the list as a new entry. Callers resolve unsaved
+ * edits first.
+ */
+export async function returnToLanding(): Promise<void> {
+    const params = cameFromParams();
+    if (params && !params.has('wfSubmission') && !params.has('wfView')) {
+        window.history.back();
+        return;
+    }
+    await views.showLanding();
+}
+
+/**
+ * returnToAssignment - goes back to one assignment's own page
+ *
+ * The page a rubric or a review was opened from, which is where staff expect to land when
+ * they finish with it. Steps back through history when that is literally the entry behind
+ * this one, so the submission list returns where they left it. Callers resolve unsaved edits
+ * first.
+ *
+ * @param assignmentId - Assignment whose page to return to; the queue when there is none
+ */
+export async function returnToAssignment(assignmentId: string | null): Promise<void> {
+    if (!assignmentId) {
+        await returnToLanding();
+        return;
+    }
+    const params = cameFromParams();
+    if (params && params.get('wfView') === 'assignment' && params.get('wfAssignment') === assignmentId) {
+        window.history.back();
+        return;
+    }
+    await views.showAssignment(assignmentId);
+}
+
+/**
+ * savedScrollTop - the scroll offset saved on the current history entry, if any
+ *
+ * @returns Offset recorded when staff last left this entry, or null
+ */
+export function savedScrollTop(): number | null {
+    const value = (window.history.state as Record<string, unknown> | null)?.[SCROLL_TOP_KEY];
+    return typeof value === 'number' ? value : null;
 }
 
 /**
@@ -480,11 +1037,95 @@ export function queryState(key: 'wfAssignment' | 'wfSubmission' | 'wfView'): str
  * @param withTime - Whether to include localized time
  * @returns Localized text, or an em dash for missing/invalid input
  */
+/**
+ * assignmentOriginText - where an assignment came from, and when it arrived
+ *
+ * Shared between the assignment list and the rubric page header so the two cannot drift
+ * apart in wording — they already did once, one saying "Created" while the other named the
+ * source. A record is created at the moment it is imported, so `createdAt` answers both.
+ *
+ * @param assignment - Assignment whose provenance is wanted
+ * @returns One staff-facing sentence naming the source and the date
+ */
+export function assignmentOriginText(assignment: Assignment): string {
+    return assignment.canvasAssignmentId
+        ? `Imported from Canvas ${formatDate(assignment.createdAt)}`
+        : `Created manually ${formatDate(assignment.createdAt)}`;
+}
+
+/**
+ * canvasOutcomeNotes - the per-count sentences shared by the import and sync toasts
+ *
+ * The two actions read the same Canvas submissions and hold back the same ones, so they
+ * report them in the same words; only the leading count differs.
+ *
+ * @param result - Counts from an import or sync
+ * @returns Sentences for the counts worth mentioning
+ */
+export function canvasOutcomeNotes(result: Pick<CanvasSyncResult, 'heldCount' | 'unsupportedCount' | 'failedCount'>): string[] {
+    const notes: string[] = [];
+    if (result.heldCount > 0) {
+        notes.push(`${result.heldCount} resubmission${result.heldCount === 1 ? '' : 's'} waiting for you to choose which attempt to review`);
+    }
+    if (result.unsupportedCount > 0) notes.push(`${result.unsupportedCount} had no readable text or exceeded the 30,000-character review limit`);
+    if (result.failedCount > 0) notes.push(`${result.failedCount} could not be read and can be retried by syncing again`);
+    return notes;
+}
+
 export function formatDate(value?: string, withTime = false): string {
     if (!value) return '—';
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return '—';
     return new Intl.DateTimeFormat(undefined, withTime ? { dateStyle: 'medium', timeStyle: 'short' } : { dateStyle: 'medium' }).format(date);
+}
+
+/**
+ * isLateSubmission - reports whether a submission arrived after its assignment deadline
+ *
+ * A missing deadline or submission time is never late.
+ *
+ * @param submission - Submission whose Canvas submission time is checked
+ * @param assignment - Assignment carrying the optional deadline
+ * @returns True when the submission time is after the deadline
+ */
+export function isLateSubmission(submission: Submission, assignment: Assignment | null | undefined): boolean {
+    return Boolean(assignment?.dueAt && submission.submittedAt && new Date(submission.submittedAt) > new Date(assignment.dueAt));
+}
+
+/**
+ * runPredatesTextEdit - whether feedback was generated for text staff have since edited.
+ *
+ * Mirrors `runPredatesTextEdit` in src/writing-feedback/transcript-edit.ts.
+ *
+ * @param submission - Submission carrying the last text edit time
+ * @param run - Feedback run to check; an absent run never predates anything
+ * @returns True when the run was created at or before the last edit
+ */
+export function runPredatesTextEdit(submission: Submission, run: FeedbackRun | null | undefined): boolean {
+    if (!submission.transcriptEditedAt || !run) return false;
+    return new Date(run.createdAt).getTime() <= new Date(submission.transcriptEditedAt).getTime();
+}
+
+/** Statuses whose confirmed text staff may edit. Mirrors TRANSCRIPT_EDITABLE_STATUSES on the server. */
+export const TEXT_EDITABLE_STATUSES: ReadonlyArray<SubmissionStatus> = ['imported', 'failed', 'draft_ready', 'approved'];
+
+/**
+ * scrollingAncestor - the element that actually scrolls when this one moves
+ *
+ * Workspace pages scroll inside `.page-shell`, not the window, so a scroll correction has to
+ * be applied to whichever ancestor owns the scrollbar.
+ *
+ * @param element - Element whose scroll container is wanted
+ * @returns Nearest ancestor that scrolls vertically, or the document's scroller
+ */
+export function scrollingAncestor(element: HTMLElement): HTMLElement {
+    for (let node = element.parentElement; node; node = node.parentElement) {
+        const overflowY = getComputedStyle(node).overflowY;
+        if ((overflowY === 'auto' || overflowY === 'scroll') && node.scrollHeight > node.clientHeight) {
+            return node;
+        }
+    }
+    return (document.scrollingElement as HTMLElement | null) ?? document.documentElement;
 }
 
 /**
@@ -515,17 +1156,66 @@ export function createText(tag: keyof HTMLElementTagNameMap, text: string, class
  */
 export function createButton(
     label: string,
-    variant: 'primary' | 'secondary' | 'quiet' | 'danger',
+    variant: 'primary' | 'secondary' | 'outline' | 'quiet' | 'danger' | 'chip',
     action: (button: HTMLButtonElement) => Promise<void>,
-    disabled = false
+    disabled = false,
+    iconName?: string
 ): HTMLButtonElement {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = `wf-button wf-button--${variant}`;
-    button.textContent = label;
+    if (iconName) {
+        // Matches the documents header badges: a feather glyph ahead of its label, with the
+        // text in its own span so the icon cannot inherit the label's line box.
+        const icon = document.createElement('i');
+        icon.setAttribute('data-feather', iconName);
+        icon.setAttribute('aria-hidden', 'true');
+        const text = document.createElement('span');
+        text.className = 'wf-button-text';
+        text.textContent = label;
+        button.append(icon, text);
+    } else {
+        button.textContent = label;
+    }
     button.disabled = disabled;
     button.addEventListener('click', () => void runButtonAction(button, action));
     return button;
+}
+
+/**
+ * createBackBar - builds the sticky bar holding the page's "← Back" button
+ *
+ * Styled like the Scenario Questions back buttons: a quiet arrow and label with no button
+ * chrome, in a bar that stays pinned to the top of the page while it scrolls. Unlike
+ * {@link createButton} the label never changes to "Working…", because the action replaces
+ * the page; repeat clicks are ignored until it settles.
+ *
+ * @param action - Navigation to run; it resolves unsaved edits itself
+ * @param label - Where the button says it leads, naming the page the action opens
+ * @returns Unattached bar, to be the first child of the page
+ */
+export function createBackBar(action: () => Promise<void>, label = 'Back to assignments'): HTMLDivElement {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'wf-back-button';
+    const icon = document.createElement('i');
+    icon.setAttribute('data-feather', 'arrow-left');
+    icon.setAttribute('aria-hidden', 'true');
+    const text = document.createElement('span');
+    text.textContent = label;
+    button.append(icon, text);
+    let running = false;
+    button.addEventListener('click', () => {
+        if (running) return;
+        running = true;
+        void action()
+            .catch(handleActionError)
+            .finally(() => { running = false; });
+    });
+    const bar = document.createElement('div');
+    bar.className = 'wf-back-bar';
+    bar.append(button);
+    return bar;
 }
 
 /**
@@ -644,14 +1334,18 @@ export async function runButtonAction(
     action: (button: HTMLButtonElement) => Promise<void>
 ): Promise<void> {
     if (button.disabled) return;
-    const label = button.textContent ?? '';
+    // Restoring from textContent would flatten an icon button into a bare text
+    // node, so the glyph survived only until its first click. Keep the nodes.
+    const label = Array.from(button.childNodes);
     button.disabled = true;
     button.setAttribute('aria-busy', 'true');
     button.textContent = 'Working…';
     try {
         await action(button);
     } catch (error) {
-        setWorkspaceMessage(error instanceof Error ? error.message : 'The action could not be completed.', 'error');
+        // The modal is the whole report. Mirroring it into the workspace banner
+        // left the instructor reading the same sentence twice, the second copy
+        // outliving the dialog it came from.
         await showErrorModal(
             'Writing Feedback action failed',
             error instanceof Error ? error.message : 'Please try again.'
@@ -662,7 +1356,7 @@ export async function runButtonAction(
         if (button.isConnected) {
             button.disabled = false;
             button.removeAttribute('aria-busy');
-            button.textContent = label;
+            button.replaceChildren(...label);
         }
     }
 }
@@ -670,27 +1364,74 @@ export async function runButtonAction(
 /**
  * field - pairs a form control with a programmatic label and optional help text
  *
+ * A required field carries a red asterisk after its label text. The marker is
+ * decorative, so the requirement reaches assistive technology through
+ * `aria-required` on the control instead. Native `required` is deliberately not
+ * set: these forms are collected and validated in script, never submitted by the
+ * browser, so a native constraint would only add a second, inconsistent gate.
+ *
  * @param labelText - Visible control label
  * @param control - Input, textarea, or select to label
  * @param help - Optional staff guidance
  * @param wide - Whether the field spans the full form grid
+ * @param required - Whether to mark the field as required
  * @returns Detached labelled field wrapper
  */
 export function field(
     labelText: string,
     control: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement,
     help?: string,
-    wide = false
+    wide = false,
+    required = false
 ): HTMLDivElement {
     const wrapper = document.createElement('div');
     wrapper.className = `wf-field${wide ? ' wf-field--wide' : ''}`;
     if (!control.id) control.id = `wf-field-${crypto.randomUUID()}`;
     const label = document.createElement('label');
     label.htmlFor = control.id;
-    label.textContent = labelText;
+    if (required) {
+        // The rubric page lays labels out as `justify-content: space-between` so a
+        // line-item count can sit at the far right. A bare marker span becomes a
+        // second flex item and gets pushed there too, stranding the asterisk away
+        // from the words it qualifies, so text and marker share one wrapper.
+        label.append(labelWithRequiredMarker(labelText));
+        control.setAttribute('aria-required', 'true');
+    } else {
+        label.textContent = labelText;
+    }
     wrapper.append(label, control);
     if (help) wrapper.append(createText('small', help));
     return wrapper;
+}
+
+/**
+ * labelWithRequiredMarker - label text and its red asterisk as a single inline unit
+ *
+ * Returned as one element so that flex label rows keep the marker beside the
+ * words rather than at the opposite end of the row.
+ *
+ * @param labelText - Visible control label
+ * @returns Detached span holding the label text followed by the marker
+ */
+export function labelWithRequiredMarker(labelText: string): HTMLSpanElement {
+    const text = document.createElement('span');
+    text.className = 'wf-field-label-text';
+    text.textContent = labelText;
+    text.append(requiredMarker());
+    return text;
+}
+
+/**
+ * requiredMarker - the red asterisk that marks a required field
+ *
+ * @returns Detached decorative marker, hidden from assistive technology
+ */
+export function requiredMarker(): HTMLSpanElement {
+    const marker = document.createElement('span');
+    marker.className = 'wf-required-marker';
+    marker.textContent = '*';
+    marker.setAttribute('aria-hidden', 'true');
+    return marker;
 }
 
 /**
@@ -722,6 +1463,41 @@ export function textAreaControl(value = '', rows = 4): HTMLTextAreaElement {
 }
 
 /**
+ * autoGrow - keeps a textarea exactly as tall as the text in it
+ *
+ * A fixed row count either clips long text (staff see it stop mid-word with no
+ * affordance but the resize handle) or leaves short text in an oversized box.
+ *
+ * Height is cleared before it is measured, because scrollHeight of an element that
+ * is already tall enough reports the height it was given, not the height it needs.
+ * The first measurement is deferred: the control is not in the document when this
+ * is called, and a detached element has no scrollHeight.
+ *
+ * A control rendered inside a collapsed step has no layout at all and reports a
+ * scrollHeight of 0. Measuring it there would pin it to its row floor for the life of
+ * the page, so the measurement is skipped until the control is on screen and repeated then.
+ *
+ * @param control - Textarea to keep sized to its content
+ */
+export function autoGrow(control: HTMLTextAreaElement): void {
+    const fit = (): void => {
+        // offsetParent is null exactly when the control (or an ancestor) is display:none
+        // or hidden — the collapsed-step case, where there is nothing to measure.
+        if (!control.isConnected || control.offsetParent === null) return;
+        control.style.height = 'auto';
+        // scrollHeight excludes the border, which a border-box height must include.
+        control.style.height = `${control.scrollHeight + control.offsetHeight - control.clientHeight}px`;
+    };
+    control.addEventListener('input', fit);
+    // Fires when the step is expanded and again when the control scrolls into view, which
+    // is the first moment it has a height worth reading.
+    new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) fit();
+    }).observe(control);
+    requestAnimationFrame(fit);
+}
+
+/**
  * confirmDiscardDirty - protects unsaved review or setup state before navigation
  *
  * @param kind - Dirty flag and user-facing edit category to inspect
@@ -747,6 +1523,138 @@ export async function confirmDiscardDirty(kind: 'review' | 'setup'): Promise<boo
  */
 export async function handleActionError(error: unknown): Promise<void> {
     const message = error instanceof Error ? error.message : 'The action could not be completed.';
-    setWorkspaceMessage(message, 'error');
     await showErrorModal('Writing Feedback action failed', message);
+}
+
+/**
+ * Longest a disclosure's open or close animation can take, fallback included. Anything
+ * that has to follow the page while a panel changes height -- the step accordion keeping
+ * the clicked header still -- follows it for this long.
+ */
+export const DISCLOSURE_TRANSITION_TIMEOUT_MS = 380;
+const disclosureTransitions = new WeakMap<HTMLElement, { finish: () => void }>();
+
+/** Completes the current disclosure transition once, including its timeout fallback. */
+function waitForDisclosureTransition(panel: HTMLElement, settle: () => void): Promise<void> {
+    disclosureTransitions.get(panel)?.finish();
+    return new Promise((resolve) => {
+        let finished = false;
+        const finish = (): void => {
+            if (finished) return;
+            finished = true;
+            window.clearTimeout(timer);
+            panel.removeEventListener('transitionend', onTransitionEnd);
+            disclosureTransitions.delete(panel);
+            settle();
+            resolve();
+        };
+        const onTransitionEnd = (event: TransitionEvent): void => {
+            if (event.target === panel && event.propertyName === 'max-height') finish();
+        };
+        const timer = window.setTimeout(finish, DISCLOSURE_TRANSITION_TIMEOUT_MS);
+        disclosureTransitions.set(panel, { finish });
+        panel.addEventListener('transitionend', onTransitionEnd);
+    });
+}
+
+/**
+ * expandDisclosure - reveals a collapsible panel with the shared height/opacity animation.
+ *
+ * Shared by the assignment submission panel and every rubric-page collapsible
+ * section so the page has exactly one open/close animation, not one per section.
+ *
+ * @param panel - Element carrying the `wf-disclosure-body` class
+ */
+export async function expandDisclosure(panel: HTMLElement): Promise<void> {
+    disclosureTransitions.get(panel)?.finish();
+    panel.hidden = false;
+    panel.classList.remove('wf-disclosure-body--leave');
+    panel.classList.add('wf-disclosure-body--enter');
+    panel.style.maxHeight = '0px';
+    const targetHeight = panel.scrollHeight;
+    const completion = waitForDisclosureTransition(panel, () => {
+        panel.classList.remove('wf-disclosure-body--enter');
+        panel.style.maxHeight = 'none';
+    });
+    void panel.offsetHeight;
+    panel.classList.remove('wf-disclosure-body--enter');
+    panel.style.maxHeight = `${targetHeight}px`;
+    await completion;
+}
+
+/**
+ * collapseDisclosure - hides a collapsible panel with the shared height/opacity animation.
+ *
+ * @param panel - Element carrying the `wf-disclosure-body` class
+ */
+export async function collapseDisclosure(panel: HTMLElement): Promise<void> {
+    disclosureTransitions.get(panel)?.finish();
+    if (panel.hidden) return;
+    panel.style.maxHeight = `${panel.scrollHeight}px`;
+    panel.classList.remove('wf-disclosure-body--enter');
+    void panel.offsetHeight;
+    const completion = waitForDisclosureTransition(panel, () => {
+        panel.hidden = true;
+        panel.classList.remove('wf-disclosure-body--leave');
+        panel.style.removeProperty('max-height');
+    });
+    panel.classList.add('wf-disclosure-body--leave');
+    panel.style.maxHeight = '0px';
+    await completion;
+}
+
+/**
+ * disclosureHeader - builds a clickable header that expands/collapses a panel.
+ *
+ * Mirrors the assignment card's expand control (role=button, tabindex=0,
+ * aria-expanded, aria-controls, Enter/Space activation) so every collapsible
+ * section on the page behaves identically to keyboard and screen-reader users.
+ *
+ * @param content - Elements placed inside the header, before the chevron
+ * @param panel - Body element this header expands and collapses; mutated (id, class, hidden)
+ * @param panelId - Id assigned to `panel` for `aria-controls`
+ * @param initiallyOpen - Whether the panel starts expanded
+ * @param className - Header class name, e.g. `wf-step-header`
+ * @returns Detached header; caller appends both the header and `panel` into the DOM
+ */
+export function disclosureHeader(
+    content: HTMLElement[],
+    panel: HTMLElement,
+    panelId: string,
+    initiallyOpen: boolean,
+    className: string
+): HTMLElement {
+    panel.id = panelId;
+    panel.classList.add('wf-disclosure-body');
+    panel.hidden = !initiallyOpen;
+    if (initiallyOpen) panel.style.maxHeight = 'none';
+
+    const header = document.createElement('div');
+    header.className = className;
+    header.setAttribute('role', 'button');
+    header.setAttribute('tabindex', '0');
+    header.setAttribute('aria-expanded', String(initiallyOpen));
+    header.setAttribute('aria-controls', panelId);
+    header.append(...content);
+
+    const icon = document.createElement('span');
+    icon.className = 'wf-expand-icon';
+    icon.innerHTML = '<i data-feather="chevron-down" aria-hidden="true"></i>';
+    header.append(icon);
+
+    const toggle = (): void => {
+        const nextOpen = header.getAttribute('aria-expanded') !== 'true';
+        header.setAttribute('aria-expanded', String(nextOpen));
+        void (nextOpen ? expandDisclosure(panel) : collapseDisclosure(panel));
+    };
+    header.addEventListener('click', toggle);
+    header.addEventListener('keydown', (event) => {
+        if (event.target !== header) return;
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            toggle();
+        }
+    });
+
+    return header;
 }

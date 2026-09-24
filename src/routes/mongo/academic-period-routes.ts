@@ -7,6 +7,7 @@
 import { Router, Request, Response } from 'express';
 import { asyncHandlerWithAuth } from '../../middleware/async-handler';
 import { requireAdminGlobal } from '../../middleware/require-course-role';
+import { requireAuthAPI } from '../../middleware/require-auth';
 import { EngEAI_MongoDB } from '../../db/enge-ai-mongodb';
 import { AcademicPeriodValidationError } from '../../db/mongo/academic-period-mongo';
 import { routeParam } from '../../helpers/route-params';
@@ -46,6 +47,36 @@ router.post(
             }
             throw error;
         }
+    })
+);
+
+/**
+ * GET /selectable
+ *
+ * The academic periods any signed-in user may assign a course to, newest first.
+ *
+ * Separate from `GET /` because that route is admin-only, while an instructor importing a course
+ * from Canvas has to name the term it belongs to. Only the naming fields are returned — a term
+ * title and its dates say nothing about who is enrolled where — so nothing here needs the admin
+ * gate that guards period membership and CRUD.
+ *
+ * Declared before `/:id` so the literal path is not swallowed by the parameterised one.
+ */
+router.get(
+    '/selectable',
+    requireAuthAPI,
+    asyncHandlerWithAuth(async (_req: Request, res: Response) => {
+        const mongo = await EngEAI_MongoDB.getInstance();
+        const periods = await mongo.listAcademicPeriods();
+        res.json({
+            success: true,
+            data: periods.map((period) => ({
+                id: period.id,
+                title: period.title,
+                startDate: period.startDate,
+                endDate: period.endDate,
+            })),
+        });
     })
 );
 

@@ -1,17 +1,28 @@
 /**
- * Safe Canvas import — synthetic gateway selection and idempotent local intake
+ * Safe Canvas import — gateway selection and idempotent local intake
  *
- * Provides conspicuously synthetic demo data, a fail-closed unconfigured adapter,
- * and the orchestration that imports verified text into an existing assignment.
- * It performs no Canvas network calls, OAuth handling, grading, or release writes.
+ * Holds the two local adapters — conspicuously synthetic demo data, and a fail-closed
+ * unconfigured adapter — plus the orchestration that imports source text into an existing
+ * assignment. Neither adapter in this file touches the network; the live one lives in
+ * `canvas-live-import-gateway.ts` and is injected by the route, which is the only layer with
+ * the per-request Canvas credential.
+ *
+ * Import is read-then-write-locally in every mode. Nothing here performs OAuth, writes a grade,
+ * or sends anything back to Canvas.
  *
  * @author: @rdschrs
  * @date: 2026-07-13
- * @version: 1.0.0
- * @description: Previews and imports mock Canvas submissions without external side effects.
+ * @version: 1.1.0
+ * @description: Previews and imports Canvas submissions into local records, never writing back.
  */
 
 import { createHash } from 'crypto';
+import { appLogger } from '../utils/logger';
+import type {
+    CanvasAssignmentDetails,
+    CanvasImportedRubric,
+    WritingSubmission
+} from './contracts';
 import type {
     CanvasImportAssignmentSummary,
     CanvasImportGateway,
@@ -24,17 +35,19 @@ import type {
 
 const DEMO_ASSIGNMENTS: ReadonlyArray<CanvasImportAssignmentSummary> = [
     {
-        canvasAssignmentId: 'demo-lled200-a2-description',
-        title: '[Synthetic demo] Technical Description Paragraph 1',
-        submissionCount: 2,
+        canvasAssignmentId: 'demo-technical-description',
+        title: '[Synthetic demo] Technical Description',
+        description: 'Explain how a familiar technical object or process works for a reader who is new to it.',
+        submissionCount: 1,
         pointsPossible: 20,
         dueAt: new Date('2026-09-22T06:59:00.000Z'),
         rubricState: 'canvas_rubric',
         synthetic: true
     },
     {
-        canvasAssignmentId: 'demo-lled200-description-revision',
-        title: '[Synthetic demo] Technical Description Revision',
+        canvasAssignmentId: 'demo-lab-report',
+        title: '[Synthetic demo] Short Lab Report',
+        description: 'Report a synthetic observation, explain the result, and state one limitation for a technical audience.',
         submissionCount: 1,
         pointsPossible: 20,
         dueAt: new Date('2026-10-06T06:59:00.000Z'),
@@ -44,32 +57,30 @@ const DEMO_ASSIGNMENTS: ReadonlyArray<CanvasImportAssignmentSummary> = [
 ];
 
 const DEMO_SUBMISSIONS: Readonly<Record<string, ReadonlyArray<CanvasImportSubmissionPreview>>> = {
-    'demo-lled200-a2-description': [
+    'demo-technical-description': [
         {
             sourceRecordKey: 'synthetic-learner-a',
+            canvasUserId: 'synthetic-1',
             studentLabel: '[Synthetic] Learner A',
             attempt: 1,
             submittedAt: new Date('2026-09-21T18:15:00.000Z'),
+            contentKind: 'text_entry',
+            attachments: [],
             synthetic: true,
-            text: 'A shell-and-tube heat exchanger transfers thermal energy between two streams without mixing them. Hot fluid enters the shell and flows across metal tube walls. The walls conduct energy to cooler fluid moving inside the tubes. This arrangement provides a large surface area, which improves heat transfer while keeping the fluids separate. An operator can compare inlet and outlet temperatures to determine whether the exchanger is performing as expected. The accompanying diagram identifies the tubes, shell, inlets, outlets, and direction of flow for a reader who has not previously used this equipment.'
-        },
-        {
-            sourceRecordKey: 'synthetic-learner-b',
-            studentLabel: '[Synthetic] Learner B',
-            attempt: 1,
-            submittedAt: new Date('2026-09-21T20:40:00.000Z'),
-            synthetic: true,
-            text: 'A centrifugal pump moves liquid by converting rotational motion into fluid pressure. Liquid enters through the eye at the centre of the impeller. Curved blades accelerate the liquid outward into the surrounding casing. The casing gradually widens, so some velocity becomes pressure before the liquid reaches the outlet. A motor and shaft keep the impeller rotating. In the labelled cross-section, arrows show the path from the suction inlet to the discharge outlet. This representation helps a non-specialist connect each visible component with its role in moving the liquid.'
+            text: 'The synthetic sensor records room temperature once per minute. A small processor converts each reading into a timestamped value and sends it to the display. The display then plots the most recent values so a reader can identify changes over time.'
         }
     ],
-    'demo-lled200-description-revision': [
+    'demo-lab-report': [
         {
             sourceRecordKey: 'synthetic-learner-c',
+            canvasUserId: 'synthetic-3',
             studentLabel: '[Synthetic] Learner C',
             attempt: 2,
             submittedAt: new Date('2026-10-05T22:05:00.000Z'),
+            contentKind: 'text_entry',
+            attachments: [],
             synthetic: true,
-            text: 'A pressure relief valve protects a closed system from excessive pressure. Under normal conditions, a spring presses the valve disc against its seat and keeps the outlet closed. When inlet pressure produces a force greater than the spring force, the disc lifts. Fluid then exits through the discharge port, reducing system pressure. As pressure returns to the permitted range, the spring reseats the disc. The cutaway drawing distinguishes the inlet, disc, spring, adjustment screw, and outlet, allowing an educated non-specialist to follow the opening and closing sequence.'
+            text: 'In this synthetic trial, the insulated container cooled more slowly than the uncovered container. After ten minutes, its recorded temperature was four degrees higher. The observation supports the expected effect of insulation, although the single trial does not establish how consistent the difference would be.'
         }
     ]
 };
@@ -145,8 +156,12 @@ export class UnconfiguredCanvasImportGateway implements CanvasImportGateway {
 }
 
 /**
- * Selects the only currently supported gateways. `live` and unknown modes fail
- * closed; this module never attempts an external Canvas request.
+ * Selects the local, network-free gateway for a context with no Canvas credential.
+ *
+ * This is the fallback, not the whole selection. Live import needs the signed-in user's OAuth
+ * client and the course's Canvas id, neither of which exists at module scope, so the route
+ * constructs {@link LiveCanvasImportGateway} itself and only falls back here when the course is
+ * not Canvas-linked or the user has not authorized Canvas. Unknown modes fail closed.
  *
  * @param env - Integration-mode inputs, injectable for deterministic startup tests
  * @returns Synthetic demo adapter or fail-closed unconfigured adapter
@@ -163,21 +178,54 @@ export function createCanvasImportGateway(
 }
 
 /**
- * buildCanvasImportIdentity — derives a stable, privacy-safe key for one source attempt.
+ * Per-integration hash domain and local id prefix.
  *
- * @param input - Course, local/source assignment, ephemeral record key, and attempt
- * @returns Pseudonymous local student ID and full idempotency fingerprint
+ * Demo and live ids must never collide or be mistaken for one another: a synthetic fixture and
+ * a real student could otherwise hash into the same `studentId` within one assignment, and the
+ * prefix is what makes a stored record's provenance readable without a join. Changing either
+ * string re-keys every future import, so they are versioned rather than edited.
+ */
+const IDENTITY_DOMAINS = {
+    mock_canvas: { domain: 'writing-feedback-canvas-demo-v1', studentDomain: 'writing-feedback-canvas-demo-student-v2', prefix: 'canvas-demo' },
+    canvas: { domain: 'writing-feedback-canvas-live-v1', studentDomain: 'writing-feedback-canvas-live-student-v2', prefix: 'canvas' }
+} as const;
+
+/**
+ * buildCanvasImportIdentity — derives privacy-safe keys for one student and one source attempt.
+ *
+ * `studentId` leaves the attempt out, so every attempt by the same student shares it and a
+ * resubmission can be matched to the submission already in the queue. `fingerprint` includes
+ * the attempt and identifies this exact source record.
+ *
+ * The digest is one-way by design: nothing here is reversible back to a Canvas user. Release
+ * write-back therefore reads {@link WritingSubmission.canvasUserId} rather than trying to
+ * recover an id from this key.
+ *
+ * @param input - Integration, course, local/source assignment, source record key, and attempt
+ * @returns Pseudonymous per-student ID and per-attempt idempotency fingerprint
  */
 export function buildCanvasImportIdentity(input: {
+    integration: 'mock_canvas' | 'canvas';
     courseId: string;
     targetAssignmentId: string;
     canvasAssignmentId: string;
     sourceRecordKey: string;
     attempt: number;
 }): { studentId: string; fingerprint: string } {
-    // Domain-separate the digest so this identity cannot collide with another hash use.
+    // Domain-separate each digest so neither identity can collide with another hash use.
+    const { domain, studentDomain, prefix } = IDENTITY_DOMAINS[input.integration];
+    const studentDigest = createHash('sha256')
+        .update(`${studentDomain}\0`)
+        .update(input.courseId)
+        .update('\0')
+        .update(input.targetAssignmentId)
+        .update('\0')
+        .update(input.canvasAssignmentId)
+        .update('\0')
+        .update(input.sourceRecordKey)
+        .digest('hex');
     const fingerprint = createHash('sha256')
-        .update('writing-feedback-canvas-demo-v1\0')
+        .update(`${domain}\0`)
         .update(input.courseId)
         .update('\0')
         .update(input.targetAssignmentId)
@@ -188,7 +236,49 @@ export function buildCanvasImportIdentity(input: {
         .update('\0')
         .update(String(input.attempt))
         .digest('hex');
-    return { studentId: `canvas-demo-${fingerprint.slice(0, 24)}`, fingerprint };
+    return { studentId: `${prefix}-${studentDigest.slice(0, 24)}`, fingerprint };
+}
+
+/**
+ * Longest transcript an imported submission may carry.
+ *
+ * Matches the limit the manual intake route enforces on pasted text. Canvas import does not go
+ * through that validator, so without this an arbitrarily long Canvas document could enter the
+ * workspace and break the bound the rest of the feature is documented to keep — anchored
+ * comment offsets, review rendering, and PDF generation all assume it.
+ */
+const MAX_IMPORT_TEXT_CHARS = 30000;
+
+/**
+ * describeIntakeFailureSafely - names why one Canvas submission could not be read.
+ *
+ * The raw message is withheld by default because a parser error sometimes echoes the bytes it
+ * choked on, and an attachment's file name is itself identifying. The toolkit's own
+ * `CanvasApiError` messages are the exception: they are generated by the client from its own
+ * state -- a status code, a rejected origin, a redirect ceiling -- and never carry file names
+ * or document content, so they are emitted in full. A transport failure is the other: `fetch`
+ * rejects before any response exists, so its `cause.code` (`ENOTFOUND`, `ECONNREFUSED`, a
+ * connect timeout) describes the network and nothing about the document. That distinction is
+ * what separates "the bytes never arrived" from "the bytes arrived and would not parse", and
+ * on a host whose egress to Canvas file storage is filtered it is the whole diagnosis.
+ *
+ * @param error - Any value thrown while resolving one submission's text
+ * @returns One-line, content-free description safe for application logs
+ */
+function describeIntakeFailureSafely(error: unknown): string {
+    if (!(error instanceof Error)) return typeof error;
+    if (error.name === 'CanvasApiError') {
+        const status = (error as { statusCode?: unknown }).statusCode;
+        return `CanvasApiError${status === undefined ? '' : ` (${String(status)})`}: ${error.message}`;
+    }
+    const cause = (error as { cause?: unknown }).cause;
+    const causeCode = cause instanceof Error
+        ? (cause as { code?: unknown }).code
+        : undefined;
+    if (causeCode !== undefined) {
+        return `${error.constructor.name}: ${error.message} (cause: ${String(causeCode)})`;
+    }
+    return `${error.constructor.name} (message withheld: may carry submission content)`;
 }
 
 function isDuplicateKey(error: unknown): boolean {
@@ -196,8 +286,8 @@ function isDuplicateKey(error: unknown): boolean {
 }
 
 /**
- * Imports verified synthetic Canvas-text fixtures into an existing writing
- * assignment. Existing attempts are skipped, including concurrent duplicates.
+ * Imports Canvas submissions into an existing writing assignment, keeping one active
+ * submission per student. Existing attempts are skipped, including concurrent duplicates.
  */
 export class SafeCanvasImportService {
     /**
@@ -214,6 +304,33 @@ export class SafeCanvasImportService {
     /** Returns the adapter's honest capability state without local persistence. */
     async getStatus(): Promise<CanvasImportStatus> {
         return this.gateway.getStatus();
+    }
+
+    /**
+     * Loads the source rubric and brief for one assignment, without persisting anything.
+     *
+     * The caller needs this *before* the local assignment exists, because a Canvas rubric seeds
+     * that assignment's first rubric draft rather than being stored beside it.
+     *
+     * Failure is not fatal and is reported as `null`: the rubric and brief are context, and
+     * losing them must not cost a staff member the submissions they came to import.
+     *
+     * @param canvasAssignmentId - Source assignment selected by staff
+     * @returns Rubric and brief, or `null` when the adapter cannot supply them
+     */
+    async loadAssignmentContext(canvasAssignmentId: string): Promise<{
+        rubric: CanvasImportedRubric | null;
+        details: CanvasAssignmentDetails;
+    } | null> {
+        if (!this.gateway.loadAssignmentContext) return null;
+        try {
+            return await this.gateway.loadAssignmentContext(canvasAssignmentId);
+        } catch {
+            // A fixed code, not the provider message: a Canvas error sometimes quotes the
+            // response body, and an assignment payload carries the brief and rubric text.
+            appLogger.error('[WritingFeedback] canvas_assignment_context_failed');
+            return null;
+        }
     }
 
     /** Lists assignments only when the selected adapter explicitly permits import. */
@@ -237,62 +354,148 @@ export class SafeCanvasImportService {
         if (!status.canImport) throw new Error('Canvas import is not configured');
         const assignments = await this.gateway.listAssignments();
         const assignment = assignments.find((candidate) => candidate.canvasAssignmentId === canvasAssignmentId);
-        if (!assignment) throw new Error('Canvas demo assignment not found');
+        if (!assignment) throw new Error('Canvas assignment not found');
         const submissions = await this.gateway.listSubmissionPreviews(canvasAssignmentId);
         return { assignment, submissions };
     }
 
     /**
-     * Imports unseen synthetic attempts into an existing local assignment.
+     * Imports unseen source attempts into an existing local assignment.
+     *
+     * Running it again is how staff sync late submissions and resubmissions. Each student keeps
+     * one active submission per assignment, so every source attempt lands in one of four ways:
+     * - already stored (active, held, or superseded), older than the active one, or declined
+     *   by staff: skipped;
+     * - from a student with no active submission: imported active;
+     * - newer than the student's active submission: stored `held`, outside the queue, until
+     *   staff choose between the two. An older held attempt for the same student is replaced,
+     *   since Canvas only ever offers the latest one.
+     *
+     * Each submission is intaken independently. A download or parse failure on one is recorded
+     * and the run continues: an import of sixty submissions must not be lost to one corrupt
+     * PDF, and because the operation is idempotent, re-running it retries only what failed.
+     *
+     * Two intake paths land in deliberately different states. Text entries arrive already
+     * extracted and are stored verified, ready for feedback. File uploads are parsed from
+     * bytes, where extraction can silently mangle or drop content, so they are stored
+     * `verification_needed` — a staff member must confirm the transcript before generation.
      *
      * @param input - Course-scoped source-to-target assignment selection
-     * @returns Newly imported submissions and retry-visible skip counts
+     * @returns Newly imported submissions with held, skip, unsupported, and failure counts
      * @throws Error when import is disabled, the target is absent, or storage fails
      */
     async importAssignment(input: CanvasImportRequest): Promise<CanvasImportResult> {
         // Re-check adapter state at mutation time; a prior preview is never authorization.
         const status = await this.gateway.getStatus();
-        if (!status.canImport || status.integration !== 'mock_canvas') {
+        if (!status.canImport || status.integration === 'none') {
             throw new Error('Canvas import is not configured');
         }
+        const integration = status.integration;
         const target = await this.store.getWritingAssignment(input.courseId, input.targetAssignmentId);
         if (!target) throw new Error('Writing assignment not found');
 
-        // Snapshot existing attempts before writes to make ordinary retries inexpensive.
+        // Snapshot every stored attempt, and each student's active and held rows, before writes.
         const preview = await this.previewAssignment(input.canvasAssignmentId);
-        const existing = await this.store.listWritingSubmissions(input.courseId, input.targetAssignmentId);
+        const existing = await this.store.listWritingSubmissions(
+            input.courseId,
+            input.targetAssignmentId,
+            { includeInactive: true }
+        );
         const existingAttempts = new Set(existing.map((submission) => `${submission.studentId}:${submission.attempt}`));
+        const activeByStudent = new Map<string, WritingSubmission>();
+        const heldByStudent = new Map<string, WritingSubmission>();
+        for (const submission of existing) {
+            const slot = submission.slot ?? 'active';
+            if (slot === 'active') activeByStudent.set(submission.studentId, submission);
+            if (slot === 'held') heldByStudent.set(submission.studentId, submission);
+        }
         const imported: CanvasImportResult['submissions'] = [];
+        let heldCount = 0;
         let skippedCount = 0;
+        let unsupportedCount = 0;
+        let failedCount = 0;
 
         for (const source of preview.submissions) {
+            if (source.contentKind === 'unsupported') {
+                unsupportedCount += 1;
+                continue;
+            }
+
             // Derive a stable privacy-safe identity without retaining the source record key.
             const identity = buildCanvasImportIdentity({
-                ...input,
+                integration,
+                courseId: input.courseId,
+                targetAssignmentId: input.targetAssignmentId,
+                canvasAssignmentId: input.canvasAssignmentId,
                 sourceRecordKey: source.sourceRecordKey,
                 attempt: source.attempt
             });
             const attemptKey = `${identity.studentId}:${source.attempt}`;
-            if (existingAttempts.has(attemptKey)) {
+            const active = activeByStudent.get(identity.studentId);
+            const held = heldByStudent.get(identity.studentId);
+            const alreadyDecided = existingAttempts.has(attemptKey)
+                || (active && (source.attempt <= active.attempt || active.declinedAttempts?.includes(source.attempt)))
+                || (held && source.attempt <= held.attempt);
+            if (alreadyDecided) {
                 skippedCount += 1;
                 continue;
             }
 
+            let intake: { text: string; sourceType: 'canvas_text' | 'digital_file' } | null = null;
+            try {
+                intake = await this.resolveIntake(source, input.canvasAssignmentId);
+            } catch (error) {
+                // The reason never reaches staff: it would carry the attachment's file name,
+                // and in a parser error sometimes its content. A content-free description is
+                // logged instead, because a submission that fails every sync is otherwise
+                // undiagnosable -- the toast can only say to try again.
+                appLogger.warn('[WritingFeedback] canvas_submission_intake_failed', {
+                    contentKind: source.contentKind,
+                    reason: describeIntakeFailureSafely(error)
+                });
+                failedCount += 1;
+                continue;
+            }
+            // Nothing to review, or more than the workspace is bounded to handle. Both are
+            // properties of the submission rather than transient faults, so neither is a
+            // failure staff should retry.
+            if (!intake || intake.text.trim() === '' || intake.text.length > MAX_IMPORT_TEXT_CHARS) {
+                unsupportedCount += 1;
+                continue;
+            }
+
+            // Parsed bytes are never trusted as final text; only text entries import verified.
+            const needsVerification = intake.sourceType === 'digital_file';
             try {
                 const stored = await this.store.createWritingSubmission({
                     courseId: input.courseId,
                     assignmentId: input.targetAssignmentId,
                     studentId: identity.studentId,
                     studentLabel: source.studentLabel,
+                    // Kept only for a real Canvas record: it is the write-back address, and a
+                    // synthetic fixture has nothing meaningful to address.
+                    canvasUserId: integration === 'canvas' ? source.canvasUserId : undefined,
                     attempt: source.attempt,
-                    sourceType: 'canvas_text',
-                    originalText: source.text,
-                    verifiedText: source.text,
-                    requiresVerification: false,
-                    status: 'imported'
+                    submittedAt: source.submittedAt,
+                    sourceType: intake.sourceType,
+                    originalText: intake.text,
+                    verifiedText: needsVerification ? undefined : intake.text,
+                    requiresVerification: needsVerification,
+                    status: needsVerification ? 'verification_needed' : 'imported',
+                    slot: active ? 'held' : 'active',
+                    replacesSubmissionId: active?.id
                 });
-                imported.push(stored);
                 existingAttempts.add(attemptKey);
+                if (active) {
+                    // Only the newest held attempt is worth offering; the one it replaces has
+                    // never been reviewed, so nothing is lost by removing it.
+                    if (held) await this.store.deleteWritingSubmission(input.courseId, held.id);
+                    heldByStudent.set(identity.studentId, stored);
+                    heldCount += 1;
+                } else {
+                    activeByStudent.set(identity.studentId, stored);
+                    imported.push(stored);
+                }
             } catch (error) {
                 // A unique-index race is an idempotent skip; unrelated storage errors propagate.
                 if (!isDuplicateKey(error)) throw error;
@@ -303,9 +506,49 @@ export class SafeCanvasImportService {
         return {
             assignment: preview.assignment,
             importedCount: imported.length,
+            heldCount,
             skippedCount,
             submissions: imported,
-            integration: 'mock_canvas'
+            integration,
+            unsupportedCount,
+            failedCount
         };
+    }
+
+    /**
+     * Resolves one preview into the text and provenance to persist.
+     *
+     * Attachment bytes are fetched here — during an explicit import — and never while
+     * previewing, so browsing assignments cannot pull student files across the network.
+     *
+     * @param source - One preview from the current assignment
+     * @param canvasAssignmentId - The Canvas assignment being imported, named on the download
+     * @returns Extracted text and its local source type, or `null` when nothing is importable
+     * @throws Error when a download or parse fails, which the caller counts as a failure
+     */
+    private async resolveIntake(
+        source: CanvasImportSubmissionPreview,
+        canvasAssignmentId: string
+    ): Promise<{ text: string; sourceType: 'canvas_text' | 'digital_file' } | null> {
+        if (source.contentKind === 'text_entry') {
+            // An adapter whose previews already carry plain text needs no conversion.
+            const text = this.gateway.extractTextEntry
+                ? await this.gateway.extractTextEntry(source.text)
+                : source.text;
+            return { text, sourceType: 'canvas_text' };
+        }
+
+        if (source.contentKind === 'file_upload') {
+            const [attachment] = source.attachments;
+            // A gateway that previews uploads without offering extraction cannot honour them.
+            if (!attachment || !this.gateway.extractAttachmentText) return null;
+            const text = await this.gateway.extractAttachmentText(attachment, {
+                canvasAssignmentId,
+                canvasUserId: source.canvasUserId
+            });
+            return { text, sourceType: 'digital_file' };
+        }
+
+        return null;
     }
 }

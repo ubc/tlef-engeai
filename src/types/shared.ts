@@ -86,16 +86,30 @@ export interface PathwayCta {
  *
  * Evaluated pre-LLM on Socratic/Explanatory sends. List `order` is library list position.
  * Empty `assistantResponse` or `enabled: false` makes the pathway ineligible to intercept.
+ * The evaluation system-prompt shell is a separate singleton in the same collection (not this type).
  */
 export interface GuidedPathway {
     id: string; // stable pathway id (seed keeps mental-health-crisis etc.)
     order: number; // library list position (ascending)
     title: string; // instructor-facing card title (library UI)
     enabled: boolean; // on for this course; false = listed but not evaluated
+    notifyInstructorOnTrigger: boolean; // creates an anonymous instructor alert when this active pathway wins
     triggerDescription: string; // fed into the dynamic evaluator prompt
     assistantResponse: string; // markdown reply; empty => cannot intercept
     ctas: PathwayCta[]; // resource buttons shown with the predetermined reply
     updatedAt: number; // Unix epoch ms of last instructor edit
+}
+
+/**
+ * Course-scoped Guided Pathway classifier system-prompt shell (API + instructor UI).
+ *
+ * Stored as a reserved singleton in `{courseName}_pathways` (`__evaluation_system_prompt`).
+ * Runtime fills `{{pathway_trigger_sections}}` from pathway trigger cards.
+ */
+export interface PathwayEvaluationPromptConfig {
+    usePlatformDefault: boolean; // true => body is the platform default (or treat as such)
+    body: string; // shell text shown/edited; platform default when usePlatformDefault
+    updatedAt: number; // Unix epoch ms of last change
 }
 
 /**
@@ -223,7 +237,11 @@ export interface CourseFeatures {
 }
 
 /** UI catalog ids for course-wide LLM model selection. */
-export type CourseLlmModelId = 'gpt-5.6-luna' | 'gpt-5.4-mini' | 'gpt-4o-mini';
+export type CourseLlmModelId =
+    | 'gpt-5.6-luna'
+    | 'qwen3.8-27b'
+    | 'qwen3.6-35b-a3b'
+    | 'gpt-4.1-mini-engeai-local';
 
 /** Official provider reasoning effort values — aligned with ubc-genai-toolkit-llm `ReasoningEffort`. */
 export type ProviderReasoningLevel =
@@ -288,12 +306,27 @@ export interface LlmModelDashboardCatalogEntry {
     label: string;
     costTier: 'low' | 'medium' | 'high';
     reasoningOptions: LlmReasoningCatalogOption[];
+    /**
+     * True when the model is listed for context but cannot be chosen — the picker
+     * renders it disabled and PATCH rejects it. Absent means selectable.
+     */
+    unavailable?: boolean;
 }
+
+/** Per-feature LLM selection map, keyed by consuming feature. */
+export type FeatureLlmSettingsMap = Record<LlmFeatureKey, FeatureLlmSelection>;
 
 /** GET `/api/courses/:courseId/llm-model-catalog` response body. */
 export interface LlmModelCatalogApiResponse {
     models: LlmModelDashboardCatalogEntry[];
+    /** Generic platform default. Kept for compatibility; prefer {@link defaultSettings}. */
     defaultSelection: FeatureLlmSelection;
+    /**
+     * Per-feature platform defaults — what the server actually applies when a course has no
+     * stored row for that feature. `chat` and `memoryAgent` differ from `defaultSelection`,
+     * so seeding the UI from `defaultSelection` alone misreports what the course will use.
+     */
+    defaultSettings: FeatureLlmSettingsMap;
 }
 
 /** PATCH `/api/courses/:courseId/llm-settings` request body. */
@@ -305,13 +338,150 @@ export interface UpdateCourseLlmSettingsRequest {
     memoryAgent: FeatureLlmSelection;
 }
 
+/**
+ * Link between an EngE-AI course and the LMS course it was imported from.
+ *
+ * Set once, when an instructor imports a course from their LMS; it is what lets a
+ * student who connects the same LMS land in the right EngE-AI course. A course
+ * created by an admin in EngE-AI has no `lmsLink` and is joined by course code.
+ *
+ * `provider` is stored explicitly because the LMS package's `LmsCourse` dropped its
+ * own `provider` tag in 1.0.0 — ids are provider-scoped, so a bare `courseId` is
+ * ambiguous once more than one LMS is configured.
+ */
+export interface CourseLmsLink {
+    /** Which LMS `courseId` belongs to. Only Canvas imports courses today. */
+    provider: 'canvas';
+    /** The LMS's own course id, as a string (Canvas returns a number). */
+    courseId: string;
+    /** Course title as the LMS reported it at link time; display only, never re-matched on. */
+    name: string;
+    /** Course code as the LMS reported it at link time, e.g. `APSC183-101`. */
+    code: string;
+    linkedAt: Date;
+    /** `GlobalUser.userId` of the instructor who imported it — never a PUID. */
+    linkedBy: string;
+}
+
+/**
+ * One student or TA on an imported course's LMS roster.
+ *
+ * Deliberately carries no name and no raw identifier. The roster is stored to answer one
+ * question — "is the person signing in enrolled in this course, and as what?" — which needs
+ * equality and nothing else. See `src/utils/roster-identity.ts` for why the identifier is keyed
+ * and one-way.
+ */
+export interface CourseRosterEntry {
+    /** Keyed digest of the roster row's PUID. Comparable only to hashes made under the same salt. */
+    puidHash: string;
+    /**
+     * The LMS's own user id for this person, provider-scoped.
+     *
+     * Stored because recognizing someone and *addressing* them are different problems: writing a
+     * grade or feedback back to Canvas targets this id, not the PUID. Never treat it as an
+     * EngE-AI user id and never compare it across providers.
+     */
+    lmsUserId: string;
+    /**
+     * The LMS enrollment the row came from. A `ta` match grants the TA role at sign-in. Absent on
+     * entries synced before TAs were read, which were all students.
+     */
+    role?: 'student' | 'ta';
+}
+
+/**
+ * Why a roster sync ended the way it did.
+ *
+ * `identifiers_withheld` is the one that must never be read as an empty class. Canvas hides
+ * `integration_id` from callers without `read_sis`, and the symptom — a roster where nobody
+ * carries an identifier — is indistinguishable from a course nobody is enrolled in. Acting on
+ * that as though it were real would silently strand a whole class.
+ */
+export type RosterSyncStatus =
+    /** Roster read and stored. */
+    | 'ok'
+    /** Canvas returned rows but no SIS identifiers; the previous snapshot is kept. */
+    | 'identifiers_withheld'
+    /** No usable LMS credential is on file for this course, so no fetch was attempted. */
+    | 'no_credential'
+    /** The LMS call failed. The previous snapshot is kept. */
+    | 'failed'
+    /**
+     * The LMS course is not published, so it reports no students regardless of who is enrolled.
+     * Distinguished from a genuinely empty roster because only this one has an obvious fix, and
+     * because it is the state an instructor is most likely to sync from — a course is usually
+     * wired up to its tools before it is opened to students.
+     */
+    | 'unpublished';
+
+/**
+ * A course's stored LMS roster, one document per EngE-AI course.
+ *
+ * Replaced wholesale on each successful sync rather than merged. A merge would make a dropped
+ * student indistinguishable from a student the last fetch happened to miss, and the snapshot's
+ * job is to describe the roster *as Canvas reported it at `syncedAt`*. Note that replacing the
+ * snapshot does not un-enroll anyone: enrollment only ever accrues, per `canvas-course-sync.ts`.
+ */
+export interface CourseRosterSnapshot {
+    /** `activeCourse.id` this roster belongs to. */
+    courseId: string;
+    provider: CourseLmsLink['provider'];
+    /** The LMS course the roster was read from; must agree with the course's `lmsLink`. */
+    lmsCourseId: string;
+    entries: CourseRosterEntry[];
+    syncedAt: Date;
+    /**
+     * `GlobalUser.userId` whose stored LMS credential the fetch ran under.
+     *
+     * Recorded because the credential belongs to a person who can revoke it or leave. When sync
+     * starts failing, this is the only thing that says whose reconnection would fix it.
+     */
+    syncCredentialUserId: string;
+    /** `GlobalUser.userId` who pressed sync; absent when no person triggered it. */
+    triggeredBy?: string;
+    status: RosterSyncStatus;
+    /** Roster rows Canvas returned, before the identifier filter. */
+    rosterSize: number;
+    /** Rows that carried a usable identifier — the coverage guard's evidence. */
+    identifiedCount: number;
+    /** Present on `failed`; a short reason, never an LMS payload. */
+    lastError?: string;
+}
+
+/**
+ * Staff-facing result of one roster sync.
+ *
+ * Carries counts, never people: the snapshot's entries are not projectable to any client, and
+ * an instructor's question at this point is "did it work and how many", not "who".
+ */
+export interface CourseRosterSyncSummary {
+    courseId: string;
+    status: RosterSyncStatus;
+    syncedAt: Date;
+    rosterSize: number;
+    identifiedCount: number;
+    /** Human-readable outcome, safe to show in the instructor UI. */
+    message: string;
+}
+
 export interface activeCourse {
     id : string,
     date : Date,
-    courseSetup : boolean, 
-    contentSetup : boolean,
-    flagSetup : boolean,
-    monitorSetup : boolean,
+    courseSetup : boolean,
+    /**
+     * True once this course's content has been filed by Document Setup.
+     *
+     * The *tutorial* moved to `GlobalUser.instructorOnboarding` (OB-002) so a colleague
+     * joining a configured course is still taught. The course-state half stayed behind:
+     * a veteran creating a second course owes no tutorial but the course still owes its
+     * content, and without this flag they landed on the dashboard with an empty course.
+     * `undefined` means a course predating the field and is not treated as owing content.
+     */
+    contentSetup? : boolean,
+    /** @deprecated moved to `GlobalUser.instructorOnboarding` (OB-002); retained for rollback only */
+    flagSetup? : boolean,
+    /** @deprecated moved to `GlobalUser.instructorOnboarding` (OB-002); retained for rollback only */
+    monitorSetup? : boolean,
     courseName: string,
     instructors: InstructorInfo[] | string[]; // Support both old format (string[]) and new format (InstructorInfo[])
     teachingAssistants: InstructorInfo[] | string[]; // Support both old format (string[]) and new format (InstructorInfo[])
@@ -319,6 +489,11 @@ export interface activeCourse {
     tilesNumber: number;
     topicOrWeekInstances: TopicOrWeekInstance[]; // previously content, previously divisions
     courseCode?: string; // 6-character uppercase alphanumeric PIN code for course entry
+    /**
+     * Present only on courses imported from an LMS. Absent on admin-created courses,
+     * which students join with {@link activeCourse.courseCode} instead.
+     */
+    lmsLink?: CourseLmsLink;
     collections?: {
         users: string;
         flags: string;
@@ -331,6 +506,8 @@ export interface activeCourse {
         scenarioProgress?: string;
         /** Per-course Guided Pathway Library (e.g. `${courseName}_pathways`); lazy-provisions on existing courses */
         pathways?: string;
+        /** Registered course-owned collection for automatic Guided Pathway alerts (GPF-002). */
+        guidedPathwayFlags?: string;
     };
     collectionOfInitialAssistantPrompts?: InitialAssistantPrompt[];
     /** @deprecated v2 uses systemPromptConfig; retained for lazy migration reads only */
@@ -554,40 +731,64 @@ export interface InstructorStruggleTopicForDisplay {
 }
 
 /**
- * Additional material attached to a course content item (front-end only for now)
+ * Additional material attached to a course content item.
  *
- * additional material is only applicable for text only eventually (as we use RAG)
- * 
- * So initially, instructor can upload file, url, or text.
- * 
- * But eventually, we will only allow text (processed in the backend).
+ * This is the persisted shape: Mongo `additionalMaterials[]`, RAG 201 `data`, and the
+ * Documents UI list. Browser `File`, nested `file`, `extractedText`, and singular
+ * `qdrantId` are upload leftovers — hoist then strip; never store them.
  */
 export type AdditionalMaterialSource = 'file' | 'url' | 'text';
 
+/** Keys stored on Mongo / returned to the Documents UI. Must match `additionalMaterialFields`. */
+export const PERSISTED_ADDITIONAL_MATERIAL_KEYS = [
+    'id',
+    'date',
+    'name',
+    'courseName',
+    'topicOrWeekTitle',
+    'itemTitle',
+    'sourceType',
+    'text',
+    'fileName',
+    'uploaded',
+    'qdrantChunkIds',
+    'chunksGenerated',
+    'deleted',
+    'deletedAt',
+    'uploadedBy',
+    'courseId',
+    'topicOrWeekId',
+    'itemId',
+] as const;
+
+export type PersistedAdditionalMaterialKey = (typeof PERSISTED_ADDITIONAL_MATERIAL_KEYS)[number];
+
 export interface AdditionalMaterial {
-    id: string,
-    date : Date,
+    id: string;
+    date: Date;
     name: string;
     courseName: string;
     topicOrWeekTitle: string;
     itemTitle: string;
     sourceType: AdditionalMaterialSource;
-    file?: File;
     text?: string;
-    fileName?: string; // Store the actual filename for display
-    uploaded?: boolean; // Track if successfully uploaded to Qdrant
-    qdrantId?: string; // Store Qdrant document ID
-    chunksGenerated?: number; // Number of chunks generated in Qdrant
-    /** Parsed upload text for struggle-topic generation; not persisted on Mongo material records. */
-    extractedText?: string;
-    deleted?: boolean; // Soft delete flag (defaults to false/undefined for backward compatibility)
-    deletedAt?: Date; // Timestamp when material was deleted
-    uploadedBy?: string; // Track who uploaded the material
-    // Add these three optional fields:
+    fileName?: string;
+    uploaded?: boolean;
+    qdrantChunkIds?: string[];
+    chunksGenerated?: number;
+    deleted?: boolean;
+    deletedAt?: Date;
+    uploadedBy?: string;
     courseId?: string;
     topicOrWeekId?: string;
     itemId?: string;
 }
+
+/** In-memory upload only. `file` and `extractedText` are never written to Mongo. */
+export type AdditionalMaterialUpload = AdditionalMaterial & {
+    file?: { buffer: Buffer; originalname?: string };
+    extractedText?: string;
+};
 
 /**
  * Optional fields on RAG upload 201 responses when struggle-topic generation runs post-upload.
@@ -615,10 +816,19 @@ export interface CourseUser {
     chats: Chat[];
     createdAt: Date;
     updatedAt: Date;
+    /** true for a Student View test student; excluded from every staff-facing listing. */
+    isTestStudent?: boolean;
+    /** userId of the staff member this test student belongs to; staff-gated, never student-facing. */
+    testStudentOwnerUserId?: string;
 }
 
 
 // Types for flag reports
+export interface FlagReportActor {
+    userId: string; // staff user id at escalation or admin review time
+    name: string; // staff display name snapshot
+}
+
 export interface FlagReport {
     id: string;
     courseName: string; // Added to support course-specific flag collections
@@ -627,12 +837,123 @@ export interface FlagReport {
     reportType: string; // store the long explanation of the flag type
     chatContent: string;
     userId: string;
-    status: 'unresolved' | 'resolved';
+    status: 'unresolved' | 'resolved' | 'escalated';
     response?: string; // if resolved, the response from the instructor
+    escalatedAt?: Date; // when staff escalated to platform admins
+    escalatedBy?: FlagReportActor; // instructor or TA who escalated
+    adminReviewedAt?: Date; // when a platform admin marked the escalation reviewed
+    adminReviewedBy?: FlagReportActor; // platform admin who reviewed
     createdAt: Date;
     updatedAt: Date;
 }
 
+/** Safe cross-course manual escalation row for the platform-admin queue. */
+export interface ManualFlagEscalationView {
+    id: string; // stable flag id within the owning course collection
+    courseId: string; // owning active course id for admin review actions
+    courseName: string; // course-name snapshot for display
+    flagType: FlagReport['flagType']; // moderation category key
+    reportType: string; // long category label shown to staff
+    chatContent: string; // flagged chat excerpt; may contain identifying text
+    status: 'escalated'; // admin queue includes escalated manual flags only
+    escalatedAt: string; // ISO timestamp for queue sorting
+    escalatedByName?: string; // staff display name at escalation time
+    adminReviewedAt?: string; // ISO timestamp when platform admin reviewed
+    adminReviewedByName?: string; // platform-admin display name at review time
+    createdAt: string; // ISO timestamp for period filters
+}
+
+/** Paginated administrator manual-escalation list. */
+export interface ManualFlagEscalationListPage {
+    items: ManualFlagEscalationView[]; // escalated manual flags for the current page
+    page: number; // one-based page number
+    pageSize: number; // rows per page
+    total: number; // total rows matching filters
+}
+
+/** Lifecycle state for an automatic alert created by a Guided Pathway trigger. */
+export type GuidedPathwayFlagStatus = 'pending' | 'escalated' | 'dismissed';
+
+/** Server-owned origin separating production student alerts from course-staff tests. */
+export type GuidedPathwayFlagOrigin = 'student' | 'instructor-test';
+
+/** Instructor decision accepted by the Guided Pathway alert review API. */
+export type GuidedPathwayFlagDecision = 'escalate' | 'dismiss';
+
+/** Admin queue view selector for escalated alerts that still need platform review. */
+export type GuidedPathwayFlagReviewState = 'needs-review' | 'reviewed' | 'all';
+
+/**
+ * Anonymous Guided Pathway alert returned to instructor and admin interfaces.
+ *
+ * This is an explicit safe projection of the internal Mongo record. Student identity,
+ * deduplication data, chat/request identifiers, and identity-reveal audit events are excluded.
+ */
+export interface GuidedPathwayFlagView {
+    id: string; // stable alert id used for decision and review actions
+    courseId: string; // owning course id for course and admin filtering
+    courseName: string; // course-name snapshot captured when the pathway triggered
+    pathwayId: string; // winning pathway id for filtering
+    pathwayTitle: string; // winning pathway title snapshot shown to reviewers
+    messageText: string; // exact triggering chat message; may contain self-identifying text
+    origin: GuidedPathwayFlagOrigin; // production student alert or non-escalatable course-staff test
+    /** true when the alert came from a Student View test student; shown to course staff as a tag. */
+    isTestStudent?: boolean;
+    status: GuidedPathwayFlagStatus; // instructor review lifecycle
+    triggeredAt: string; // ISO timestamp for the pathway trigger
+    decidedAt?: string; // ISO timestamp for Escalate or Dismiss
+    decidedByName?: string; // staff display-name snapshot for admin reviewer filtering
+    adminReviewedAt?: string; // ISO timestamp for platform-admin review
+    adminReviewedByName?: string; // platform-admin display-name snapshot
+}
+
+/** One safe Guided Pathway choice returned for administrator queue filtering. */
+export interface GuidedPathwayFlagPathwayFacet {
+    pathwayId: string; // stable winning-pathway id used by the list filter
+    pathwayTitle: string; // instructor-facing title snapshot; contains no student data
+}
+
+/** Full-queue filter choices returned with the administrator alert list. */
+export interface GuidedPathwayFlagFacets {
+    pathways: GuidedPathwayFlagPathwayFacet[]; // choices matching every active filter except pathwayId
+    reviewers: string[]; // staff display names matching every active filter except reviewer
+}
+
+/** Paginated anonymous result returned by Guided Pathway alert list APIs. */
+export interface GuidedPathwayFlagListPage {
+    items: GuidedPathwayFlagView[]; // safe alert rows for the current page
+    page: number; // one-based page number
+    pageSize: number; // bounded number of rows requested per page
+    total: number; // total rows matching the supplied filters
+    facets?: GuidedPathwayFlagFacets; // global-admin full-queue choices; omitted by course list APIs
+}
+
+
+/**
+ * Per-user instructor tutorial progress.
+ *
+ * A missing or `false` entry means the tutorial is still owed, which is how users who
+ * predate this field are routed through the stages. Progress follows the person rather
+ * than the course, so a new instructor joining an already-set-up course is still taught,
+ * while a returning instructor is never taught the same tutorial twice.
+ *
+ * `courseSetup` is deliberately absent: it writes real course configuration and stays on
+ * {@link activeCourse} so a second instructor cannot override the first one's choices.
+ */
+export interface InstructorOnboardingProgress {
+    contentSetup?: boolean;
+    flagSetup?: boolean;
+    monitorSetup?: boolean;
+    /**
+     * The three feature tutorials, owed only while their course capability is enabled.
+     *
+     * Completion survives disabling and re-enabling a capability, and follows the
+     * person across courses, so an instructor is never taught the same tutorial twice.
+     */
+    scenarioGeneration?: boolean;
+    writingFeedback?: boolean;
+    guidedPathway?: boolean;
+}
 
 /**
  * Global user registry
@@ -654,6 +975,16 @@ export interface GlobalUser {
     studentOnboardingCompleted?: boolean;
     /** platform admin — all instructor privileges plus admin-only features */
     isAdmin?: boolean;
+    /** Per-user instructor tutorial progress; see {@link InstructorOnboardingProgress}. Backfilled by OB-002. */
+    instructorOnboarding?: InstructorOnboardingProgress;
+    /** Canvas user id of the connected account proven to be this person; see `src/lms/canvas-identity-once.ts`. */
+    canvasVerifiedUserId?: string;
+    /** When that Canvas account was verified. */
+    canvasVerifiedAt?: Date;
+    /** true for a Student View test student; excluded from every staff-facing listing. */
+    isTestStudent?: boolean;
+    /** userId of the staff member this test student belongs to; staff-gated, never student-facing. */
+    testStudentOwnerUserId?: string;
 }
 
 /**
@@ -661,6 +992,17 @@ export interface GlobalUser {
  * @deprecated Use CourseUser instead
  */
 export type User = CourseUser;
+
+/**
+ * Whether the viewer is previewing a course as their Student View test student.
+ *
+ * Carries only what the student-facing banner needs; the test student's own id stays
+ * on the server.
+ */
+export interface StudentViewState {
+    active: boolean;
+    courseId: string | null;
+}
 
 // ===========================================
 // ========= MEMORY AGENT DATA TYPE ==========
@@ -1106,4 +1448,41 @@ export interface ScenarioSolutionResponse {
         subQuestions: ScenarioSubQuestion[];
     };
     error?: string;
+}
+
+// ===========================================
+// ========= SESSION IDLE UX ================
+// ===========================================
+
+/** Server idle phase derived from lastActivityAt and env thresholds. */
+export type SessionIdleState = 'active' | 'warning' | 'expired';
+
+/** Per-response client instruction for inactivity UX (not a persisted state). */
+export type SessionIdleUiAction = 'none' | 'show_inactivity_warning' | 'force_logout';
+
+/** Idle snapshot returned on GET/POST /api/user/activity. */
+export interface SessionIdleStatus {
+    serverTime: number; // server epoch ms at computation time
+    lastActivityAt: number; // session anchor epoch ms
+    state: SessionIdleState; // active | warning | expired
+    warningAt: number; // lastActivityAt + idle-before-warning
+    expiresAt: number; // warningAt + grace-after-warning
+    remainingMsUntilWarning: number; // ms until warningAt (0 when past)
+    remainingMsUntilGraceExpiry: number; // ms until expiresAt (0 when past)
+}
+
+/** Client poll/UI directive for one activity API response. */
+export interface SessionIdleClientDirective {
+    pollAfterMs: number; // ms until next GET /api/user/activity (0 = stop)
+    uiAction: SessionIdleUiAction; // modal/logout instruction for this response
+    warningCountdownSec?: number; // when uiAction is show_inactivity_warning
+}
+
+/** GET/POST /api/user/activity response shape. */
+export interface SessionIdleStatusResponse {
+    success: boolean;
+    idle: SessionIdleStatus;
+    client: SessionIdleClientDirective;
+    error?: string;
+    code?: string; // INACTIVITY_EXPIRED on 401
 }

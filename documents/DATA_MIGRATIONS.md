@@ -5,13 +5,14 @@ Canonical list of schema and data migrations. Implementation details live in the
 ## Purpose
 
 - **Lazy (request-time):** run when a course or chat is accessed (no startup batch scan).
-- **Startup:** run on each server start from `src/server.ts` (operational backfills).
+- **CLI:** `npm run migrate` — manual Mongo/Qdrant sync (`src/migrate/cli.ts`). Default and `--check` are dry-run; `--apply` writes. Operator how-to: `src/migrate/README.md`.
+- **Startup:** `src/server.ts` only seeds academic periods (`initAcademicPeriods`). IPA-001, OB-001, and OB-002 no longer run on boot.
 
 ## Sunset policy
 
 Time-bounded schema migrations must have migration **code and legacy read paths removed by end of day 2026-06-30** in **America/Vancouver** (PDT, UTC−07:00).
 
-Operational startup migrations (OB-001) are documented here but are **not** tied to that date unless a future audit says otherwise.
+Operational CLI migrations (OB-001, OB-002) are documented here but are **not** tied to that date unless a future audit says otherwise.
 
 ---
 
@@ -23,12 +24,145 @@ Operational startup migrations (OB-001) are documented here but are **not** tied
 | **SP-002** | System prompt mode backfill | Lazy (request) | `ensureAllModeStates` in `system-prompt-config-mongo.ts` | missing `systemPromptConfig.modes[mode]` → `seedModeState(mode)` for each `CONVERSATION_MODE_IDS` entry | Keep while new modes ship; audit when mode list stabilizes |
 | **SP-003** | Retired conversation-mode state cleanup | Lazy (request) | `stripRetiredModeStates` in `system-prompt-config-mongo.ts` | `systemPromptConfig.modes['scenario-generation']` (and future `RETIRED_CONVERSATION_MODE_IDS`) → removed | Keep while any retired mode key may exist on old course documents |
 | **CM-001** | Chat `conversationMode` backfill | Lazy (restore) | `ChatApp.ensureLegacyChatModePersisted` in `src/chat/chat-app.ts` | missing/invalid → `socratic` or `undeclared` | Optional later; audit before removal |
-| **OB-001** | Onboarding flags backfill | Startup | `migrateOnboardingFlags` in `src/helpers/migrate-onboarding-flags.ts` | GlobalUser flags from course/CourseUser data | Operational — keep unless product changes |
+| **OB-001** | Student onboarding flag backfill | CLI op A | `migrateOnboardingFlags` in `src/helpers/migrate-onboarding-flags.ts` (called from `src/migrate/mongo-attribute-check.ts`) | `studentOnboardingCompleted` from CourseUser data | Operational — keep unless product changes. **Amended 2026-08-25**, see [OB-001](#ob-001-student-onboarding-flag-backfill) |
+| **OB-002** | Per-user instructor tutorial progress | CLI op A | `migrateInstructorOnboardingStages` in `src/helpers/migrate-instructor-onboarding-stages.ts` (called from `src/migrate/mongo-attribute-check.ts` after OB-001) | `GlobalUser.instructorOnboardingCompleted` → `GlobalUser.instructorOnboarding` | Operational — keep while any user may predate the field; see [OB-002](#ob-002-per-user-instructor-tutorial-progress) |
 | **AP-001** | Course `academicPeriodId` backfill | Lazy (request) | `lazyMigrateCourseAcademicPeriod` in `src/db/mongo/academic-period-mongo.ts` via `getActiveCourse` / `getAllActiveCourses` | missing `academicPeriodId` → default `2025W2` period; `$addToSet` on period `courseIds` | **Remove by 2026-06-30** — see [AP-001](#ap-001-academic-period-lazy-link) |
-| **IPA-001** | Instructor allow-list period scope | Startup (once) | `migrateInstructorAllowances` in `src/helpers/migrate-instructor-allowances.ts` | `instructor-allowed-courses` → `instructor-period-allowances` for `2025W2` | Operational after first successful run |
+| **IPA-001** | Instructor allow-list period scope | CLI op A | `migrateInstructorAllowances` in `src/helpers/migrate-instructor-allowances.ts` | `instructor-allowed-courses` → `instructor-period-allowances` for `2025W2` | Operational after first successful run |
+| **MIG-A** | Mongo attributeCheck | CLI | `runMongoAttributeCheck` in `src/migrate/mongo-attribute-check.ts` | allowlist walk all known collections; hoist `additionalMaterials.file`; seed `qdrantChunkIds` | Keep |
+| **MIG-B** | Qdrant attributeCheck | CLI | `runQdrantAttributeCheck` in `src/migrate/qdrant-ops.ts` | strip extra payload keys including `learningObjectives` | Keep |
+| **MIG-C** | Resolve Qdrant to Mongo | CLI | `runQdrantResolveToMongo` | register point UUIDs onto `qdrantChunkIds` | Keep |
+| **MIG-D** | Validate Qdrant from Mongo | CLI | `runQdrantValidateFromMongo` | Mongo wins metadata; delete orphan points | Keep |
 | **ADM-001** | Platform admin `isAdmin` backfill | Startup | `migratePlatformAdmins` in `src/helpers/migrate-platform-admins.ts` | GlobalUsers matching `CHARISMA_RUSDIYANTO_PUID` / `RICHARD_TAPE_PUID` → `isAdmin: true` | Operational — keep unless product changes |
+| **GPF-001** | Guided Pathway alert course isolation | Superseded | Historical implementation in `guided-pathway-flag-collection-mongo.ts` | shared `guided-pathway-flags` rows → hashed per-course collections | Superseded by GPF-002; hash recognition remains migration-only |
+| **GPF-002** | Guided Pathway registered collection normalization | Startup + operation gate | `migrateGuidedPathwayFlagsToCourseCollections` in `src/db/mongo/guided-pathway-flag-collection-mongo.ts` | shared and hashed rows → readable `activeCourse.collections.guidedPathwayFlags` targets; lease/result → `application-migrations` | Operational — retain until every environment passes the GPF-002 postchecks and retained legacy data is resolved |
 | **SQ-001** | Scenario Questions collection backfill | Lazy (first API call) | `ensureScenarioQuestionsCollection` in `src/db/mongo/scenario-questions-mongo.ts` | missing `activeCourse.collections.scenarioQuestions` → creates `{courseName}_scenario_questions` + `$set` the field | Keep while any pre-feature course document may lack `collections.scenarioQuestions` |
 | **SQ-004** | Scenario Progress collection backfill | Lazy (first progress API call) | `ensureScenarioProgressCollection` in `src/db/mongo/scenario-progress-mongo.ts` | missing `activeCourse.collections.scenarioProgress` → creates `{courseName}_scenario_progress` + `$set` the field | Keep while any course may lack `collections.scenarioProgress` |
+| **WF-001** | Writing Canvas mapping index repair | Lazy (first Writing Feedback index ensure) | `ensureWritingFeedbackIndexes` in `src/db/mongo/writing-feedback-mongo.ts` | unique compound sparse `{ courseId, canvasAssignmentId }` → unique partial index limited to string Canvas ids | Keep while deployments may carry the legacy index |
+| **WF-002** | Writing rubric level-rank compatibility | Lazy (assignment read) | `normalizeWritingAssignment` in `src/db/mongo/writing-feedback-mongo.ts` | missing `rubric.levels[].rank` in current/draft/history → detached value using array position + 1 | Keep while any pre-Spec-1 rubric may lack rank |
+
+---
+
+## WF-001: Writing Canvas mapping index repair
+
+**Status:** Active (lazy index reconciliation)
+
+The former unique compound sparse index still indexed every writing assignment because `courseId` is always present. Manual rows therefore shared the same missing/null Canvas key and a course could not insert a second manual assignment. On the first Writing Feedback index ensure, the delegate inspects the server index catalog, drops only the conflicting legacy key, and creates `writing_canvas_assignment_unique` with `partialFilterExpression: { canvasAssignmentId: { $type: 'string' } }`.
+
+**Idempotency:** A correct partial unique index is left untouched. A missing collection/index is created. Repeated process starts do not drop or rebuild a matching index.
+
+**Rollback:** Recreating the old sparse index would reintroduce the one-manual-assignment defect and is not a safe rollback. If code rollback is unavoidable, retain the partial index; older query paths use the same key pattern and remain compatible.
+
+## WF-002: Writing rubric level-rank compatibility
+
+**Status:** Active (read-only compatibility path)
+
+Legacy rubrics have meaningful level array order but no explicit `rank`. Assignment reads return detached current, draft, and history values with missing ranks filled from `index + 1`. No Mongo document is rewritten, so old releases and rubric provenance remain byte-for-byte unchanged.
+
+**Idempotency:** Existing positive integer ranks pass through unchanged; repeated reads produce the same detached value.
+
+**Rollback:** Remove the normalizer only after every supported stored rubric has an explicit rank. Until then, removal would make legacy records fail the new contract.
+
+---
+
+## GPF-001: Guided Pathway alert course isolation
+
+**Status:** Superseded by GPF-002
+
+GPF-001 moved the original global `guided-pathway-flags` rows into
+`guided-pathway-flags-course-<hash>` namespaces. It also made the hash authoritative
+instead of reading `activeCourse.collections.guidedPathwayFlags`. Some environments may
+already contain those namespaces, so GPF-002 still recognizes them as migration sources.
+GPF-001 must not run independently again.
+
+---
+
+## GPF-002: Guided Pathway registered collection normalization
+
+**Status:** Active (startup migration with operation-level gate)
+
+**Collections:** legacy `guided-pathway-flags`, legacy `guided-pathway-flags-course-<hash>`, `active-course-list`, durable migration state in `application-migrations`, and readable registered course targets such as `{courseName}_guided-pathway-flags`
+
+### Behavior
+
+1. Create/verify a partial unique index on the non-empty string `activeCourse.collections.guidedPathwayFlags` field. This is the cross-process catalog guard that prevents two active courses from owning the same automatic-alert namespace.
+2. Treat a valid non-hash registered value as authoritative. When the field is missing or still points at a GPF-001 hash, choose `{courseName}_guided-pathway-flags` and persist it only after source rows are copied and verified. A later course rename does not recompute the stored name.
+3. Preflight every target. Reject protected names, collisions with another registered course collection, duplicate Guided Pathway registrations, and a physical target containing any row whose `courseId` differs from the target course. The checks and logs use counts/identity metadata only and never emit alert content.
+4. Copy matching rows from the course's GPF-001 hash namespace first, then the older shared collection, in 200-row `_id` batches. Each destination operation is an upsert with `$setOnInsert`, so the per-course source wins a duplicate legacy `_id` while an existing readable-target document remains authoritative. Verify every destination `_id` with its owning `courseId` before switching the catalog field.
+5. Compare-and-set `collections.guidedPathwayFlags`, invalidate the course collection-name cache only after success, and then verify that the catalog still owns the target. Re-verify exact source `_id` batches before deleting them. Drop only namespaces that are empty; a missing namespace is an idempotent cleanup result.
+6. Retain malformed global rows and non-empty hash namespaces without an active catalog owner for manual recovery. Never guess ownership or attach orphan data to a current course.
+7. Do not register or create storage for an untouched existing course with no registration, no shared/hash source, and no pre-existing readable namespace. Alert creation uses the provisioning resolver when storage is first needed. Course/admin list, count, backup, and cross-course aggregation use read-only resolution and include only existing registered collections.
+
+Startup invokes GPF-002 after academic-period initialization. Guided Pathway operations also await the migration gate. The exported method retains its historical name for façade compatibility.
+
+### Cross-process coordination
+
+GPF-002 stores one record at `application-migrations._id = 'GPF-002'`:
+
+- The owner acquires `state: 'running'` with a random `ownerId` and a renewable five-minute `leaseUntil`.
+- Other application instances poll the durable record. A failed record, an expired lease, or a running record with no lease can be claimed for retry.
+- The owner renews the lease between bounded migration/copy/cleanup phases. Losing the lease fails the attempt before it can report completion.
+- Success persists `state: 'complete'`, the count-only result, and `completedAt`, then removes owner/lease fields. Later processes and restarts return that persisted result without rerunning data movement.
+- Failure marks the record `failed` and removes the lease so a later operation can retry. A process-local promise coalesces callers only within one application instance and is discarded on failure.
+
+### Idempotency and failure safety
+
+Destination writes are insert-only upserts by Mongo `_id`; retrying after a partial copy does not duplicate an alert and does not overwrite a newer target decision, admin review, or reveal-audit history with a stale legacy snapshot. A source row is never deleted before target verification, compare-and-set catalog registration, and a second ownership check. Per-course unique alert-id and deduplication indexes remain the runtime guards.
+
+GPF-001 application instances ignore the registered field and can continue writing hashes. Because a completed GPF-002 record makes later runs a no-op, any old process writing after completion would strand new rows in a migration-only source. Run GPF-002 only after old instances stop accepting chat traffic; a rolling mixed-version migration is unsupported.
+
+### Deployment preconditions
+
+1. Take and validate a recoverable full database backup.
+2. Stop every pre-GPF-002 application instance from accepting chat/write traffic before a new instance starts the migration.
+3. Ensure the deployment identity can read/write `application-migrations`, create the catalog and per-course indexes, create target collections, update `active-course-list`, and delete/drop only verified legacy sources.
+4. Do not manually mark the migration complete. If startup fails, inspect the count-only migration error/result and retry the same build after correcting the cause.
+
+### Verification (Mongo shell)
+
+```js
+db.getCollection('guided-pathway-flags').countDocuments({
+  courseId: { $type: 'string' }
+})
+
+db.getCollection('active-course-list').countDocuments({
+  'collections.guidedPathwayFlags': /^guided-pathway-flags-course-[a-f0-9]{24}$/
+})
+
+db.getCollection('active-course-list').aggregate([
+  { $match: { 'collections.guidedPathwayFlags': { $type: 'string' } } },
+  { $group: { _id: '$collections.guidedPathwayFlags', owners: { $addToSet: '$id' }, count: { $sum: 1 } } },
+  { $match: { count: { $gt: 1 } } }
+])
+
+db.getCollection('application-migrations').findOne(
+  { _id: 'GPF-002' },
+  { _id: 1, state: 1, completedAt: 1, result: 1 }
+)
+
+db.getCollection('active-course-list').getIndexes().filter(
+  ({ name }) => name === 'guided_pathway_flag_collection_unique'
+)
+```
+
+The first two counts and the duplicate-registration aggregation should be empty/zero for migratable active-course data. The migration record must be `state: 'complete'`, and the named partial unique catalog index must exist. Review the count-only `result.retainedLegacyRows`, `result.retainedHashedCollections`, and `result.orphanCourseCollections` values. Non-empty global or hash sources require manual ownership review; do not delete them merely to satisfy the count.
+
+For every active course with a non-empty registration, also verify operationally that the named collection exists and contains no row with a different `courseId`. Perform that check with counts/projections only; do not print messages, user identifiers, deduplication keys, or reveal events.
+
+### Rollback
+
+Rollback requires restoring the pre-deployment database backup together with the pre-GPF-002 application build. Redeploying the old build alone is unsafe because new writes use readable registered targets and verified legacy rows may already have been removed. If an attempt fails before completion, prefer correcting the cause and retrying the same GPF-002 build; do not edit the lease/result record or move rows manually without a separate recovery plan.
+
+### Sunset criteria
+
+Keep the operation gate, shared/hash source discovery, and durable migration record handling until every deployed environment has:
+
+- a `complete` GPF-002 record from the current migration implementation;
+- zero migratable active-course rows in the shared source and zero hash registrations;
+- no duplicate/unsafe registered namespaces and the partial unique registry index present;
+- reviewed and resolved every retained malformed/orphan source; and
+- passed an agreed rollback-support window with no pre-GPF-002 application version eligible for redeployment.
+
+After those conditions are documented, a separate change may remove global/hash discovery and the operation-level migration gate. Keep registry-authoritative resolution, the unique catalog index, and read-only versus provisioning resolution after migration code is retired.
 
 ---
 
@@ -234,13 +368,163 @@ See `documentation/ENDPOINT_ARCHITECTURE.md` (lazy restore migration note).
 
 ---
 
-## OB-001: Onboarding flags backfill
+## OB-001: Student onboarding flag backfill
 
-**Status:** Active (startup)
+**Status:** Active (CLI op A, promote-only)
 
-Sets `instructorOnboardingCompleted` and `studentOnboardingCompleted` on `active-users` from existing course and roster data. Idempotent; runs every server restart.
+**Collection:** `active-users`
+
+Sets `studentOnboardingCompleted: true` for any user with a `CourseUser.userOnboarding === true`
+across their enrolled courses. Idempotent. Trigger: `npm run migrate` op A (`--apply`), not server start.
 
 See `migrateOnboardingFlags` in `src/helpers/migrate-onboarding-flags.ts`.
+
+### Amendment — 2026-08-25 (with OB-002)
+
+The **instructor branch was removed**. It derived `instructorOnboardingCompleted` from
+`activeCourse.monitorSetup`, which is no longer maintained now that instructor tutorial
+progress lives on the user record. Left in place, that derivation would evaluate `false`
+for everyone and — because the original implementation wrote both flags explicitly on every
+restart — would have wiped `instructorOnboardingCompleted` for every instructor on the next
+server start, destroying the signal OB-002 seeds from.
+
+The migration is now **promote-only**: it never writes `false` over an existing value, and
+skips users already marked complete. `instructorOnboardingCompleted` is set forward only, by
+`PATCH /api/user/onboarding/instructor-completed`.
+
+---
+
+## OB-002: Per-user instructor tutorial progress
+
+**Status:** Active (CLI op A, idempotent)
+
+**Collection:** `active-users`
+
+### Why
+
+Instructor onboarding progress used to live on the course document. When one instructor
+finished, every other instructor on that course was routed straight to the dashboard — so an
+instructor new to EngE-AI could never reach the tutorials. The three tutorial stages moved to
+the user; `courseSetup` stayed on the course because it writes real configuration a second
+instructor must not override.
+
+### Behavior
+
+For each `GlobalUser` with no `instructorOnboarding` field:
+
+```
+seed = (affiliation === 'faculty' || affiliation === 'staff')
+       && instructorOnboardingCompleted === true
+$set instructorOnboarding = { contentSetup: seed, flagSetup: seed, monitorSetup: seed }
+```
+
+Among instructor-side users, `instructorOnboardingCompleted` is the only per-user record of
+whether someone has been through instructor onboarding, which makes it the right seed:
+veterans keep skipping, and everyone else — including an instructor sitting on a course a
+colleague set up — is taught.
+
+**Students always seed incomplete**, whatever that flag says, and `createGlobalUser` starts
+every new user with all three stages `false`. Two reasons:
+
+1. The flag is not trustworthy on students. Earlier versions of OB-001 and of the roster role
+   endpoint set it on students who had never seen an instructor tutorial.
+2. More importantly, a student escalated to TA is new to the instructor side. `false` is the
+   only correct starting point, or promotion would silently skip the tutorials they need.
+
+For the seed to stay honest among instructors, the flag must mean what it says. Two writers
+were removed:
+OB-001's instructor branch (see above), and `PATCH /api/courses/:courseId/roster/:userId/role`,
+which set it on TA promotion to suppress the old skip prompt. Promotion completes no tutorial,
+and a newly promoted TA is precisely who the instructor tutorials are for — left in place, that
+write would have made a TA's behaviour depend on whether the server had restarted since their
+promotion. It is now set in one place only: completing monitor setup, via
+`PATCH /api/user/onboarding/instructor-completed`.
+
+### Pre / post conditions
+
+| | Condition |
+|---|-----------|
+| **Pre** | `GlobalUser` may have no `instructorOnboarding` field |
+| **Post** | Every `GlobalUser` has `instructorOnboarding` with all three stages set; every student has all three `false` |
+
+### Idempotency and rollback
+
+Only users missing the field are queried, and the update filter repeats the
+`{ $exists: false }` guard, so a rerun cannot overwrite progress made since the first run.
+
+Rollback is a code revert: the field is additive and ignored by the previous version, and
+`activeCourse.contentSetup` / `flagSetup` / `monitorSetup` are left in place (deprecated, not
+`$unset`) so the old behavior returns without data loss.
+
+### Verification
+
+```js
+// Expect 0 once the migration has run.
+db.getCollection('active-users').countDocuments({ instructorOnboarding: { $exists: false } })
+
+// Expect 0 — no student may start with instructor tutorials marked complete.
+db.getCollection('active-users').countDocuments({
+  affiliation: 'student',
+  'instructorOnboarding.monitorSetup': true
+})
+
+// Spot-check that instructor-side veterans were seeded complete.
+db.getCollection('active-users').find(
+  { affiliation: { $in: ['faculty', 'staff'] }, instructorOnboardingCompleted: true },
+  { userId: 1, instructorOnboarding: 1, _id: 0 }
+)
+```
+
+### Repairing an environment migrated before the student rule landed
+
+An early run of OB-002 seeded students from `instructorOnboardingCompleted` and so marked some
+of them complete. The `$exists` guard means a rerun will not correct them. Reset those rows once,
+by hand:
+
+```js
+db.getCollection('active-users').updateMany(
+  { affiliation: 'student' },
+  { $set: {
+      'instructorOnboarding.contentSetup': false,
+      'instructorOnboarding.flagSetup': false,
+      'instructorOnboarding.monitorSetup': false,
+      updatedAt: new Date()
+  } }
+)
+```
+
+This is deliberately **not** folded into the migration: run on every apply it would also
+reset a student TA who had since completed the tutorials, teaching them again forever.
+
+### Post-sunset checklist (when every user is known migrated)
+
+1. Remove `migrateInstructorOnboardingStages` and its `mongo-attribute-check.ts` call.
+2. `$unset` the deprecated `contentSetup` / `flagSetup` / `monitorSetup` fields from
+   `active-course-list`, and drop them from `activeCourse` in `src/types/shared.ts` and
+   `public/scripts/types.ts`.
+3. Drop the corresponding strip from `PUT /api/courses/:id`.
+
+---
+
+## GP-001: Remove legacy off-topic pathway
+
+**Status:** Active (lazy heal)
+
+**Collection:** `{courseName}_pathways`
+
+### Behavior
+
+On pathways ensure / list / seed, `healRemoveOffTopicPathway` runs `deleteMany({ id: 'off-topic' })`. Idempotent. Does not delete instructor-created pathways with other ids. Off-topic / LO scope is handled by the teaching system prompt (`course main intro`), not a pathway intercept.
+
+Platform seeds no longer include `off-topic`. Library Reset re-seeds mental-health + inappropriate + evaluation-prompt singleton only.
+
+**Removal:** After an audit shows no course pathways collections still contain `id: 'off-topic'`.
+
+---
+
+## MIG CLI (`npm run migrate`)
+
+Operator how-to (persist shape, `--check` vs `--apply`, pipeline A → B → C → D): [`src/migrate/README.md`](../src/migrate/README.md).
 
 ---
 

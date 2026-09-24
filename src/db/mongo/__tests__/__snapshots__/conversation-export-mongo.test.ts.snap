@@ -5,6 +5,9 @@ exports[`conversation-export-mongo aggregation pipeline matches snapshot 1`] = `
   {
     "$match": {
       "affiliation": "student",
+      "isTestStudent": {
+        "$ne": true,
+      },
     },
   },
   {

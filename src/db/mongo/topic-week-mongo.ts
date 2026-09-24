@@ -409,6 +409,14 @@ export async function getAllLearningObjectives(
 
 /**
  * getAllLearningObjectivesWithIds — flatten every LO with parent titles and catalog objectiveId.
+ * 
+ * @param ctx - MongoDalContext
+ * @param courseId - string
+ *
+ * @returns Promise<Array<{objectiveId: string; text: string; topicOrWeekTitle: string; itemTitle: string;}>>
+ *
+ * Actions:
+ * - `$match` → `$unwind` instances/items/objectives → `$project` with `objectiveId`, `text`, `topicOrWeekTitle`, `itemTitle`.
  */
 export async function getAllLearningObjectivesWithIds(
     ctx: MongoDalContext,

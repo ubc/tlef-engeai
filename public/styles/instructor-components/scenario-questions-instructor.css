@@ -8,57 +8,15 @@
  */
 
 .sg-instructor-container {
-    /* Match Document/Monitor page shell: ~20px pad + Monitor-style centered cap */
-    width: 100%;
-    max-width: 1200px;
-    margin: 0 auto;
     height: 100%;
-    display: flex;
-    flex-direction: column;
-    --sg-instructor-pad-x: 3rem;
-    --sg-instructor-pad-y: 1.5rem;
-    padding: 0 var(--sg-instructor-pad-x) var(--sg-instructor-pad-y);
+    --sg-instructor-pad-x: var(--page-shell-pad-x);
+    --sg-instructor-pad-y: var(--page-header-pad-top);
     box-sizing: border-box;
-    overflow-y: auto;
-    scrollbar-color: rgba(0, 0, 0, 0.22) transparent;
 }
 
-.sg-instructor-container::-webkit-scrollbar {
-    width: 8px;
-    background: transparent;
-}
-
-.sg-instructor-container::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-.sg-instructor-container::-webkit-scrollbar-thumb {
-    background-color: rgba(0, 0, 0, 0.22);
-    border-radius: 4px;
-}
-
-.sg-instructor-container::-webkit-scrollbar-corner {
-    background: transparent;
-}
-
-/* --- Page header (plain title on desktop; mobile bar on small screens) --- */
+/* --- Page header (Dashboard-like title via .page-header) --- */
 .sg-instructor-page-header {
-    margin-bottom: 1.25rem;
-}
-
-.sg-instructor-page-header-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-}
-
-.sg-instructor-page-title {
-    margin: 0 0 1.25rem;
-    font-size: 2rem;
-    font-weight: 700;
-    color: var(--color-chbe-green);
-    line-height: 1.2;
+    margin-bottom: 0;
 }
 
 .sg-instructor-view-toggles {
@@ -67,6 +25,15 @@
     flex-wrap: wrap;
     gap: 0.5rem;
     margin: 1rem 0 1.25rem;
+}
+
+/* Plain green title — editor/topic/generate sub-views (grid uses .page-header) */
+.sg-instructor-page-title {
+    margin: 0 0 1.25rem;
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--color-chbe-green);
+    line-height: 1.2;
 }
 
 .sg-instructor-view-toggles-label {
@@ -97,10 +64,6 @@
     background: var(--color-chbe-green);
     border-color: var(--color-chbe-green);
     color: white;
-}
-
-.sg-instructor-header.mobile-header-bar {
-    display: none;
 }
 
 .sg-instructor-generate-new-btn {
@@ -981,35 +944,7 @@
 
 @media (max-width: 768px) {
     .sg-instructor-container {
-        --sg-instructor-pad-x: 1rem;
-        --sg-instructor-pad-y: 1rem;
-    }
-
-    .sg-instructor-page-header-row {
-        display: none;
-    }
-
-    .sg-instructor-header.mobile-header-bar {
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-        padding: 0;
-        margin: 0;
-        background: none;
-        border-radius: 0;
-    }
-
-    .sg-instructor-header .mobile-header-title {
-        flex: 1;
-        min-width: 0;
-        font-weight: 600;
-        font-size: 1.25rem;
-        color: var(--color-chbe-green);
-        margin: 0;
-    }
-
-    .sg-instructor-header .instructor-mobile-hamburger-btn {
-        color: var(--color-chbe-green);
+        --sg-instructor-pad-y: var(--page-header-pad-top);
     }
 
     .sg-instructor-topic-grid {

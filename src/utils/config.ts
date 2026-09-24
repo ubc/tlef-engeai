@@ -74,9 +74,13 @@ export function loadConfig(): AppConfig {
 	// Structure embeddingsConfig based on the provider
 	let specificEmbeddingsConfig: Partial<EmbeddingsConfig> = {};
 	if (embeddingsProvider === 'ubc-genai-toolkit-llm') {
-		// Determine the provider for the *internal* LLMModule used for embeddings
-		// Reusing the main LLM_PROVIDER env var for consistency with embedding-cli example
-		const internalLlmProvider = (process.env.LLM_PROVIDER || 'ollama') as LLMProviderType;
+		// Determine the provider for the *internal* LLMModule used for embeddings.
+		// EMBEDDINGS_LLM_PROVIDER lets the embeddings provider differ from the chat provider,
+		// which matters because the two may sit behind different endpoints. It falls back to
+		// LLM_PROVIDER so single-provider deployments need not set it.
+		const internalLlmProvider = (process.env.EMBEDDINGS_LLM_PROVIDER
+			|| process.env.LLM_PROVIDER
+			|| 'ollama') as LLMProviderType;
 		if (!internalLlmProvider) {
 			// This check might be redundant if LLM_PROVIDER is already checked above, but safe to keep
 			throw new Error('LLM_PROVIDER environment variable is required when EMBEDDINGS_PROVIDER is ubc-genai-toolkit-llm');

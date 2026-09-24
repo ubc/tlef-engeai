@@ -16,7 +16,7 @@ Security and privacy playbook for identity and course roles.
 
 ## RBAC
 
-- Affiliations: student, faculty, staff, empty — staff/empty blocked appropriately
+- Affiliations: student, faculty, staff, empty — `empty` blocked at app entry; `staff` enters with student-like course join (course code, student UI); faculty-only for create-course and instructor picker
 - Page gates: `validateCourseAccess`, `requireInstructorForCourse`, `requireStudentForCourse`
 - API gates: `requireInstructorForCourseAPI`, `requireStudentForCourseAPI`, `requireInstructorGlobal`
 - Platform admin: `GlobalUser.isAdmin` — set from the `ADMINS` env allowlist (matched by name via `src/utils/admin.ts`, not PUID) and reconciled on every login. Every affiliation-based authorization check must OR in `isAdminUser(...)` so admins pass regardless of their affiliation.
@@ -24,7 +24,7 @@ Security and privacy playbook for identity and course roles.
 ## Privacy
 
 - Monitor: instructor-only; conversation exports/downloads — minimum necessary data
-- Never expose student PUID in UI/APIs where roster policy forbids
+- Student PUID may appear in staff-gated UI/APIs; never in student-facing responses or logs
 - Flag content: handle harassment/inappropriate categories per product rules
 
 ## Defense in depth

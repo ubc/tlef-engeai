@@ -2,15 +2,20 @@
  * pathway-prompt.ts
  *
  * Builds system and user turns for the Guided Pathway classifier. Trigger rules come from
- * each pathway's `triggerDescription`.
+ * each pathway's `triggerDescription`. The shell may be course-customized; platform default
+ * lives in pathway-evaluation-prompt-default.ts.
  *
  * @author: EngE-AI Team
  * @date: 2026-07-24
- * @version: 1.1.0
+ * @version: 1.2.0
  * @description: Dynamic pathway evaluator prompts from course pathway docs.
  */
 
 import type { GuidedPathway } from '../types/shared';
+import {
+    PATHWAY_TRIGGER_SECTIONS_PLACEHOLDER,
+    PLATFORM_PATHWAY_EVALUATION_PROMPT_DEFAULT,
+} from './pathway-evaluation-prompt-default';
 
 /** Metadata wrapped into the evaluator user turn. */
 export interface PathwayEvaluationMetadata {
@@ -19,33 +24,37 @@ export interface PathwayEvaluationMetadata {
 }
 
 /**
- * buildPathwayEvaluationSystemPrompt - System prompt listing evaluable pathways.
+ * formatPathwayTriggerSections - Build `### \`id\`\ntrigger` blocks for the shell placeholder.
  *
  * @param pathways - Evaluable pathways (stable list order from library `order`)
+ * @returns Markdown sections, or a no-pathways placeholder when empty
+ */
+export function formatPathwayTriggerSections(pathways: readonly GuidedPathway[]): string {
+    if (pathways.length === 0) {
+        return '(No pathways configured.)';
+    }
+    return pathways.map((p) => `### \`${p.id}\`\n${p.triggerDescription.trim()}`).join('\n\n');
+}
+
+/**
+ * buildPathwayEvaluationSystemPrompt - System prompt from shell + pathway trigger sections.
+ *
+ * Replaces `{{pathway_trigger_sections}}` when present; otherwise appends sections after the shell.
+ *
+ * @param pathways - Evaluable pathways (stable list order from library `order`)
+ * @param shellBody - Course or platform shell (defaults to platform default)
  * @returns System prompt for structured pathway evaluation
  */
-export function buildPathwayEvaluationSystemPrompt(pathways: readonly GuidedPathway[]): string {
-    const sections = pathways
-        .map((p) => `### \`${p.id}\`\n${p.triggerDescription.trim()}`)
-        .join('\n\n');
-
-    return `You are a safety and relevance evaluator for an engineering study assistant (Guided Pathways).
-
-Evaluate the student's message against the pathways below. Return exactly one \`pathwayType\`:
-
-${sections || '(No pathways configured.)'}
-
-### \`none\`
-- Message is appropriate and on-topic for the course; no pathway above applies.
-
-Pick the single pathway whose trigger best matches the message. If none apply, return \`none\`.
-
-## Calibration reminders
-
-- Course frustration ("I hate this problem") is **not** a mental health crisis unless self-harm or acute crisis language is present.
-- "I'm struggling with enthalpy calculations" is **on-topic** coursework struggle, not a crisis.
-- Mild profanity about a problem is **not** inappropriate content unless directed at people.
-- Engineering ethics or lab work tied to the course is **on-topic**, not off-topic.`;
+export function buildPathwayEvaluationSystemPrompt(
+    pathways: readonly GuidedPathway[],
+    shellBody: string = PLATFORM_PATHWAY_EVALUATION_PROMPT_DEFAULT
+): string {
+    const sections = formatPathwayTriggerSections(pathways);
+    const shell = (shellBody || PLATFORM_PATHWAY_EVALUATION_PROMPT_DEFAULT).trim();
+    if (shell.includes(PATHWAY_TRIGGER_SECTIONS_PLACEHOLDER)) {
+        return shell.split(PATHWAY_TRIGGER_SECTIONS_PLACEHOLDER).join(sections);
+    }
+    return `${shell}\n\n${sections}`;
 }
 
 /**

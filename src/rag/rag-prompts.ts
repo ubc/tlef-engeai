@@ -27,47 +27,12 @@ export const RAG_CONTEXT_SEPARATOR = `
 export const RAG_NO_DOCS_MESSAGE =
     'No relevant documents from RAG found for this user message \n';
 
-const RAG_BRIDGE_PROMPT = `Based on the course materials and context provided above, help the student using the Socratic method. CRITICAL: Ask ONLY ONE question at a time.
-
-When responding:
-
-1. **ASK ONE QUESTION ONLY** - This is mandatory. Do not ask multiple questions in a single response. Wait for the student to answer before asking your next question.
-
-2. **CITE SPECIFIC SOURCE LOCATIONS** - Always reference where in the course materials you found the information:
-   - "According to Chapter 12.1, we learned that..."
-   - "In Section 3.2, the materials discuss..."
-   - "From the module on [topic] (Section X.Y)..."
-   - Use specific chapter, section, module numbers when available
-
-3. **USE SOCRATIC QUESTIONING** - Frame your response as a question that guides the student to discover the answer rather than explaining directly.
-
-4. **BUILD PROGRESSIVELY** - Build on the student's previous answer when asking your next question. Acknowledge what they got right before deepening with the next question.
-
-5. **CONNECT TO MATERIALS** - Use specific examples and data from the course materials, but present them through questioning:
-   - "In Chapter 12's example on batteries, we saw data showing X. Can you explain what principle this demonstrates?"
-
-Remember: Your primary job is to ask thoughtful, guided questions - one at a time - that help students discover understanding through the course materials. Wait for their response before proceeding.
-
+const SOCRATIC_RAG_BRIDGE_PROMPT = `Ground this turn on the <course_materials> above and help the student using the Socratic method.
+Follow the system prompt for all pedagogy, visibility, and citation rules (system prompt guidance, course material referencing, socratic context management, and the active conversation modules). Do not restate or invent rules beyond that stack.
 Student's question:`;
 
-const EXPLANATORY_RAG_BRIDGE_PROMPT = `Based on the course materials and context provided above, help the student using Explanatory mode (PROSE: explain clearly from materials first).
-
-When responding:
-
-1. **EXPLAIN FIRST** - Provide a clear, step-by-step explanation before any optional check-in question. Do not withhold the explanation to force discovery.
-
-2. **CITE SPECIFIC SOURCE LOCATIONS** - Always reference where in the course materials you found the information:
-   - "According to Chapter 12.1..."
-   - "In Section 3.2, the materials discuss..."
-   - "From the module on [topic] (Section X.Y)..."
-   - If materials lack the answer, state that clearly before using general engineering knowledge
-
-3. **STRUCTURE** - Define key terms, explain in ordered steps (use HTML lists for steps), and include one minimal concrete example when helpful.
-
-4. **QUESTIONS** - Ask at most ONE short clarifying question only if the student's message is ambiguous, OR one optional comprehension check-in after explaining—not both, and never multiple discovery questions.
-
-Remember: Your primary job is to help the student understand the concept from course materials through direct explanation.
-
+const EXPLANATORY_RAG_BRIDGE_PROMPT = `Ground this turn on the <course_materials> above and help the student using Explanatory mode.
+Follow the system prompt for all pedagogy, visibility, and citation rules (system prompt guidance, course material referencing, explanatory prose, and related explanatory modules). Do not restate or invent rules beyond that stack.
 Student's question:`;
 
 /**
@@ -97,7 +62,7 @@ export class RAGPrompts {
     );
 
     private static readonly socraticBridgePattern = new RegExp(
-        `${RAG_BRIDGE_PROMPT.split('\n')[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\s\\S]*?Student's question:`,
+        `${SOCRATIC_RAG_BRIDGE_PROMPT.split('\n')[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\s\\S]*?Student's question:`,
         'g'
     );
 
@@ -161,9 +126,10 @@ export class RAGPrompts {
                 chapter && itemTitle
                     ? `${chapter} part ${itemTitle}`
                     : chapter || itemTitle || 'Unknown';
-            context += `\n--- START document - ${modulePartLabel} ---\n`;
+            const chunkLabel = `chunk ${index + 1}`;
+            context += `\n--- START ${chunkLabel} - ${modulePartLabel} ---\n`;
             context += `${doc.content}\n`;
-            context += `--- END document - ${modulePartLabel} ---\n`;
+            context += `--- END ${chunkLabel} - ${modulePartLabel} ---\n`;
         });
 
         context += `\n${COURSE_MATERIALS_CLOSE}\n`;
@@ -189,7 +155,7 @@ export class RAGPrompts {
     ): string {
         const resolved = this.resolveModeId(modeId);
         if (resolved === 'socratic') {
-            return `${context}${RAG_CONTEXT_SEPARATOR}${RAG_BRIDGE_PROMPT}${userMessage}`;
+            return `${context}${RAG_CONTEXT_SEPARATOR}${SOCRATIC_RAG_BRIDGE_PROMPT}${userMessage}`;
         }
         if (resolved === 'explanatory') {
             return `${context}${RAG_CONTEXT_SEPARATOR}${EXPLANATORY_RAG_BRIDGE_PROMPT}${userMessage}`;

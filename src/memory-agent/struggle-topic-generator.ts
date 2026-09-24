@@ -27,11 +27,6 @@ import {
 } from './struggle-generation-prompt';
 import { isMockResponse, getMockGeneratedStruggleTopics } from '../helpers/mock-response';
 import { ModelSelectionService } from '../dashboard-setting/model-selection-service';
-import {
-    getPredeterminedLabels,
-    resolveTopicNumber,
-    usesPredeterminedStruggleCatalog,
-} from './predetermined-struggle-catalog';
 
 /* =================================================
  *    Interfaces & variables & Structured schema
@@ -306,60 +301,31 @@ export class StruggleTopicGenerator {
             truncated
         );
 
-        // Resolve labels: predetermined catalog → developer mock → LLM structured call
-        let rawTopics: string[] | undefined;
-        if (usesPredeterminedStruggleCatalog(course.courseName)) {
-            const topicNumber = resolveTopicNumber(
-                course.courseName,
-                input.sectionTitles.topicOrWeekTitle,
-                input.materialName
+        // Resolve labels: developer mock → LLM structured call
+        const modelSelection = ModelSelectionService.getInstance();
+        let rawTopics: string[];
+        if (isMockResponse()) {
+            appLogger.log('[STRUGGLE-GEN] Mock response — using mock generated struggle topics');
+            await modelSelection.buildFeatureLlmCallOptions(input.courseId, 'memoryAgent');
+            rawTopics = getMockGeneratedStruggleTopics();
+        } else {
+            const systemPrompt = buildStruggleGenerationSystemPrompt();
+            const messages: Message[] = [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userTurn },
+            ];
+
+            const llmCallOptions = await modelSelection.buildFeatureLlmCallOptions(
+                input.courseId,
+                'memoryAgent'
             );
-            if (topicNumber !== null) {
-                const predetermined = getPredeterminedLabels(
-                    course.courseName,
-                    topicNumber,
-                    excludedSet
-                );
-                if (predetermined.length > 0) {
-                    appLogger.log(
-                        `[STRUGGLE-GEN] Using predetermined struggle catalog for ` +
-                            `${course.courseName} Topic ${topicNumber}`
-                    );
-                    rawTopics = predetermined;
-                }
-            } else {
-                appLogger.warn(
-                    `[STRUGGLE-GEN] ${course.courseName} upload could not resolve topic number from ` +
-                        `"${input.sectionTitles.topicOrWeekTitle}" / "${input.materialName}"`
-                );
-            }
-        }
+            const response = await this.llmModule.sendStructuredConversation(
+                messages,
+                struggleGenerationResponseSchema,
+                { structuredOutputName: 'struggle_generation', ...llmCallOptions }
+            );
 
-        if (rawTopics === undefined) {
-            const modelSelection = ModelSelectionService.getInstance();
-            if (isMockResponse()) {
-                appLogger.log('[STRUGGLE-GEN] Mock response — using mock generated struggle topics');
-                await modelSelection.buildFeatureLlmCallOptions(input.courseId, 'memoryAgent');
-                rawTopics = getMockGeneratedStruggleTopics();
-            } else {
-                const systemPrompt = buildStruggleGenerationSystemPrompt();
-                const messages: Message[] = [
-                    { role: 'system', content: systemPrompt },
-                    { role: 'user', content: userTurn },
-                ];
-
-                const llmCallOptions = await modelSelection.buildFeatureLlmCallOptions(
-                    input.courseId,
-                    'memoryAgent'
-                );
-                const response = await this.llmModule.sendStructuredConversation(
-                    messages,
-                    struggleGenerationResponseSchema,
-                    { structuredOutputName: 'struggle_generation', ...llmCallOptions }
-                );
-
-                rawTopics = response?.parsed?.struggleTopics ?? [];
-            }
+            rawTopics = response?.parsed?.struggleTopics ?? [];
         }
 
         // Filter and dedup against FIFO exclusion set

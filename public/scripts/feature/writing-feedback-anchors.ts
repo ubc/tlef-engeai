@@ -18,33 +18,92 @@
 import { showConfirmModal } from '../ui/modal-overlay.js';
 import {
     AnchoredComment,
+    CourseMaterialTitle,
     FUNCTION_TAG_LABELS,
     FUNCTION_TAG_TONES,
     LEVEL_TAG_LABELS,
     PRIORITY_LABELS,
     PRIORITY_TONES,
     SubmissionDetail,
+    WritingFeedbackLens,
+    WritingGlossaryEntry,
     WfFunctionTag,
     WfLevelTag,
     WfPriority,
     chip,
     createText,
-    field
+    field,
+    jsonRequest,
+    request
 } from './writing-feedback-shared.js';
 
 interface AnnotationContext {
     docHost: HTMLElement;
     listHost: HTMLElement;
     verifiedText: string;
+    /**
+     * Which rubric this pane annotates. A lab report renders two panes over the same
+     * document, so every read and write here is scoped to one lens; without it a technical
+     * comment would be filed against the writing rubric's criterion ids.
+     */
+    lens: WritingFeedbackLens;
     markDirty: () => void;
 }
 
-// This module owns an isolated working copy so edits cannot mutate the immutable
-// model seed or the last saved staff revision returned by the API.
-let workingComments: AnchoredComment[] = [];
+/**
+ * This module owns an isolated working copy so edits cannot mutate the immutable model seed
+ * or the last saved staff revision returned by the API.
+ *
+ * One set per lens. Both panes of a lab report are built into the DOM at setup, so a single
+ * shared array would have let whichever rendered last collect every new comment.
+ */
+const workingSets = new Map<WritingFeedbackLens, AnchoredComment[]>();
+
+/** The working set for one lens, created empty on first use. */
+function commentsFor(lens: WritingFeedbackLens): AnchoredComment[] {
+    const existing = workingSets.get(lens);
+    if (existing) return existing;
+    const created: AnchoredComment[] = [];
+    workingSets.set(lens, created);
+    return created;
+}
 let activeCommentId: string | null = null;
 let editingCommentId: string | null = null;
 let filters: { fn: 'all' | WfFunctionTag; level: 'all' | WfLevelTag } = { fn: 'all', level: 'all' };
+let glossaryCache: WritingGlossaryEntry[] | null = null;
+let courseMaterialCache: CourseMaterialTitle[] | null = null;
+
+async function loadGlossaryEntries(): Promise<WritingGlossaryEntry[]> {
+    if (!glossaryCache) glossaryCache = await request<WritingGlossaryEntry[]>('/glossary');
+    return glossaryCache;
+}
+
+/**
+ * The course's published materials, fetched once per page.
+ *
+ * Typed titles could name a document the course never released, or spell the same material
+ * differently from the label retrieval resolves for it. A failure leaves the field usable
+ * as free text rather than blocking the annotation.
+ */
+async function loadCourseMaterialTitles(): Promise<CourseMaterialTitle[]> {
+    if (!courseMaterialCache) {
+        try {
+            courseMaterialCache = await request<CourseMaterialTitle[]>('/course-materials');
+        } catch {
+            courseMaterialCache = [];
+        }
+    }
+    return courseMaterialCache;
+}
+
+function glossarySnapshot(entry: WritingGlossaryEntry): NonNullable<AnchoredComment['glossarySnapshot']> {
+    return {
+        id: entry.id,
+        term: entry.term,
+        definition: entry.definition,
+        version: entry.version
+    };
+}
 
 /**
  * initAnchorWorkingSet - starts an editable annotation session for one submission
@@ -55,7 +114,16 @@ let filters: { fn: 'all' | WfFunctionTag; level: 'all' | WfLevelTag } = { fn: 'a
  * @param detail - Submission detail containing saved comments and model seed fallbacks
  */
 export function initAnchorWorkingSet(detail: SubmissionDetail): void {
-    workingComments = (detail.comments.length ? detail.comments : detail.seedComments).map((comment) => ({ ...comment }));
+    workingSets.clear();
+    // The server resolves each lens (newest of saved revision or summary redraft, else seeds);
+    // the legacy fallback covers a detail payload from before that field existed.
+    const source = detail.workingComments
+        ?? (detail.comments.length ? detail.comments : detail.seedComments);
+    for (const comment of source) {
+        // Comments stored before lab-report annotation carry no lens and are all linguistic,
+        // matching the default the server's validator applies to the same records.
+        commentsFor(comment.lens ?? 'linguistic').push({ ...comment, lens: comment.lens ?? 'linguistic' });
+    }
     activeCommentId = null;
     editingCommentId = null;
     filters = { fn: 'all', level: 'all' };
@@ -67,7 +135,10 @@ export function initAnchorWorkingSet(detail: SubmissionDetail): void {
  * @returns A fresh comment array without server-derived stale flags
  */
 export function getWorkingComments(): AnchoredComment[] {
-    return workingComments.map(({ stale: _stale, ...comment }) => comment);
+    // Technical first, so a lab report's saved revision and its PDF both lead with the
+    // marking scheme the grade comes from.
+    return [...commentsFor('technical'), ...commentsFor('linguistic')]
+        .map(({ stale: _stale, ...comment }) => comment);
 }
 
 /** Accepts only offsets that still reproduce the exact quotation in verified text. */
@@ -77,16 +148,21 @@ function anchorable(comment: AnchoredComment, verifiedText: string): boolean {
         && verifiedText.slice(comment.startOffset, comment.endOffset) === comment.quote;
 }
 
-function orderedAnchorable(verifiedText: string): AnchoredComment[] {
-    return workingComments
+function orderedAnchorable(lens: WritingFeedbackLens, verifiedText: string): AnchoredComment[] {
+    return commentsFor(lens)
         .filter((comment) => anchorable(comment, verifiedText))
         .sort((a, b) => a.startOffset - b.startOffset || a.endOffset - b.endOffset);
 }
 
-/** Stable annotation numbers: position order over all anchorable comments, filter-independent. */
-function annotationNumbers(verifiedText: string): Map<string, number> {
+/**
+ * Stable annotation numbers: position order over all anchorable comments, filter-independent.
+ *
+ * Numbered within one lens, so each pane counts from 1 and a lab report does not present a
+ * technical comment as "number 7" because six writing comments precede it in the document.
+ */
+function annotationNumbers(lens: WritingFeedbackLens, verifiedText: string): Map<string, number> {
     const numbers = new Map<string, number>();
-    orderedAnchorable(verifiedText).forEach((comment, index) => numbers.set(comment.id, index + 1));
+    orderedAnchorable(lens, verifiedText).forEach((comment, index) => numbers.set(comment.id, index + 1));
     return numbers;
 }
 
@@ -139,8 +215,8 @@ function activateComment(commentId: string, rerender: () => void): void {
 function renderAnchoredText(host: HTMLElement, context: AnnotationContext, rerender: () => void): void {
     host.replaceChildren();
     const text = context.verifiedText;
-    const numbers = annotationNumbers(text);
-    const anchored = orderedAnchorable(text);
+    const numbers = annotationNumbers(context.lens, text);
+    const anchored = orderedAnchorable(context.lens, text);
 
     // Rebuild the document as alternating plain-text and anchored segments while
     // retaining absolute offsets on every segment for later selection mapping.
@@ -266,13 +342,14 @@ function bindSelectionPopover(
             // tuple again instead of trusting browser selection state.
             const comment: AnchoredComment = {
                 id: crypto.randomUUID(),
+                lens: context.lens,
                 quote,
                 startOffset: from,
                 endOffset: from + quote.length,
                 comment: '',
                 origin: 'staff'
             };
-            workingComments.push(comment);
+            commentsFor(context.lens).push(comment);
             activeCommentId = comment.id;
             editingCommentId = comment.id;
             filters = { fn: 'all', level: 'all' };
@@ -340,15 +417,16 @@ function renderAnnotationList(context: AnnotationContext, rerender: () => void):
 
     const list = document.createElement('div');
     list.className = 'wf-annotation-list';
-    const numbers = annotationNumbers(context.verifiedText);
+    const numbers = annotationNumbers(context.lens, context.verifiedText);
+    const comments = commentsFor(context.lens);
 
-    if (!workingComments.length) {
+    if (!comments.length) {
         list.append(createText('p', 'No annotations yet. Select a passage in the document to add the first one.', 'wf-muted-note'));
     }
 
     // Stale comments bypass active filters because reviewers must resolve them
     // before saving rather than accidentally hiding invalid anchors.
-    const visible = [...workingComments]
+    const visible = [...comments]
         .filter((comment) => comment.stale || matchesFilters(comment))
         .sort((a, b) => {
             const aStale = a.stale ? 1 : 0;
@@ -357,7 +435,7 @@ function renderAnnotationList(context: AnnotationContext, rerender: () => void):
             // numbered cards always render in ascending order.
             return aStale - bStale || a.startOffset - b.startOffset || a.endOffset - b.endOffset;
         });
-    if (workingComments.length && !visible.length) {
+    if (comments.length && !visible.length) {
         list.append(createText('p', 'No annotations match the selected filters.', 'wf-muted-note'));
     }
     visible.forEach((comment) => list.append(renderAnnotationCard(comment, numbers.get(comment.id), context, rerender)));
@@ -429,25 +507,28 @@ function renderCardDisplay(
         guidance.append(createText('span', 'Revision guidance: ', 'wf-annotation-label'), document.createTextNode(comment.howToImprove));
         card.append(guidance);
     }
-    if (comment.courseMaterialLink) {
+    // The server-resolved label wins over a staff title, and both are names rather than
+    // links: the student reads this in the workspace and on a printed PDF, where a URL is
+    // not clickable and says less than the name of the lecture it points at. A legacy
+    // comment that carries only a link falls back to showing it as plain text.
+    const materialName = comment.courseMaterialMention?.label
+        ?? comment.courseMaterialTitle
+        ?? comment.courseMaterialLink;
+    if (materialName) {
         const box = document.createElement('div');
         box.className = 'wf-material-box';
         const title = document.createElement('span');
         title.className = 'wf-material-title';
-        title.textContent = 'SUGGESTED COURSE MATERIAL';
-        const link = document.createElement('a');
-        link.href = comment.courseMaterialLink;
-        link.target = '_blank';
-        link.rel = 'noopener';
-        link.textContent = comment.courseMaterialLink;
-        box.append(title, createText('span', 'Review this material before revising: '), link);
+        title.textContent = 'READ AGAIN';
+        box.append(title, createText('span', materialName));
         card.append(box);
     }
-    if (comment.glossaryDefinition) {
+    const glossaryValue = comment.glossarySnapshot ?? comment.glossaryDefinition;
+    if (glossaryValue) {
         const glossary = document.createElement('p');
         glossary.append(
-            createText('span', `Glossary — ${comment.glossaryDefinition.term}: `, 'wf-annotation-label'),
-            document.createTextNode(comment.glossaryDefinition.definition)
+            createText('span', `Glossary — ${glossaryValue.term}: `, 'wf-annotation-label'),
+            document.createTextNode(glossaryValue.definition)
         );
         card.append(glossary);
     }
@@ -474,7 +555,7 @@ function renderCardEditor(
     rerender: () => void
 ): void {
     // Controls update the isolated working copy immediately and mark the parent
-    // review dirty; persistence still occurs only through "Save staff revision".
+    // review dirty; persistence still occurs only through "Save draft" or "Approve".
     const commentText = document.createElement('textarea');
     commentText.value = comment.comment;
     commentText.rows = 3;
@@ -482,16 +563,28 @@ function renderCardEditor(
     const howToImprove = document.createElement('textarea');
     howToImprove.value = comment.howToImprove ?? '';
     howToImprove.rows = 2;
-    const link = document.createElement('input');
-    link.type = 'url';
-    link.value = comment.courseMaterialLink ?? '';
-    link.placeholder = 'https://…';
+    const materialTitle = document.createElement('input');
+    materialTitle.type = 'text';
+    materialTitle.maxLength = 240;
+    materialTitle.value = comment.courseMaterialTitle ?? '';
+    materialTitle.placeholder = 'Start typing a lecture or reading title';
+    const materialListId = `wf-course-material-${comment.id}`;
+    materialTitle.setAttribute('list', materialListId);
+    const materialOptions = document.createElement('datalist');
+    materialOptions.id = materialListId;
     const glossaryTerm = document.createElement('input');
     glossaryTerm.type = 'text';
-    glossaryTerm.value = comment.glossaryDefinition?.term ?? '';
+    glossaryTerm.value = comment.glossarySnapshot?.term ?? comment.glossaryDefinition?.term ?? '';
+    const glossaryListId = `wf-glossary-${comment.id}`;
+    glossaryTerm.setAttribute('list', glossaryListId);
+    const glossaryOptions = document.createElement('datalist');
+    glossaryOptions.id = glossaryListId;
     const glossaryDefinition = document.createElement('textarea');
-    glossaryDefinition.value = comment.glossaryDefinition?.definition ?? '';
+    glossaryDefinition.value = comment.glossarySnapshot?.definition ?? comment.glossaryDefinition?.definition ?? '';
     glossaryDefinition.rows = 2;
+    const glossaryStatus = createText('p', '', 'wf-help-text');
+    glossaryStatus.setAttribute('role', 'status');
+    glossaryStatus.setAttribute('aria-live', 'polite');
 
     const functionSelect = tagSelect<WfFunctionTag>(FUNCTION_TAG_LABELS, comment.functionTag, 'No function');
     const levelSelect = tagSelect<WfLevelTag>(LEVEL_TAG_LABELS, comment.levelTag, 'No level');
@@ -501,10 +594,58 @@ function renderCardEditor(
         const term = glossaryTerm.value.trim();
         const definition = glossaryDefinition.value.trim();
         comment.glossaryDefinition = term && definition ? { term, definition } : undefined;
+        if (!term || !definition) {
+            comment.glossaryEntryId = undefined;
+            comment.glossarySnapshot = undefined;
+        }
+    };
+    const refreshGlossaryOptions = async (): Promise<void> => {
+        const entries = await loadGlossaryEntries();
+        glossaryOptions.replaceChildren();
+        entries.forEach((entry) => {
+            const option = document.createElement('option');
+            option.value = entry.term;
+            option.label = entry.definition;
+            glossaryOptions.append(option);
+        });
+    };
+    const applyGlossaryMatch = async (): Promise<void> => {
+        const entries = await loadGlossaryEntries();
+        const selected = entries.find((entry) => entry.term.toLocaleLowerCase() === glossaryTerm.value.trim().toLocaleLowerCase());
+        if (!selected) return;
+        glossaryDefinition.value = selected.definition;
+        comment.glossaryEntryId = selected.id;
+        comment.glossarySnapshot = glossarySnapshot(selected);
+        comment.glossaryDefinition = { term: selected.term, definition: selected.definition };
+        glossaryStatus.textContent = `Using glossary entry v${selected.version}.`;
+        context.markDirty();
     };
     commentText.addEventListener('input', () => { comment.comment = commentText.value; context.markDirty(); });
     howToImprove.addEventListener('input', () => { comment.howToImprove = howToImprove.value.trim() || undefined; context.markDirty(); });
-    link.addEventListener('input', () => { comment.courseMaterialLink = link.value.trim() || undefined; context.markDirty(); });
+    const refreshCourseMaterialOptions = async (): Promise<void> => {
+        const materials = await loadCourseMaterialTitles();
+        materialOptions.replaceChildren();
+        materials.forEach((material) => {
+            const option = document.createElement('option');
+            option.value = material.label;
+            materialOptions.append(option);
+        });
+    };
+    // The id is carried only while the text still names a material the course holds. A
+    // title typed freehand, or edited away from the one that was picked, keeps the label and
+    // drops the id rather than pointing at a material nobody chose.
+    const syncCourseMaterial = async (): Promise<void> => {
+        const value = materialTitle.value.trim();
+        comment.courseMaterialTitle = value || undefined;
+        const matchedMaterial = value
+            ? (await loadCourseMaterialTitles()).find((material) => material.label === value)
+            : undefined;
+        comment.courseMaterialId = matchedMaterial?.id;
+    };
+    materialTitle.addEventListener('focus', () => { void refreshCourseMaterialOptions(); });
+    materialTitle.addEventListener('input', () => { void syncCourseMaterial(); context.markDirty(); });
+    glossaryTerm.addEventListener('focus', () => { void refreshGlossaryOptions(); });
+    glossaryTerm.addEventListener('change', () => { void applyGlossaryMatch(); });
     [glossaryTerm, glossaryDefinition].forEach((control) => control.addEventListener('input', () => { syncGlossary(); context.markDirty(); }));
     functionSelect.addEventListener('change', () => { comment.functionTag = (functionSelect.value || undefined) as WfFunctionTag | undefined; context.markDirty(); });
     levelSelect.addEventListener('change', () => { comment.levelTag = (levelSelect.value || undefined) as WfLevelTag | undefined; context.markDirty(); });
@@ -516,13 +657,41 @@ function renderCardEditor(
         field('Function', functionSelect),
         field('Level', levelSelect),
         field('Priority', prioritySelect),
-        field('Course material link', link, 'Optional link to a specific lecture or resource.'),
+        field('Course material title', materialTitle, 'Pick a published course material, or type another title. It appears in the student PDF under Useful readings.'),
         field('Glossary term', glossaryTerm),
         field('Glossary definition', glossaryDefinition)
     );
+    card.append(materialOptions, glossaryOptions, glossaryStatus);
 
     const actions = document.createElement('div');
     actions.className = 'wf-annotation-actions';
+    const saveGlossary = document.createElement('button');
+    saveGlossary.type = 'button';
+    saveGlossary.className = 'wf-button wf-button--secondary';
+    saveGlossary.textContent = 'Save glossary';
+    saveGlossary.addEventListener('click', async () => {
+        const term = glossaryTerm.value.trim();
+        const definition = glossaryDefinition.value.trim();
+        if (!term || !definition) {
+            glossaryStatus.textContent = 'Enter a term and definition first.';
+            return;
+        }
+        const existing = (await loadGlossaryEntries())
+            .find((entry) => entry.term.toLocaleLowerCase() === term.toLocaleLowerCase());
+        const entry = existing
+            ? await jsonRequest<WritingGlossaryEntry>(
+                `/glossary/${encodeURIComponent(existing.id)}`,
+                'PUT',
+                { term, definition, expectedVersion: existing.version, confirmDefinitionChange: true }
+            )
+            : await jsonRequest<WritingGlossaryEntry>('/glossary', 'POST', { term, definition });
+        glossaryCache = null;
+        comment.glossaryEntryId = entry.id;
+        comment.glossarySnapshot = glossarySnapshot(entry);
+        comment.glossaryDefinition = { term: entry.term, definition: entry.definition };
+        glossaryStatus.textContent = `Saved glossary entry v${entry.version}.`;
+        context.markDirty();
+    });
     const done = document.createElement('button');
     done.type = 'button';
     done.className = 'wf-button wf-button--primary';
@@ -531,7 +700,7 @@ function renderCardEditor(
         editingCommentId = null;
         rerender();
     });
-    actions.append(done, deleteButton(comment, context, rerender));
+    actions.append(saveGlossary, done, deleteButton(comment, context, rerender));
     card.append(actions);
 }
 
@@ -572,7 +741,9 @@ function deleteButton(comment: AnchoredComment, context: AnnotationContext, rere
                 'danger'
             );
             if (confirmation.action !== 'delete-comment') return;
-            workingComments = workingComments.filter((item) => item.id !== comment.id);
+            const set = commentsFor(context.lens);
+            const index = set.findIndex((item) => item.id === comment.id);
+            if (index >= 0) set.splice(index, 1);
             if (activeCommentId === comment.id) activeCommentId = null;
             if (editingCommentId === comment.id) editingCommentId = null;
             context.markDirty();

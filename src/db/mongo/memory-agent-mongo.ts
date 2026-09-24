@@ -480,19 +480,31 @@ export async function coerceAndCleanupMemoryAgentRawRow(
 
  * Reads all memory-agent rows for a course (read-only coercion; no legacy field cleanup).
 
+ *
+
+ * @param excludeUserIds - Ids to leave out; Student View passes its test students, which
+
+ *                         these documents cannot be recognised by on their own.
+
  */
 
 export async function getAllMemoryAgentEntries(
 
     ctx: MongoDalContext,
 
-    courseName: string
+    courseName: string,
+
+    excludeUserIds: readonly string[] = []
 
 ): Promise<MemoryAgentEntry[]> {
 
     const memoryAgentCollection = await getMemoryAgentCollection(ctx, courseName);
 
-    const rows = await memoryAgentCollection.find({}).toArray();
+    // These documents carry no affiliation of their own, so Student View test students
+    // can only be left out by id.
+    const filter = excludeUserIds.length > 0 ? { userId: { $nin: [...excludeUserIds] } } : {};
+
+    const rows = await memoryAgentCollection.find(filter).toArray();
 
     return rows.map((raw) => parseMemoryAgentEntry(raw as unknown as MemoryAgentRawDoc));
 

@@ -9,18 +9,19 @@
 
 import type { activeCourse } from '../../types/shared';
 import { fetchActiveCourseDocByCourseName } from './active-course-queries-mongo';
+import { guidedPathwayFlagCollectionNameForCourse } from './guided-pathway-flag-collection-mongo';
 import type { MongoDalContext } from './mongo-context';
 import { appLogger } from '../../utils/logger';
 
 /**
  * getCollectionNames
  *
- * Returns the four per-course collection identifiers and **memoizes** them on `ctx.collectionNamesCache`.
+ * Returns the per-course collection identifiers and **memoizes** them on `ctx.collectionNamesCache`.
  *
  * @param ctx - MongoDalContext — provides `db`, `collectionNamesCache`, and related singleton state
  * @param courseName - string — logical course name (matches `activeCourse.courseName` and namespace prefix)
  *
- * @returns Promise<{ users, flags, memoryAgent, scheduledTasks }>
+ * @returns Names for each physical collection owned by the course
  *
  */
 export async function getCollectionNames(
@@ -34,6 +35,7 @@ export async function getCollectionNames(
     scenarioQuestions: string;
     scenarioProgress: string;
     pathways: string;
+    guidedPathwayFlags: string;
 }> {
     if (ctx.collectionNamesCache.has(courseName)) {
         return ctx.collectionNamesCache.get(courseName)!;
@@ -54,6 +56,10 @@ export async function getCollectionNames(
             const scenarioQuestions = c.collections.scenarioQuestions ?? `${courseName}_scenario_questions`;
             const scenarioProgress = c.collections.scenarioProgress ?? `${courseName}_scenario_progress`;
             const pathways = c.collections.pathways ?? `${courseName}_pathways`;
+            // GPF-002: the catalog is authoritative; the readable fallback is used only
+            // until a legacy course is lazily provisioned and the name is persisted.
+            const guidedPathwayFlags = c.collections.guidedPathwayFlags
+                ?? guidedPathwayFlagCollectionNameForCourse(courseName);
             const collectionNames = {
                 users: c.collections.users,
                 flags: c.collections.flags,
@@ -62,6 +68,7 @@ export async function getCollectionNames(
                 scenarioQuestions,
                 scenarioProgress,
                 pathways,
+                guidedPathwayFlags,
             };
             ctx.collectionNamesCache.set(courseName, collectionNames);
             return collectionNames;
@@ -81,6 +88,7 @@ export async function getCollectionNames(
         scenarioQuestions: `${courseName}_scenario_questions`,
         scenarioProgress: `${courseName}_scenario_progress`,
         pathways: `${courseName}_pathways`,
+        guidedPathwayFlags: guidedPathwayFlagCollectionNameForCourse(courseName),
     };
     ctx.collectionNamesCache.set(courseName, computedNames);
     return computedNames;

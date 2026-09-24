@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<title>Onboarding layout harness</title>
+<link rel="stylesheet" href="/styles/style.css">
+<link rel="stylesheet" href="/styles/instructor-mode.css">
+<link rel="stylesheet" href="/styles/page-shell.css">
+<link rel="stylesheet" href="/styles/modal-overlay.css">
+<script src="/vendor/feather/feather.min.js"></script>
+<style>html,body{margin:0;padding:0;height:100%;}</style>
+</head>
+<body class="onboarding-active">
+<div id="main-content-area"></div>
+<script>
+(async () => {
+  const params = new URLSearchParams(location.search);
+  const component = params.get('component');
+  const step = parseInt(params.get('step') || '1', 10);
+  const html = await (await fetch(`/components/onboarding/${component}.html`)).text();
+  const container = document.getElementById('main-content-area');
+  container.innerHTML = html;
+
+  // The fragment carries its own <link rel="stylesheet"> for onboarding.css.
+  // Inserting it via innerHTML kicks off an async fetch: without waiting for
+  // it, scrollHeight below can be measured against pre-stylesheet layout,
+  // producing a different (wrong, smaller) resting scroll position on every
+  // run. Block until every injected stylesheet has applied or failed.
+  const injectedLinks = [...container.querySelectorAll('link[rel="stylesheet"]')];
+  await Promise.all(injectedLinks.map(link => new Promise(resolve => {
+    if (link.sheet) return resolve();
+    link.addEventListener('load', resolve, { once: true });
+    link.addEventListener('error', resolve, { once: true });
+  })));
+
+  // Mirror what feature-tutorial-runtime and the inherited controllers do
+  // when a step becomes visible.
+  document.querySelectorAll('.content-step').forEach(el => el.classList.remove('active'));
+  document.getElementById(`content-step-${step}`)?.classList.add('active');
+  document.querySelectorAll('.step-item').forEach(item => {
+    const n = parseInt(item.getAttribute('data-step') || '0', 10);
+    const circle = item.querySelector('.step-circle');
+    if (!circle) return;
+    circle.classList.remove('current', 'pending', 'completed');
+    circle.classList.add(n < step ? 'completed' : n === step ? 'current' : 'pending');
+  });
+
+  const total = document.querySelectorAll('.content-step').length;
+  const backBtn = document.getElementById('backBtn');
+  if (backBtn) backBtn.style.display = step > 1 ? 'flex' : 'none';
+  const nextBtn = document.getElementById('nextBtn');
+  if (nextBtn && step === total) {
+    const label = nextBtn.querySelector('span');
+    if (label) label.textContent = 'Complete Setup';
+  }
+
+  if (window.feather) window.feather.replace();
+  document.body.dataset.ready = '1';
+})();
+</script>
+</body></html>

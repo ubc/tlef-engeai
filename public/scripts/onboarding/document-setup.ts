@@ -1,20 +1,20 @@
 /**
  * DOCUMENT SETUP MODULE - ONBOARDING VERSION
  * 
- * This module handles the document setup onboarding flow for instructors.
- * It provides a step-by-step tutorial on how to add learning objectives and upload documents.
+ * This module handles the document setup onboarding flow for course staff.
+ * It provides a step-by-step tutorial for saving learning objectives and course materials.
  * 
  * FEATURES:
  * - 4-step onboarding process with navigation
- * - Learning objectives demo with add/delete functionality
- * - Document upload demo with file handling
- * - Backend integration placeholders (unimplemented)
+ * - Learning objectives saved to the selected course area
+ * - Document uploads processed and saved through the production upload service
+ * - No tutorial deletion controls for actions that are not represented faithfully
  * - Data structure initialization and validation
  * 
  * ONBOARDING STEPS:
  * 1. Welcome - Overview of document setup process
- * 2. Learning Objectives - Demo how to add learning objectives
- * 3. Document Upload - Demo how to upload course materials
+ * 2. Learning Objectives - Add a learning objective to the course
+ * 3. Document Upload - Upload course materials
  * 4. Completion - Summary and next steps
  * 
  * @author: gatahcha (revised)
@@ -23,10 +23,13 @@
  */
 
 import { loadComponentHTML } from "../api/api.js";
-import { activeCourse, LearningObjective, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem } from "../types.js";
-import { showErrorModal, showHelpModal, showConfirmModal, openUploadModal, showSimpleErrorModal, showDeleteConfirmationModal } from "../ui/modal-overlay.js";
+import { activeCourse, TopicOrWeekInstance, TopicOrWeekItem } from "../types.js";
+import { showErrorModal, showHelpModal, showConfirmModal, openContentInputModal, showSimpleErrorModal } from "../ui/modal-overlay.js";
+import type { ContentInputPayload, ContentInputSubmitResult } from "../ui/modal-overlay.js";
 import { DocumentUploadModule } from '../services/document-upload-module.js';
-import type { UploadResult } from '../types.js';
+import { completeInstructorOnboardingStage, markCourseContentSetupComplete } from './onboarding-progress.js';
+import { updateStaffOnboardingProgress } from './staff-onboarding-ui.js';
+import { renderTutorialChrome } from './onboarding-tutorial-chrome.js';
 
 // ===========================================
 // TYPE DEFINITIONS
@@ -72,7 +75,7 @@ interface DemoFile {
  * 4. Manages step navigation and validation
  * 5. Handles demo functionality for learning objectives and file uploads
  * 
- * @param instructorCourse - The instructor's course object to be populated
+ * @param instructorCourse - The course object to be populated
  * @returns Promise<void>
  */
 export const renderDocumentSetup = async (instructorCourse: activeCourse): Promise<void> => {
@@ -129,6 +132,11 @@ async function initializeDocumentSetup(state: DocumentSetupState, instructorCour
 
     // Set the current course for demo operations
     currentCourse = instructorCourse;
+
+    // Practice state is in-memory only, so reset it: a second instructor working through
+    // this tutorial must start clean rather than inherit a previous run's list.
+    demoFiles = [];
+    demoObjectives = [];
 
     // Initialize data structures if needed
     initializeCourseData(instructorCourse);
@@ -230,20 +238,13 @@ function setupNavigationListeners(state: DocumentSetupState, instructorCourse: a
 function setupDemoListeners(state: DocumentSetupState): void {
     // Learning objectives demo
     const addDemoObjectiveBtn = document.getElementById('addDemoObjective') as HTMLButtonElement;
-    const clearDemoBtn = document.getElementById('clearDemo') as HTMLButtonElement;
     
     if (addDemoObjectiveBtn) {
         addDemoObjectiveBtn.addEventListener('click', async () => await addDemoObjective());
     }
     
-    if (clearDemoBtn) {
-        clearDemoBtn.addEventListener('click', async () => await clearDemoObjectives());
-    }
-
     // File upload demo
     const demoUploadBtn = document.getElementById('demoUploadBtn') as HTMLButtonElement;
-    const processDemoFilesBtn = document.getElementById('processDemoFiles') as HTMLButtonElement;
-    const clearDemoFilesBtn = document.getElementById('clearDemoFiles') as HTMLButtonElement;
     
     if (demoUploadBtn) {
         console.log('DEBUG #15: Setting up demoUploadBtn event listener');
@@ -257,13 +258,6 @@ function setupDemoListeners(state: DocumentSetupState): void {
         console.error('DEBUG #16: demoUploadBtn not found!');
     }
     
-    if (processDemoFilesBtn) {
-        processDemoFilesBtn.addEventListener('click', () => processDemoFiles());
-    }
-    
-    if (clearDemoFilesBtn) {
-        clearDemoFilesBtn.addEventListener('click', () => clearDemoFiles());
-    }
 }
 
 /**
@@ -445,38 +439,15 @@ async function handleFinalCompletion(state: DocumentSetupState, instructorCourse
     console.log("🎯 Completing document setup...");
     
     try {
-        // Validate courseId exists
-        if (!instructorCourse.id) {
-            throw new Error("Course ID is missing. Cannot update database.");
-        }
-        
-        // Mark content setup as complete locally
-        instructorCourse.contentSetup = true;
-        
-        // Persist to database
-        console.log(`📡 Updating database: setting contentSetup=true for course ${instructorCourse.id}`);
-        const response = await fetch(`/api/courses/${instructorCourse.id}`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            credentials: 'same-origin',
-            body: JSON.stringify({
-                contentSetup: true
-            })
-        });
-        
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ error: 'Failed to update course in database' }));
-            throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-        }
-        
-        const result = await response.json();
-        if (!result.success) {
-            throw new Error(result.error || 'Failed to update course in database');
-        }
-        
-        console.log("✅ Content setup status persisted to database successfully!");
+        // Document Setup does two jobs, recorded separately. The tutorial goes against the
+        // instructor, not the course, so a colleague new to EngE-AI is still taught on this
+        // same course; the content itself is course state, so a veteran creating their next
+        // course is still sent through the stage instead of landing on an empty dashboard.
+        console.log(`📡 Recording contentSetup tutorial for the current instructor`);
+        await completeInstructorOnboardingStage('contentSetup');
+        await markCourseContentSetupComplete(instructorCourse.id);
+
+        console.log("✅ Content setup progress persisted to database successfully!");
         
         // Keep onboarding-active class - sidebar should remain hidden until ALL onboarding is complete
         // The class will be removed by instructor-mode.ts when all setup steps are done
@@ -488,8 +459,6 @@ async function handleFinalCompletion(state: DocumentSetupState, instructorCourse
         
     } catch (error) {
         console.error("❌ Error during final completion:", error);
-        // Revert local change on error
-        instructorCourse.contentSetup = false;
         await showErrorModal("Completion Error", `Failed to complete document setup: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`);
     }
 }
@@ -516,6 +485,9 @@ function updateStepDisplay(state: DocumentSetupState): void {
         // Check if content overflows and adjust justify-content accordingly
         setTimeout(() => adjustContentJustification(currentStepElement), 10);
     }
+
+    updateStaffOnboardingProgress(state.currentStep, state.totalSteps);
+    renderTutorialChrome('document-setup', (window as any).currentClass);
 }
 
 /**
@@ -619,190 +591,31 @@ function getCurrentCourse(): activeCourse | null {
 }
 
 /**
- * Adds a demo learning objective to the real course data (first division, first item)
+ * Adds a practice learning objective to the tutorial list.
+ *
+ * Tutorial state is deliberately in-memory only: the course belongs to whoever set it up,
+ * and a second instructor working through the tutorial must not write into it.
  */
 async function addDemoObjective(): Promise<void> {
     const objectiveInput = document.getElementById('demoObjectiveTitle') as HTMLInputElement;
-    
+
     if (!objectiveInput) return;
-    
+
     const learningObjective = objectiveInput.value.trim();
-    
+
     if (!learningObjective) {
-        alert('Please fill in the learning objective.');
+        await showSimpleErrorModal('Please fill in the learning objective.', 'Add Learning Objective');
         return;
     }
-    
-    // Get the current course from the global state
-    const currentCourse = getCurrentCourse();
-    if (!currentCourse) {
-        console.error('No current course found');
-        return;
-    }
-    
-    // Get the first topic/week instance and first item
-    const firstInstance = currentCourse.topicOrWeekInstances?.[0];
-    const firstItem = firstInstance?.items?.[0];
-    
-    if (!firstInstance || !firstItem) {
-        console.error('No first topic/week instance or first item found');
-        return;
-    }
-    
-    // Create a real LearningObjective object
-    const newObjective: LearningObjective = {
-        id: `obj-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        LearningObjective: learningObjective,
-        createdAt: new Date(),
-        updatedAt: new Date()
-    };
-    
-    // Add to demo display
-    const demoObjective: DemoObjective = {
-        id: newObjective.id,
-        learningObjective: learningObjective
-    };
-    
-    demoObjectives.push(demoObjective);
+
+    demoObjectives.push({
+        id: `demo-obj-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+        learningObjective
+    });
     updateDemoObjectivesDisplay();
-    
-    // Add to real course data
-    if (!firstItem.learningObjectives) {
-        firstItem.learningObjectives = [];
-    }
-    firstItem.learningObjectives.push(newObjective);
-    
-    // Save to database
-    try {
-        const result = await addLearningObjectiveToBackend(
-            newObjective, 
-            currentCourse.id, 
-            firstInstance.id, 
-            firstItem.id
-        );
-        
-        if (result.success) {
-            console.log('Learning objective added to real course data:', newObjective);
-        } else {
-            await showSimpleErrorModal('Failed to save learning objective to database', 'Save Learning Objective Error');
-        }
-    } catch (error) {
-        console.error('Error saving learning objective:', error);
-        await showSimpleErrorModal('An error occurred while saving the learning objective. Please try again.', 'Save Learning Objective Error');
-    }
-    
+
     // Clear input
     objectiveInput.value = '';
-}
-
-/**
- * Removes a specific demo learning objective from both demo and real course data
- * 
- * @param index - The index of the objective to remove
- */
-async function removeDemoObjective(index: number): Promise<void> {
-    if (index < 0 || index >= demoObjectives.length) {
-        await showSimpleErrorModal('Invalid objective index', 'Remove Learning Objective Error');
-        return;
-    }
-    
-    const objectiveToRemove = demoObjectives[index];
-    if (!objectiveToRemove) {
-        await showSimpleErrorModal('Objective not found', 'Remove Learning Objective Error');
-        return;
-    }
-    
-    // Show confirmation modal
-    const result = await showDeleteConfirmationModal(
-        'Learning Objective',
-        objectiveToRemove.learningObjective
-    );
-    
-    if (result.action !== 'delete') {
-        return; // User cancelled
-    }
-    
-    // Remove from demo display
-    demoObjectives.splice(index, 1);
-    updateDemoObjectivesDisplay();
-    
-    // Remove from real course data (first topic/week instance, first item)
-    const course = getCurrentCourse();
-    if (course?.topicOrWeekInstances?.[0]?.items?.[0]) {
-        const firstItem = course.topicOrWeekInstances[0].items[0];
-        if (firstItem.learningObjectives) {
-            // Find and remove the objective from real data
-            const realObjectiveIndex = firstItem.learningObjectives.findIndex((obj: LearningObjective) => obj.id === objectiveToRemove.id);
-            if (realObjectiveIndex !== -1) {
-                try {
-                    // Delete from database
-                    await deleteLearningObjectiveFromBackend(
-                        objectiveToRemove.id,
-                        course.id,
-                        course.topicOrWeekInstances[0].id,
-                        firstItem.id
-                    );
-                    
-                    // Remove from local data
-                    firstItem.learningObjectives.splice(realObjectiveIndex, 1);
-                    
-                    console.log('Learning objective removed from real course data:', objectiveToRemove.id);
-                } catch (error) {
-                    console.error('Error removing learning objective from database:', error);
-                    await showSimpleErrorModal('An error occurred while removing the learning objective from the database.', 'Remove Learning Objective Error');
-                }
-            }
-        }
-    }
-    
-    console.log('Removed demo objective:', objectiveToRemove);
-}
-
-/**
- * Clears all demo learning objectives
- */
-async function clearDemoObjectives(): Promise<void> {
-    // Show confirmation modal
-    const result = await showDeleteConfirmationModal('All Learning Objectives');
-    
-    if (result.action !== 'delete') {
-        return; // User cancelled
-    }
-    
-    // Clear demo display
-    demoObjectives = [];
-    updateDemoObjectivesDisplay();
-    
-    // Clear input
-    const objectiveInput = document.getElementById('demoObjectiveTitle') as HTMLInputElement;
-    
-    if (objectiveInput) objectiveInput.value = '';
-    
-    // Clear from real course data (first topic/week instance, first item)
-    const course = getCurrentCourse();
-    if (course?.topicOrWeekInstances?.[0]?.items?.[0]) {
-        const firstItem = course.topicOrWeekInstances[0].items[0];
-        if (firstItem.learningObjectives) {
-            // Delete each learning objective from database
-            for (const objective of firstItem.learningObjectives) {
-                try {
-                    await deleteLearningObjectiveFromBackend(
-                        objective.id,
-                        course.id,
-                        course.topicOrWeekInstances[0].id,
-                        firstItem.id
-                    );
-                } catch (error) {
-                    console.error('Error deleting learning objective:', error);
-                    await showSimpleErrorModal('An error occurred while clearing learning objectives.', 'Clear Learning Objectives Error');
-                }
-            }
-            // Clear from local data
-            firstItem.learningObjectives = [];
-        }
-    }
-    
-    console.log('Cleared all demo objectives from both demo and real course data');
 }
 
 /**
@@ -822,201 +635,92 @@ function updateDemoObjectivesDisplay(): void {
         return;
     }
     
-    demoObjectives.forEach((objective, index) => {
+    demoObjectives.forEach(objective => {
         const objectiveElement = document.createElement('div');
         objectiveElement.className = 'demo-objective-item';
-        objectiveElement.innerHTML = `
-            <div class="objective-header">
-                <h5>${objective.learningObjective}</h5>
-                <button class="delete-demo-btn" data-index="${index}">×</button>
-            </div>
-        `;
-        
-        // Add delete functionality
-        const deleteBtn = objectiveElement.querySelector('.delete-demo-btn') as HTMLButtonElement;
-        if (deleteBtn) {
-            deleteBtn.addEventListener('click', async () => {
-                await removeDemoObjective(index);
-            });
-        }
+        const header = document.createElement('div');
+        header.className = 'objective-header';
+        const title = document.createElement('h5');
+        title.textContent = objective.learningObjective;
+        header.append(title);
+        objectiveElement.append(header);
         
         container.appendChild(objectiveElement);
     });
 }
 
 /**
- * Opens the demo upload modal using the openUploadModal function
+ * Opens the practice upload modal.
+ *
+ * Unlike the real Documents page, this writes nothing: no Mongo material record, no Qdrant
+ * vectors, no struggle-topic generation. The tutorial has to be safe to re-run, because a
+ * second instructor joining an already-set-up course now works through it on that same
+ * course — anything persisted here would land in a colleague's material library.
+ *
+ * It also no longer requires the course to have content, which used to dead-end this step
+ * on a freshly created course.
  */
 async function openDemoUploadModal() {
-    // Use real course data for the upload
-    const course = getCurrentCourse();
-    if (!course) {
-        console.error('No current course found');
-        await showSimpleErrorModal('No course available for upload', 'Upload Error');
-        return;
-    }
-
-    // Get the first topic/week instance and first item
-    const firstInstance = course.topicOrWeekInstances?.[0];
-    const firstItem = firstInstance?.items?.[0];
-
-    if (!firstInstance || !firstItem) {
-        console.error('No first topic/week instance or first item found');
-        await showSimpleErrorModal('No content available for upload', 'Upload Error');
-        return;
-    }
-
-    await openUploadModal(firstInstance.id, firstItem.id, handleOnboardingUpload);
+    await openContentInputModal({
+        title: 'Practice Document Upload',
+        initialMethod: 'file',
+        allowEmptyText: false,
+        strings: {
+            nameLabel: 'Content Title',
+            namePlaceholder: 'Enter a name for this practice material...',
+            textLabel: 'Content Text',
+            textPlaceholder: 'Enter or paste your content directly here...',
+            nameRequiredMessage: 'Please enter a material name.',
+            fileRequiredMessage: 'Please select a file to upload.',
+            textRequiredMessage: 'Please enter some text content.'
+        },
+        onSubmit: handleOnboardingUpload,
+        loadingContent: {
+            title: 'Checking Document',
+            line1: 'Checking your document...',
+            line2: 'This is a practice run — nothing is added to your course.'
+        }
+    });
 }
 
 /**
- * Handles actual document upload during onboarding
+ * Validates a practice upload and adds it to the tutorial list.
  *
- * @param material - The material object from the upload modal
- * @returns Promise that resolves when the document is uploaded
- */
-async function handleOnboardingUpload(material: any): Promise<{ success: boolean; chunksGenerated?: number } | void> {
-    console.log('🔍 HANDLE ONBOARDING UPLOAD CALLED - FUNCTION STARTED');
-    console.log('  - material:', material);
-
-    try {
-        // Get the current course
-        const course = getCurrentCourse();
-        if (!course) {
-            console.error('❌ No current course found for upload');
-            await showSimpleErrorModal('No course available for upload', 'Upload Error');
-            return;
-        }
-
-        // Get the first topic/week instance and first item
-        const firstInstance = course.topicOrWeekInstances?.[0];
-        const firstItem = firstInstance?.items?.[0];
-
-        if (!firstInstance || !firstItem) {
-            console.error('❌ No first topic/week instance or first item found');
-            await showSimpleErrorModal('No content available for upload', 'Upload Error');
-            return;
-        }
-
-        // Create the additional material object
-        const additionalMaterial: AdditionalMaterial = {
-            id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            name: material.name,
-            courseName: course.courseName,
-            topicOrWeekTitle: firstInstance.title,
-            itemTitle: firstItem.title,
-            sourceType: material.sourceType,
-            file: material.file,
-            text: material.text,
-            fileName: material.fileName,
-            date: new Date(),
-            courseId: course.id || '',
-            topicOrWeekId: firstInstance.id,
-            itemId: firstItem.id
-        };
-
-        console.log('🔍 CREATING DOCUMENT UPLOAD MODULE FOR ONBOARDING');
-        console.log('  - additionalMaterial:', additionalMaterial);
-
-        // Use DocumentUploadModule for upload
-        const uploadModule = new DocumentUploadModule((progress, stage) => {
-            console.log(`Upload progress: ${progress}% - ${stage}`);
-            // You could update a progress bar here if needed
-        });
-
-        console.log('🔍 CALLING UPLOAD MODULE.uploadDocument');
-        const uploadResult: UploadResult = await uploadModule.uploadDocument(additionalMaterial);
-        console.log('🔍 UPLOAD RESULT:', uploadResult);
-
-        if (!uploadResult.success) {
-            console.error(`Upload failed: ${uploadResult.error}`);
-            await showSimpleErrorModal(`Failed to upload content: ${uploadResult.error}`, 'Upload Error');
-            return;
-        }
-
-        if (!uploadResult.document) {
-            console.error('Upload succeeded but no document returned');
-            await showSimpleErrorModal('Upload succeeded but no document was returned. Please try again.', 'Upload Error');
-            return;
-        }
-
-        // Add the uploaded document to the course data
-        if (!firstItem.additionalMaterials) {
-            firstItem.additionalMaterials = [];
-        }
-        firstItem.additionalMaterials.push(uploadResult.document);
-
-        // Create a demo file object for UI display
-        const uploadedFile: DemoFile = {
-            id: uploadResult.document.id,
-            name: uploadResult.document.name,
-            type: uploadResult.document.sourceType === 'file' ? (uploadResult.document.file ? uploadResult.document.file.type : 'file') : 'text'
-        };
-
-        demoFiles.push(uploadedFile);
-        updateDemoFilesDisplay();
-
-        console.log('Material uploaded successfully during onboarding:', uploadResult.document);
-        console.log(`Generated ${uploadResult.chunksGenerated} chunks in Qdrant`);
-
-        // Return success info for the upload modal handler to show the success modal
-        return { success: true, chunksGenerated: uploadResult.chunksGenerated };
-
-    } catch (error) {
-        console.error('Error in onboarding upload process:', error);
-        await showSimpleErrorModal('An error occurred during upload. Please try again.', 'Upload Error');
-        throw error; // Re-throw so modal handler can catch it
-    }
-}
-
-/**
- * Removes a demo file from both the UI and actual course data
+ * Runs the same file-type and size checks as a real upload so the instructor sees realistic
+ * feedback, then stops. Nothing is sent to the server.
  *
- * @param index - The index of the file to remove
+ * @param payload - Name, source type, and file or text from the modal
+ * @returns Result driving the modal's success panel
  */
-async function removeDemoFile(index: number): Promise<void> {
-    if (index < 0 || index >= demoFiles.length) {
-        await showSimpleErrorModal('Invalid file index', 'Remove File Error');
-        return;
+async function handleOnboardingUpload(payload: ContentInputPayload): Promise<ContentInputSubmitResult> {
+    if (payload.sourceType === 'file') {
+        if (!payload.file) {
+            await showSimpleErrorModal('Please select a file to upload.', 'Upload Error');
+            return { success: false };
+        }
+
+        // Same rules the real upload path enforces, so practice matches reality.
+        const validation = new DocumentUploadModule().validateFile(payload.file);
+        if (!validation.isValid) {
+            await showSimpleErrorModal(validation.error || 'Unsupported file.', 'Upload Error');
+            return { success: false };
+        }
     }
 
-    const fileToRemove = demoFiles[index];
-    if (!fileToRemove) {
-        await showSimpleErrorModal('File not found', 'Remove File Error');
-        return;
-    }
-
-    // Show confirmation modal
-    const result = await showDeleteConfirmationModal(
-        'Uploaded File',
-        fileToRemove.name
-    );
-
-    if (result.action !== 'delete') {
-        return; // User cancelled
-    }
-
-    // Remove from demo display
-    demoFiles.splice(index, 1);
+    demoFiles.push({
+        id: `demo-file-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+        name: payload.name,
+        type: payload.sourceType === 'file' && payload.file ? payload.file.type : 'text'
+    });
     updateDemoFilesDisplay();
 
-    // Remove from real course data (first topic/week instance, first item)
-    const course = getCurrentCourse();
-    if (course?.topicOrWeekInstances?.[0]?.items?.[0]) {
-        const firstItem = course.topicOrWeekInstances[0].items[0];
-        if (firstItem.additionalMaterials) {
-            // Find and remove the material from real data
-            const realMaterialIndex = firstItem.additionalMaterials.findIndex((material: AdditionalMaterial) => material.id === fileToRemove.id);
-            if (realMaterialIndex !== -1) {
-                // TODO: Also delete from vectorDB if needed
-                // For now, just remove from local data
-                firstItem.additionalMaterials.splice(realMaterialIndex, 1);
-                console.log('File removed from real course data:', fileToRemove.id);
-            }
-        }
-    }
-
-    console.log('Removed uploaded file:', fileToRemove);
+    return {
+        success: true,
+        successTitle: 'Practice Upload Complete',
+        successMessage:
+            'That is all there is to it. This was a practice run, so nothing was added to your course — ' +
+            'upload your real course material from the Documents page once setup is finished.'
+    };
 }
 
 /**
@@ -1036,139 +740,23 @@ function updateDemoFilesDisplay(): void {
         return;
     }
     
-    demoFiles.forEach((file, index) => {
+    demoFiles.forEach(file => {
         const fileElement = document.createElement('div');
         fileElement.className = 'demo-file-item';
-        fileElement.innerHTML = `
-            <div class="file-info">
-                <span class="file-name">${file.name}</span>
-            </div>
-            <button class="delete-file-btn" data-index="${index}">×</button>
-        `;
-        
-        // Add delete functionality
-        const deleteBtn = fileElement.querySelector('.delete-file-btn') as HTMLButtonElement;
-        if (deleteBtn) {
-            deleteBtn.addEventListener('click', async () => {
-                await removeDemoFile(index);
-            });
-        }
+        const info = document.createElement('div');
+        info.className = 'file-info';
+        const name = document.createElement('span');
+        name.className = 'file-name';
+        name.textContent = file.name;
+        info.append(name);
+        fileElement.append(info);
         
         container.appendChild(fileElement);
     });
 }
 
-/**
- * Shows information about uploaded files during onboarding
- */
-async function processDemoFiles(): Promise<void> {
-    if (demoFiles.length === 0) {
-        alert('No files uploaded yet. Please upload some files first.');
-        return;
-    }
-
-    console.log('Uploaded files during onboarding:', demoFiles);
-
-    // Show success message - files are already uploaded to vectorDB
-    alert(`Successfully uploaded ${demoFiles.length} files to the knowledge base! These documents are now available for the AI tutor.`);
-}
-
-/**
- * Clears all demo files
- */
-function clearDemoFiles(): void {
-    demoFiles = [];
-    updateDemoFilesDisplay();
-    
-    // Clear file input
-    const fileInput = document.getElementById('demoFileInput') as HTMLInputElement;
-    if (fileInput) fileInput.value = '';
-    
-    console.log('Cleared demo files');
-}
-
-
 // ===========================================
 // BACKEND INTEGRATION
 // ===========================================
 
-/**
- * Add learning objective to backend
- * 
- * @param objective - Learning objective to add
- * @param courseId - Course ID
- * @param topicOrWeekId - Topic/Week Instance ID
- * @param contentId - Content ID
- * @returns Promise with result
- */
-async function addLearningObjectiveToBackend(objective: LearningObjective, courseId: string, topicOrWeekId: string, contentId: string): Promise<{ success: boolean; id?: string }> {
-    try {
-        const response = await fetch(`/api/courses/${courseId}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/objectives`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                learningObjective: objective
-            })
-        });
-
-        const result = await response.json();
-        
-        if (result.success) {
-            return {
-                success: true,
-                id: objective.id
-            };
-        } else {
-            console.error('Failed to add learning objective:', result.error);
-            return {
-                success: false
-            };
-        }
-    } catch (error) {
-        console.error('Error adding learning objective to backend:', error);
-        return {
-            success: false
-        };
-    }
-}
-
-/**
- * Delete learning objective from backend
- * 
- * @param objectiveId - ID of objective to delete
- * @param courseId - Course ID
- * @param topicOrWeekId - Topic/Week Instance ID
- * @param contentId - Content ID
- * @returns Promise with result
- */
-async function deleteLearningObjectiveFromBackend(objectiveId: string, courseId: string, topicOrWeekId: string, contentId: string): Promise<{ success: boolean }> {
-    try {
-        const response = await fetch(`/api/courses/${courseId}/topic-or-week-instances/${topicOrWeekId}/items/${contentId}/objectives/${objectiveId}`, {
-            method: 'DELETE',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
-
-        const result = await response.json();
-        
-        if (result.success) {
-            return {
-                success: true
-            };
-        } else {
-            console.error('Failed to delete learning objective:', result.error);
-            return {
-                success: false
-            };
-        }
-    } catch (error) {
-        console.error('Error deleting learning objective from backend:', error);
-        return {
-            success: false
-        };
-    }
-}
 

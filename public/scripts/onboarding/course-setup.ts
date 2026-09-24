@@ -18,8 +18,30 @@
  */
 
 import { loadComponentHTML } from "../api/api.js";
-import { activeCourse } from "../types.js";
+import { activeCourse, InstructorOnboardingProgress } from "../types.js";
 import { showErrorModal, showHelpModal } from "../ui/modal-overlay.js";
+import { buildOnboardingStagePath, resolveNextOnboardingStage } from "../utils/onboarding-stage-order.js";
+import { isBrowserCourseFeatureEnabled } from "../utils/course-features.js";
+import { updateStaffOnboardingProgress } from "./staff-onboarding-ui.js";
+import { renderTutorialChrome } from './onboarding-tutorial-chrome.js';
+import { isAlreadyCompleteError, shouldSubmitCourseSetup } from "./course-setup-submission.js";
+
+/**
+ * The capability map a course starts from when none has been loaded yet.
+ *
+ * Mirrors `buildNewCourseFeatures` on the server, which the browser cannot
+ * import. The server normalizes whatever is sent, so this only decides what the
+ * checkboxes show before the instructor touches them — but showing off while the
+ * server defaults on would send an explicit false and disable the capability.
+ */
+export function buildDefaultCourseFeatures(): activeCourse['features'] {
+    return {
+        writingFeedback: { enabled: true },
+        memoryAgent: { enabled: true },
+        guidedPathway: { enabled: true },
+        scenarioGeneration: { enabled: true }
+    };
+}
 
 type SetupMode = 'create' | 'resume';
 
@@ -28,23 +50,61 @@ interface OnboardingState {
     totalSteps: number;
     setupMode: SetupMode;
     isSubmitting: boolean;
+    /** True once the course has been written; stops a Back-then-Next re-POST. */
+    submitted: boolean;
 }
 
-/** Mirrors backend resolveInstructorModeRedirect for client-side forward redirects. */
-function getInstructorForwardRedirect(courseId: string, course: activeCourse): string {
-    if (!course.courseSetup) {
-        return `/course/${courseId}/instructor/onboarding/course-setup`;
+/**
+ * Mirrors backend resolveInstructorModeRedirect for client-side forward redirects.
+ *
+ * `courseSetup` comes from the course; every tutorial comes from the viewer's own
+ * record, so an instructor new to EngE-AI is taught even on a course a colleague set up.
+ */
+function getInstructorForwardRedirect(
+    courseId: string,
+    course: activeCourse,
+    progress: InstructorOnboardingProgress
+): string {
+    const nextStage = resolveNextOnboardingStage(course, progress);
+    return nextStage
+        ? buildOnboardingStagePath(courseId, nextStage)
+        : `/course/${courseId}/instructor/documents`;
+}
+
+/**
+ * Reads the signed-in user's instructor tutorial progress.
+ *
+ * Falls back to all-complete so a failed fetch forwards to the course rather than
+ * trapping the instructor in a tutorial.
+ */
+async function fetchInstructorOnboardingProgress(): Promise<InstructorOnboardingProgress> {
+    try {
+        const response = await fetch('/auth/current-user', { credentials: 'same-origin' });
+        if (response.ok) {
+            const data = await response.json();
+            const progress = data?.globalUser?.instructorOnboarding;
+            if (progress) {
+                return {
+                    contentSetup: progress.contentSetup === true,
+                    flagSetup: progress.flagSetup === true,
+                    monitorSetup: progress.monitorSetup === true,
+                    scenarioGeneration: progress.scenarioGeneration === true,
+                    writingFeedback: progress.writingFeedback === true,
+                    guidedPathway: progress.guidedPathway === true
+                };
+            }
+        }
+    } catch (error) {
+        console.error('[COURSE-SETUP] Error loading instructor onboarding progress:', error);
     }
-    if (!course.contentSetup) {
-        return `/course/${courseId}/instructor/onboarding/document-setup`;
-    }
-    if (!course.flagSetup) {
-        return `/course/${courseId}/instructor/onboarding/flag-setup`;
-    }
-    if (!course.monitorSetup) {
-        return `/course/${courseId}/instructor/onboarding/monitor-setup`;
-    }
-    return `/course/${courseId}/instructor/documents`;
+    return {
+        contentSetup: true,
+        flagSetup: true,
+        monitorSetup: true,
+        scenarioGeneration: true,
+        writingFeedback: true,
+        guidedPathway: true
+    };
 }
 
 function applyCourseFields(target: activeCourse, source: activeCourse): void {
@@ -107,7 +167,11 @@ async function resolveSetupMode(
         applyCourseFields(onBoardingCourse, instructorCourse);
 
         if (instructorCourse.courseSetup) {
-            window.location.href = getInstructorForwardRedirect(instructorCourse.id, instructorCourse);
+            window.location.href = getInstructorForwardRedirect(
+                instructorCourse.id,
+                instructorCourse,
+                await fetchInstructorOnboardingProgress()
+            );
             return null;
         }
         return 'resume';
@@ -122,7 +186,11 @@ async function resolveSetupMode(
             Object.assign(instructorCourse, existing);
 
             if (existing.courseSetup) {
-                window.location.href = getInstructorForwardRedirect(existing.id, existing);
+                window.location.href = getInstructorForwardRedirect(
+                    existing.id,
+                    existing,
+                    await fetchInstructorOnboardingProgress()
+                );
                 return null;
             }
             return 'resume';
@@ -169,19 +237,15 @@ export const renderOnCourseSetup = async (instructorCourse: activeCourse): Promi
         // @rdschrs: Added Writing Feedback opt-in collection to course setup.
         const onBoardingCourse: activeCourse = {
             ...instructorCourse,
-            features: instructorCourse.features ?? {
-                writingFeedback: { enabled: false },
-                memoryAgent: { enabled: false },
-                guidedPathway: { enabled: false },
-                scenarioGeneration: { enabled: false }
-            }
+            features: instructorCourse.features ?? buildDefaultCourseFeatures()
         };
 
         const state: OnboardingState = {
             currentStep: 1,
             totalSteps: 5,
             setupMode: 'create',
-            isSubmitting: false
+            isSubmitting: false,
+            submitted: false
         };
 
         const container = document.getElementById('main-content-area');
@@ -318,6 +382,14 @@ function setupReviewFormListeners(state: OnboardingState, onBoardingCourse: acti
             guidedPathway: { enabled: guidedPathwayInput.checked }
         };
     });
+
+    const scenarioGenerationInput = document.getElementById('reviewScenarioGenerationEnabled') as HTMLInputElement;
+    scenarioGenerationInput?.addEventListener('change', () => {
+        onBoardingCourse.features = {
+            ...onBoardingCourse.features,
+            scenarioGeneration: { enabled: scenarioGenerationInput.checked }
+        };
+    });
 }
 
 function setupHelpListener(state: OnboardingState): void {
@@ -375,7 +447,7 @@ async function handleNextNavigation(
     if (state.currentStep < state.totalSteps) {
         state.currentStep++;
 
-        if (state.currentStep === 5) {
+        if (state.currentStep === 5 && shouldSubmitCourseSetup(state)) {
             state.isSubmitting = true;
             setNavigationSubmitting(true);
             await handleDatabaseSubmission(state, onBoardingCourse, instructorCourse);
@@ -447,6 +519,9 @@ function updateStepDisplay(state: OnboardingState, onBoardingCourse: activeCours
         currentStepElement.classList.add('active');
         setTimeout(() => adjustContentJustification(currentStepElement), 10);
     }
+
+    updateStaffOnboardingProgress(state.currentStep, state.totalSteps);
+    renderTutorialChrome('course-setup', (window as any).currentClass);
 
     synchronizeFormValues(state, onBoardingCourse);
 }
@@ -562,17 +637,22 @@ function updateReviewContent(onBoardingCourse: activeCourse): void {
 
     const writingFeedbackInput = document.getElementById('reviewWritingFeedbackEnabled') as HTMLInputElement;
     if (writingFeedbackInput) {
-        writingFeedbackInput.checked = onBoardingCourse.features?.writingFeedback?.enabled === true;
+        writingFeedbackInput.checked = isBrowserCourseFeatureEnabled(onBoardingCourse, 'writingFeedback');
     }
 
     const memoryAgentInput = document.getElementById('reviewMemoryAgentEnabled') as HTMLInputElement;
     if (memoryAgentInput) {
-        memoryAgentInput.checked = onBoardingCourse.features?.memoryAgent?.enabled === true;
+        memoryAgentInput.checked = isBrowserCourseFeatureEnabled(onBoardingCourse, 'memoryAgent');
     }
 
     const guidedPathwayInput = document.getElementById('reviewGuidedPathwayEnabled') as HTMLInputElement;
     if (guidedPathwayInput) {
-        guidedPathwayInput.checked = onBoardingCourse.features?.guidedPathway?.enabled === true;
+        guidedPathwayInput.checked = isBrowserCourseFeatureEnabled(onBoardingCourse, 'guidedPathway');
+    }
+
+    const scenarioGenerationInput = document.getElementById('reviewScenarioGenerationEnabled') as HTMLInputElement;
+    if (scenarioGenerationInput) {
+        scenarioGenerationInput.checked = isBrowserCourseFeatureEnabled(onBoardingCourse, 'scenarioGeneration');
     }
 
     updateReviewContentCountDescription(onBoardingCourse);
@@ -608,29 +688,31 @@ async function handleDatabaseSubmission(
                 id: generateUniqueId(),
                 date: new Date(),
                 courseSetup: true,
-                contentSetup: false,
-                flagSetup: false,
-                monitorSetup: false,
                 courseName: onBoardingCourse.courseName,
                 instructors: [],
                 teachingAssistants: [],
                 frameType: onBoardingCourse.frameType,
                 tilesNumber: onBoardingCourse.tilesNumber,
                 topicOrWeekInstances: [],
-                features: onBoardingCourse.features ?? {
-                    writingFeedback: { enabled: false },
-                    memoryAgent: { enabled: false },
-                    guidedPathway: { enabled: false },
-                    scenarioGeneration: { enabled: false }
-                }
+                features: onBoardingCourse.features ?? buildDefaultCourseFeatures()
             };
             submittedCourse = await postCourseToDatabase(courseData);
         }
 
         Object.assign(instructorCourse, submittedCourse);
         onBoardingCourse.id = submittedCourse.id;
+        state.submitted = true;
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to save course data. Please try again.';
+
+        // A 409 from either endpoint reports the state we were asking for. Another
+        // tab or a retry can still reach the server after this client submitted;
+        // bouncing back a step there is what left the tutorial unfinishable.
+        if (isAlreadyCompleteError(message)) {
+            state.submitted = true;
+            return;
+        }
+
         await showErrorModal("Submission Error", message);
         state.currentStep = 4;
         updateStepDisplay(state, onBoardingCourse);

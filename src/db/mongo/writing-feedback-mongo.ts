@@ -12,27 +12,41 @@
  */
 
 import { randomUUID } from 'crypto';
-import type { Collection, UpdateFilter } from 'mongodb';
+import type { Collection, Filter, IndexDescriptionInfo, UpdateFilter } from 'mongodb';
 import type { MongoDalContext } from './mongo-context';
 import type {
+    CanvasAssignmentDetails,
+    CanvasImportedRubric,
+    CanvasRubricIdMap,
+    CanvasRubricRefusal,
+    CanvasRubricRow,
     StaffReviewRevision,
     WritingAssignment,
+    WritingFeedbackLens,
     WritingFeedbackRun,
+    WritingGlossaryEntry,
     WritingJob,
+    WritingPendingReplacement,
     WritingRelease,
     WritingRubricDefinition,
     WritingSubmission,
     WritingSubmissionStatus
 } from '../../writing-feedback/contracts';
-import { buildA2Assignment, buildA2Rubric } from '../../writing-feedback/a2-profile';
+import { RELEASE_LOCK_TTL_MS } from '../../writing-feedback/contracts';
+import { buildDefaultWritingAssignment } from '../../writing-feedback/default-rubric-profile';
+import { seedRubricForLens, type LabReportRouting } from '../../writing-feedback/rubric-seed';
+import type { ImportedRubricShape } from '../../writing-feedback/rubric-seed';
+import { rubricFieldPaths } from '../../writing-feedback/rubric-lens';
 
 const ASSIGNMENTS = 'writing-assignments';
 const SUBMISSIONS = 'writing-submissions';
 const RUNS = 'writing-feedback-runs';
 const RELEASES = 'writing-releases';
 const JOBS = 'writing-jobs';
+const GLOSSARY = 'writing-glossary-entries';
 /** Reserved for a future Canvas OAuth integration; no token is written by the MVP. */
 const CANVAS_CONNECTIONS = 'canvas-connections';
+const CANVAS_ASSIGNMENT_INDEX = 'writing_canvas_assignment_unique';
 
 function assignments(ctx: MongoDalContext): Collection<WritingAssignment> {
     return ctx.db.collection<WritingAssignment>(ASSIGNMENTS);
@@ -43,8 +57,121 @@ function submissions(ctx: MongoDalContext): Collection<WritingSubmission & { rev
 function runs(ctx: MongoDalContext): Collection<WritingFeedbackRun> { return ctx.db.collection(RUNS); }
 function releases(ctx: MongoDalContext): Collection<WritingRelease> { return ctx.db.collection(RELEASES); }
 function jobs(ctx: MongoDalContext): Collection<WritingJob> { return ctx.db.collection(JOBS); }
+function glossary(ctx: MongoDalContext): Collection<WritingGlossaryEntry> { return ctx.db.collection(GLOSSARY); }
 
 let indexesEnsured = false;
+
+/**
+ * Names the partial unique index that keeps one release job per submission queued at a time.
+ *
+ * One queued release per submission, enforced by the database rather than by a read the
+ * caller made a moment earlier. The claim on the release record is the primary lock; this is
+ * what still holds if a second process ever inserts a job without going through it.
+ */
+export const ACTIVE_RELEASE_JOB_INDEX = 'active_release_job';
+
+/**
+ * Names the partial unique index that allows one active submission per student and assignment.
+ *
+ * Held and superseded attempts sit outside it, so a newer Canvas attempt can wait beside the
+ * active one until staff choose. Rows written before `slot` existed are not indexed.
+ */
+export const ACTIVE_SUBMISSION_INDEX = 'active_submission_per_student';
+
+/** Matches rows in the queue, including rows written before `slot` existed. */
+const ACTIVE_SLOT_FILTER = { slot: { $in: ['active', null] } } as Filter<WritingSubmission>;
+
+/** Release states that mean a Canvas write for the submission has started but not settled. */
+const UNSETTLED_RELEASE_STATUSES: ReadonlyArray<WritingRelease['status']> = ['feedback_attached', 'grade_queued', 'reconciliation_required'];
+
+/** Matches releases that are part-written to Canvas or held by an unexpired worker lock. */
+function unsettledReleaseFilter(): Filter<WritingRelease> {
+    return {
+        $or: [
+            { status: { $in: [...UNSETTLED_RELEASE_STATUSES] } },
+            { releaseLockedAt: { $gt: new Date(Date.now() - RELEASE_LOCK_TTL_MS) } }
+        ]
+    };
+}
+
+function isNamespaceMissing(error: unknown): boolean {
+    return typeof error === 'object' && error !== null
+        && (('code' in error && (error as { code?: unknown }).code === 26)
+            || ('codeName' in error && (error as { codeName?: unknown }).codeName === 'NamespaceNotFound'));
+}
+
+function isCanvasAssignmentIndex(index: IndexDescriptionInfo): boolean {
+    return index.key?.courseId === 1 && index.key?.canvasAssignmentId === 1;
+}
+
+function isCorrectCanvasAssignmentIndex(index: IndexDescriptionInfo): boolean {
+    const condition = index.partialFilterExpression?.canvasAssignmentId as { $type?: unknown } | undefined;
+    return index.unique === true && !index.sparse && condition?.$type === 'string';
+}
+
+/**
+ * ensureCanvasAssignmentIndex - reconciles the legacy sparse uniqueness defect.
+ *
+ * A compound sparse index still includes every record because `courseId` is
+ * always present, so it permits only one manual assignment per course. The
+ * replacement applies uniqueness only to rows carrying a real Canvas id.
+ *
+ * @param collection - Writing-assignment collection to inspect and repair
+ * @returns When the partial unique Canvas mapping index is active
+ */
+async function ensureCanvasAssignmentIndex(collection: Collection<WritingAssignment>): Promise<void> {
+    let indexes: IndexDescriptionInfo[] = [];
+    try {
+        indexes = await collection.listIndexes().toArray();
+    } catch (error) {
+        if (!isNamespaceMissing(error)) throw error;
+    }
+
+    const existing = indexes.find(isCanvasAssignmentIndex);
+    if (existing && !isCorrectCanvasAssignmentIndex(existing) && existing.name) {
+        // Drop only the exact legacy key after resolving its server-reported name.
+        await collection.dropIndex(existing.name);
+    }
+    if (existing && isCorrectCanvasAssignmentIndex(existing)) return;
+
+    await collection.createIndex(
+        { courseId: 1, canvasAssignmentId: 1 },
+        {
+            name: CANVAS_ASSIGNMENT_INDEX,
+            unique: true,
+            partialFilterExpression: { canvasAssignmentId: { $type: 'string' } }
+        }
+    );
+}
+
+function normalizeRubricRanks(rubric: WritingRubricDefinition): WritingRubricDefinition {
+    return {
+        ...rubric,
+        levels: rubric.levels.map((level, index) => ({
+            ...level,
+            rank: Number.isInteger(level.rank) && level.rank > 0 ? level.rank : index + 1
+        }))
+    };
+}
+
+/** Backfills level rank only in detached read values; stored legacy records remain untouched. */
+export function normalizeWritingAssignment(assignment: WritingAssignment): WritingAssignment {
+    return {
+        ...assignment,
+        rubric: normalizeRubricRanks(assignment.rubric),
+        ...(assignment.rubricDraft ? { rubricDraft: normalizeRubricRanks(assignment.rubricDraft) } : {}),
+        ...(assignment.rubricHistory
+            ? { rubricHistory: assignment.rubricHistory.map(normalizeRubricRanks) }
+            : {}),
+        ...(assignment.technicalRubric ? { technicalRubric: normalizeRubricRanks(assignment.technicalRubric) } : {}),
+        ...(assignment.technicalRubricDraft
+            ? { technicalRubricDraft: normalizeRubricRanks(assignment.technicalRubricDraft) }
+            : {}),
+        ...(assignment.technicalRubricHistory
+            ? { technicalRubricHistory: assignment.technicalRubricHistory.map(normalizeRubricRanks) }
+            : {})
+    };
+}
 
 /**
  * ensureWritingFeedbackIndexes — installs uniqueness, lookup, and retention indexes once per process.
@@ -59,67 +186,54 @@ let indexesEnsured = false;
 export async function ensureWritingFeedbackIndexes(ctx: MongoDalContext): Promise<void> {
     if (indexesEnsured) return;
 
+    await ensureCanvasAssignmentIndex(assignments(ctx));
+
     // Build all domain indexes before marking this process as initialized.
     await Promise.all([
-        assignments(ctx).createIndex({ courseId: 1, canvasAssignmentId: 1 }, { unique: true, sparse: true }),
         assignments(ctx).createIndex({ courseId: 1, profileVersion: 1 }),
         submissions(ctx).createIndex({ courseId: 1, assignmentId: 1, studentId: 1, attempt: 1 }, { unique: true }),
+        submissions(ctx).createIndex(
+            { courseId: 1, assignmentId: 1, studentId: 1 },
+            { name: ACTIVE_SUBMISSION_INDEX, unique: true, partialFilterExpression: { slot: 'active' } }
+        ),
         submissions(ctx).createIndex({ courseId: 1, assignmentId: 1, status: 1, updatedAt: -1 }),
         submissions(ctx).createIndex({ retentionAt: 1 }, { expireAfterSeconds: 0, sparse: true }),
         runs(ctx).createIndex({ submissionId: 1, createdAt: -1 }),
         releases(ctx).createIndex({ payloadFingerprint: 1 }, { unique: true }),
+        releases(ctx).createIndex({ courseId: 1, submissionId: 1, updatedAt: -1 }),
         jobs(ctx).createIndex({ state: 1, leaseUntil: 1, createdAt: 1 }),
+        jobs(ctx).createIndex({ courseId: 1, type: 1, 'payload.submissionId': 1, state: 1 }),
+        jobs(ctx).createIndex(
+            { courseId: 1, type: 1, 'payload.submissionId': 1 },
+            {
+                name: ACTIVE_RELEASE_JOB_INDEX,
+                unique: true,
+                // Equality only, so the filter is accepted by every supported server version.
+                // A job is inserted queued; by the time it is leased, the claim on the release
+                // record already refuses a second attempt.
+                partialFilterExpression: { type: 'release', state: 'queued' }
+            }
+        ),
+        glossary(ctx).createIndex({ courseId: 1, normalizedTerm: 1 }, { unique: true }),
         ctx.db.collection(CANVAS_CONNECTIONS).createIndex({ courseId: 1 }, { unique: true, sparse: true })
     ]);
     indexesEnsured = true;
 }
 
 /**
- * ensureA2WritingAssignment — returns the course's canonical A2 assignment seed.
- *
- * Existing pre-rubric records are migrated in place, while new courses receive
- * exactly one profile assignment under the course/profile lookup.
- *
- * @param ctx - Connected Mongo data-layer context
- * @param courseId - Course that owns the assignment
- * @returns Existing, migrated, or newly inserted A2 assignment
- * @throws MongoDB errors, including an unexpected concurrent insert conflict
- */
-export async function ensureA2WritingAssignment(ctx: MongoDalContext, courseId: string): Promise<WritingAssignment> {
-    await ensureWritingFeedbackIndexes(ctx);
-    const existing = await assignments(ctx).findOne({ courseId, profileVersion: 'lled200-a2-technical-description-v1' });
-    if (existing?.rubric) return existing;
-
-    // Upgrade the legacy seed only when its rubric is still absent.
-    if (existing) {
-        const now = new Date();
-        const migrated = await assignments(ctx).findOneAndUpdate(
-            { id: existing.id, courseId, rubric: { $exists: false } },
-            { $set: { rubric: buildA2Rubric('platform-migration', now), updatedAt: now } },
-            { returnDocument: 'after' }
-        );
-        return migrated ?? { ...existing, rubric: buildA2Rubric('platform-migration', now), updatedAt: now };
-    }
-
-    // Insert the platform seed only after both current and legacy forms were ruled out.
-    const assignment = buildA2Assignment(courseId, randomUUID());
-    await assignments(ctx).insertOne(assignment);
-    return assignment;
-}
-
-/**
  * listWritingAssignments — lists all course assignments in creation order.
  *
- * Ensures the canonical A2 seed exists before reading, so callers always receive
- * at least the platform assignment unless persistence fails.
+ * Empty courses remain empty until staff manually create or explicitly import an
+ * assignment; listing never creates assessment records as a side effect.
  *
  * @param ctx - Connected Mongo data-layer context
  * @param courseId - Course whose assignments are requested
  * @returns Course-scoped assignments ordered oldest first
  */
 export async function listWritingAssignments(ctx: MongoDalContext, courseId: string): Promise<WritingAssignment[]> {
-    await ensureA2WritingAssignment(ctx, courseId);
-    return assignments(ctx).find({ courseId }).sort({ createdAt: 1 }).toArray();
+    await ensureWritingFeedbackIndexes(ctx);
+    const rows = await assignments(ctx).find({ courseId }).sort({ createdAt: 1 }).toArray();
+    return rows.map(normalizeWritingAssignment);
 }
 
 /**
@@ -131,7 +245,8 @@ export async function listWritingAssignments(ctx: MongoDalContext, courseId: str
  * @returns Matching assignment, or `null` when absent or outside the course
  */
 export async function getWritingAssignment(ctx: MongoDalContext, courseId: string, assignmentId: string): Promise<WritingAssignment | null> {
-    return assignments(ctx).findOne({ id: assignmentId, courseId });
+    const assignment = await assignments(ctx).findOne({ id: assignmentId, courseId });
+    return assignment ? normalizeWritingAssignment(assignment) : null;
 }
 
 /**
@@ -147,11 +262,12 @@ export async function getWritingAssignmentByCanvasId(
     courseId: string,
     canvasAssignmentId: string
 ): Promise<WritingAssignment | null> {
-    return assignments(ctx).findOne({ courseId, canvasAssignmentId });
+    const assignment = await assignments(ctx).findOne({ courseId, canvasAssignmentId });
+    return assignment ? normalizeWritingAssignment(assignment) : null;
 }
 
 /**
- * createManualWritingAssignment — inserts a local assignment using the A2 rubric profile.
+ * createManualWritingAssignment — inserts a local assignment with a neutral rubric draft.
  *
  * Titles are trimmed and capped at 200 characters; route validation is expected
  * to reject blank input before this persistence boundary.
@@ -159,6 +275,7 @@ export async function getWritingAssignmentByCanvasId(
  * @param ctx - Connected Mongo data-layer context
  * @param courseId - Course that owns the assignment
  * @param title - Staff-provided display title
+ * @param instructions - Optional raw assignment directions
  * @param dueAt - Optional assignment deadline
  * @returns Newly persisted assignment
  */
@@ -166,12 +283,19 @@ export async function createManualWritingAssignment(
     ctx: MongoDalContext,
     courseId: string,
     title: string,
+    instructions?: string,
     dueAt?: Date
 ): Promise<WritingAssignment> {
     await ensureWritingFeedbackIndexes(ctx);
-    const assignment = {
-        ...buildA2Assignment(courseId, randomUUID()),
-        title: title.trim().slice(0, 200),
+    const assignment: WritingAssignment = {
+        ...buildDefaultWritingAssignment(
+            courseId,
+            randomUUID(),
+            title.trim().slice(0, 200),
+            instructions?.trim() || undefined
+        ),
+        // Every new assignment waits for staff to choose its type (D-123).
+        assignmentTypePending: true,
         ...(dueAt ? { dueAt } : {})
     };
     await assignments(ctx).insertOne(assignment);
@@ -190,36 +314,63 @@ export async function countWritingSubmissionsByAssignment(
     courseId: string
 ): Promise<Record<string, number>> {
     const rows = await submissions(ctx).aggregate<{ _id: string; count: number }>([
-        { $match: { courseId } },
+        { $match: { courseId, ...ACTIVE_SLOT_FILTER } },
         { $group: { _id: '$assignmentId', count: { $sum: 1 } } }
     ]).toArray();
     return Object.fromEntries(rows.map((row) => [row._id, row.count]));
 }
 
 /**
- * deleteWritingAssignment — deletes an empty assignment without orphaning submissions.
+ * deleteWritingAssignment — deletes an assignment with every submission and dependent record.
+ *
+ * Refused while any of its submissions has a queued or running job, or a Canvas release that
+ * has not settled: a worker would otherwise keep writing to records that no longer exist.
+ * The assignment is deleted first and its children only after that succeeds, so a failed or
+ * cross-course request never removes submissions. Canvas is not changed.
  *
  * @param ctx - Connected Mongo data-layer context
  * @param courseId - Owning course id
  * @param assignmentId - Assignment requested for deletion
- * @returns Deletion result and blocking submission count
+ * @returns Whether it was deleted, and whether running work blocked it
  */
 export async function deleteWritingAssignment(
     ctx: MongoDalContext,
     courseId: string,
     assignmentId: string
-): Promise<{ deleted: boolean; submissionCount: number }> {
-    // Refuse assignment deletion until staff explicitly removes every child submission.
-    const submissionCount = await submissions(ctx).countDocuments({ courseId, assignmentId });
-    if (submissionCount > 0) {
-        return { deleted: false, submissionCount };
+): Promise<{ deleted: boolean; blockedByWork: boolean }> {
+    // Step 1: refuse while any submission's job or release is still in flight.
+    const children = await submissions(ctx).find({ courseId, assignmentId }, { projection: { id: 1 } }).toArray();
+    const submissionIds = children.map((child) => child.id);
+    if (submissionIds.length) {
+        const [job, release] = await Promise.all([
+            jobs(ctx).findOne({ courseId, 'payload.submissionId': { $in: submissionIds }, state: { $in: ['queued', 'leased'] } }, { projection: { id: 1 } }),
+            releases(ctx).findOne({ courseId, submissionId: { $in: submissionIds }, ...unsettledReleaseFilter() }, { projection: { id: 1 } })
+        ]);
+        if (job || release) return { deleted: false, blockedByWork: true };
     }
+
+    // Step 2: delete the assignment, then everything that belonged to it.
     const result = await assignments(ctx).deleteOne({ id: assignmentId, courseId });
-    return { deleted: result.deletedCount === 1, submissionCount: 0 };
+    if (result.deletedCount !== 1) return { deleted: false, blockedByWork: false };
+    await submissions(ctx).deleteMany({ courseId, assignmentId });
+    if (submissionIds.length) {
+        await Promise.all([
+            runs(ctx).deleteMany({ submissionId: { $in: submissionIds } }),
+            releases(ctx).deleteMany({ submissionId: { $in: submissionIds } }),
+            jobs(ctx).deleteMany({ 'payload.submissionId': { $in: submissionIds } })
+        ]);
+    }
+    return { deleted: true, blockedByWork: false };
 }
 
 /**
  * createCanvasWritingAssignment — idempotently creates a Canvas-mapped local assignment.
+ *
+ * When the Canvas assignment carried a rubric, that rubric becomes the new assignment's
+ * starting grid instead of the built-in profile — it is the instructor's real rubric, and
+ * {@link seedRubricForLens} treats it as taking precedence. It arrives **unapproved**, so it
+ * cannot reach the model until an instructor reviews and approves it, and `rubricSource`
+ * records where it came from.
  *
  * A duplicate course/Canvas mapping resolves to the existing local record;
  * unrelated insert failures propagate unchanged.
@@ -228,7 +379,10 @@ export async function deleteWritingAssignment(
  * @param courseId - Course that owns the imported assignment
  * @param canvasAssignmentId - Stable Canvas assignment identifier
  * @param title - Canvas assignment title, trimmed and capped at 200 characters
+ * @param instructions - Optional source assignment directions
  * @param dueAt - Optional Canvas deadline
+ * @param canvasRubric - Canvas rubric grid, when it could be represented as a draft
+ * @param canvasRubricRefusal - Why the Canvas rubric could not be represented, when it could not
  * @returns Newly inserted or concurrently existing assignment
  * @throws Non-duplicate MongoDB errors
  */
@@ -237,13 +391,41 @@ export async function createCanvasWritingAssignment(
     courseId: string,
     canvasAssignmentId: string,
     title: string,
-    dueAt?: Date
+    instructions?: string,
+    dueAt?: Date,
+    canvasRubric?: ImportedRubricShape,
+    canvasRubricRefusal?: CanvasRubricRefusal,
+    canvasRubricIds?: CanvasRubricIdMap
 ): Promise<WritingAssignment> {
     await ensureWritingFeedbackIndexes(ctx);
-    const assignment = {
-        ...buildA2Assignment(courseId, randomUUID()),
-        title: title.trim().slice(0, 200),
+    const now = new Date();
+    const base = buildDefaultWritingAssignment(
+        courseId,
+        randomUUID(),
+        title.trim().slice(0, 200),
+        instructions?.trim() || undefined,
+        now
+    );
+    const assignment: WritingAssignment = {
+        ...base,
+        // Every new assignment waits for staff to choose its type (D-123). A concurrent import
+        // that loses the unique-index race returns the existing record unchanged below.
+        assignmentTypePending: true,
+        ...(canvasRubric
+            ? {
+                  rubric: seedRubricForLens({ lens: 'linguistic', actorUserId: 'platform', canvasRubric, now }),
+                  rubricSource: 'canvas' as const,
+                  // Kept whole and unrouted: whether this rubric belongs to the technical lens
+                  // is not known until the assignment is marked a lab report, which happens later.
+                  ...(canvasRubricIds
+                      ? { canvasRubricImport: { shape: canvasRubric, ids: canvasRubricIds, importedAt: now } }
+                      : {})
+              }
+            : {}),
         canvasAssignmentId,
+        // Recorded only where the rubric did not seed: the grid staff are about to see is
+        // the built-in profile, and nothing else on the page would say so.
+        ...(!canvasRubric && canvasRubricRefusal ? { canvasRubricRefusal } : {}),
         ...(dueAt ? { dueAt } : {})
     };
     try {
@@ -260,60 +442,121 @@ export async function createCanvasWritingAssignment(
 }
 
 /**
- * saveWritingRubricDraft — replaces only the editable draft for an assignment.
+ * saveWritingRubricDraft — replaces only the editable draft for one lens on an assignment.
  *
  * The approved rubric and history remain unchanged until a separate approval.
+ * Each lens owns independent draft/approved/history fields (see `rubric-lens.ts`),
+ * so saving one lens's draft never touches the other lens's rubric state.
  *
  * @param ctx - Connected Mongo data-layer context
  * @param courseId - Owning course id
  * @param assignmentId - Assignment receiving the draft
  * @param draft - Validated staff-authored rubric draft
+ * @param lens - Feedback lens the draft belongs to; defaults to `'linguistic'`
  * @returns Updated assignment, or `null` when the scoped assignment is absent
  */
 export async function saveWritingRubricDraft(
     ctx: MongoDalContext,
     courseId: string,
     assignmentId: string,
-    draft: WritingRubricDefinition
+    draft: WritingRubricDefinition,
+    lens: WritingFeedbackLens = 'linguistic'
 ): Promise<WritingAssignment | null> {
-    return assignments(ctx).findOneAndUpdate(
+    const fields = rubricFieldPaths(lens);
+    const updated = await assignments(ctx).findOneAndUpdate(
         { id: assignmentId, courseId },
-        { $set: { rubricDraft: draft, updatedAt: new Date() } },
+        { $set: { [fields.draft]: draft, updatedAt: new Date() } },
         { returnDocument: 'after' }
     );
+    return updated ? normalizeWritingAssignment(updated) : null;
 }
 
 /**
- * discardWritingRubricDraft — removes the editable draft without changing active behavior.
+ * applyLabReportRubricRouting — moves an imported Canvas grid onto the technical lens.
+ *
+ * One update so the two lenses can never disagree about which of them owns the imported grid.
+ * The writing lens is reset only when `resetWriting` says so: an assignment whose writing
+ * rubric was never Canvas-seeded already holds the metafunctions, and rewriting it would
+ * discard staff edits for no gain. Both drafts arrive unapproved, so approval stays the gate.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param assignmentId - Assignment being marked as a lab report
+ * @param routing - Drafts and provenance produced by `routeRubricsForLabReport`
+ * @param resetWriting - Whether the writing lens must be returned to the metafunctions
+ * @returns Updated assignment, or `null` when the scoped assignment is absent
+ */
+export async function applyLabReportRubricRouting(
+    ctx: MongoDalContext,
+    courseId: string,
+    assignmentId: string,
+    routing: LabReportRouting,
+    resetWriting: boolean
+): Promise<WritingAssignment | null> {
+    const technical = rubricFieldPaths('technical');
+    const writing = rubricFieldPaths('linguistic');
+    const updated = await assignments(ctx).findOneAndUpdate(
+        { id: assignmentId, courseId },
+        {
+            $set: {
+                [technical.draft]: routing.technicalDraft,
+                technicalRubricSource: routing.technicalRubricSource,
+                updatedAt: new Date(),
+                ...(resetWriting
+                    ? {
+                          [writing.approved]: routing.writingDraft,
+                          rubricSource: routing.writingRubricSource
+                      }
+                    : {})
+            },
+            ...(resetWriting ? { $unset: { [writing.draft]: '' } } : {})
+        },
+        { returnDocument: 'after' }
+    );
+    return updated ? normalizeWritingAssignment(updated) : null;
+}
+
+/**
+ * discardWritingRubricDraft — removes one lens's editable draft without changing active behavior.
  *
  * @param ctx - Connected Mongo data-layer context
  * @param courseId - Owning course id
  * @param assignmentId - Assignment whose draft is discarded
+ * @param lens - Feedback lens whose draft is discarded; defaults to `'linguistic'`
  * @returns Updated assignment, or `null` when the scoped assignment is absent
  */
 export async function discardWritingRubricDraft(
     ctx: MongoDalContext,
     courseId: string,
-    assignmentId: string
+    assignmentId: string,
+    lens: WritingFeedbackLens = 'linguistic'
 ): Promise<WritingAssignment | null> {
-    return assignments(ctx).findOneAndUpdate(
+    const fields = rubricFieldPaths(lens);
+    const updated = await assignments(ctx).findOneAndUpdate(
         { id: assignmentId, courseId },
-        { $unset: { rubricDraft: '' }, $set: { updatedAt: new Date() } },
+        { $unset: { [fields.draft]: '' }, $set: { updatedAt: new Date() } },
         { returnDocument: 'after' }
     );
+    return updated ? normalizeWritingAssignment(updated) : null;
 }
 
 /**
- * approveWritingRubricDraft — atomically promotes the expected draft version.
+ * approveWritingRubricDraft — atomically promotes the expected draft version for one lens.
  *
- * The previously approved rubric is appended to history. Version predicates
- * prevent a stale reviewer from overwriting a concurrently changed rubric.
+ * The previously approved rubric for that lens is appended to its history.
+ * Version predicates prevent a stale reviewer from overwriting a concurrently
+ * changed rubric. A lens with no prior approval (the technical lens on a
+ * freshly toggled lab report) has no approved-version predicate to guard —
+ * that guard applies only once an approved rubric already exists for the
+ * lens. `gradeMapping` is linguistic-only: it is never read or written for
+ * the technical lens, regardless of what the caller passes.
  *
  * @param ctx - Connected Mongo data-layer context
  * @param courseId - Owning course id
  * @param assignmentId - Assignment whose draft is being approved
  * @param approvedRubric - Approved form of the currently persisted draft
- * @param gradeMapping - Optional complete ordinal-to-points mapping
+ * @param gradeMapping - Optional complete ordinal-to-points mapping (linguistic lens only)
+ * @param lens - Feedback lens being approved; defaults to `'linguistic'`
  * @returns Updated assignment, or `null` for missing/stale draft state
  */
 export async function approveWritingRubricDraft(
@@ -321,34 +564,69 @@ export async function approveWritingRubricDraft(
     courseId: string,
     assignmentId: string,
     approvedRubric: WritingRubricDefinition,
-    gradeMapping?: WritingAssignment['gradeMapping']
+    gradeMapping?: WritingAssignment['gradeMapping'],
+    lens: WritingFeedbackLens = 'linguistic'
 ): Promise<WritingAssignment | null> {
+    const fields = rubricFieldPaths(lens);
     const current = await assignments(ctx).findOne({ id: assignmentId, courseId });
-    if (!current?.rubricDraft || current.rubricDraft.version !== approvedRubric.version) return null;
+    const currentDraft = current?.[fields.draft as 'rubricDraft'] as WritingRubricDefinition | undefined;
+    if (!currentDraft || currentDraft.version !== approvedRubric.version) return null;
+    const currentApproved = current?.[fields.approved as 'rubric'] as WritingRubricDefinition | undefined;
 
-    // Archive the active rubric while promoting the draft in one atomic update.
+    // Archive only a previously approved rubric; an initial template is an unapproved draft.
     const update: UpdateFilter<WritingAssignment> = {
         $set: {
-            rubric: approvedRubric,
+            [fields.approved]: approvedRubric,
             updatedAt: new Date(),
-            ...(gradeMapping ? { gradeMapping } : {})
+            // Only the linguistic rubric drives the released numeric grade today.
+            ...(lens === 'linguistic' && gradeMapping ? { gradeMapping } : {})
         },
-        $push: { rubricHistory: current.rubric },
+        ...(currentApproved?.status === 'approved' ? { $push: { [fields.history]: currentApproved } } : {}),
         $unset: {
-            rubricDraft: '',
-            ...(gradeMapping ? {} : { gradeMapping: '' })
+            [fields.draft]: '',
+            ...(lens === 'linguistic' && !gradeMapping ? { gradeMapping: '' } : {})
         }
-    };
-    return assignments(ctx).findOneAndUpdate(
+    } as UpdateFilter<WritingAssignment>;
+
+    const updated = await assignments(ctx).findOneAndUpdate(
         {
             id: assignmentId,
             courseId,
-            'rubric.version': current.rubric.version,
-            'rubricDraft.version': approvedRubric.version
+            // A never-approved lens has no version to guard; guard it once one exists.
+            ...(currentApproved ? { [`${fields.approved}.version`]: currentApproved.version } : {}),
+            [`${fields.draft}.version`]: approvedRubric.version
         },
         update,
         { returnDocument: 'after' }
     );
+    return updated ? normalizeWritingAssignment(updated) : null;
+}
+
+/**
+ * chooseWritingAssignmentType — records the one-time writing / lab report choice (D-123).
+ *
+ * Succeeds only while `assignmentTypePending` is still true, so the first answer wins and a
+ * second request (another tab, another staff member) matches nothing and gets `null`. Rubric
+ * routing for a lab report is applied separately by the caller.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param assignmentId - Assignment whose type is being chosen
+ * @param isLabReport - Whether the assignment is a lab report
+ * @returns Updated assignment, or `null` when it is absent or its type was already chosen
+ */
+export async function chooseWritingAssignmentType(
+    ctx: MongoDalContext,
+    courseId: string,
+    assignmentId: string,
+    isLabReport: boolean
+): Promise<WritingAssignment | null> {
+    const updated = await assignments(ctx).findOneAndUpdate(
+        { id: assignmentId, courseId, assignmentTypePending: true },
+        { $set: { isLabReport, updatedAt: new Date() }, $unset: { assignmentTypePending: '' } },
+        { returnDocument: 'after' }
+    );
+    return updated ? normalizeWritingAssignment(updated) : null;
 }
 
 /**
@@ -370,23 +648,71 @@ export async function mapWritingAssignmentToCanvas(
     assignmentId: string,
     canvasAssignmentId: string
 ): Promise<WritingAssignment | null> {
-    return assignments(ctx).findOneAndUpdate(
+    const updated = await assignments(ctx).findOneAndUpdate(
         { id: assignmentId, courseId },
         { $set: { canvasAssignmentId, updatedAt: new Date() } },
         { returnDocument: 'after' }
     );
+    return updated ? normalizeWritingAssignment(updated) : null;
 }
+
+/**
+ * saveCanvasAssignmentDetails — stores the assignment brief imported from Canvas.
+ *
+ * Only the brief. The Canvas *rubric* is not stored beside the assignment: it seeds the
+ * assignment's first rubric draft at creation, so there is exactly one rubric concept and no
+ * second copy to reconcile.
+ *
+ * A re-import refreshes the brief, because an instructor who edited the assignment in Canvas
+ * expects the current text. It deliberately does not touch `rubric` or `rubricDraft` — once a
+ * draft exists it carries staff edits, and silently replacing it from Canvas would discard
+ * their work.
+ *
+ * It does fill `instructions` from the brief, but only on an assignment that has none. That
+ * covers an assignment imported before the brief reached the instructions field, and an import
+ * whose brief arrived after the assignment record existed. Staff text is never overwritten: an
+ * instructor who rewrote the instructions locally keeps them, exactly as the rubric draft does.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Course that owns the assignment
+ * @param assignmentId - Local assignment receiving the brief
+ * @param details - Imported assignment brief
+ * @returns Updated assignment, or `null` when it does not exist
+ */
+export async function saveCanvasAssignmentDetails(
+    ctx: MongoDalContext,
+    courseId: string,
+    assignmentId: string,
+    details: CanvasAssignmentDetails
+): Promise<WritingAssignment | null> {
+    const brief = details.descriptionText?.trim();
+    return assignments(ctx).findOneAndUpdate(
+        { id: assignmentId, courseId },
+        { $set: { canvasDetails: details, updatedAt: new Date() } },
+        { returnDocument: 'after' }
+    ).then(async (updated) => {
+        if (!updated || !brief || updated.instructions?.trim()) return updated;
+        return assignments(ctx).findOneAndUpdate(
+            { id: assignmentId, courseId },
+            { $set: { instructions: brief, updatedAt: new Date() } },
+            { returnDocument: 'after' }
+        );
+    });
+}
+
 
 /**
  * createWritingSubmission — appends a course-scoped review submission.
  *
  * The unique assignment/student/attempt index makes duplicate intake fail
- * explicitly; submission text remains in this restricted Writing Feedback path.
+ * explicitly, and a second active submission for the same student fails the same way.
+ * Rows are active unless the input says otherwise. Submission text remains in this
+ * restricted Writing Feedback path.
  *
  * @param ctx - Connected Mongo data-layer context
  * @param input - Validated submission fields excluding server provenance
  * @returns Newly persisted submission with generated id and timestamps
- * @throws MongoDB duplicate-key error for repeated student attempts
+ * @throws MongoDB duplicate-key error for a repeated attempt or a second active submission
  */
 export async function createWritingSubmission(
     ctx: MongoDalContext,
@@ -394,7 +720,7 @@ export async function createWritingSubmission(
 ): Promise<WritingSubmission> {
     await ensureWritingFeedbackIndexes(ctx);
     const now = new Date();
-    const submission: WritingSubmission = { ...input, id: randomUUID(), createdAt: now, updatedAt: now };
+    const submission: WritingSubmission = { slot: 'active', ...input, id: randomUUID(), createdAt: now, updatedAt: now };
     await submissions(ctx).insertOne(submission);
     return submission;
 }
@@ -415,7 +741,8 @@ export async function getWritingSubmission(ctx: MongoDalContext, courseId: strin
  * deleteWritingSubmission — deletes a scoped submission and its dependent workflow records.
  *
  * Deletion is allowed at any status. Child cleanup starts only after the
- * course-scoped parent delete succeeds, preventing cross-course cascades.
+ * course-scoped parent delete succeeds, preventing cross-course cascades. A held
+ * newer attempt waiting to replace the deleted submission is deleted with it.
  *
  * @param ctx - Connected Mongo data-layer context
  * @param courseId - Owning course id
@@ -434,25 +761,176 @@ export async function deleteWritingSubmission(
     await Promise.all([
         runs(ctx).deleteMany({ submissionId }),
         releases(ctx).deleteMany({ submissionId }),
-        jobs(ctx).deleteMany({ 'payload.submissionId': submissionId })
+        jobs(ctx).deleteMany({ 'payload.submissionId': submissionId }),
+        // A held attempt has no runs, releases, or jobs of its own to cascade.
+        submissions(ctx).deleteMany({ courseId, slot: 'held', replacesSubmissionId: submissionId })
     ]);
     return true;
 }
 
+/** A queue row, with the newer attempt waiting to replace it when there is one. */
+export type WritingQueueSubmission = WritingSubmission & {
+    reviews?: StaffReviewRevision[];
+    approvedAt?: Date;
+    approvedBy?: string;
+    pendingReplacement?: WritingPendingReplacement;
+};
+
 /**
  * listWritingSubmissions — returns an assignment's review queue, newest first.
+ *
+ * By default only active submissions are returned, each carrying a summary of any held newer
+ * attempt. With `includeInactive`, held and superseded rows are returned too, unannotated;
+ * import uses that to avoid storing an attempt twice.
  *
  * @param ctx - Connected Mongo data-layer context
  * @param courseId - Owning course id
  * @param assignmentId - Assignment whose queue is requested
+ * @param options - `includeInactive` returns every slot
  * @returns Course- and assignment-scoped submissions with embedded review history
  */
 export async function listWritingSubmissions(
     ctx: MongoDalContext,
     courseId: string,
-    assignmentId: string
-): Promise<Array<WritingSubmission & { reviews?: StaffReviewRevision[]; approvedAt?: Date; approvedBy?: string }>> {
-    return submissions(ctx).find({ courseId, assignmentId }).sort({ updatedAt: -1 }).toArray();
+    assignmentId: string,
+    options: { includeInactive?: boolean } = {}
+): Promise<WritingQueueSubmission[]> {
+    const rows = await submissions(ctx).find({ courseId, assignmentId }).sort({ updatedAt: -1 }).toArray();
+    if (options.includeInactive) return rows;
+
+    // Fold each held attempt onto the submission it would replace; never expose its text.
+    const heldByTarget = new Map<string, WritingPendingReplacement>();
+    for (const row of rows) {
+        if (row.slot !== 'held' || !row.replacesSubmissionId) continue;
+        heldByTarget.set(row.replacesSubmissionId, {
+            submissionId: row.id,
+            attempt: row.attempt,
+            submittedAt: row.submittedAt,
+            sourceType: row.sourceType
+        });
+    }
+    return rows
+        .filter((row) => (row.slot ?? 'active') === 'active')
+        .map((row) => {
+            const pendingReplacement = heldByTarget.get(row.id);
+            return pendingReplacement ? { ...row, pendingReplacement } : row;
+        });
+}
+
+/**
+ * getHeldWritingReplacement — finds the held newer attempt waiting to replace a submission.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param submissionId - Active submission the held attempt would replace
+ * @returns The held row, or `null` when none is waiting
+ */
+export async function getHeldWritingReplacement(
+    ctx: MongoDalContext,
+    courseId: string,
+    submissionId: string
+): Promise<WritingSubmission | null> {
+    return submissions(ctx).findOne({ courseId, slot: 'held', replacesSubmissionId: submissionId });
+}
+
+/**
+ * hasUnsettledWritingWork — reports queued or running jobs and half-finished Canvas releases.
+ *
+ * Replacing a submission while either is in progress would leave a worker writing to a row
+ * that is no longer in the queue, or leave Canvas partly updated for the old attempt.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param submissionId - Submission to check
+ * @returns `true` when work for the submission has not settled
+ */
+export async function hasUnsettledWritingWork(
+    ctx: MongoDalContext,
+    courseId: string,
+    submissionId: string
+): Promise<boolean> {
+    const [job, release] = await Promise.all([
+        jobs(ctx).findOne({ courseId, 'payload.submissionId': submissionId, state: { $in: ['queued', 'leased'] } }, { projection: { id: 1 } }),
+        releases(ctx).findOne({ courseId, submissionId, ...unsettledReleaseFilter() }, { projection: { id: 1 } })
+    ]);
+    return Boolean(job || release);
+}
+
+/**
+ * replaceWritingSubmission — makes a held attempt the student's active submission.
+ *
+ * The current row is moved out of the active slot first, so the one-active-per-student index
+ * accepts the promotion; if promotion fails the current row is restored. The replaced row is
+ * then deleted with its runs and releases, unless `keepReplaced` is set, in which case it is
+ * kept `superseded` (used when its feedback already reached Canvas).
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param currentId - Active submission being replaced
+ * @param heldId - Held attempt that replaces it
+ * @param keepReplaced - Keep the replaced row as superseded instead of deleting it
+ * @returns The promoted submission, or `null` when either row changed underneath the call
+ */
+export async function replaceWritingSubmission(
+    ctx: MongoDalContext,
+    courseId: string,
+    currentId: string,
+    heldId: string,
+    keepReplaced: boolean
+): Promise<WritingSubmission | null> {
+    const now = new Date();
+    // Step 1: vacate the active slot, refusing a row that started generating meanwhile.
+    const vacated = await submissions(ctx).findOneAndUpdate(
+        { id: currentId, courseId, status: { $ne: 'generating' }, ...ACTIVE_SLOT_FILTER },
+        { $set: { slot: 'superseded', supersededAt: now, updatedAt: now } }
+    );
+    if (!vacated) return null;
+
+    // Step 2: promote the held attempt; restore the current row if it is gone.
+    const promoted = await submissions(ctx).findOneAndUpdate(
+        { id: heldId, courseId, slot: 'held', replacesSubmissionId: currentId },
+        { $set: { slot: 'active', updatedAt: now }, $unset: { replacesSubmissionId: '' } },
+        { returnDocument: 'after' }
+    );
+    if (!promoted) {
+        await submissions(ctx).updateOne(
+            { id: currentId, courseId },
+            { $set: { slot: 'active', updatedAt: vacated.updatedAt }, $unset: { supersededAt: '' } }
+        );
+        return null;
+    }
+
+    // Step 3: drop the replaced row unless its release history must be kept.
+    if (!keepReplaced) await deleteWritingSubmission(ctx, courseId, currentId);
+    return promoted;
+}
+
+/**
+ * declineWritingReplacement — keeps the current submission and discards a held attempt.
+ *
+ * The declined attempt number is remembered on the current row so the next sync does not
+ * import it again.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param currentId - Active submission being kept
+ * @param held - Held attempt being discarded
+ * @returns The kept submission, or `null` when it is no longer active
+ */
+export async function declineWritingReplacement(
+    ctx: MongoDalContext,
+    courseId: string,
+    currentId: string,
+    held: Pick<WritingSubmission, 'id' | 'attempt'>
+): Promise<WritingSubmission | null> {
+    const kept = await submissions(ctx).findOneAndUpdate(
+        { id: currentId, courseId, ...ACTIVE_SLOT_FILTER },
+        { $addToSet: { declinedAttempts: held.attempt } },
+        { returnDocument: 'after' }
+    );
+    if (!kept) return null;
+    await submissions(ctx).deleteOne({ id: held.id, courseId, slot: 'held', replacesSubmissionId: currentId });
+    return kept;
 }
 
 /**
@@ -461,11 +939,15 @@ export async function listWritingSubmissions(
  * Verification clears the blocking flag and returns the submission to imported
  * state; it does not delete the original extraction.
  *
+ * Applies only to an active row still awaiting confirmation, so this first-confirmation path
+ * can never rewrite the text of a submission that already has feedback or a release —
+ * correcting confirmed text is {@link editWritingTranscript}.
+ *
  * @param ctx - Connected Mongo data-layer context
  * @param courseId - Owning course id
  * @param submissionId - Submission being verified
  * @param verifiedText - Staff-confirmed source text
- * @returns Updated submission, or `null` when the scoped record is absent
+ * @returns Updated submission, or `null` when the row is absent or already confirmed
  */
 export async function updateVerifiedWritingText(
     ctx: MongoDalContext,
@@ -474,8 +956,79 @@ export async function updateVerifiedWritingText(
     verifiedText: string
 ) {
     return submissions(ctx).findOneAndUpdate(
-        { id: submissionId, courseId },
-        { $set: { verifiedText, requiresVerification: false, status: 'imported', updatedAt: new Date() } },
+        { id: submissionId, courseId, ...ACTIVE_SLOT_FILTER, requiresVerification: true },
+        { $set: { verifiedText, requiresVerification: false, transcriptConfirmedBy: 'staff', status: 'imported', updatedAt: new Date() } },
+        { returnDocument: 'after' }
+    );
+}
+
+/**
+ * editWritingTranscript — replaces already-confirmed text with a staff correction.
+ *
+ * Stamps `transcriptEditedAt` so feedback and annotations anchored to the old text are treated
+ * as out of date, and returns the submission to `imported` so it needs generating again (this
+ * also withdraws an approval). Applies only to a submission whose text is confirmed and whose
+ * status is one of `editableStatuses`, so a submission that started generating or was
+ * released in the meantime is left alone.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param submissionId - Submission whose text is corrected
+ * @param verifiedText - Corrected text
+ * @param editableStatuses - Statuses the submission may be in for the edit to apply
+ * @returns Updated submission, or `null` when it is absent or no longer editable
+ */
+export async function editWritingTranscript(
+    ctx: MongoDalContext,
+    courseId: string,
+    submissionId: string,
+    verifiedText: string,
+    editableStatuses: ReadonlyArray<WritingSubmissionStatus>
+) {
+    const now = new Date();
+    return submissions(ctx).findOneAndUpdate(
+        {
+            id: submissionId,
+            courseId,
+            ...ACTIVE_SLOT_FILTER,
+            requiresVerification: false,
+            status: { $in: [...editableStatuses] }
+        },
+        {
+            $set: {
+                verifiedText,
+                transcriptConfirmedBy: 'staff',
+                transcriptEditedAt: now,
+                status: 'imported',
+                updatedAt: now
+            }
+        },
+        { returnDocument: 'after' }
+    );
+}
+
+/**
+ * autoConfirmWritingTranscript — accepts extracted file text on behalf of batch generation.
+ *
+ * Applies only to an active submission still waiting for confirmation, so a transcript staff
+ * confirmed or corrected in the meantime is never overwritten. The row is stamped
+ * `transcriptConfirmedBy: 'batch'` so the review page can say no person has checked it.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param submissionId - File submission waiting for confirmation
+ * @param verifiedText - Extracted text that passed the automatic quality check
+ * @returns Updated submission, or `null` when it no longer needs confirming
+ */
+export async function autoConfirmWritingTranscript(
+    ctx: MongoDalContext,
+    courseId: string,
+    submissionId: string,
+    verifiedText: string
+) {
+    return submissions(ctx).findOneAndUpdate(
+        { id: submissionId, courseId, ...ACTIVE_SLOT_FILTER, requiresVerification: true, status: 'verification_needed' },
+        { $set: { verifiedText, requiresVerification: false, transcriptConfirmedBy: 'batch', status: 'imported', updatedAt: new Date() } },
         { returnDocument: 'after' }
     );
 }
@@ -490,16 +1043,21 @@ export async function updateVerifiedWritingText(
  * @param courseId - Owning course id
  * @param submissionId - Submission to update
  * @param status - Valid Writing Feedback workflow status
- * @returns Updated submission, or `null` when the scoped record is absent
+ * @param expectedStatuses - Statuses this transition may act on; omitted means any
+ * @returns Updated submission, or `null` when the scoped record is absent or has moved on
  */
 export async function setWritingSubmissionStatus(
     ctx: MongoDalContext,
     courseId: string,
     submissionId: string,
-    status: WritingSubmissionStatus
+    status: WritingSubmissionStatus,
+    expectedStatuses?: ReadonlyArray<WritingSubmissionStatus>
 ) {
+    const filter: Filter<WritingSubmission> = expectedStatuses?.length
+        ? { id: submissionId, courseId, status: { $in: [...expectedStatuses] } }
+        : { id: submissionId, courseId };
     return submissions(ctx).findOneAndUpdate(
-        { id: submissionId, courseId },
+        filter,
         { $set: { status, updatedAt: new Date() } },
         { returnDocument: 'after' }
     );
@@ -525,27 +1083,209 @@ export async function createWritingFeedbackRun(
 }
 
 /**
- * getLatestWritingFeedbackRun — retrieves the newest generated run for a submission.
+ * getLatestWritingFeedbackRun — retrieves the newest generated run for a submission and lens.
+ *
+ * Runs written before two-lens generation carry no `lens` field at all; those
+ * legacy records are treated as linguistic so they keep surfacing as the
+ * latest linguistic run instead of silently disappearing from history.
  *
  * @param ctx - Connected Mongo data-layer context
  * @param submissionId - Submission whose model provenance is requested
- * @returns Most recent run, or `null` when feedback has not been generated
+ * @param lens - Feedback lens whose latest run is requested; defaults to `'linguistic'`
+ * @returns Most recent run for the lens, or `null` when feedback has not been generated
  */
-export async function getLatestWritingFeedbackRun(ctx: MongoDalContext, submissionId: string): Promise<WritingFeedbackRun | null> {
-    return runs(ctx).find({ submissionId }).sort({ createdAt: -1 }).limit(1).next();
+export async function getLatestWritingFeedbackRun(
+    ctx: MongoDalContext,
+    submissionId: string,
+    lens: WritingFeedbackLens = 'linguistic'
+): Promise<WritingFeedbackRun | null> {
+    const lensFilter: Filter<WritingFeedbackRun> = lens === 'linguistic'
+        ? { $or: [{ lens: 'linguistic' }, { lens: { $exists: false } }] }
+        : { lens };
+    return runs(ctx).find({ submissionId, ...lensFilter }).sort({ createdAt: -1 }).limit(1).next();
+}
+
+/**
+ * countWritingFeedbackRunsByLens — reports whether one lens has ever produced a run.
+ *
+ * `getLatestWritingFeedbackRun` answers per-submission; unmarking a lab report
+ * needs an assignment-scoped answer, because its technical criterion ids may
+ * be referenced by runs across many submissions.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param assignmentId - Assignment being inspected
+ * @param lens - Lens whose runs are counted
+ * @returns Number of stored runs for that assignment and lens
+ */
+export async function countWritingFeedbackRunsByLens(
+    ctx: MongoDalContext,
+    courseId: string,
+    assignmentId: string,
+    lens: WritingFeedbackLens
+): Promise<number> {
+    return runs(ctx).countDocuments({ courseId, assignmentId, lens });
+}
+
+/**
+ * countFeedbackStaleOnApproval — how many unreleased submissions a newer rubric version would put out of date.
+ *
+ * Feedback is tied to the rubric version it was generated with, and staff approval, release
+ * preview and release all refuse feedback from an older version. Once a newer version of this
+ * lens's rubric is approved, every unreleased submission whose latest run for the lens was
+ * generated with the version approved now has to be regenerated. Released submissions are exempt
+ * and are not counted.
+ *
+ * Each submission counts once, by its latest run for the lens, and a run whose submission no
+ * longer exists is not counted. A run with no recorded lens is a linguistic run, and one with no
+ * recorded rubric version counts as version 1 -- the same rules `getLatestWritingFeedbackRun`
+ * and the staleness check apply.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param assignmentId - Assignment whose rubric is about to change
+ * @param lens - Lens whose rubric is being approved
+ * @param approvedVersion - That lens's currently approved rubric version
+ * @returns Number of unreleased submissions whose latest run for the lens used that version
+ */
+export async function countFeedbackStaleOnApproval(
+    ctx: MongoDalContext,
+    courseId: string,
+    assignmentId: string,
+    lens: WritingFeedbackLens,
+    approvedVersion: number
+): Promise<number> {
+    const lensFilter: Filter<WritingFeedbackRun> = lens === 'linguistic'
+        ? { $or: [{ lens: 'linguistic' }, { lens: { $exists: false } }] }
+        : { lens };
+    const versionFilter = approvedVersion === 1
+        ? { rubricVersion: { $in: [1, null] } }
+        : { rubricVersion: approvedVersion };
+    const [counted] = await runs(ctx).aggregate<{ total: number }>([
+        // Step 1: this assignment's runs for the lens, newest first.
+        { $match: { courseId, assignmentId, ...lensFilter } },
+        { $sort: { createdAt: -1 } },
+        // Step 2: one row per submission, carrying its latest run's rubric version.
+        { $group: { _id: '$submissionId', rubricVersion: { $first: '$rubricVersion' } } },
+        // Step 3: keep the submissions whose latest run used the approved version.
+        { $match: versionFilter },
+        // Step 4: drop released and deleted submissions, then count what is left.
+        { $lookup: { from: SUBMISSIONS, localField: '_id', foreignField: 'id', as: 'submission' } },
+        { $unwind: '$submission' },
+        { $match: { 'submission.courseId': courseId, 'submission.status': { $ne: 'released' } } },
+        { $count: 'total' }
+    ]).toArray();
+    return counted?.total ?? 0;
+}
+
+function normalizeGlossaryTerm(term: string): string {
+    return term.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+}
+
+/**
+ * listWritingGlossaryEntries — returns reusable course glossary entries.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param search - Optional term/definition substring filter
+ * @returns Course-scoped glossary entries ordered by term
+ */
+export async function listWritingGlossaryEntries(
+    ctx: MongoDalContext,
+    courseId: string,
+    search?: string
+): Promise<WritingGlossaryEntry[]> {
+    await ensureWritingFeedbackIndexes(ctx);
+    const filter: Filter<WritingGlossaryEntry> = { courseId };
+    const query = search?.trim();
+    if (query) {
+        filter.$or = [
+            { term: { $regex: query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } },
+            { definition: { $regex: query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } }
+        ];
+    }
+    return glossary(ctx).find(filter).sort({ normalizedTerm: 1 }).limit(100).toArray();
+}
+
+/**
+ * createWritingGlossaryEntry — inserts a course-scoped reusable definition.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param input - Validated term, definition, course, and actor
+ * @returns Newly persisted glossary entry
+ * @throws MongoDB duplicate-key error when the normalized term already exists
+ */
+export async function createWritingGlossaryEntry(
+    ctx: MongoDalContext,
+    input: { courseId: string; term: string; definition: string; actorUserId: string }
+): Promise<WritingGlossaryEntry> {
+    await ensureWritingFeedbackIndexes(ctx);
+    const now = new Date();
+    const entry: WritingGlossaryEntry = {
+        id: randomUUID(),
+        courseId: input.courseId,
+        term: input.term.trim().replace(/\s+/g, ' '),
+        normalizedTerm: normalizeGlossaryTerm(input.term),
+        definition: input.definition.trim(),
+        version: 1,
+        createdAt: now,
+        createdBy: input.actorUserId,
+        updatedAt: now,
+        updatedBy: input.actorUserId
+    };
+    await glossary(ctx).insertOne(entry);
+    return entry;
+}
+
+/**
+ * updateWritingGlossaryEntry — version-checked update for a reusable definition.
+ *
+ * The expected version prevents a stale editor from overwriting a newer staff
+ * definition. Version increments on any successful term or definition change.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param entryId - Glossary entry being updated
+ * @param update - New term/definition plus expected version and actor
+ * @returns Updated entry, or `null` when the id/version predicate fails
+ * @throws MongoDB duplicate-key error when the normalized term is already used
+ */
+export async function updateWritingGlossaryEntry(
+    ctx: MongoDalContext,
+    courseId: string,
+    entryId: string,
+    update: { term: string; definition: string; expectedVersion: number; actorUserId: string }
+): Promise<WritingGlossaryEntry | null> {
+    await ensureWritingFeedbackIndexes(ctx);
+    const updated = await glossary(ctx).findOneAndUpdate(
+        { id: entryId, courseId, version: update.expectedVersion },
+        {
+            $set: {
+                term: update.term.trim().replace(/\s+/g, ' '),
+                normalizedTerm: normalizeGlossaryTerm(update.term),
+                definition: update.definition.trim(),
+                updatedAt: new Date(),
+                updatedBy: update.actorUserId
+            },
+            $inc: { version: 1 }
+        },
+        { returnDocument: 'after' }
+    );
+    return updated;
 }
 
 /**
  * appendWritingReview — appends an immutable staff-authored revision.
  *
  * Every edit receives a new id and timestamp. Appending a revision invalidates
- * prior approval by returning the submission to `draft_ready`.
+ * prior approval by returning the submission to `draft_ready`. Nothing is written while
+ * the submission is generating.
  *
  * @param ctx - Connected Mongo data-layer context
  * @param courseId - Owning course id
  * @param submissionId - Submission under review
  * @param revision - Validated revision fields excluding server provenance
- * @returns Newly constructed revision
+ * @returns Newly constructed revision, or `null` when the submission is missing or generating
  */
 export async function appendWritingReview(
     ctx: MongoDalContext,
@@ -560,16 +1300,18 @@ export async function appendWritingReview(
         createdAt: new Date()
     };
 
-    // Append rather than replace so staff edits retain a complete audit trail.
-    await submissions(ctx).updateOne(
-        { id: submissionId, courseId },
+    // Append rather than replace so staff edits retain a complete audit trail. A generating
+    // submission is left alone: marking it draft_ready would let it be approved while the
+    // worker is still replacing the draft.
+    const result = await submissions(ctx).updateOne(
+        { id: submissionId, courseId, status: { $ne: 'generating' } },
         {
             $push: { reviews: stored },
             // Any staff edit after approval requires a new explicit approval.
             $set: { status: 'draft_ready', updatedAt: new Date() }
         }
     );
-    return stored;
+    return result.matchedCount === 1 ? stored : null;
 }
 
 /**
@@ -632,6 +1374,34 @@ export async function findWritingReleaseByFingerprint(ctx: MongoDalContext, payl
 }
 
 /**
+ * listWritingReleases — every release attempt for one submission, oldest first.
+ *
+ * The release cap and the revision number a student sees are both derived from these records
+ * rather than a stored counter, so nothing can fall out of step with what actually happened.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param submissionId - Submission whose release history is wanted
+ * @returns Release attempts in creation order
+ */
+export async function listWritingReleases(
+    ctx: MongoDalContext,
+    courseId: string,
+    submissionId: string
+): Promise<WritingRelease[]> {
+    return releases(ctx).find({ courseId, submissionId }).sort({ createdAt: 1 }).toArray();
+}
+
+/** Latest Canvas release state for one local submission, used to surface reconciliation. */
+export async function getLatestWritingRelease(
+    ctx: MongoDalContext,
+    courseId: string,
+    submissionId: string
+): Promise<WritingRelease | null> {
+    return releases(ctx).findOne({ courseId, submissionId }, { sort: { updatedAt: -1 } });
+}
+
+/**
  * finalizeWritingRelease — updates provider identifiers for one fingerprinted attempt.
  *
  * @param ctx - Connected Mongo data-layer context
@@ -642,11 +1412,98 @@ export async function findWritingReleaseByFingerprint(ctx: MongoDalContext, payl
 export async function finalizeWritingRelease(
     ctx: MongoDalContext,
     payloadFingerprint: string,
-    update: Pick<WritingRelease, 'status' | 'canvasCommentId' | 'canvasSubmissionId'>
+    update: Partial<Omit<WritingRelease, 'id' | 'courseId' | 'submissionId' | 'feedbackRunId' | 'rubricVersion' | 'payloadFingerprint' | 'createdAt' | 'updatedAt'>>,
+    /**
+     * Statuses this update is allowed to act on.
+     *
+     * A release moves through its lifecycle from more than one place — the request that queues
+     * it, the worker that writes to Canvas, and a later reconciliation — so an unconditional
+     * update lets a slow writer move a finished release backwards, or a second worker overwrite
+     * a terminal state. Passing the statuses the caller believes it is acting on makes each
+     * transition a compare-and-set: the update applies, or it does not, and `null` says so.
+     */
+    expectedStatuses?: ReadonlyArray<WritingRelease['status']>
+): Promise<WritingRelease | null> {
+    const set: Record<string, unknown> = { updatedAt: new Date() };
+    const unset: Record<string, ''> = {};
+    for (const [key, value] of Object.entries(update)) {
+        if (value === undefined) {
+            unset[key] = '';
+        } else {
+            set[key] = value;
+        }
+    }
+    const updateDocument: UpdateFilter<WritingRelease> = { $set: set as Partial<WritingRelease> };
+    if (Object.keys(unset).length) updateDocument.$unset = unset;
+    const filter: Filter<WritingRelease> = expectedStatuses?.length
+        ? { payloadFingerprint, status: { $in: [...expectedStatuses] } }
+        : { payloadFingerprint };
+    return releases(ctx).findOneAndUpdate(
+        filter,
+        updateDocument,
+        { returnDocument: 'after' }
+    );
+}
+
+/** Statuses a release may still be resumed from; the rest are terminal or need a human. */
+const RESUMABLE_RELEASE_STATUSES: ReadonlyArray<WritingRelease['status']> = ['previewed', 'failed', 'feedback_attached', 'grade_queued'];
+
+/**
+ * claimWritingReleaseForQueue — takes the in-progress lock on one release, atomically.
+ *
+ * The claim is the whole point: one `findOneAndUpdate` both checks that the release is free and
+ * marks it taken, so of two staff members pressing Release at the same moment exactly one wins
+ * and the other is told a release is already under way.
+ *
+ * The status is deliberately left alone. It is what a resumed release reads to know how far the
+ * last attempt got, and overwriting it would make a worker re-attach a comment Canvas already
+ * has. A lock older than {@link RELEASE_LOCK_TTL_MS} is treated as abandoned, so a worker that
+ * died mid-release cannot freeze a submission for good.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param payloadFingerprint - Stable payload hash identifying the attempt
+ * @param claim - Who is releasing it, and when the claim is being made
+ * @returns The claimed release, or `null` when another caller already holds it
+ */
+export async function claimWritingReleaseForQueue(
+    ctx: MongoDalContext,
+    payloadFingerprint: string,
+    claim: { queuedByUserId: string; now?: Date }
+): Promise<WritingRelease | null> {
+    const now = claim.now ?? new Date();
+    const abandonedBefore = new Date(now.getTime() - RELEASE_LOCK_TTL_MS);
+    return releases(ctx).findOneAndUpdate(
+        {
+            payloadFingerprint,
+            status: { $in: [...RESUMABLE_RELEASE_STATUSES] },
+            $or: [
+                { releaseLockedAt: { $exists: false } },
+                { releaseLockedAt: { $lt: abandonedBefore } }
+            ]
+        },
+        { $set: { releaseLockedAt: now, queuedByUserId: claim.queuedByUserId, updatedAt: now } },
+        { returnDocument: 'after' }
+    );
+}
+
+/**
+ * releaseWritingReleaseLock — hands the in-progress lock back when the worker stops.
+ *
+ * Called whether the release landed, failed, or threw: what the next attempt needs to know is
+ * carried by the status, and holding the lock past the run would only make staff wait out the
+ * abandonment window before they could try again.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param payloadFingerprint - Stable payload hash identifying the attempt
+ * @returns The released record, or `null` when no record carries that fingerprint
+ */
+export async function releaseWritingReleaseLock(
+    ctx: MongoDalContext,
+    payloadFingerprint: string
 ): Promise<WritingRelease | null> {
     return releases(ctx).findOneAndUpdate(
         { payloadFingerprint },
-        { $set: { ...update, updatedAt: new Date() } },
+        { $unset: { releaseLockedAt: '' }, $set: { updatedAt: new Date() } },
         { returnDocument: 'after' }
     );
 }
@@ -666,8 +1523,159 @@ export async function enqueueWritingJob(ctx: MongoDalContext, job: Omit<WritingJ
 }
 
 /**
- * leaseNextWritingJob — atomically claims the oldest runnable job.
+ * findActiveWritingJob — finds queued or leased work for one submission/type.
  *
+ * Used by the generate endpoint to make duplicate clicks idempotent while
+ * allowing completed or terminally failed jobs to remain historical records.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param submissionId - Submission pointer stored in the job payload
+ * @param type - Worker handler type
+ * @returns Active job, or `null` when none is queued/leased
+ */
+export async function findActiveWritingJob(
+    ctx: MongoDalContext,
+    courseId: string,
+    submissionId: string,
+    type: WritingJob['type']
+): Promise<WritingJob | null> {
+    return jobs(ctx).findOne({
+        courseId,
+        type,
+        'payload.submissionId': submissionId,
+        state: { $in: ['queued', 'leased'] }
+    });
+}
+
+/**
+ * listActiveWritingGenerationSubmissionIds — submissions with generation queued or running.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param submissionIds - Submissions to check
+ * @returns Ids among `submissionIds` that have a queued or leased `generate` job
+ */
+export async function listActiveWritingGenerationSubmissionIds(
+    ctx: MongoDalContext,
+    courseId: string,
+    submissionIds: string[]
+): Promise<Set<string>> {
+    if (!submissionIds.length) return new Set();
+    const active = await jobs(ctx).find(
+        { courseId, type: 'generate', 'payload.submissionId': { $in: submissionIds }, state: { $in: ['queued', 'leased'] } },
+        { projection: { payload: 1 } }
+    ).toArray();
+    return new Set(active.map((job) => job.payload.submissionId));
+}
+
+/** A leased job this far past its lease is not running; its worker died on the last attempt. */
+const ABANDONED_LEASE_MS = 15 * 60_000;
+
+/**
+ * cancelWritingGenerationJobs — removes generation work that has not started.
+ *
+ * Deletes queued `generate` jobs, and leased ones whose lease ran out long ago with no attempts
+ * left (no worker will ever pick those up). A job a worker is running is left to finish. Each
+ * job is deleted with its state re-checked, so a job a worker claims in the meantime is kept.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param submissionIds - Submissions whose pending generation should stop
+ * @returns Ids of the submissions whose job was removed
+ */
+export async function cancelWritingGenerationJobs(
+    ctx: MongoDalContext,
+    courseId: string,
+    submissionIds: string[]
+): Promise<string[]> {
+    if (!submissionIds.length) return [];
+    const abandonedBefore = new Date(Date.now() - ABANDONED_LEASE_MS);
+    const stoppable: Filter<WritingJob> = {
+        $or: [
+            { state: 'queued' },
+            { state: 'leased', leaseUntil: { $lte: abandonedBefore }, $expr: { $gte: ['$attempts', '$maxAttempts'] } }
+        ]
+    };
+    const candidates = await jobs(ctx).find(
+        { courseId, type: 'generate', 'payload.submissionId': { $in: submissionIds }, ...stoppable },
+        { projection: { id: 1, payload: 1 } }
+    ).toArray();
+    const cancelled: string[] = [];
+    for (const job of candidates) {
+        const result = await jobs(ctx).deleteOne({ id: job.id, ...stoppable });
+        if (result.deletedCount === 1) cancelled.push(job.payload.submissionId);
+    }
+    return cancelled;
+}
+
+/**
+ * listLatestWritingRunVersions — each submission's newest rubric version per lens.
+ *
+ * Batch generation uses it to tell missing and out-of-date feedback apart without one query per
+ * submission. A run with no lens is linguistic and one with no rubric version is version 1, as in
+ * `getLatestWritingFeedbackRun` and the staleness checks.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param assignmentId - Assignment whose runs are read
+ * @returns Map of submission id to the rubric version of its latest run for each lens
+ */
+export async function listLatestWritingRunVersions(
+    ctx: MongoDalContext,
+    courseId: string,
+    assignmentId: string
+): Promise<Map<string, Partial<Record<WritingFeedbackLens, number>>>> {
+    const rows = await runs(ctx).aggregate<{ _id: { submissionId: string; lens: WritingFeedbackLens }; rubricVersion: number | null }>([
+        // Step 1: this assignment's runs, newest first.
+        { $match: { courseId, assignmentId } },
+        { $sort: { createdAt: -1 } },
+        // Step 2: one row per submission and lens, carrying its latest run's rubric version.
+        {
+            $group: {
+                _id: { submissionId: '$submissionId', lens: { $ifNull: ['$lens', 'linguistic'] } },
+                rubricVersion: { $first: '$rubricVersion' }
+            }
+        }
+    ]).toArray();
+    const versions = new Map<string, Partial<Record<WritingFeedbackLens, number>>>();
+    for (const row of rows) {
+        const entry = versions.get(row._id.submissionId) ?? {};
+        entry[row._id.lens] = row.rubricVersion ?? 1;
+        versions.set(row._id.submissionId, entry);
+    }
+    return versions;
+}
+
+/**
+ * findLatestWritingJob — the newest job of one type for a submission, whatever its state.
+ *
+ * A polling page needs the terminal state as well as the active one: a release job that failed is
+ * no longer active, and its sanitized reason is the only thing that explains why nothing reached
+ * the student. Failure text stored on a job is already content-free by construction.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param submissionId - Submission pointer stored in the job payload
+ * @param type - Worker handler type
+ * @returns The most recently updated job, or `null` when the submission has none
+ */
+export async function findLatestWritingJob(
+    ctx: MongoDalContext,
+    courseId: string,
+    submissionId: string,
+    type: WritingJob['type']
+): Promise<WritingJob | null> {
+    return jobs(ctx).findOne(
+        { courseId, type, 'payload.submissionId': submissionId },
+        { sort: { updatedAt: -1 } }
+    );
+}
+
+/**
+ * leaseNextWritingJob — atomically claims the next runnable job.
+ *
+ * Release jobs are claimed before any other type; within a type the oldest goes first.
  * Queued jobs and expired leases are eligible only while attempts remain.
  * `findOneAndUpdate` performs selection, lease assignment, and attempt increment
  * atomically so concurrent workers cannot claim the same lease.
@@ -678,10 +1686,9 @@ export async function enqueueWritingJob(ctx: MongoDalContext, job: Omit<WritingJ
  */
 export async function leaseNextWritingJob(ctx: MongoDalContext, leaseMs: number = 60_000): Promise<WritingJob | null> {
     const now = new Date();
-
-    // Claim and increment in one database operation to enforce single-worker ownership.
-    return jobs(ctx).findOneAndUpdate(
+    const claim = (typeFilter: Filter<WritingJob>) => jobs(ctx).findOneAndUpdate(
         {
+            ...typeFilter,
             $expr: { $lt: ['$attempts', '$maxAttempts'] },
             $or: [
                 { state: 'queued' },
@@ -691,10 +1698,22 @@ export async function leaseNextWritingJob(ctx: MongoDalContext, leaseMs: number 
         { $set: { state: 'leased', leaseUntil: new Date(now.getTime() + leaseMs), updatedAt: now }, $inc: { attempts: 1 } },
         { sort: { createdAt: 1 }, returnDocument: 'after' }
     );
+
+    // Step 1: a Canvas release goes first. Staff wait on it from the review page, and it would
+    // otherwise sit behind every submission of a batch generation run.
+    const release = await claim({ type: 'release' });
+    if (release) return release;
+    // Step 2: everything else, oldest first. Claim and increment are one operation, so two
+    // workers cannot hold the same lease.
+    return claim({ type: { $ne: 'release' } });
 }
 
 /**
  * completeWritingJob — marks a currently leased job completed and clears its lease.
+ *
+ * Also clears any `sanitizedError` left by an earlier failed attempt: the job's
+ * `state` is authoritative, and a completed job carrying a stale failure message
+ * misleads anyone inspecting the record after a retry succeeded.
  *
  * @param ctx - Connected Mongo data-layer context
  * @param jobId - Internal job id
@@ -703,7 +1722,10 @@ export async function leaseNextWritingJob(ctx: MongoDalContext, leaseMs: number 
 export async function completeWritingJob(ctx: MongoDalContext, jobId: string): Promise<void> {
     await jobs(ctx).updateOne(
         { id: jobId, state: 'leased' },
-        { $set: { state: 'completed', updatedAt: new Date() }, $unset: { leaseUntil: '' } }
+        {
+            $set: { state: 'completed', updatedAt: new Date() },
+            $unset: { leaseUntil: '', sanitizedError: '' }
+        }
     );
 }
 

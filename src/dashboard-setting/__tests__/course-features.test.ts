@@ -18,11 +18,20 @@ import {
 } from '../course-features';
 
 describe('course Extra Feature capabilities', () => {
-    it('treats legacy courses without feature configuration as disabled', () => {
-        expect(isCourseFeatureEnabled({ features: undefined }, 'writingFeedback')).toBe(false);
-        expect(isCourseFeatureEnabled({ features: undefined }, 'memoryAgent')).toBe(false);
-        expect(isCourseFeatureEnabled({ features: undefined }, 'guidedPathway')).toBe(false);
-        expect(isCourseFeatureEnabled({ features: undefined }, 'scenarioGeneration')).toBe(false);
+    it('treats missing feature configuration as the registry default', () => {
+        expect(isCourseFeatureEnabled({ features: undefined }, 'writingFeedback')).toBe(true);
+        expect(isCourseFeatureEnabled({ features: undefined }, 'memoryAgent')).toBe(true);
+        expect(isCourseFeatureEnabled({ features: undefined }, 'guidedPathway')).toBe(true);
+        expect(isCourseFeatureEnabled({ features: undefined }, 'scenarioGeneration')).toBe(true);
+    });
+
+    it('honours explicit opt-outs over the registry default', () => {
+        expect(
+            isCourseFeatureEnabled({ features: { writingFeedback: { enabled: false } } }, 'writingFeedback')
+        ).toBe(false);
+        expect(
+            isCourseFeatureEnabled({ features: { memoryAgent: { enabled: false } } }, 'memoryAgent')
+        ).toBe(false);
     });
 
     it('enables writing feedback with an auditable actor and timestamp', () => {
@@ -64,17 +73,17 @@ describe('course Extra Feature capabilities', () => {
         });
     });
 
-    it('buildNewCourseFeatures includes every registry key as disabled', () => {
+    it('buildNewCourseFeatures includes every registry key as enabled', () => {
         const features = buildNewCourseFeatures();
         for (const def of COURSE_FEATURE_DEFINITIONS) {
-            expect(features[def.id]).toEqual({ enabled: false });
+            expect(features[def.id]).toEqual({ enabled: true });
         }
         expect(Object.keys(features).sort()).toEqual(
             COURSE_FEATURE_DEFINITIONS.map((d) => d.id).slice().sort()
         );
     });
 
-    it('normalizeCourseFeaturesInput enables only requested trues and fills the rest', () => {
+    it('normalizeCourseFeaturesInput honours explicit values and defaults the rest on', () => {
         const now = new Date('2026-08-06T12:00:00.000Z');
         const features = normalizeCourseFeaturesInput(
             {
@@ -90,9 +99,19 @@ describe('course Extra Feature capabilities', () => {
             enabledAt: now,
             enabledBy: 'creator-1',
         });
+        // Explicitly unchecked stays off.
         expect(features.writingFeedback).toEqual({ enabled: false });
-        expect(features.guidedPathway).toEqual({ enabled: false });
-        expect(features.scenarioGeneration).toEqual({ enabled: false });
+        // Omitted keys now inherit the registry default rather than staying off.
+        expect(features.guidedPathway).toEqual({
+            enabled: true,
+            enabledAt: now,
+            enabledBy: 'creator-1',
+        });
+        expect(features.scenarioGeneration).toEqual({
+            enabled: true,
+            enabledAt: now,
+            enabledBy: 'creator-1',
+        });
     });
 
     it('COURSE_FEATURE_LABELS covers every CourseFeatureId from the registry', () => {
@@ -103,5 +122,40 @@ describe('course Extra Feature capabilities', () => {
         expect(Object.keys(COURSE_FEATURE_LABELS).sort()).toEqual(
             COURSE_FEATURE_DEFINITIONS.map((d) => d.id).slice().sort()
         );
+    });
+});
+
+describe('new-course capability policy', () => {
+    it('enables every capability on a brand-new course', () => {
+        const features = buildNewCourseFeatures();
+        for (const def of COURSE_FEATURE_DEFINITIONS) {
+            expect(features[def.id]?.enabled).toBe(true);
+        }
+    });
+
+    it('inherits the default when the request body omits a capability', () => {
+        // The old implementation read `input?.[id]?.enabled === true`, which
+        // re-derived every key from the body and never consulted the registry,
+        // so the default was inert for create and course-setup alike.
+        const features = normalizeCourseFeaturesInput(undefined, 'user-1');
+        for (const def of COURSE_FEATURE_DEFINITIONS) {
+            expect(features[def.id]?.enabled).toBe(def.defaultEnabledForNewCourse);
+        }
+    });
+
+    it('still disables a capability the instructor explicitly unchecked', () => {
+        const features = normalizeCourseFeaturesInput(
+            { writingFeedback: { enabled: false } } as any,
+            'user-1'
+        );
+        expect(features.writingFeedback?.enabled).toBe(false);
+        expect(features.memoryAgent?.enabled).toBe(true);
+    });
+
+    it('records provenance for a capability enabled by default', () => {
+        const now = new Date('2026-08-31T00:00:00.000Z');
+        const features = normalizeCourseFeaturesInput(undefined, 'user-1', now);
+        expect(features.writingFeedback?.enabledBy).toBe('user-1');
+        expect(features.writingFeedback?.enabledAt).toEqual(now);
     });
 });

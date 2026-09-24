@@ -7,7 +7,7 @@
  * Mutations here affect **all** courses (enrollment arrays, affiliation reconciliation, etc.).
  */
 
-import type { GlobalUser } from '../../types/shared';
+import type { GlobalUser, InstructorOnboardingProgress } from '../../types/shared';
 import type { MongoDalContext } from './mongo-context';
 import { activeUsersMongoCollection } from './mongo-collections';
 
@@ -56,6 +56,7 @@ export async function findGlobalUserByUserId(
  *
  * Actions:
  * - Default `coursesEnrolled` to `[]`, `status` to `active`, stamp `createdAt` / `updatedAt`.
+ * - Start `instructorOnboarding` with all three tutorials owed.
  */
 export async function createGlobalUser(
     ctx: MongoDalContext,
@@ -70,6 +71,13 @@ export async function createGlobalUser(
         affiliation: userData.affiliation!,
         status: userData.status || 'active',
         isAdmin: userData.isAdmin === true,
+        // Every new user starts owing all three instructor tutorials. A student promoted to
+        // TA later is new to the instructor side, so they must be taught rather than skipped.
+        instructorOnboarding: {
+            contentSetup: false,
+            flagSetup: false,
+            monitorSetup: false
+        },
         createdAt: new Date(),
         updatedAt: new Date()
     };
@@ -97,12 +105,41 @@ export async function addCourseToGlobalUser(
     courseId: string
 ): Promise<void> {
     const collection = activeUsersMongoCollection(ctx.db);
+    // A Student View test student belongs to exactly one course, permanently: that single
+    // enrolment is what makes every other course refuse it. Excluding it here keeps the
+    // invariant even if a future caller reaches this delegate without the route guard.
     await collection.updateOne(
-        { puid },
+        { puid, isTestStudent: { $ne: true } },
         {
             $addToSet: { coursesEnrolled: courseId },
             $set: { updatedAt: new Date() }
         }
+    );
+}
+
+/**
+ * removeCourseFromGlobalUser - Pulls a course id from `coursesEnrolled` on `active-users`.
+ *
+ * Idempotent: no-op when the user or enrollment row is missing.
+ *
+ * @param ctx - MongoDalContext
+ * @param puid - Global user lookup key
+ * @param courseId - `activeCourse.id` to remove from the enrolled list
+ * @returns Promise<void>
+ */
+export async function removeCourseFromGlobalUser(
+    ctx: MongoDalContext,
+    puid: string,
+    courseId: string
+): Promise<void> {
+    const collection = activeUsersMongoCollection(ctx.db);
+    // Pull course id so removed instructors lose course-selection visibility
+    await collection.updateOne(
+        { puid },
+        {
+            $pull: { coursesEnrolled: courseId },
+            $set: { updatedAt: new Date() }
+        } as any
     );
 }
 
@@ -130,6 +167,117 @@ export async function updateGlobalUser(
         { returnDocument: 'after' }
     );
     return result as unknown as GlobalUser;
+}
+
+/**
+ * recordVerifiedCanvasAccount
+ *
+ * Remembers the Canvas account proven to belong to this user, so later Canvas requests on the same
+ * connection skip the roster check (`src/lms/canvas-identity-once.ts`). Stores the Canvas user id
+ * only — never an SIS identifier read from Canvas.
+ *
+ * @param ctx - MongoDalContext
+ * @param userId - Internal user id; the PUID is never used as a key here
+ * @param canvasUserId - Canvas user id of the verified account
+ */
+export async function recordVerifiedCanvasAccount(
+    ctx: MongoDalContext,
+    userId: string,
+    canvasUserId: string
+): Promise<void> {
+    const collection = activeUsersMongoCollection(ctx.db);
+    const now = new Date();
+    await collection.updateOne(
+        { userId },
+        { $set: { canvasVerifiedUserId: canvasUserId, canvasVerifiedAt: now, updatedAt: now } }
+    );
+}
+
+/**
+ * completeInstructorOnboardingStage
+ *
+ * Marks one instructor tutorial stage complete for the user located by `puid`.
+ *
+ * Writes a dotted path rather than going through {@link updateGlobalUser}, whose shallow
+ * `$set` would replace the whole `instructorOnboarding` subdocument and wipe the sibling
+ * stages. Only ever sets `true` — a stage is never un-completed.
+ *
+ * @param ctx - MongoDalContext
+ * @param puid - Global identity key; never leaves this collection
+ * @param stage - Which tutorial stage completed
+ *
+ * @returns Post-image `GlobalUser`, or `null` when no user matches `puid`
+ */
+export async function completeInstructorOnboardingStage(
+    ctx: MongoDalContext,
+    puid: string,
+    stage: keyof InstructorOnboardingProgress
+): Promise<GlobalUser | null> {
+    const collection = activeUsersMongoCollection(ctx.db);
+    const result = await collection.findOneAndUpdate(
+        { puid },
+        {
+            $set: {
+                [`instructorOnboarding.${stage}`]: true,
+                updatedAt: new Date()
+            }
+        },
+        { returnDocument: 'after' }
+    );
+    return (result as unknown as GlobalUser | null) ?? null;
+}
+
+
+/**
+ * Every per-user instructor tutorial key.
+ *
+ * `courseSetup` is absent on purpose: it is course state, not tutorial progress, and
+ * lives on the course document.
+ */
+export const INSTRUCTOR_ONBOARDING_TUTORIAL_STAGES: ReadonlyArray<keyof InstructorOnboardingProgress> = [
+    'contentSetup',
+    'flagSetup',
+    'monitorSetup',
+    'scenarioGeneration',
+    'writingFeedback',
+    'guidedPathway'
+];
+
+/**
+ * skipRemainingInstructorOnboardingStages
+ *
+ * Marks every instructor tutorial stage taught for the user located by `puid`, which is
+ * what choosing Skip tutorial means: skipping is recorded exactly like being taught, so
+ * it follows the person across courses and the tutorials are never offered again.
+ *
+ * Writes the six dotted paths in one update for the same reason the single-stage delegate
+ * does — a shallow `$set` of `instructorOnboarding` would replace the subdocument. Only
+ * ever sets `true`; a stage is never un-completed.
+ *
+ * @param ctx - MongoDalContext
+ * @param puid - Global identity key; never leaves this collection
+ *
+ * @returns Post-image `GlobalUser`, or `null` when no user matches `puid`
+ */
+export async function skipRemainingInstructorOnboardingStages(
+    ctx: MongoDalContext,
+    puid: string
+): Promise<GlobalUser | null> {
+    const collection = activeUsersMongoCollection(ctx.db);
+    const stageUpdates = Object.fromEntries(
+        INSTRUCTOR_ONBOARDING_TUTORIAL_STAGES.map(stage => [`instructorOnboarding.${stage}`, true])
+    );
+    const result = await collection.findOneAndUpdate(
+        { puid },
+        {
+            $set: {
+                ...stageUpdates,
+                updatedAt: new Date()
+            }
+        },
+        { returnDocument: 'after' }
+    );
+    return (result as unknown as GlobalUser | null) ?? null;
 }
 
 /**

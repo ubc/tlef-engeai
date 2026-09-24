@@ -53,3 +53,18 @@ export function resolveAffiliation(
         needsDbUpdate: false
     };
 }
+
+/** Affiliations blocked from app entry (non-admin). */
+export function isAppEntryBlockedAffiliation(affiliation: AffiliationValue): boolean {
+    return affiliation === 'empty';
+}
+
+/** Global affiliations that join courses with student flows (course code, student UI). */
+export function joinsCourseAsStudent(affiliation: AffiliationValue): boolean {
+    return affiliation === 'student' || affiliation === 'staff';
+}
+
+/** Course-scoped User.affiliation — staff stored as student in roster/analytics. */
+export function courseScopedAffiliation(affiliation: AffiliationValue): 'student' | 'faculty' {
+    return affiliation === 'faculty' ? 'faculty' : 'student';
+}

@@ -22,11 +22,8 @@
 
 .system-prompts-root.main-content {
     width: 100%;
-    display: flex;
-    flex-direction: column;
     flex: 1;
     min-height: 0;
-    overflow: hidden;
 }
 
 .system-prompts-topbar.system-prompts-header {
@@ -35,27 +32,11 @@
     justify-content: space-between;
     align-items: center;
     gap: 0.75rem;
-    position: sticky;
-    top: 0;
-    z-index: 10;
-    margin-bottom: 12px;
-    padding: 16px 20px;
-    background: var(--color-chbe-green);
-    border-radius: 12px;
-    border: 1px solid var(--border-color);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.system-prompts-topbar.mobile-header-bar {
-    gap: 0.75rem;
 }
 
 .system-prompts-topbar .mobile-header-title {
     flex: 0 1 auto;
     min-width: 0;
-    color: white;
-    margin: 0;
-    font-size: 1.35rem;
     white-space: nowrap;
 }
 
@@ -81,9 +62,9 @@
     min-height: 2.25rem;
     padding: 8px 12px;
     border-radius: 8px;
-    border: 1px solid rgba(255, 255, 255, 0.5);
-    background: rgba(255, 255, 255, 0.15);
-    color: white;
+    border: 2px solid var(--color-chbe-green);
+    background: white;
+    color: var(--color-chbe-green);
     font-weight: 600;
     font-size: 0.9rem;
     cursor: pointer;
@@ -91,7 +72,7 @@
 }
 
 .system-prompt-topbar-control:hover {
-    background: rgba(255, 255, 255, 0.25);
+    background: var(--hover-bg);
 }
 
 .system-prompt-mode-trigger.system-prompt-topbar-control {
@@ -119,8 +100,6 @@
 .system-prompt-kebab-btn.system-prompt-topbar-control {
     padding: 8px;
     min-width: 2.25rem;
-    background: rgba(255, 255, 255, 0.15);
-    border: 1px solid rgba(255, 255, 255, 0.5);
 }
 
 .system-prompt-kebab-btn.system-prompt-topbar-control .feather,

@@ -6,7 +6,7 @@ EngE-AI is an Express/TypeScript/MongoDB application with a vanilla TypeScript f
 
 - Never edit generated `dist/` or `public/dist/` files.
 - Keep HTTP handlers thin. Put persistence in `src/db/mongo/` delegates exposed through `EngEAI_MongoDB`.
-- Apply course-scoped RBAC to every course API. Never expose or persist student PUIDs outside `active-users`.
+- Apply course-scoped RBAC to every course API. Student PUIDs may be persisted outside `active-users` where a feature requires them, but must stay staff-gated, excluded from logs, and absent from student-facing responses.
 - Mirror shared API types in both `src/types/shared.ts` and `public/scripts/types.ts`.
 - Use lowercase kebab-case filenames, camelCase values/functions, and PascalCase types/classes.
 - Add behavior-first TSDoc to exported APIs and step comments to non-trivial pipelines.
@@ -40,7 +40,7 @@ Repository evidence and current official course material override historical sum
 ## Writing Feedback invariants
 
 - Writing Feedback is opt-in per course. Disabled courses must not expose UI or operational APIs.
-- Instructors/admins configure the capability; instructors and TAs operate it once enabled.
+- Instructors/admins enable or disable the capability for a course. Once enabled, instructors, admins, and TAs all have full workspace parity — assignments, rubrics, review, approval, and release (D-049).
 - Model results are drafts. A human must approve before any release.
 - Rubric judgments require exact evidence from verified submission text; never invent weights.
 - OCR text must be staff-verified before feedback generation.

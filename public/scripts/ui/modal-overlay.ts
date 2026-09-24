@@ -3,19 +3,20 @@
  * 
  * This module provides a comprehensive modal overlay system for EngE-AI.
  * It supports various types of modals including error, warning, success, info,
- * disclaimer, and custom content modals.
+ * and custom content modals.
  * 
  * FEATURES:
- * - Multiple modal types (error, warning, success, info, disclaimer, custom)
+ * - Multiple modal types (error, warning, success, info, custom)
  * - Keyboard navigation support (ESC to close, Tab navigation)
  * - Focus management and accessibility
+ * - Stack-safe nested modal focus, keyboard, and body-scroll handling
  * - Responsive design
  * - Animation support
  * - Promise-based API for user interactions
  * 
  * @author: gatahcha
  * @date: 2025-01-27
- * @version: 1.0.0
+ * @version: 1.1.0
  */
 
 import type {
@@ -30,6 +31,10 @@ import {
     openCatalogEditModal,
     type CatalogEditModalOptions,
 } from './catalog-edit-modal.js';
+
+let nextModalId = 1;
+const visibleModalStack: ModalOverlay[] = [];
+let bodyOverflowBeforeModalStack = '';
 export {
     openDivisionReorderModal,
     type DivisionReorderModalOptions,
@@ -52,7 +57,7 @@ export interface ContentInputSubmitResult {
     successMessage?: string;
     /** If true, do not show {@link showSuccessModal} after close */
     skipSuccessModal?: boolean;
-    /** Runs after upload success modal closes */
+    /** Runs after the success modal closes, or straight away when `skipSuccessModal` is set */
     afterSuccess?: () => void | Promise<void>;
 }
 
@@ -119,6 +124,7 @@ export class ModalOverlay {
     public isVisible = false;
     private focusableElements: HTMLElement[] = [];
     private lastFocusedElement: HTMLElement | null = null;
+    private readonly titleId = `modal-title-${nextModalId++}`;
 
     /**
      * Creates and shows a modal with the specified configuration
@@ -150,7 +156,11 @@ export class ModalOverlay {
         this.overlay.className = 'modal-overlay';
         this.overlay.setAttribute('role', 'dialog');
         this.overlay.setAttribute('aria-modal', 'true');
-        this.overlay.setAttribute('aria-labelledby', 'modal-title');
+        this.overlay.setAttribute('aria-labelledby', this.titleId);
+
+        if (config.overlayClass) {
+            this.overlay.classList.add(config.overlayClass);
+        }
 
         // Create container
         this.container = document.createElement('div');
@@ -178,17 +188,9 @@ export class ModalOverlay {
             this.container.appendChild(footer);
         }
 
-        // Custom body controls (e.g. choice cards) must join the tab trap
-        this.container.querySelectorAll<HTMLElement>(
-            '.modal-body button, .modal-body [href], .modal-body input, .modal-body select, .modal-body textarea'
-        ).forEach((el) => {
-            if (!this.focusableElements.includes(el)) {
-                this.focusableElements.push(el);
-            }
-        });
-
         this.overlay.appendChild(this.container);
         document.body.appendChild(this.overlay);
+        this.refreshFocusableElements();
 
         // Set up event listeners
         this.setupEventListeners(config);
@@ -205,7 +207,7 @@ export class ModalOverlay {
         header.className = 'modal-header';
 
         const title = document.createElement('h2');
-        title.id = 'modal-title';
+        title.id = this.titleId;
         title.className = 'modal-title';
         title.textContent = config.title;
 
@@ -297,7 +299,7 @@ export class ModalOverlay {
         // Overlay click to close
         if (config.closeOnOverlayClick !== false) {
             this.overlay.addEventListener('click', (e) => {
-                if (e.target === this.overlay) {
+                if (e.target === this.overlay && this.isTopmostModal()) {
                     this.close('overlay');
                 }
             });
@@ -305,14 +307,7 @@ export class ModalOverlay {
 
         // Escape key to close
         if (config.closeOnEscape !== false) {
-            const escapeHandler = (e: KeyboardEvent) => {
-                if (e.key === 'Escape') {
-                    this.close('escape');
-                }
-            };
-            
-            document.addEventListener('keydown', escapeHandler);
-            this.overlay.setAttribute('data-escape-handler', 'true');
+            document.addEventListener('keydown', this.handleEscapeKey);
         }
 
         // Tab navigation (overlay-level)
@@ -346,6 +341,8 @@ export class ModalOverlay {
      * @param e - Keyboard event
      */
     private handleTabNavigation(e: KeyboardEvent): void {
+        if (!this.isTopmostModal()) return;
+        this.refreshFocusableElements();
         if (this.focusableElements.length === 0) return;
 
         const firstElement = this.focusableElements[0];
@@ -373,7 +370,8 @@ export class ModalOverlay {
      */
     private handleEnterKey = (e: KeyboardEvent): void => {
         // Only handle Enter when this modal is visible
-        if (!this.isVisible || e.key !== 'Enter') return;
+        if (!this.isVisible || !this.isTopmostModal() || e.key !== 'Enter') return;
+        this.refreshFocusableElements();
 
         // Don't handle Enter if user is typing in an input field (except buttons)
         const activeElement = document.activeElement;
@@ -385,7 +383,7 @@ export class ModalOverlay {
 
         // Prevent default behavior (form submission, etc.) and stop propagation
         e.preventDefault();
-        e.stopPropagation();
+        e.stopImmediatePropagation();
 
         // Modal-specific Enter key handling based on modal type
         if (!this.container) return;
@@ -449,7 +447,6 @@ export class ModalOverlay {
         if (classList.contains('modal-error')) return 'error';
         if (classList.contains('modal-success')) return 'success';
         if (classList.contains('modal-info')) return 'info';
-        if (classList.contains('modal-disclaimer')) return 'disclaimer';
         
         return 'custom';
     }
@@ -514,6 +511,15 @@ export class ModalOverlay {
         if (!this.overlay) return;
 
         this.isVisible = true;
+        const previousTop = visibleModalStack[visibleModalStack.length - 1];
+        if (visibleModalStack.length === 0) {
+            bodyOverflowBeforeModalStack = document.body.style.overflow;
+        }
+        if (previousTop?.overlay) {
+            previousTop.overlay.setAttribute('aria-hidden', 'true');
+            previousTop.overlay.inert = true;
+        }
+        visibleModalStack.push(this);
         document.body.style.overflow = 'hidden';
 
         // Double rAF so the initial opacity/transform paint before .show (CSS transition needs it)
@@ -523,6 +529,7 @@ export class ModalOverlay {
             });
         });
 
+        this.refreshFocusableElements();
         if (this.focusableElements.length > 0) {
             this.focusableElements[0].focus();
         } else {
@@ -539,23 +546,31 @@ export class ModalOverlay {
         if (!this.overlay || !this.isVisible) return;
 
         this.isVisible = false;
-
-        // Remove escape key listener
-        const escapeHandler = this.overlay.getAttribute('data-escape-handler');
-        if (escapeHandler) {
-            document.removeEventListener('keydown', this.handleEscapeKey);
-        }
+        const stackIndex = visibleModalStack.indexOf(this);
+        const wasTopmost = stackIndex === visibleModalStack.length - 1;
+        if (stackIndex >= 0) visibleModalStack.splice(stackIndex, 1);
+        document.removeEventListener('keydown', this.handleEscapeKey);
+        document.removeEventListener('keydown', this.handleEnterKey);
 
         // Hide modal with animation
         this.overlay.classList.remove('show');
         this.overlay.classList.add('hide');
 
-        // Restore body scroll
-        document.body.style.overflow = '';
+        // Keep the page locked until the final stacked modal closes.
+        const nextTop = visibleModalStack[visibleModalStack.length - 1];
+        if (nextTop?.overlay) {
+            nextTop.overlay.removeAttribute('aria-hidden');
+            nextTop.overlay.inert = false;
+        }
+        if (visibleModalStack.length === 0) {
+            document.body.style.overflow = bodyOverflowBeforeModalStack;
+        }
 
-        // Restore focus
-        if (this.lastFocusedElement) {
+        // Restore focus only when this was the interactive top layer.
+        if (wasTopmost && this.lastFocusedElement?.isConnected) {
             this.lastFocusedElement.focus();
+        } else if (wasTopmost && nextTop) {
+            nextTop.focusFirstElement();
         }
 
         // Clean up after animation
@@ -576,10 +591,39 @@ export class ModalOverlay {
      * @param e - Keyboard event
      */
     private handleEscapeKey = (e: KeyboardEvent): void => {
-        if (e.key === 'Escape') {
+        if (e.key === 'Escape' && this.isTopmostModal()) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
             this.close('escape');
         }
     };
+
+    private isTopmostModal(): boolean {
+        return visibleModalStack[visibleModalStack.length - 1] === this;
+    }
+
+    private refreshFocusableElements(): void {
+        if (!this.container) {
+            this.focusableElements = [];
+            return;
+        }
+        const selector = [
+            'button:not([disabled])',
+            '[href]',
+            'input:not([disabled]):not([type="hidden"])',
+            'select:not([disabled])',
+            'textarea:not([disabled])',
+            '[tabindex]:not([tabindex="-1"])',
+            '[contenteditable="true"]'
+        ].join(',');
+        this.focusableElements = [...this.container.querySelectorAll<HTMLElement>(selector)]
+            .filter((element) => !element.closest('[hidden]') && element.getAttribute('aria-hidden') !== 'true');
+    }
+
+    private focusFirstElement(): void {
+        this.refreshFocusableElements();
+        (this.focusableElements[0] ?? this.overlay)?.focus();
+    }
 
     /**
      * Cleans up modal resources
@@ -651,6 +695,76 @@ export async function showErrorModal(
         content: message,
         buttons: buttons || [
             { text: 'OK', type: 'primary', closeOnClick: true }
+        ]
+    });
+}
+
+/**
+ * showViewerModal - shows a document preview with an explicit download action
+ *
+ * Used for feedback PDFs. The route serves them `inline`, so the supplied frame renders the
+ * document in place rather than pushing a file at the reviewer, and Download stays available
+ * as a deliberate choice rather than the only option.
+ *
+ * Geometry lives in `.modal--viewer` rather than an inline `maxWidth`: an inline style
+ * outranks the class, so the two cannot both own the width.
+ *
+ * @param title - Name of the document being previewed
+ * @param frame - Prepared preview element, already pointed at the document
+ * @param downloadUrl - Href for the explicit download action
+ * @returns Modal result once the reviewer closes the preview
+ */
+export async function showViewerModal(
+    title: string,
+    frame: HTMLElement,
+    downloadUrl: string
+): Promise<ModalResult> {
+    const modal = getModal();
+    return modal.show({
+        type: 'info',
+        title,
+        content: frame,
+        customClass: 'modal--viewer',
+        buttons: [
+            {
+                text: 'Download',
+                type: 'secondary',
+                closeOnClick: false,
+                action: () => { window.open(downloadUrl, '_blank', 'noopener'); }
+            },
+            { text: 'Close', type: 'primary', closeOnClick: true }
+        ]
+    });
+}
+
+/**
+ * showGridModal - shows a wide table for reading and editing, over a blurred page
+ *
+ * Used for the Writing Feedback rubric grading grid. The supplied element is shown, not
+ * copied, so a caller may hand over a live editor and keep reading its inputs after the
+ * modal closes. The overlay blurs rather than only dimming, because the grid is read
+ * against the feedback it grades and the page behind should recede.
+ *
+ * @param title - Name of what is being shown
+ * @param content - Prepared element, shown in place
+ * @returns Modal result once the reviewer closes it
+ */
+export async function showGridModal(
+    title: string,
+    content: HTMLElement
+): Promise<ModalResult> {
+    const modal = getModal();
+    return modal.show({
+        type: 'info',
+        title,
+        content,
+        maxWidth: 'min(1400px, 96vw)',
+        customClass: 'modal--grading',
+        overlayClass: 'modal-overlay--grading',
+        // Grades are typed in here, so a stray click beside the grid must not dismiss it.
+        closeOnOverlayClick: false,
+        buttons: [
+            { text: 'Close', type: 'primary', closeOnClick: true }
         ]
     });
 }
@@ -783,8 +897,46 @@ export async function showSkipOnboardingModal(
 }
 
 /**
+ * Action resolved when staff confirm leaving the staff tutorial.
+ *
+ * The modal resolves slugified button labels (`text.toLowerCase().replace(/\s+/g, '-')`),
+ * which keeps the label's comma, so the value is declared here rather than re-derived by
+ * every caller.
+ */
+export const SKIP_TUTORIAL_CONFIRM_ACTION = 'yes,-skip-it';
+
+/**
+ * Staff tutorial exit confirmation.
+ *
+ * Deliberately separate from {@link showSkipOnboardingModal}, which is the student
+ * per-course offer: this one states that the remaining tutorials are marked taught
+ * everywhere, because for staff the write is final.
+ *
+ * Continue is the primary button on purpose. Enter activates the primary button and
+ * Escape resolves to `escape`, so neither key can trigger the irreversible write.
+ *
+ * @returns Modal result whose `action` is {@link SKIP_TUTORIAL_CONFIRM_ACTION} only when
+ *          staff explicitly chose to leave
+ */
+export async function showSkipTutorialModal(): Promise<ModalResult> {
+    const modal = getModal();
+    return modal.show({
+        type: 'info',
+        title: 'Skip the onboarding tutorial?',
+        content:
+            'You can leave the tutorial now and go straight to your course. The remaining tutorials ' +
+            'will be marked as taught, so EngE-AI will not show them to you again — on this course or any other.',
+        maxWidth: '480px',
+        buttons: [
+            { text: 'Yes, skip it', type: 'muted', closeOnClick: true },
+            { text: 'No, continue with the tutorial', type: 'primary', closeOnClick: true }
+        ]
+    });
+}
+
+/**
  * Shows an input modal for text entry
- * 
+ *
  * @param title - Modal title
  * @param message - Instruction message
  * @param currentValue - Pre-filled value in the input
@@ -874,31 +1026,6 @@ export async function showInputModal(
             input.focus();
             input.select();
         }, 100);
-    });
-}
-
-/**
- * Shows a disclaimer modal
- * 
- * @param title - Modal title
- * @param content - Disclaimer content (HTML string)
- * @param buttons - Optional custom buttons
- * @returns Promise that resolves when modal is closed
- */
-export async function showDisclaimerModal(
-    title: string = 'Disclaimer',
-    content: string,
-    buttons?: ModalButton[]
-): Promise<ModalResult> {
-    const modal = getModal();
-    return modal.show({
-        type: 'disclaimer',
-        title,
-        content,
-        maxWidth: '600px',
-        buttons: buttons || [
-            { text: 'I Understand', type: 'primary', closeOnClick: true }
-        ]
     });
 }
 
@@ -1565,18 +1692,17 @@ export async function openContentInputModal(options: ContentInputModalOptions): 
                     (result as ContentInputSubmitResult).success;
                 if (success) {
                     const r = result as ContentInputSubmitResult;
-                    if (r.skipSuccessModal) {
-                        return;
-                    }
-                    const title =
-                        r.successTitle ??
-                        (r.chunksGenerated !== undefined ? 'Upload Success' : 'Success');
-                    let message = r.successMessage;
-                    if (!message && r.chunksGenerated !== undefined) {
-                        message = `Document uploaded successfully! Generated ${r.chunksGenerated} searchable chunks.`;
-                    }
-                    if (message) {
-                        await showSuccessModal(message, title);
+                    if (!r.skipSuccessModal) {
+                        const title =
+                            r.successTitle ??
+                            (r.chunksGenerated !== undefined ? 'Upload Success' : 'Success');
+                        let message = r.successMessage;
+                        if (!message && r.chunksGenerated !== undefined) {
+                            message = `Document uploaded successfully! Generated ${r.chunksGenerated} searchable chunks.`;
+                        }
+                        if (message) {
+                            await showSuccessModal(message, title);
+                        }
                     }
                     if (r.afterSuccess) {
                         await r.afterSuccess();
@@ -1772,6 +1898,8 @@ export async function openUploadModal(
               success: boolean;
               chunksGenerated?: number;
               generatedStruggleTopics?: InstructorStruggleTopic[];
+              /** Set when `afterSuccess` reports the upload itself, replacing the generic success modal. */
+              skipSuccessModal?: boolean;
               afterSuccess?: () => void | Promise<void>;
           }
         | void
@@ -1810,6 +1938,7 @@ export async function openUploadModal(
             if (result && (result as { success?: boolean }).success) {
                 const uploadResult = result as {
                     chunksGenerated?: number;
+                    skipSuccessModal?: boolean;
                     afterSuccess?: () => void | Promise<void>;
                 };
                 const chunksGenerated = uploadResult.chunksGenerated ?? 0;
@@ -1818,6 +1947,7 @@ export async function openUploadModal(
                     chunksGenerated,
                     successTitle: 'Upload Success',
                     successMessage: `Document uploaded successfully! Generated ${chunksGenerated} searchable chunks.`,
+                    skipSuccessModal: uploadResult.skipSuccessModal,
                     afterSuccess: uploadResult.afterSuccess,
                 };
             }
@@ -1857,7 +1987,7 @@ export async function showInactivityWarningModal(
     countdownDisplay.id = 'inactivity-countdown';
     countdownDisplay.style.fontSize = '48px';
     countdownDisplay.style.fontWeight = 'bold';
-    countdownDisplay.style.color = 'var(--color-chbe-green, #4CAF50)';
+    countdownDisplay.style.color = '#f44336';
     countdownDisplay.style.marginBottom = '16px';
     countdownDisplay.textContent = `${countdown}`;
     
@@ -1900,9 +2030,8 @@ export async function showInactivityWarningModal(
         
         // Change color as time runs out
         if (countdown <= 10) {
-            countdownDisplay.style.color = '#f44336'; // Red
-        } else if (countdown <= 30) {
-            countdownDisplay.style.color = '#ff9800'; // Orange
+            countdownDisplay.classList.add('danger');
+            countdownDisplay.style.color = '#f44336';
         }
         
         if (countdown <= 0) {
@@ -1929,6 +2058,7 @@ export async function showInactivityWarningModal(
     try {
         const result = await modal.show({
             type: 'warning',
+            customClass: 'modal-inactivity',
             title: 'Session Timeout Warning',
             content: countdownContainer,
             buttons: [
@@ -1977,13 +2107,15 @@ export async function showInactivityWarningModal(
 export default {
     ModalOverlay,
     showErrorModal,
+    showGridModal,
+    showViewerModal,
     showWarningModal,
     showSuccessModal,
     showInfoModal,
     showConfirmModal,
     showSkipOnboardingModal,
+    showSkipTutorialModal,
     showInputModal,
-    showDisclaimerModal,
     showHelpModal,
     showCustomModal,
     showSimpleErrorModal,

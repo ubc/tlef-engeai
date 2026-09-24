@@ -33,7 +33,16 @@
 import express, { Request, Response } from 'express';
 import archiver from 'archiver';
 import { asyncHandler, asyncHandlerWithAuth } from '../middleware/async-handler';
-import { requireAdminForCourseAPI, requireCourseFeatureAPI, requireInstructorForCourseAPI, requireInstructorGlobal, requirePostPeriodAnalyticsAPI, requireRosterManageAPI } from '../middleware/require-course-role';
+import {
+    requireAdminForCourseAPI,
+    requireCourseFeatureAPI,
+    requireInstructorForCourseAPI,
+    requireInstructorGlobal,
+    requireInstructorOrAdminForCourseAPI,
+    requirePostPeriodAnalyticsAPI,
+    requireRosterManageAPI,
+    requireSelfOrInstructorForCourseAPI
+} from '../middleware/require-course-role';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import {
     InvalidInstructorStruggleTopicReorderError,
@@ -45,7 +54,9 @@ import {
     parseStruggleTopicsByStudentBody,
     ReportFixtureSeedError
 } from '../db/mongo/report-fixture-seed-mongo';
+import { materialChunkIds } from '../migrate/schema-walker';
 import { activeCourse, AdditionalMaterial, TopicOrWeekInstance, TopicOrWeekItem, FlagReport, User, InitialAssistantPrompt, SystemPromptItem } from '../types/shared';
+import * as FlagMongo from '../db/mongo/flag-mongo';
 import { IDGenerator } from '../utils/unique-id-generator';
 import { memoryAgent } from '../memory-agent/memory-agent';
 import dotenv from 'dotenv';
@@ -56,6 +67,7 @@ import { isAdminUser } from '../utils/admin';
 import { filterAccessibleCourses, buildCourseSelectionByPeriod, isCourseAccessible } from '../helpers/course-access';
 import { validateCourseSetupFields } from '../helpers/instructor-onboarding-redirect';
 import { buildTopicOrWeekInstances } from '../helpers/build-default-course-content';
+import { provisionCourse } from '../helpers/provision-course';
 import {
     buildCourseAnalyticsAccessFlags,
     canAccessPostPeriodAnalytics,
@@ -98,9 +110,12 @@ import {
 import { normalizeRouteParams, routeParam } from '../helpers/route-params';
 import { contentDispositionAttachmentPdf } from '../report-generation';
 import type { ConversationZipExportRow } from '../db/mongo/conversation-export-mongo';
+import { withoutTestStudents } from '../db/mongo/student-view-filter';
 import { mountSystemPromptConfigRoutes } from './mongo/system-prompt-config-routes';
 import { mountScenarioQuestionRoutes } from './mongo/scenario-questions-routes';
 import { mountPathwaysRoutes } from './mongo/pathways-routes';
+import { mountGuidedPathwayFlagRoutes } from './mongo/guided-pathway-flag-routes';
+import { isManualFlagType, MANUAL_FLAG_TYPES } from '../flags/manual-flag-policy';
 
 const router = express.Router();
 export default router;
@@ -317,25 +332,6 @@ router.post('/', validateNewCourse, requireInstructorGlobal, asyncHandlerWithAut
             });
         }
 
-        //creating id - ensure date is a Date object for ID generation
-        const tempActiveClass = {
-            ...req.body,
-            courseName,
-            date: new Date()
-        } as activeCourse;
-        const id = instance.idGenerator.courseID(tempActiveClass);
-
-        const courseContent = buildTopicOrWeekInstances(
-            req.body.frameType,
-            req.body.tilesNumber,
-            courseName,
-            instance.idGenerator
-        );
-
-        //add the coursecontent to the body
-        req.body.topicOrWeekInstances = courseContent;
-
-        // Get the current user (course creator) from session
         const globalUser = (req.session as any).globalUser;
         if (!globalUser) {
             return res.status(401).json({
@@ -344,130 +340,24 @@ router.post('/', validateNewCourse, requireInstructorGlobal, asyncHandlerWithAut
             });
         }
 
-        // Ensure the creator is in the instructors array
-        const creatorUserId = globalUser.userId;
-        const creatorName = globalUser.name;
-        
-        // Helper function to check if instructor is already in the array (handles both old and new formats)
-        const isInstructorInArray = (instructors: any[]): boolean => {
-            if (!instructors || instructors.length === 0) return false;
-            return instructors.some(inst => {
-                if (typeof inst === 'string') {
-                    return inst === creatorUserId; // Old format
-                } else if (inst && inst.userId) {
-                    return inst.userId === creatorUserId; // New format
-                }
-                return false;
-            });
-        };
-
-        // Get existing instructors and convert to new format if needed
-        const existingInstructors = req.body.instructors || [];
-        let updatedInstructors = existingInstructors.map((inst: any) => {
-            // Convert old format to new format if needed
-            if (typeof inst === 'string') {
-                return { userId: inst, name: 'Unknown' }; // Will be updated later if needed
-            }
-            return inst; // Already in new format
-        });
-
-        // Add creator to instructors array if not already present
-        if (!isInstructorInArray(updatedInstructors)) {
-            updatedInstructors.push({
-                userId: creatorUserId,
-                name: creatorName
-            });
-            appLogger.log(`[CREATE-COURSE] Added course creator ${creatorName} (${creatorUserId}) to instructors array`);
-        }
-
-        let courseData: activeCourse = {
-            ...req.body, //spread the properties of the body first
-            id: id, // use the generated id
+        // Provisioning lives in provision-course.ts because LMS import creates courses too and
+        // the two must stay identical. `courseSetup` keeps its long-standing default of true
+        // here: this endpoint is reached from the onboarding wizard, which has already collected
+        // the setup answers.
+        const courseData = await provisionCourse(instance, {
             courseName,
-            date: new Date(),
-            onBoarded: true, // default to false for new courses
-            instructors: updatedInstructors,
-            teachingAssistants: req.body.teachingAssistants || [],
-            // Normalize Extra Features via dashboard-setting defaults (new courses all off unless opted in).
-            features: normalizeCourseFeaturesInput(req.body.features, creatorUserId),
+            frameType: req.body.frameType,
             tilesNumber: req.body.tilesNumber || 0,
+            creator: globalUser,
+            instructors: req.body.instructors,
+            teachingAssistants: req.body.teachingAssistants,
+            features: req.body.features,
             courseSetup: req.body.courseSetup ?? true
-        };
-        
-        
-        await instance.postActiveCourse(courseData);
-        
-        // Fetch the created course to get the generated courseCode
-        const createdCourse = await instance.getActiveCourse(id);
-        if (createdCourse) {
-            courseData = createdCourse as unknown as activeCourse;
-        }
-
-        // Add creator to the course's users collection ({courseName}_users)
-        try {
-            const courseName = courseData.courseName;
-            const collectionNames = await instance.getCollectionNames(courseName);
-            
-            // Check if CourseUser already exists
-            let courseUser = await instance.findStudentByUserId(courseName, creatorUserId);
-            
-            if (!courseUser) {
-                // Create CourseUser entry for the creator
-                const newCourseUserData: Partial<User> = {
-                    name: creatorName,
-                    userId: creatorUserId,
-                    courseName: courseName,
-                    courseId: id,
-                    userOnboarding: false, // Creator doesn't need onboarding
-                    affiliation: 'faculty',
-                    status: 'active',
-                    chats: []
-                };
-                
-                await instance.createStudent(courseName, newCourseUserData);
-                appLogger.log(`[CREATE-COURSE] Created CourseUser entry for creator ${creatorName} (${creatorUserId}) in ${collectionNames.users}`);
-            } else {
-                appLogger.log(`[CREATE-COURSE] CourseUser entry already exists for creator ${creatorName} (${creatorUserId})`);
-            }
-        } catch (courseUserError) {
-            appLogger.error(`[CREATE-COURSE] ⚠️ Error creating CourseUser for creator:`, { error: courseUserError });
-            // Continue even if CourseUser creation fails - course is already created
-        }
-
-        // Add course to creator's coursesEnrolled array
-        try {
-            if (!globalUser.coursesEnrolled.includes(id)) {
-                await instance.addCourseToGlobalUser(globalUser.puid, id);
-                appLogger.log(`[CREATE-COURSE] Added course ${id} to creator's enrolled list`);
-            }
-        } catch (enrollmentError) {
-            appLogger.error(`[CREATE-COURSE] ⚠️ Error adding course to creator's enrolled list:`, { error: enrollmentError });
-            // Continue even if enrollment fails - course is already created
-        }
-
-        // Always add current platform admins when a course is initiated (any creator)
-        try {
-            const courseName = courseData.courseName;
-            const instructorsWithAdmins = await addAdminsToCourse(
-                instance,
-                id,
-                courseName,
-                courseData.instructors
-            );
-            await instance.updateActiveCourse(id, { instructors: instructorsWithAdmins });
-            courseData = { ...courseData, instructors: instructorsWithAdmins };
-            appLogger.log(`[CREATE-COURSE] Added admins to course ${id} (creator: ${creatorName})`);
-        } catch (adminError) {
-            appLogger.error(`[CREATE-COURSE] Error adding admins to course:`, { error: adminError });
-        }
-
-        // Since activeCourse is the correct type, we can return it directly
-        // This now includes the generated courseCode
-        const activeClassData: activeCourse = courseData as activeCourse;
+        });
 
         res.status(201).json({
             success: true,
-            data: activeClassData,
+            data: courseData,
             message: 'Course created successfully'
         });
 
@@ -726,11 +616,14 @@ router.get('/course-selection', asyncHandlerWithAuth(async (req: Request, res: R
     const defaultPeriodId = await instance.getDefaultAcademicPeriodId();
     const periods = await instance.listAcademicPeriods();
     const allCourses = await instance.getAllActiveCourses();
+    const platformAdmins = await instance.findAdminGlobalUsers();
+    const platformAdminUserIds = new Set(platformAdmins.map((u) => u.userId));
     const data = buildCourseSelectionByPeriod(
         periods,
         allCourses as activeCourse[],
         globalUser,
-        defaultPeriodId
+        defaultPeriodId,
+        platformAdminUserIds
     );
 
     res.status(200).json({
@@ -853,7 +746,7 @@ router.post(
             updatedInstructors.push({ userId: creatorUserId, name: creatorName });
         }
 
-        // Apply Extra Features from setup body via shared normalizer (defaults all off).
+        // Apply Extra Features from setup body via shared normalizer (defaults all on).
         const features = normalizeCourseFeaturesInput(req.body?.features, creatorUserId);
 
         await instance.updateActiveCourse(courseId, {
@@ -1147,6 +1040,41 @@ async function patchCourseFeature(
 }
 
 /**
+ * POST /:courseId/onboarding/content-setup
+ * Records that Document Setup has filed this course's content. Course staff only.
+ *
+ * Document Setup does two jobs: it teaches the viewer, recorded per-user by
+ * `PATCH /api/user/onboarding/instructor-stage`, and it files the course's content,
+ * recorded here. Splitting them is what lets a veteran creating a second course still be
+ * sent through Document Setup while never being re-taught the feature tutorials.
+ *
+ * This is the only path that may set `contentSetup`: `PUT /api/courses/:id` strips it so a
+ * stale client cannot resurrect the deprecated course-level tutorial flags.
+ *
+ * @route POST /api/courses/:courseId/onboarding/content-setup
+ * @param {string} courseId - Course ID (path param)
+ * @returns {object} { success: boolean, error?: string }
+ * @response 200 - Recorded
+ * @response 401 - User not authenticated
+ * @response 403 - Course staff access required
+ * @response 404 - Course not found
+ */
+router.post(
+    '/:courseId/onboarding/content-setup',
+    requireInstructorForCourseAPI(['params']),
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const updated = await instance.markCourseContentSetupComplete(routeParam(req.params, 'courseId'));
+
+        if (!updated) {
+            return res.status(404).json({ success: false, error: 'Course not found' });
+        }
+
+        return res.status(200).json({ success: true });
+    })
+);
+
+/**
  * PUT /:id
  * Update a course. Instructors only.
  *
@@ -1171,8 +1099,21 @@ router.put('/:id', requireInstructorForCourseAPI(['paramsId']), asyncHandlerWith
         });
     }
     
-    // Strip capabilities so this generic instructor update cannot bypass the roster-manager gate.
-    const { features: _ignoredFeatures, ...updateData } = req.body ?? {};
+    // Keep capabilities, immutable ids, and physical collection registrations server-owned.
+    // Also strip the three tutorial flags: they moved to `GlobalUser.instructorOnboarding` (OB-002)
+    // and must not be resurrected on the course document by a stale client.
+    const updateData = Object.fromEntries(
+        Object.entries(req.body ?? {}).filter(([key]) => (
+            key !== 'features'
+            && key !== 'id'
+            && key !== '_id'
+            && key !== 'collections'
+            && !key.startsWith('collections.')
+            && key !== 'contentSetup'
+            && key !== 'flagSetup'
+            && key !== 'monitorSetup'
+        ))
+    );
     const updatedCourse = await instance.updateActiveCourse(routeParam(req.params, 'id'), updateData);
     
     res.status(200).json({
@@ -1303,7 +1244,7 @@ router.post('/:courseId/instructors', requireInstructorForCourseAPI(['params']),
  * @response 404 - Course not found
  * @response 500 - Failed to restart onboarding
  */
-router.delete('/:id/restart-onboarding', requireInstructorForCourseAPI(['paramsId']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.delete('/:id/restart-onboarding', requireInstructorOrAdminForCourseAPI(['paramsId']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     const instance = await EngEAI_MongoDB.getInstance();
     
     try {
@@ -1321,6 +1262,9 @@ router.delete('/:id/restart-onboarding', requireInstructorForCourseAPI(['paramsI
         
         // Get collection names before deleting the course (to use stored names if available)
         const collectionNames = await instance.getCollectionNames(courseName);
+
+        // Drop the course-owned Guided Pathway alert collection before replacing the course id.
+        await instance.deleteGuidedPathwayFlagsForCourse(course.id);
         
         // Remove course from active-course-list
         await instance.deleteActiveCourse(course);
@@ -1356,9 +1300,6 @@ router.delete('/:id/restart-onboarding', requireInstructorForCourseAPI(['paramsI
             date: new Date(),
             courseName: courseName, // Preserved from original
             courseSetup: false,
-            contentSetup: false,
-            flagSetup: false,
-            monitorSetup: false,
             instructors: [], // Empty array
             teachingAssistants: [], // Empty array
             frameType: 'byTopic', // Default frame type
@@ -1517,7 +1458,7 @@ router.delete('/:id/remove', requireInstructorForCourseAPI(['paramsId']), asyncH
  * @response 403 - Instructor access required for course
  * @response 404 - Course not found
  */
-router.delete('/:id', requireInstructorForCourseAPI(['paramsId']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.delete('/:id', requireInstructorOrAdminForCourseAPI(['paramsId']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     const instance = await EngEAI_MongoDB.getInstance();
     
     // First check if course exists
@@ -1529,7 +1470,10 @@ router.delete('/:id', requireInstructorForCourseAPI(['paramsId']), asyncHandlerW
         });
     }
     
-    // Delete the course
+    // Drop the physical Guided Pathway alert collection owned by this course.
+    await instance.deleteGuidedPathwayFlagsForCourse(existingCourse.id);
+
+    // Delete the course catalog row.
     await instance.deleteActiveCourse(existingCourse as unknown as activeCourse);
     
     res.status(200).json({
@@ -2260,11 +2204,10 @@ router.post('/:courseId/flags', asyncHandlerWithAuth(async (req: Request, res: R
         }
 
         // Validate flagType
-        const validFlagTypes = ['innacurate_response', 'harassment', 'inappropriate', 'dishonesty', 'interface bug', 'other'];
-        if (!validFlagTypes.includes(flagType)) {
+        if (!isManualFlagType(flagType)) {
             return res.status(400).json({
                 success: false,
-                error: 'Invalid flagType. Must be one of: ' + validFlagTypes.join(', ')
+                error: 'Invalid flagType. Must be one of: ' + MANUAL_FLAG_TYPES.join(', ')
             });
         }
 
@@ -2384,12 +2327,9 @@ router.patch(
 
             if (role === 'ta') {
                 await instance.promoteStudentToTA(courseData, targetUserId, targetName);
-                const targetGlobal = await instance.findGlobalUserByUserId(targetUserId);
-                if (targetGlobal?.puid) {
-                    await instance.updateGlobalUser(targetGlobal.puid, {
-                        instructorOnboardingCompleted: true
-                    });
-                }
+                // Deliberately does NOT mark instructor onboarding complete. Promotion completes
+                // no tutorial, and a new TA is exactly who the instructor tutorials are for —
+                // they now run through them on first entry like any other new course staff.
                 appLogger.log(`[ROSTER] Promoted ${targetUserId} to TA in course ${courseId}`);
             } else {
                 await instance.demoteTAToStudent(courseData, targetUserId);
@@ -2686,6 +2626,101 @@ router.get('/:courseId/flags/with-names', requireInstructorForCourseAPI(['params
     }
 }));
 
+// Literal `/flags/...` routes must be declared before the `/:courseId/flags/:flagId`
+// capture below; Express matches in declaration order, so a later literal route would
+// be swallowed by `:flagId` and never run.
+
+/**
+ * GET /:courseId/flags/validate
+ * Validate flag collection integrity. Instructors only.
+ *
+ * @route GET /api/courses/:courseId/flags/validate
+ * @param {string} courseId - Course ID (path param)
+ * @returns {object} { success: boolean, data?: object, error?: string }
+ * @response 200 - Validation result
+ * @response 401 - User not authenticated
+ * @response 403 - Instructor access required for course
+ * @response 404 - Course not found
+ * @response 500 - Failed to validate flag collection
+ */
+router.get('/:courseId/flags/validate', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId } = normalizeRouteParams(req.params);
+
+        // Get course to get course name
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+
+        //START DEBUG LOG : DEBUG-CODE(VALIDATE-COLLECTION-API)
+        appLogger.log('🔍 Validating flag collection for course:', course.courseName);
+        //END DEBUG LOG : DEBUG-CODE(VALIDATE-COLLECTION-API)
+
+        const validation = await instance.validateFlagCollection(course.courseName);
+
+        res.json({
+            success: true,
+            data: validation
+        });
+    } catch (error) {
+        appLogger.error('Error validating flag collection:', { error });
+        res.status(500).json({
+            success: false,
+            error: 'Failed to validate flag collection'
+        });
+    }
+}));
+
+/**
+ * GET /:courseId/flags/statistics
+ * Get flag statistics for a course.
+ *
+ * @route GET /api/courses/:courseId/flags/statistics
+ * @param {string} courseId - Course ID (path param)
+ * @returns {object} { success: boolean, data?: object, error?: string }
+ * @response 200 - Success
+ * @response 401 - User not authenticated
+ * @response 404 - Course not found
+ * @response 500 - Failed to get flag statistics
+ */
+router.get('/:courseId/flags/statistics', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId } = normalizeRouteParams(req.params);
+
+        // Get course to get course name
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                error: 'Course not found'
+            });
+        }
+
+        //START DEBUG LOG : DEBUG-CODE(GET-STATISTICS-API)
+        appLogger.log('📊 Getting flag statistics for course:', course.courseName);
+        //END DEBUG LOG : DEBUG-CODE(GET-STATISTICS-API)
+
+        const statistics = await instance.getFlagStatistics(course.courseName);
+
+        res.json({
+            success: true,
+            data: statistics
+        });
+    } catch (error) {
+        appLogger.error('Error getting flag statistics:', { error });
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get flag statistics'
+        });
+    }
+}));
+
 /**
  * GET /:courseId/flags/:flagId
  * Get a specific flag report by ID. Instructors only.
@@ -2775,6 +2810,20 @@ router.put('/:courseId/flags/:flagId', requireInstructorForCourseAPI(['params'])
             });
         }
 
+        const existingFlag = await instance.getFlagReport(course.courseName, flagId);
+        if (!existingFlag) {
+            return res.status(404).json({
+                success: false,
+                error: 'Flag report not found'
+            });
+        }
+        if (existingFlag.status === 'escalated') {
+            return res.status(409).json({
+                success: false,
+                error: 'Escalated flags cannot be updated until reviewed by a platform administrator'
+            });
+        }
+
         // Prepare update data
         const updateData: Partial<FlagReport> = {};
         if (status !== undefined) updateData.status = status;
@@ -2815,6 +2864,41 @@ router.put('/:courseId/flags/:flagId', requireInstructorForCourseAPI(['params'])
             success: false,
             error: 'Failed to update flag report'
         });
+    }
+}));
+
+/**
+ * PATCH /:courseId/flags/:flagId/escalate
+ * Escalate an unresolved manual flag to platform administrators. Course staff only.
+ */
+router.patch('/:courseId/flags/:flagId/escalate', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const instance = await EngEAI_MongoDB.getInstance();
+        const { courseId, flagId } = normalizeRouteParams(req.params);
+        const course = await instance.getActiveCourse(courseId);
+        if (!course) {
+            return res.status(404).json({ success: false, error: 'Course not found' });
+        }
+
+        const globalUser = (req.session as any)?.globalUser;
+        if (!globalUser?.userId || !globalUser?.name) {
+            return res.status(401).json({ success: false, error: 'Authenticated staff identity is unavailable' });
+        }
+
+        const data = await instance.escalateFlagReport(course.courseName, flagId, {
+            userId: globalUser.userId,
+            name: globalUser.name
+        });
+        res.json({ success: true, message: 'Flag escalated to administrators', data });
+    } catch (error) {
+        if (error instanceof FlagMongo.FlagReportNotFoundError) {
+            return res.status(404).json({ success: false, error: error.message });
+        }
+        if (error instanceof FlagMongo.FlagReportConflictError) {
+            return res.status(409).json({ success: false, error: error.message });
+        }
+        appLogger.error('Error escalating flag report:', { error });
+        res.status(500).json({ success: false, error: 'Failed to escalate flag report' });
     }
 }));
 
@@ -3058,96 +3142,6 @@ router.post('/:courseId/flags/create-indexes', requireInstructorForCourseAPI(['p
     }
 }));
 
-/**
- * GET /:courseId/flags/validate
- * Validate flag collection integrity. Instructors only.
- *
- * @route GET /api/courses/:courseId/flags/validate
- * @param {string} courseId - Course ID (path param)
- * @returns {object} { success: boolean, data?: object, error?: string }
- * @response 200 - Validation result
- * @response 401 - User not authenticated
- * @response 403 - Instructor access required for course
- * @response 404 - Course not found
- * @response 500 - Failed to validate flag collection
- */
-router.get('/:courseId/flags/validate', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
-    try {
-        const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId } = normalizeRouteParams(req.params);
-        
-        // Get course to get course name
-        const course = await instance.getActiveCourse(courseId);
-        if (!course) {
-            return res.status(404).json({
-                success: false,
-                error: 'Course not found'
-            });
-        }
-
-        //START DEBUG LOG : DEBUG-CODE(VALIDATE-COLLECTION-API)
-        appLogger.log('🔍 Validating flag collection for course:', course.courseName);
-        //END DEBUG LOG : DEBUG-CODE(VALIDATE-COLLECTION-API)
-
-        const validation = await instance.validateFlagCollection(course.courseName);
-        
-        res.json({
-            success: true,
-            data: validation
-        });
-    } catch (error) {
-        appLogger.error('Error validating flag collection:', { error });
-        res.status(500).json({
-            success: false,
-            error: 'Failed to validate flag collection'
-        });
-    }
-}));
-
-/**
- * GET /:courseId/flags/statistics
- * Get flag statistics for a course.
- *
- * @route GET /api/courses/:courseId/flags/statistics
- * @param {string} courseId - Course ID (path param)
- * @returns {object} { success: boolean, data?: object, error?: string }
- * @response 200 - Success
- * @response 401 - User not authenticated
- * @response 404 - Course not found
- * @response 500 - Failed to get flag statistics
- */
-router.get('/:courseId/flags/statistics', asyncHandlerWithAuth(async (req: Request, res: Response) => {
-    try {
-        const instance = await EngEAI_MongoDB.getInstance();
-        const { courseId } = normalizeRouteParams(req.params);
-        
-        // Get course to get course name
-        const course = await instance.getActiveCourse(courseId);
-        if (!course) {
-            return res.status(404).json({
-                success: false,
-                error: 'Course not found'
-            });
-        }
-
-        //START DEBUG LOG : DEBUG-CODE(GET-STATISTICS-API)
-        appLogger.log('📊 Getting flag statistics for course:', course.courseName);
-        //END DEBUG LOG : DEBUG-CODE(GET-STATISTICS-API)
-
-        const statistics = await instance.getFlagStatistics(course.courseName);
-        
-        res.json({
-            success: true,
-            data: statistics
-        });
-    } catch (error) {
-        appLogger.error('Error getting flag statistics:', { error });
-        res.status(500).json({
-            success: false,
-            error: 'Failed to get flag statistics'
-        });
-    }
-}));
 
 /**
  * GET /:courseId/flags/student/:userId
@@ -3162,7 +3156,8 @@ router.get('/:courseId/flags/statistics', asyncHandlerWithAuth(async (req: Reque
  * @response 404 - Course not found
  * @response 500 - Failed to get student flag reports
  */
-router.get('/:courseId/flags/student/:userId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+// A student may read their own flag history; anyone else needs course staff authority.
+router.get('/:courseId/flags/student/:userId', requireSelfOrInstructorForCourseAPI('userId', ['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
         const { courseId, userId } = normalizeRouteParams(req.params);
@@ -3265,7 +3260,7 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/m
         }
         
         let qdrantResult: { materialName: string; chunksDeleted: number } | null = null;
-        if (material.qdrantId) {
+        if (materialChunkIds(material).length > 0) {
             try {
                 const ragApp = await RAGApp.getInstance();
                 const deleteResult = await ragApp.deleteDocument(materialId, courseId, topicOrWeekId, itemId);
@@ -3780,7 +3775,7 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId', requireInstru
             const ragPromises: Promise<{ deleted: boolean; materialName: string; chunksDeleted: number }>[] = [];
             topicOrWeekInstance.items?.forEach((item: TopicOrWeekItem) => {
                 (item.additionalMaterials || []).forEach((material: any) => {
-                    if (material.id && material.qdrantId) {
+                    if (material.id && materialChunkIds(material).length > 0) {
                         ragPromises.push(ragApp.deleteDocument(material.id, courseId, topicOrWeekId, item.id));
                     }
                 });
@@ -4023,7 +4018,7 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId',
         try {
             const ragApp = await RAGApp.getInstance();
             const ragPromises = (item.additionalMaterials || [])
-                .filter((material: any) => material.id && material.qdrantId)
+                .filter((material: any) => material.id && materialChunkIds(material).length > 0)
                 .map((material: any) => ragApp.deleteDocument(material.id, courseId, topicOrWeekId, itemId));
             const results = await Promise.allSettled(ragPromises);
             results.forEach((r, i) => {
@@ -4190,7 +4185,7 @@ router.get(
         // Get all users (students and faculty) from the course users collection (projection for efficiency)
         const usersCollection = mongoDB.db.collection(collectionNames.users);
         const allUsers = await usersCollection.find(
-            { affiliation: { $in: ['student', 'faculty'] } },
+            withoutTestStudents({ affiliation: { $in: ['student', 'faculty'] } }),
             { projection: { userId: 1, name: 1, affiliation: 1, chats: 1 } }
         ).toArray();
 
@@ -4459,7 +4454,7 @@ router.get(
 
 /**
  * GET /:courseId/course-backup.zip
- * Instructor-only ZIP: `{CourseName} - Backup/` with five EJSON files (catalog row + four per-course collections).
+ * Admin-only ZIP with the catalog row, four per-course collections, and anonymous Guided Pathway alerts.
  *
  * @route GET /api/courses/:courseId/course-backup.zip
  */
@@ -4506,7 +4501,8 @@ router.get(
                 [`${rootPrefix}${names.flags}`, payloads.flagsJson],
                 [`${rootPrefix}${names.scheduledTasks}`, payloads.scheduledTasksJson],
                 [`${rootPrefix}${names.users}`, payloads.usersJson],
-                [`${rootPrefix}${names.memoryAgent}`, payloads.memoryAgentJson]
+                [`${rootPrefix}${names.memoryAgent}`, payloads.memoryAgentJson],
+                [`${rootPrefix}${names.guidedPathwayFlags}`, payloads.guidedPathwayFlagsJson]
             ];
             for (const [path, body] of entries) {
                 archive.append(Buffer.from(`${body}\n`, 'utf-8'), { name: path });
@@ -4800,3 +4796,8 @@ mountScenarioQuestionRoutes(router);
 // ========= GUIDED PATHWAY LIBRARY API =====
 // ===========================================
 mountPathwaysRoutes(router);
+
+// ===========================================
+// ========= GUIDED PATHWAY ALERTS API ======
+// ===========================================
+mountGuidedPathwayFlagRoutes(router);

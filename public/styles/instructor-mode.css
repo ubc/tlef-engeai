@@ -87,6 +87,11 @@ body {
     transition: width 0.25s, padding 0.25s;
     height: 100%;
     width: 270px; /* Set width when expanded */
+    /* Collapse animates this element's width. `contain` stops the label and padding
+       changes inside it from invalidating layout for the rest of the page, and
+       `will-change` lets the compositor prepare before the first frame. */
+    contain: layout style;
+    will-change: width;
 }
 
 
@@ -246,9 +251,7 @@ body {
     cursor: pointer;
     color: #000000;
     overflow: hidden;
-    transition: background-color 0.2s, color 0.2s, border-color 0.2s,
-                padding 0.28s cubic-bezier(0.4, 0, 0.2, 1),
-                gap 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: background-color 0.2s, color 0.2s, border-color 0.2s;
 }
 
 .instructor-sidebar-footer .instructor-about-btn .feather,
@@ -266,8 +269,7 @@ body {
     opacity: 1;
     max-width: 200px;
     margin: 0;
-    transition: opacity 0.28s cubic-bezier(0.4, 0, 0.2, 1),
-                max-width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: opacity 0.28s cubic-bezier(0.4, 0, 0.2, 1);
     overflow: hidden;
 }
 
@@ -352,8 +354,7 @@ body {
     overflow: hidden; /* Critical for clipping text during animation */
     cursor: pointer; /* Make logo clickable */
     transition: background-color 0.2s ease,
-                transform 0.2s ease,
-                gap 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+                transform 0.2s ease;
 }
 
 .instructor-feature-sidebar .logo-box:hover {
@@ -372,8 +373,7 @@ body {
     white-space: nowrap;
     opacity: 1;
     max-width: 200px; /* Generous width for logo text */
-    transition: opacity 0.28s cubic-bezier(0.4, 0, 0.2, 1),
-                max-width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: opacity 0.28s cubic-bezier(0.4, 0, 0.2, 1);
     overflow: hidden;
 }
 
@@ -523,9 +523,10 @@ body {
     align-items: center;
     padding: 0px 0px 0px 15px;
     border-radius: 8px;
-    transition: background-color 0.1s ease-in-out,
-                padding 0.28s cubic-bezier(0.4, 0, 0.2, 1),
-                gap 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    /* Only paint properties are animated. `padding` and `gap` used to animate here too,
+       which forced a layout pass for every nav item on every frame of the collapse; the
+       end values differ by a few pixels, so snapping them costs nothing visually. */
+    transition: background-color 0.1s ease-in-out;
     justify-content: flex-start;
     overflow: hidden; /* Critical for clipping text during animation */
     border: 0;
@@ -544,8 +545,9 @@ body {
     white-space: nowrap;
     opacity: 1;
     max-width: 200px; /* Generous width for menu text */
-    transition: opacity 0.28s cubic-bezier(0.4, 0, 0.2, 1),
-                max-width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    /* Fade only. Animating `max-width` re-laid out every label on every frame; the
+       parent clips with `overflow: hidden`, so the width can snap unseen. */
+    transition: opacity 0.28s cubic-bezier(0.4, 0, 0.2, 1);
     overflow: hidden;
     margin: 0;
 }
@@ -554,9 +556,7 @@ body {
     width: 20px;
     height: 20px;
     flex-shrink: 0;
-    transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1),
-                height 0.28s cubic-bezier(0.4, 0, 0.2, 1),
-                color 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: color 0.28s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .sidebar-menu-list .menu-list-item.active {
@@ -665,6 +665,15 @@ body {
     display: none;
 }
 
+/*
+ * The button sits above page panels (z-index 1005), which also puts it above modal overlays
+ * (1000), where it covered modal footers such as the rubric grid's Close button. It cannot be
+ * used while a modal is open anyway, so it steps aside until the modal closes.
+ */
+body:has(.modal-overlay.show, .upload-modal-overlay.show) .course-summary-summon-fab {
+    display: none;
+}
+
 /* ===========================================
    DOCUMENT SETUP COMPLETION STYLES
    =========================================== */
@@ -762,8 +771,8 @@ body {
         justify-content: center;
     }
 
-    /* Mobile header bar - shown when inside main-content-area */
-    #main-content-area .mobile-header-bar {
+    /* Mobile header bar - shown when inside main-content-area (not .page-header; see page-shell.css) */
+    #main-content-area .mobile-header-bar:not(.page-header) {
         display: flex;
         align-items: center;
         gap: 0.75rem;
@@ -783,7 +792,7 @@ body {
         justify-content: center;
     }
 
-    #main-content-area .mobile-header-bar .mobile-header-title {
+    #main-content-area .mobile-header-bar:not(.page-header) .mobile-header-title {
         font-weight: 600;
         font-size: 1.25rem;
         color: var(--color-chbe-green);
@@ -792,6 +801,16 @@ body {
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+    }
+
+    #main-content-area .page-header.mobile-header-bar .instructor-mobile-hamburger-btn {
+        color: var(--color-chbe-green);
+        padding: 0 !important;
+    }
+
+    #main-content-area .page-header.mobile-header-bar .instructor-mobile-hamburger-btn:hover {
+        background-color: rgba(92, 138, 58, 0.1);
+        color: var(--color-chbe-green);
     }
 
     /* Sidebar: hidden off-screen by default, slides in when .mobile-open */

@@ -9,28 +9,40 @@
  */
 
 import { loadComponentHTML, renderFeatherIcons } from "../api/api.js";
-import { activeCourse, User } from "../types.js";
+import { activeCourse, InstructorOnboardingProgress, User } from "../types.js";
 import { instructorUserFactory } from "../factories/instructor-user-factory.js";
 import { initializeDocumentsPage } from "../feature/documents.js";
 import { renderOnCourseSetup } from "../onboarding/course-setup.js";
 import { renderDocumentSetup } from "../onboarding/document-setup.js";
 import { renderFlagSetup } from "../onboarding/flag-setup.js";
 import { renderMonitorSetup } from "../onboarding/monitor-setup.js";
-import { initializeFlags } from "../feature/flags.js";
+import { renderScenarioGenerationSetup } from "../onboarding/scenario-generation-setup.js";
+import { renderWritingFeedbackSetup } from "../onboarding/writing-feedback-setup.js";
+import { renderGuidedPathwaySetup } from "../onboarding/guided-pathway-setup.js";
+import { initializeFlagManagement } from '../feature/flag-management.js';
 import { initializeMonitorDashboard } from "../feature/monitor.js";
 import { ChatManager } from "../feature/chat.js";
 import { authService } from '../services/auth-service.js';
-import { showConfirmModal, showSkipOnboardingModal, showSimpleErrorModal, showInactivityWarningModal } from '../ui/modal-overlay.js';
+import { showConfirmModal, showSimpleErrorModal } from '../ui/modal-overlay.js';
 import { renderAbout } from '../about/about.js';
 // @rdschrs: Integrated capability-gated Writing Feedback navigation and initialization.
-import { initializeWritingFeedback } from '../feature/writing-feedback.js';
+import {
+    confirmLeaveWritingFeedbackPage,
+    initializeWritingFeedback,
+    isWritingFeedbackMounted,
+    syncWritingFeedbackFromUrl
+} from '../feature/writing-feedback.js';
+import { restoreDisplayedUrl as restoreWritingFeedbackUrl } from '../feature/writing-feedback-shared.js';
 import { initializeCourseSummary, summonCourseSummary, configureCourseSummaryFabVisibility } from '../feature/course-summary.js';
-import { inactivityTracker } from '../services/inactivity-tracker.js';
+import { startInactivityTracking } from '../services/inactivity-tracker.js';
 import { initializeAssistantPrompts, hasUnsavedPromptChanges, resetUnsavedPromptChanges } from '../feature/assistant-prompts.js';
 import { initializeSystemPrompts, flushSystemPromptOnLeave } from '../feature/system-prompts.js';
 import { initializeScenarioQuestionsInstructor, isScenarioQuestionsMounted, syncScenarioQuestionsFromURL } from '../feature/scenario-questions-instructor.js';
 import { initializePathwayLibrary } from '../feature/pathway-library.js';
 import { initializeDashboard, renderDashboardCards } from '../feature/dashboard.js';
+import { canManageCourseRoster, canManageGuidedPathways } from '../utils/course-permissions.js';
+import { initStudentViewControl } from '../instructor/student-view-control.js';
+import { isBrowserCourseFeatureEnabled } from '../utils/course-features.js';
 import { 
     getCourseIdFromURL, 
     getInstructorViewFromURL, 
@@ -41,6 +53,18 @@ import {
     isNewCourseOnboardingURL,
     replaceInstructorViewURL
 } from '../utils/url-parser.js';
+import {
+    buildOnboardingStagePath,
+    FEATURE_ONBOARDING_STAGES,
+    isSkippableOnboardingStage,
+    resolveNextOnboardingStage,
+    type InstructorOnboardingStage
+} from '../utils/onboarding-stage-order.js';
+import {
+    hasSeenSkipPrompt,
+    markSkipPromptSeen,
+    offerSkipTutorial
+} from '../onboarding/onboarding-skip.js';
 
 /**
  * checkAuthentication
@@ -123,9 +147,6 @@ let currentClass : activeCourse =
     id: '',
     date: new Date(),
     courseSetup : true,
-    contentSetup : true,
-    flagSetup : true,
-    monitorSetup : true,
     courseName:'CHBE 241: Material and Energy Balances',
     instructors: [
     ],
@@ -135,6 +156,29 @@ let currentClass : activeCourse =
     tilesNumber: 12,
     topicOrWeekInstances: [
     ]
+}
+
+/**
+ * Instructor tutorial progress for the signed-in user, loaded from `/auth/current-user`.
+ *
+ * Defaults to complete so a failed fetch never traps an instructor inside onboarding —
+ * the same reasoning as the all-complete `currentClass` fallback above.
+ */
+let instructorOnboarding: InstructorOnboardingProgress = {
+    contentSetup: true,
+    flagSetup: true,
+    monitorSetup: true,
+    scenarioGeneration: true,
+    writingFeedback: true,
+    guidedPathway: true
+};
+
+/**
+ * True once the course is configured and the viewer has been through every tutorial
+ * the course still owes them, feature tutorials included.
+ */
+function isInstructorOnboardingComplete(): boolean {
+    return resolveNextOnboardingStage(currentClass, instructorOnboarding) === null;
 }
 
 // ChatManager instance for instructor mode
@@ -425,11 +469,47 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
     
-    // Load the current course
-    await loadCurrentCourse();
+    /**
+     * Load the signed-in user's instructor tutorial progress.
+     *
+     * Progress lives on the user rather than the course, so a new instructor on an
+     * already-set-up course is still taught. Leaves the all-complete default in place
+     * on failure rather than forcing onboarding.
+     */
+    async function loadInstructorOnboardingProgress(): Promise<void> {
+        try {
+            const response = await fetch('/auth/current-user', { credentials: 'same-origin' });
+            if (!response.ok) return;
+
+            const data = await response.json();
+            const progress = data?.globalUser?.instructorOnboarding;
+            if (!progress) return;
+
+            instructorOnboarding = {
+                contentSetup: progress.contentSetup === true,
+                flagSetup: progress.flagSetup === true,
+                monitorSetup: progress.monitorSetup === true,
+                scenarioGeneration: progress.scenarioGeneration === true,
+                writingFeedback: progress.writingFeedback === true,
+                guidedPathway: progress.guidedPathway === true
+            };
+        } catch (error) {
+            console.error('[INSTRUCTOR-MODE] 🚨 Error loading instructor onboarding progress:', error);
+        }
+    }
+
+    // Load the current course and the viewer's tutorial progress
+    await Promise.all([loadCurrentCourse(), loadInstructorOnboardingProgress()]);
 
     // Sidebar header: `{firstName} (Instructor|TA)`
     const authUser = authService.getAuthState().user;
+    const canManageGuidedPathwayFeatures = canManageGuidedPathways(currentClass, authUser);
+    // Student View is offered to the same group the endpoint authorizes: faculty
+    // instructors of this course and platform admins.
+    initStudentViewControl({
+        courseId: currentClass.id,
+        canManageCourse: canManageCourseRoster(currentClass, authUser)
+    });
     if (authUser) {
         updateSidebarCompanionText(authUser.name, authUser.userId, currentClass);
     }
@@ -437,51 +517,83 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Make currentClass globally accessible for onboarding completion
     window.currentClass = currentClass;
 
-    if (currentClass.courseSetup && currentClass.contentSetup && currentClass.flagSetup && currentClass.monitorSetup) {
+    if (isInstructorOnboardingComplete()) {
         void initializeCourseSummary(currentClass);
         void configureCourseSummaryFabVisibility(currentClass.id);
     }
     
-    // Remove onboarding-active class if all setup is complete
-    if (currentClass.courseSetup && currentClass.contentSetup && currentClass.flagSetup && currentClass.monitorSetup) {
+    // Remove onboarding-active class if no onboarding stage remains
+    if (resolveNextOnboardingStage(currentClass, instructorOnboarding) === null) {
         document.body.classList.remove('onboarding-active');
     }
 
+    /**
+     * Applies a stage's local progress, then navigates to whatever the resolver
+     * says comes next. Keeping every completion listener on one resolver is what
+     * lets a conditional feature stage sit between two inherited stages.
+     */
+    const advanceAfterOnboardingStage = (applyLocalProgress: () => void): void => {
+        applyLocalProgress();
+
+        const courseId = getCourseIdFromURL();
+        if (!courseId) {
+            redirectToDocumentsPage();
+            return;
+        }
+
+        const nextStage = resolveNextOnboardingStage(currentClass, instructorOnboarding);
+        window.location.href = nextStage
+            ? buildOnboardingStagePath(courseId, nextStage)
+            : `/course/${courseId}/instructor/documents`;
+    };
+
     // Listen for document setup completion event
     window.addEventListener('documentSetupComplete', () => {
-        // console.log('📋 Document setup completed, redirecting to next onboarding stage...');
-        
-        const courseId = getCourseIdFromURL();
-        if (courseId) {
-            // Check if flag setup is needed
-            if (!currentClass.flagSetup) {
-                window.location.href = `/course/${courseId}/instructor/onboarding/flag-setup`;
-            } else if (!currentClass.monitorSetup) {
-                window.location.href = `/course/${courseId}/instructor/onboarding/monitor-setup`;
-            } else {
-                window.location.href = `/course/${courseId}/instructor/documents`;
-            }
-        } else {
-            // Fallback to old behavior
-            redirectToDocumentsPage();
-        }
+        advanceAfterOnboardingStage(() => {
+            instructorOnboarding.contentSetup = true;
+        });
     });
 
     // Listen for flag setup completion event
     window.addEventListener('flagSetupComplete', () => {
-        // console.log('🏁 Flag setup completed, redirecting to monitor setup...');
-        
+        advanceAfterOnboardingStage(() => {
+            instructorOnboarding.flagSetup = true;
+        });
+    });
+
+    // Listen for each feature tutorial completion event. The tutorial has already
+    // persisted its progress on the user's record, so the local mirror only keeps
+    // the resolver honest for the redirect that follows.
+    FEATURE_ONBOARDING_STAGES.forEach(({ feature }) => {
+        const eventName = `${feature}SetupComplete`;
+        window.addEventListener(eventName, () => {
+            advanceAfterOnboardingStage(() => {
+                instructorOnboarding[feature] = true;
+            });
+        });
+    });
+
+    /**
+     * Leaves onboarding after a successful skip.
+     *
+     * The write already marked every tutorial taught, so the resolver will not route this
+     * user back in. The local mirror is updated too, so anything deciding on progress later
+     * in this page's life reads the same facts the server now holds.
+     */
+    window.addEventListener('instructorOnboardingSkipped', () => {
+        instructorOnboarding = {
+            ...instructorOnboarding,
+            contentSetup: true,
+            flagSetup: true,
+            monitorSetup: true,
+            scenarioGeneration: true,
+            writingFeedback: true,
+            guidedPathway: true
+        };
+        document.body.classList.remove('onboarding-active');
+
         const courseId = getCourseIdFromURL();
-        if (courseId) {
-            if (!currentClass.monitorSetup) {
-                window.location.href = `/course/${courseId}/instructor/onboarding/monitor-setup`;
-            } else {
-                window.location.href = `/course/${courseId}/instructor/documents`;
-            }
-        } else {
-            // Fallback to old behavior
-            updateUI();
-        }
+        window.location.href = courseId ? `/course/${courseId}/instructor/dashboard` : '/';
     });
 
     // Listen for monitor setup completion event
@@ -504,9 +616,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         // console.log('🔄 Document setup completed, proceeding to next onboarding step...');
         
         // Keep onboarding-active class - sidebar should remain hidden until ALL onboarding is complete
-        // The class will be removed automatically when all setup steps (courseSetup, contentSetup, flagSetup, monitorSetup) are done
+        // The class will be removed automatically once courseSetup and all three per-user tutorials are done
         
-        // Update the UI - this will check currentClass.flagSetup and proceed to flag setup if needed
+        // Update the UI - this will check the viewer's flagSetup progress and proceed to flag setup if needed
         updateUI();
         
         // console.log('✅ Successfully redirected to documents page');
@@ -702,7 +814,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         writingFeedback: 'Writing Feedback',
         memoryAgent: 'Memory Agent',
         guidedPathway: 'Guided Pathway',
-        scenarioGeneration: 'Scenario Generation'
+        scenarioGeneration: 'Scenario Questions'
     };
     const noticeParams = new URLSearchParams(window.location.search);
     const notice = noticeParams.get('notice');
@@ -773,6 +885,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.addEventListener('popstate', async () => {
         const view = getInstructorViewFromURL();
         const chatId = getChatIdFromURL();
+
+        // Leaving Writing Feedback would drop unsaved staff edits with the component, and
+        // Back cannot be cancelled, so "Keep editing" restores the workspace's address.
+        if (
+            view !== 'writing-feedback' &&
+            currentState === StateEvent.WritingFeedback &&
+            isWritingFeedbackMounted() &&
+            !(await confirmLeaveWritingFeedbackPage())
+        ) {
+            restoreWritingFeedbackUrl();
+            return;
+        }
         
         if (view) {
             if (view === 'settings' || view === 'course-information') {
@@ -789,21 +913,27 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // Show welcome screen (chat view with no chats)
                 currentState = StateEvent.Chat;
                 await showChatContent();
-            } else if (view === 'writing-feedback' && currentClass.features?.writingFeedback?.enabled !== true) {
+            } else if (view === 'writing-feedback' && !isBrowserCourseFeatureEnabled(currentClass, 'writingFeedback')) {
                 await showSimpleErrorModal(
                     'Writing Feedback is not enabled for this course. You can enable it from Advanced Settings on the Dashboard if you have instructor or admin access.',
                     'Feature unavailable'
                 );
                 navigateToInstructorView('dashboard');
-            } else if (view === 'pathway-library' && currentClass.features?.guidedPathway?.enabled !== true) {
+            } else if (view === 'pathway-library' && !canManageGuidedPathwayFeatures) {
+                await showSimpleErrorModal(
+                    'Only course instructors and platform administrators can access the Pathway Library.',
+                    'Access denied'
+                );
+                navigateToInstructorView('dashboard');
+            } else if (view === 'pathway-library' && !isBrowserCourseFeatureEnabled(currentClass, 'guidedPathway')) {
                 await showSimpleErrorModal(
                     'Guided Pathway is not enabled for this course. You can enable it from Advanced Settings on the Dashboard if you have instructor or admin access.',
                     'Feature unavailable'
                 );
                 navigateToInstructorView('dashboard');
-            } else if (view === 'scenario-questions' && currentClass.features?.scenarioGeneration?.enabled !== true) {
+            } else if (view === 'scenario-questions' && !isBrowserCourseFeatureEnabled(currentClass, 'scenarioGeneration')) {
                 await showSimpleErrorModal(
-                    'Scenario Generation is not enabled for this course. You can enable it from Advanced Settings on the Dashboard if you have instructor or admin access.',
+                    'Scenario Questions is not enabled for this course. You can enable it from Advanced Settings on the Dashboard if you have instructor or admin access.',
                     'Feature unavailable'
                 );
                 navigateToInstructorView('dashboard');
@@ -830,6 +960,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 isScenarioQuestionsMounted()
             ) {
                 await syncScenarioQuestionsFromURL(true);
+            } else if (
+                view === 'writing-feedback' &&
+                currentState === StateEvent.WritingFeedback &&
+                await syncWritingFeedbackFromUrl()
+            ) {
+                // Back/Forward between workspace pages; the mounted workspace switched pages itself.
             } else {
                 // Load component for current view
                 currentState = mapViewToStateEvent(view);
@@ -880,13 +1016,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                 initializeDocumentsPage(currentClass);
             }
             else if (componentName === 'dashboard-instructor') {
-                await initializeDashboard(currentClass);
+                await initializeDashboard(currentClass, canManageGuidedPathwayFeatures);
             }
             else if (componentName === 'writing-feedback') {
                 await initializeWritingFeedback(currentClass);
             }
             else if (componentName === 'flag-instructor') {
-                await initializeFlags();
+                const gpEnabled = isBrowserCourseFeatureEnabled(currentClass, 'guidedPathway');
+                await initializeFlagManagement({
+                    courseId: currentClass.id,
+                    canAccessGuidedPathway: gpEnabled && canManageGuidedPathwayFeatures,
+                });
             }
             else if (componentName === 'monitor-instructor') {
                 initializeMonitorDashboard();
@@ -907,7 +1047,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 await initializeScenarioQuestionsInstructor(currentClass);
             }
             else if (componentName === 'pathway-library-instructor') {
-                await initializePathwayLibrary(currentClass);
+                if (canManageGuidedPathwayFeatures) {
+                    await initializePathwayLibrary(currentClass);
+                }
             }
             
             renderFeatherIcons();
@@ -917,6 +1059,50 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.error(`❌ [INSTRUCTOR-DEBUG] Error loading component ${componentName}:`, error);
             mainContentAreaEl.innerHTML = `<p style="color: red; text-align: center;"> Error loading content. </p>`
         }
+    };
+
+    /** Mounts one onboarding stage's component. Exhaustive over `InstructorOnboardingStage`. */
+    const mountOnboardingStage = (stage: InstructorOnboardingStage): Promise<unknown> => {
+        switch (stage) {
+            case 'course-setup':
+                return Promise.resolve(renderOnCourseSetup(currentClass));
+            case 'document-setup':
+                return Promise.resolve(renderDocumentSetup(currentClass));
+            case 'scenario-generation-setup':
+                return Promise.resolve(renderScenarioGenerationSetup(currentClass));
+            case 'writing-feedback-setup':
+                return Promise.resolve(renderWritingFeedbackSetup(currentClass));
+            case 'guided-pathway-setup':
+                return Promise.resolve(renderGuidedPathwaySetup(currentClass));
+            case 'flag-setup':
+                return Promise.resolve(renderFlagSetup(currentClass));
+            case 'monitor-setup':
+                return Promise.resolve(renderMonitorSetup(currentClass));
+        }
+    };
+
+    /**
+     * Renders one onboarding stage and, once per session, offers the tutorial exit.
+     *
+     * The offer is unprompted on the first stage that only teaches, which is the stage
+     * immediately after Course Content — whichever one the resolver picks. It waits for the
+     * component to mount so the modal is not covered by the content swap, and is remembered
+     * for the session so a reload does not ask again; the footer button keeps the exit
+     * available on every later stage.
+     */
+    const renderOnboardingStage = (stage: InstructorOnboardingStage) => {
+        const mounted = mountOnboardingStage(stage);
+
+        if (!isSkippableOnboardingStage(stage) || hasSeenSkipPrompt()) {
+            return;
+        }
+
+        markSkipPromptSeen();
+        void mounted.then(async () => {
+            if (await offerSkipTutorial() === 'skipped') {
+                window.dispatchEvent(new CustomEvent('instructorOnboardingSkipped'));
+            }
+        });
     };
 
     const updateUI = () => {
@@ -937,37 +1123,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         const onboardingStageFromURL = getInstructorOnboardingStageFromURL();
         if (onboardingStageFromURL) {
             console.log(`[INSTRUCTOR-MODE] 🎓 Rendering onboarding stage from URL: ${onboardingStageFromURL}`);
-            switch (onboardingStageFromURL) {
-                case 'course-setup':
-                    renderOnCourseSetup(currentClass);
-                    return;
-                case 'document-setup':
-                    renderDocumentSetup(currentClass);
-                    return;
-                case 'flag-setup':
-                    renderFlagSetup(currentClass);
-                    return;
-                case 'monitor-setup':
-                    renderMonitorSetup(currentClass);
-                    return;
-            }
+            renderOnboardingStage(onboardingStageFromURL);
+            return;
         }
 
-        // Fallback to flag-based detection if not on onboarding URL
-        if (!currentClass.courseSetup) {
-            renderOnCourseSetup(currentClass);
-            return;
-        }
-        if (!currentClass.contentSetup) {
-            renderDocumentSetup(currentClass); // change this to renderOnContentSetup later
-            return;
-        }
-        if (!currentClass.flagSetup) {
-            renderFlagSetup(currentClass);
-            return;
-        }
-        if (!currentClass.monitorSetup) {
-            renderMonitorSetup(currentClass);
+        // Fallback to the shared stage resolver if not on an onboarding URL.
+        // `courseSetup` is course state; every tutorial is the viewer's own progress.
+        const nextStage = resolveNextOnboardingStage(currentClass, instructorOnboarding);
+        if (nextStage) {
+            renderOnboardingStage(nextStage);
             return;
         }
 
@@ -996,7 +1160,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             hideChatList(); // Ensure chat list is hidden
         }
         else if (currentState === StateEvent.WritingFeedback) {
-            if (currentClass.features?.writingFeedback?.enabled !== true) {
+            if (!isBrowserCourseFeatureEnabled(currentClass, 'writingFeedback')) {
                 void showSimpleErrorModal(
                     'Writing Feedback is not enabled for this course. You can enable it from Advanced Settings on the Dashboard if you have instructor or admin access.',
                     'Feature unavailable'
@@ -1029,9 +1193,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             hideChatList(); // Ensure chat list is hidden
         }
         else if ( currentState === StateEvent.ScenarioQuestions){
-            if (currentClass.features?.scenarioGeneration?.enabled !== true) {
+            if (!isBrowserCourseFeatureEnabled(currentClass, 'scenarioGeneration')) {
                 void showSimpleErrorModal(
-                    'Scenario Generation is not enabled for this course. You can enable it from Advanced Settings on the Dashboard if you have instructor or admin access.',
+                    'Scenario Questions is not enabled for this course. You can enable it from Advanced Settings on the Dashboard if you have instructor or admin access.',
                     'Feature unavailable'
                 );
                 navigateToInstructorView('dashboard');
@@ -1043,7 +1207,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             hideChatList(); // Ensure chat list is hidden
         }
         else if ( currentState === StateEvent.PathwayLibrary){
-            if (currentClass.features?.guidedPathway?.enabled !== true) {
+            if (!canManageGuidedPathwayFeatures) {
+                void showSimpleErrorModal(
+                    'Only course instructors and platform administrators can access the Pathway Library.',
+                    'Access denied'
+                );
+                navigateToInstructorView('dashboard');
+                return;
+            }
+            if (!isBrowserCourseFeatureEnabled(currentClass, 'guidedPathway')) {
                 void showSimpleErrorModal(
                     'Guided Pathway is not enabled for this course. You can enable it from Advanced Settings on the Dashboard if you have instructor or admin access.',
                     'Feature unavailable'
@@ -1163,9 +1335,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     const updateFeatureNavigation = () => {
-        const wfEnabled = currentClass.features?.writingFeedback?.enabled === true;
-        const pathwayEnabled = currentClass.features?.guidedPathway?.enabled === true;
-        const scenarioEnabled = currentClass.features?.scenarioGeneration?.enabled === true;
+        const wfEnabled = isBrowserCourseFeatureEnabled(currentClass, 'writingFeedback');
+        const pathwayEnabled = isBrowserCourseFeatureEnabled(currentClass, 'guidedPathway');
+        const scenarioEnabled = isBrowserCourseFeatureEnabled(currentClass, 'scenarioGeneration');
 
         // Hide the whole sidebar list item (not only the button) when a capability is off.
         if (writingFeedbackStateEl) {
@@ -1174,9 +1346,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (wfItem) wfItem.hidden = !wfEnabled;
         }
         if (pathwayLibraryStateEl) {
-            pathwayLibraryStateEl.hidden = !pathwayEnabled;
+            pathwayLibraryStateEl.hidden = !pathwayEnabled || !canManageGuidedPathwayFeatures;
             const pathwayItem = pathwayLibraryStateEl.closest('li');
-            if (pathwayItem) pathwayItem.hidden = !pathwayEnabled;
+            if (pathwayItem) pathwayItem.hidden = !pathwayEnabled || !canManageGuidedPathwayFeatures;
         }
         if (scenarioQuestionsStateEl) {
             scenarioQuestionsStateEl.hidden = !scenarioEnabled;
@@ -1184,7 +1356,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (scenarioItem) scenarioItem.hidden = !scenarioEnabled;
         }
         if (currentState === StateEvent.Dashboard) {
-            renderDashboardCards(currentClass);
+            renderDashboardCards(currentClass, canManageGuidedPathwayFeatures);
         }
     };
     updateFeatureNavigation();
@@ -1200,7 +1372,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (detail.feature === 'writingFeedback' && !detail.enabled && currentState === StateEvent.WritingFeedback) {
             navigateToInstructorView('dashboard');
         }
-        if (detail.feature === 'guidedPathway' && !detail.enabled && currentState === StateEvent.PathwayLibrary) {
+        if (
+            detail.feature === 'guidedPathway' &&
+            (!detail.enabled || !canManageGuidedPathwayFeatures) &&
+            currentState === StateEvent.PathwayLibrary
+        ) {
             navigateToInstructorView('dashboard');
         }
         if (detail.feature === 'scenarioGeneration' && !detail.enabled && currentState === StateEvent.ScenarioQuestions) {
@@ -1553,6 +1729,25 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    /**
+     * Next destination once course setup is done, from the viewer's own tutorial progress.
+     *
+     * Mirrors the tail of the server's `resolveInstructorModeRedirect`. An instructor who
+     * has already been taught lands on the course; one who has not is taught, even when a
+     * colleague set the course up.
+     */
+    function nextStageAfterCourseSetup(courseId: string): string {
+        // Course setup has just been completed, so resolve as though the course flag
+        // were already refreshed rather than waiting for the next course load.
+        const nextStage = resolveNextOnboardingStage(
+            { ...currentClass, courseSetup: true },
+            instructorOnboarding
+        );
+        return nextStage
+            ? buildOnboardingStagePath(courseId, nextStage)
+            : `/course/${courseId}/instructor/documents`;
+    }
+
     //set custom windows listener on onboarding
     window.addEventListener('onboardingComplete', async () => {
         
@@ -1574,84 +1769,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 console.error('[INSTRUCTOR-MODE] Error entering course:', error);
             }
 
-            // After course-setup: if instructor has completed onboarding before, offer skip
-            const userRes = await fetch('/auth/current-user');
-            const userData = userRes.ok ? await userRes.json() : {};
-            const globalUser = userData.globalUser;
-            if (globalUser?.instructorOnboardingCompleted === true) {
-                const skipResult = await showSkipOnboardingModal(
-                    'Skip Setup?',
-                    "You've completed instructor setup before. Skip the rest and go to your course?"
-                );
-                if (skipResult.action === 'skip') {
-                    const updateRes = await fetch(`/api/courses/${courseId}`, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        credentials: 'same-origin',
-                        body: JSON.stringify({
-                            courseSetup: true,
-                            contentSetup: true,
-                            flagSetup: true,
-                            monitorSetup: true
-                        })
-                    });
-                    const updateData = await updateRes.json();
-                    if (updateData.success) {
-                        window.location.href = `/course/${courseId}/instructor/documents`;
-                        return;
-                    }
-                    await showSimpleErrorModal(
-                        updateData.error || 'Could not update course. Continuing with setup.',
-                        'Skip setup failed'
-                    );
-                }
-            }
-
-            // Redirect to next onboarding stage (document-setup)
-            window.location.href = `/course/${courseId}/instructor/onboarding/document-setup`;
+            // Tutorial progress is per-user, so an instructor who has already been taught
+            // skips straight to the course instead of being offered a skip prompt.
+            window.location.href = nextStageAfterCourseSetup(courseId);
         } else if (courseId) {
             // Existing course - redirect to next onboarding stage or main interface
-            if (!currentClass.contentSetup) {
-                // Course-setup just completed - offer skip if instructor has done this before
-                const userRes = await fetch('/auth/current-user');
-                const userData = userRes.ok ? await userRes.json() : {};
-                const globalUser = userData.globalUser;
-                if (globalUser?.instructorOnboardingCompleted === true) {
-                    const skipResult = await showSkipOnboardingModal(
-                        'Skip Setup?',
-                        "You've completed instructor setup before. Skip the rest and go to your course?"
-                    );
-                    if (skipResult.action === 'skip') {
-                        const updateRes = await fetch(`/api/courses/${courseId}`, {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
-                            credentials: 'same-origin',
-                            body: JSON.stringify({
-                                courseSetup: true,
-                                contentSetup: true,
-                                flagSetup: true,
-                                monitorSetup: true
-                            })
-                        });
-                        const updateData = await updateRes.json();
-                        if (updateData.success) {
-                            window.location.href = `/course/${courseId}/instructor/documents`;
-                            return;
-                        }
-                        await showSimpleErrorModal(
-                            updateData.error || 'Could not update course. Continuing with setup.',
-                            'Skip setup failed'
-                        );
-                    }
-                }
-                window.location.href = `/course/${courseId}/instructor/onboarding/document-setup`;
-            } else if (!currentClass.flagSetup) {
-                window.location.href = `/course/${courseId}/instructor/onboarding/flag-setup`;
-            } else if (!currentClass.monitorSetup) {
-                window.location.href = `/course/${courseId}/instructor/onboarding/monitor-setup`;
-            } else {
-                window.location.href = `/course/${courseId}/instructor/documents`;
-            }
+            window.location.href = nextStageAfterCourseSetup(courseId);
         } else {
             // Fallback: update UI (shouldn't happen, but just in case)
             console.warn('[INSTRUCTOR-MODE] ⚠️ Course setup completed but courseId not available');
@@ -1827,67 +1950,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 /**
- * initializeInactivityTracking
- * 
- * @returns void
- * Sets up inactivityTracker warning and logout events. Shows modal on warning; calls authService.logout on timeout.
+ * initializeInactivityTracking - start server-directed idle poll loop
  */
 function initializeInactivityTracking(): void {
-    // console.log('[INSTRUCTOR-MODE] 🔍 Initializing inactivity tracking...'); // 🟢 MEDIUM: Initialization logging
-    
-    // Set up event listeners for inactivity tracker
-    inactivityTracker.on('warning', async (data: any) => {
-        // console.log('[INSTRUCTOR-MODE] ⚠️ Inactivity warning triggered'); // 🟢 MEDIUM: Warning notification
-        
-        // Pause tracker while modal is shown
-        inactivityTracker.pause();
-        
-        // Show warning modal with countdown
-        const remainingSeconds = Math.floor((data.remainingTimeUntilLogout || 60000) / 1000);
-        const result = await showInactivityWarningModal(remainingSeconds, () => {
-            // User clicked "Stay Active" - reset tracker
-            // console.log('[INSTRUCTOR-MODE] ✅ User chose to stay active'); // 🟢 MEDIUM: User action logging
-            inactivityTracker.reset();
-        });
-        
-        // Resume tracker after modal closes
-        inactivityTracker.resume();
-        
-        // If timeout occurred, logout will be triggered by logout event
-        if (result.action === 'timeout') {
-            // console.log('[INSTRUCTOR-MODE] ⏱️ Inactivity warning timeout - logout will be triggered'); // 🟢 MEDIUM: Timeout logging
-
-            // MANUALLY TRIGGER LOGOUT HERE since logout timer was cleared
-            inactivityTracker.stop();
-            authService.logout();
-            return; // Stop execution here - logout will be triggered by logout event
-        }
-    });
-    
-    inactivityTracker.on('logout', async (data: any) => {
-        // console.log('[INSTRUCTOR-MODE] 🚪 Inactivity logout triggered'); // 🟢 MEDIUM: Logout trigger logging
-        
-        // Stop tracking
-        inactivityTracker.stop();
-        
-        // Show logout message and redirect
-        try {
-            await showConfirmModal(
-                'Session Expired',
-                'You have been inactive for too long. You will be logged out now.',
-                'OK',
-                ''
-            );
-        } catch (error) {
-            // Modal might fail if already logged out, continue anyway
-            console.warn('[INSTRUCTOR-MODE] ⚠️ Could not show logout modal:', error);
-        }
-        
-        // Logout user
-        authService.logout();
-    });
-
-    // Start tracking
-    inactivityTracker.start();
-    
+    startInactivityTracking();
 }
