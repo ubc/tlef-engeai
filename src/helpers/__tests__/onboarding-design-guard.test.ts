@@ -250,8 +250,8 @@ describe('skip tutorial affordance', () => {
     it('styles the skip button and the tutorial chrome', () => {
         const onboardingCss = readFileSync(ONBOARDING_CSS, 'utf8');
         expect(onboardingCss).toContain('.btn-skip-tutorial');
-        expect(onboardingCss).toContain('.tutorial-chrome__fill');
-        expect(onboardingCss).toContain('.tutorial-chrome__banner');
+        expect(onboardingCss).toContain('.tutorial-chrome__segment--done');
+        expect(onboardingCss).toContain('.tutorial-chrome__segment--current');
     });
 });
 
