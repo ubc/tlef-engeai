@@ -32,3 +32,21 @@ export function canManageGuidedPathways(
     if (user.isAdmin === true) return true;
     return (course.instructors ?? []).some((entry) => rosterUserId(entry) === user.userId);
 }
+
+/**
+ * Determine whether a user may manage this course's roster.
+ *
+ * Mirrors the backend `canManageCourseRoster`: platform administrators, and faculty
+ * listed in `course.instructors[]`. Teaching assistants do not qualify. This is the
+ * group Student View is offered to; it is a presentation guard only, and
+ * `requireRosterManageAPI` remains authoritative.
+ */
+export function canManageCourseRoster(
+    course: activeCourse,
+    user: AuthUser | null | undefined
+): boolean {
+    if (!user) return false;
+    if (user.isAdmin === true) return true;
+    if (user.affiliation !== 'faculty') return false;
+    return (course.instructors ?? []).some((entry) => rosterUserId(entry) === user.userId);
+}

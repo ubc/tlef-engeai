@@ -11,6 +11,7 @@ import type { MongoDalContext } from './mongo-context';
 import { getMonitorRosterUsers } from './monitor-roster-mongo';
 import { getActiveCourse } from './course-mongo';
 import { getAllInstructorStruggleTopics } from './topic-week-mongo';
+import { listTestStudentUserIds } from './student-view-mongo';
 
 /**
  * Loads course struggle statistics for monitor and course-summary endpoints.
@@ -27,9 +28,12 @@ export async function getCourseStruggleStats(
     }
 
     const courseData = course as activeCourse;
+    // Student View test students are excluded here by id, because memory-agent rows carry
+    // no affiliation; every other input below filters them out on its own.
+    const testStudentIds = await listTestStudentUserIds(ctx, courseData.courseName);
     const [catalog, memoryAgentEntries, rosterUsers, totals] = await Promise.all([
         getAllInstructorStruggleTopics(ctx, courseId),
-        getAllMemoryAgentEntries(ctx, courseData.courseName),
+        getAllMemoryAgentEntries(ctx, courseData.courseName, testStudentIds),
         getMonitorRosterUsers(ctx, courseData),
         countCourseStudentsAndActiveChats(ctx, courseData.courseName)
     ]);

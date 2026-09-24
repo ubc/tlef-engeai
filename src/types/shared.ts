@@ -816,6 +816,10 @@ export interface CourseUser {
     chats: Chat[];
     createdAt: Date;
     updatedAt: Date;
+    /** true for a Student View test student; excluded from every staff-facing listing. */
+    isTestStudent?: boolean;
+    /** userId of the staff member this test student belongs to; staff-gated, never student-facing. */
+    testStudentOwnerUserId?: string;
 }
 
 
@@ -893,6 +897,8 @@ export interface GuidedPathwayFlagView {
     pathwayTitle: string; // winning pathway title snapshot shown to reviewers
     messageText: string; // exact triggering chat message; may contain self-identifying text
     origin: GuidedPathwayFlagOrigin; // production student alert or non-escalatable course-staff test
+    /** true when the alert came from a Student View test student; shown to course staff as a tag. */
+    isTestStudent?: boolean;
     status: GuidedPathwayFlagStatus; // instructor review lifecycle
     triggeredAt: string; // ISO timestamp for the pathway trigger
     decidedAt?: string; // ISO timestamp for Escalate or Dismiss
@@ -975,6 +981,10 @@ export interface GlobalUser {
     canvasVerifiedUserId?: string;
     /** When that Canvas account was verified. */
     canvasVerifiedAt?: Date;
+    /** true for a Student View test student; excluded from every staff-facing listing. */
+    isTestStudent?: boolean;
+    /** userId of the staff member this test student belongs to; staff-gated, never student-facing. */
+    testStudentOwnerUserId?: string;
 }
 
 /**
@@ -982,6 +992,17 @@ export interface GlobalUser {
  * @deprecated Use CourseUser instead
  */
 export type User = CourseUser;
+
+/**
+ * Whether the viewer is previewing a course as their Student View test student.
+ *
+ * Carries only what the student-facing banner needs; the test student's own id stays
+ * on the server.
+ */
+export interface StudentViewState {
+    active: boolean;
+    courseId: string | null;
+}
 
 // ===========================================
 // ========= MEMORY AGENT DATA TYPE ==========

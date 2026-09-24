@@ -20,7 +20,9 @@ import type { GuidedPathwayFlagTriggerActor } from './guided-pathway-flag-contra
  *
  * Course staff (listed instructors, TAs, platform admins) are checked before
  * enrollment so dual-role records remain tests. Only enrolled non-staff users
- * create production student flags. Outsiders and missing context are skipped.
+ * create production student flags. Outsiders and missing context are skipped. A Student
+ * View test student is an enrolled non-staff user, so it produces a student-origin actor
+ * carrying `isTestStudent`, which keeps its alert out of the cross-course admin queue.
  *
  * @param course - Current active-course record loaded by the server
  * @param user - Current global-user record loaded by PUID
@@ -40,7 +42,11 @@ export function resolveGuidedPathwayFlagTriggerActor(
     }
 
     if (user.coursesEnrolled?.includes(course.id) === true) {
-        return { origin: 'student', userId: user.userId };
+        return {
+            origin: 'student',
+            userId: user.userId,
+            ...(user.isTestStudent === true ? { isTestStudent: true } : {})
+        };
     }
 
     return null;

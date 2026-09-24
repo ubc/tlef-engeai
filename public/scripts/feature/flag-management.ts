@@ -305,6 +305,17 @@ function workflowEmptyMessage(): string {
     return `No ${label} flags match your filters.`;
 }
 
+/**
+ * isTestStudentFlag - true when this row came from a Student View test student.
+ *
+ * Both sources carry the marker on their own row: a manual flag from the reporter lookup,
+ * a Guided Pathway alert from the trigger actor. Staff see these tagged rather than hidden,
+ * because an instructor needs to see what their own preview produced.
+ */
+function isTestStudentFlag(item: UnifiedFlagListItem): boolean {
+    return (item.raw as { isTestStudent?: boolean }).isTestStudent === true;
+}
+
 function createUnifiedFlagCard(item: UnifiedFlagListItem): HTMLElement {
     const isGuided = item.source === 'guided-pathway';
     const expandable = isExpandableManualItem(item);
@@ -355,7 +366,15 @@ function createUnifiedFlagCard(item: UnifiedFlagListItem): HTMLElement {
     const statusBadge = document.createElement('div');
     statusBadge.className = 'status-badge';
     statusBadge.textContent = ` ${item.statusBadge}`;
-    footer.append(footerLabel, statusBadge);
+    footer.append(footerLabel);
+    if (isTestStudentFlag(item)) {
+        // Sits beside the label rather than inside it: `.student-name` truncates.
+        const testStudentTag = document.createElement('span');
+        testStudentTag.className = 'flag-test-student-tag';
+        testStudentTag.textContent = 'Test student';
+        footer.append(testStudentTag);
+    }
+    footer.append(statusBadge);
 
     if (expandable) {
         const expandArrow = document.createElement('div');

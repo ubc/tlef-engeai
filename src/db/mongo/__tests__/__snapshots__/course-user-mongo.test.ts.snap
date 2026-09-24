@@ -8,6 +8,9 @@ exports[`course-user-mongo course summary engagement facet pipeline matches snap
         {
           "$match": {
             "affiliation": "student",
+            "isTestStudent": {
+              "$ne": true,
+            },
           },
         },
         {
@@ -34,6 +37,9 @@ exports[`course-user-mongo course summary engagement facet pipeline matches snap
         {
           "$match": {
             "affiliation": "student",
+            "isTestStudent": {
+              "$ne": true,
+            },
           },
         },
         {

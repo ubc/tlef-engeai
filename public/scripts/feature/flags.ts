@@ -28,6 +28,8 @@ interface FlagReport {
     userName?: string;
     userPuid?: string;
     userAffiliation?: string;
+    /** True when the reporter is a Student View test student; shown as a tag, never hidden. */
+    isTestStudent?: boolean;
     // Frontend-specific fields
     collapsed?: boolean;
     timestamp?: string; // Formatted timestamp for display
@@ -83,6 +85,8 @@ async function fetchFlags(courseId: string): Promise<FlagReport[]> {
             timestamp: formatTimestamp(new Date(flag.createdAt || new Date())),
             // Use userName as studentName for display
             studentName: flag.userName || 'Unknown Student',
+            // Student View flags stay in the list; the tag is how staff tell them apart.
+            isTestStudent: flag.isTestStudent === true,
             // Set default collapsed state
         collapsed: true
         }));
@@ -1052,6 +1056,7 @@ function createFlagCard(flag: FlagReport): HTMLElement {
     studentName.className = 'student-name';
     studentName.textContent = flag.studentName || 'Unknown Student';
 
+
     const statusBadge = document.createElement('div');
     statusBadge.className = 'status-badge';
     statusBadge.textContent = ` ${flag.status === 'unresolved' ? 'Unresolved' : 'Resolved'}`;
@@ -1061,6 +1066,13 @@ function createFlagCard(flag: FlagReport): HTMLElement {
     expandArrow.textContent = flag.collapsed ? '▼' : '▲';
 
     footer.appendChild(studentName);
+    if (flag.isTestStudent) {
+        // Sits beside the name rather than inside it: `.student-name` truncates.
+        const testStudentTag = document.createElement('span');
+        testStudentTag.className = 'flag-test-student-tag';
+        testStudentTag.textContent = 'Test student';
+        footer.appendChild(testStudentTag);
+    }
     footer.appendChild(statusBadge);
     footer.appendChild(expandArrow);
 

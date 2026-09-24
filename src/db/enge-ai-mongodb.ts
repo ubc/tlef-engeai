@@ -60,6 +60,7 @@ import * as ConversationExportMongo from './mongo/conversation-export-mongo';
 import * as CourseBackupMongo from './mongo/course-backup-mongo';
 import * as ReportFixtureSeedMongo from './mongo/report-fixture-seed-mongo';
 import * as StruggleStatsMongo from './mongo/struggle-stats-mongo';
+import * as TestStudentMongo from './mongo/student-view-mongo';
 import * as MonitorConversationsMongo from './mongo/monitor-conversations-mongo';
 import * as ReportPdfMongo from './mongo/report-pdf-mongo';
 import * as AcademicPeriodMongo from './mongo/academic-period-mongo';
@@ -1421,6 +1422,26 @@ export class EngEAI_MongoDB {
     /** Course-wide struggle-topic stats for monitor and course-summary (D2). */
     public getCourseStruggleStats = async (courseId: string) =>
         StruggleStatsMongo.getCourseStruggleStats(this.ctx(), courseId);
+
+    /**
+     * Student View test students — student-view-mongo.ts
+     */
+
+    /** Lazily create (or return) this staff member's test student for one course. */
+    public ensureTestStudent = async (course: activeCourse, ownerUserId: string) =>
+        TestStudentMongo.ensureTestStudentForOwner(this.ctx(), course, ownerUserId);
+
+    /** The existing test student for one staff member in one course, or null. */
+    public findTestStudent = async (courseId: string, ownerUserId: string) =>
+        TestStudentMongo.findTestStudentForOwner(this.ctx(), courseId, ownerUserId);
+
+    /** Delete everything one test student produced; refuses any user not flagged as one. */
+    public purgeTestStudent = async (course: activeCourse, testStudentUserId: string) =>
+        TestStudentMongo.purgeTestStudentData(this.ctx(), course, testStudentUserId);
+
+    /** Test-student user ids for collections that cannot recognise one on their own. */
+    public listTestStudentUserIds = async (courseName: string) =>
+        TestStudentMongo.listTestStudentUserIds(this.ctx(), courseName);
 
     /** Roster-only monitor rows without struggle fields (instructor-safe). */
     public getMonitorConversationUsers = async (courseId: string) =>
