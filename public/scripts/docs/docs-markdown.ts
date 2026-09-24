@@ -101,12 +101,12 @@ export type DocsCalloutKind =
 	| 'developer-note'
 	| 'agent-note'
 	| 'prerequisites'
-	| 'relevant-readings';
+	| 'relevant-sources';
 
 /**
  * docsCalloutKind - maps a fence language to a docs callout, or null for normal code.
  *
- * Accepts `solution`, `developer-note`, `agent-note`, `prerequisites`, and `relevant readings`.
+ * Accepts `solution`, `developer-note`, `agent-note`, `prerequisites`, and `relevant sources`.
  *
  * @param lang - marked `lang` field (may include extra info)
  */
@@ -124,8 +124,8 @@ export function docsCalloutKind(lang: string | undefined): DocsCalloutKind | nul
 	if (name === 'prerequisites') {
 		return 'prerequisites';
 	}
-	if (name === 'relevant-readings') {
-		return 'relevant-readings';
+	if (name === 'relevant-sources') {
+		return 'relevant-sources';
 	}
 	return null;
 }
@@ -151,6 +151,49 @@ export function extractDocsCallouts(markdown: string): {
 		return `\n\nDOCS_CALLOUT_PLACEHOLDER_${index}\n\n`;
 	});
 	return { body, callouts };
+}
+
+/**
+ * extractDocsInlineLists - extracts safe semicolon-delimited lists from documentation tables.
+ *
+ * Authors write `{{list:First item; Second item}}` in a table cell. The list is
+ * replaced with a placeholder so the page renderer can create escaped list markup
+ * after Marked has finished parsing the surrounding table.
+ *
+ * @param markdown - Markdown source with callout fences already removed
+ * @returns Markdown body with placeholders and the list items for each placeholder
+ */
+export function extractDocsInlineLists(markdown: string): {
+	body: string;
+	lists: string[][];
+} {
+	const lists: string[][] = [];
+	let insideCodeFence = false;
+	const body = markdown.split('\n').map((line) => {
+		// Preserve code examples exactly as written, including list-like marker text.
+		if (/^\s*(```|~~~)/.test(line)) {
+			insideCodeFence = !insideCodeFence;
+			return line;
+		}
+		if (insideCodeFence || !line.includes('|')) {
+			return line;
+		}
+
+		// Replace markers only in table rows so ordinary documentation prose stays unchanged.
+		return line.replace(/\{\{list:([^{}]+)\}\}/g, (match, rawItems: string) => {
+			const items = rawItems
+				.split(';')
+				.map((item) => item.trim())
+				.filter(Boolean);
+			if (items.length === 0) {
+				return match;
+			}
+			const index = lists.length;
+			lists.push(items);
+			return `DOCS_INLINE_LIST_PLACEHOLDER_${index}`;
+		});
+	}).join('\n');
+	return { body, lists };
 }
 
 /**
