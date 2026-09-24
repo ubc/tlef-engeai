@@ -28,6 +28,8 @@ import { activeCourse } from "../types.js";
 import { showErrorModal, showHelpModal } from "../ui/modal-overlay.js";
 import { updateStaffOnboardingProgress } from "./staff-onboarding-ui.js";
 import { completeInstructorOnboardingStage } from './onboarding-progress.js';
+import { renderTutorialChrome } from './onboarding-tutorial-chrome.js';
+import { offerSkipTutorial } from './onboarding-skip.js';
 
 // Make currentClass globally accessible
 declare global {
@@ -241,6 +243,16 @@ function setupNavigation(state: MonitorSetupState): void {
     const nextBtn = document.getElementById('nextBtn');
     const backBtn = document.getElementById('backBtn');
 
+    // Skip tutorial: available from every stage that only teaches. A refused or failed
+    // skip leaves the instructor exactly where they were.
+    document.getElementById('skipTutorialBtn')?.addEventListener('click', () => {
+        void (async () => {
+            if (await offerSkipTutorial() === 'skipped') {
+                window.dispatchEvent(new CustomEvent('instructorOnboardingSkipped'));
+            }
+        })();
+    });
+
     if (nextBtn) {
         nextBtn.addEventListener('click', async () => {
             console.log('[MONITOR-SETUP] Next button clicked, currentStep:', state.currentStep, 'totalSteps:', state.totalSteps);
@@ -296,6 +308,7 @@ async function showStep(state: MonitorSetupState, stepNumber: number): Promise<v
     state.currentStep = stepNumber;
     state.completedSteps.add(stepNumber);
     updateStaffOnboardingProgress(state.currentStep, state.totalSteps);
+    renderTutorialChrome('monitor-setup', (window as any).currentClass);
 
     // Initialize step-specific functionality
     await initializeStepFunctionality(stepNumber);

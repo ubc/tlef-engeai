@@ -227,6 +227,59 @@ export async function completeInstructorOnboardingStage(
     return (result as unknown as GlobalUser | null) ?? null;
 }
 
+
+/**
+ * Every per-user instructor tutorial key.
+ *
+ * `courseSetup` is absent on purpose: it is course state, not tutorial progress, and
+ * lives on the course document.
+ */
+export const INSTRUCTOR_ONBOARDING_TUTORIAL_STAGES: ReadonlyArray<keyof InstructorOnboardingProgress> = [
+    'contentSetup',
+    'flagSetup',
+    'monitorSetup',
+    'scenarioGeneration',
+    'writingFeedback',
+    'guidedPathway'
+];
+
+/**
+ * skipRemainingInstructorOnboardingStages
+ *
+ * Marks every instructor tutorial stage taught for the user located by `puid`, which is
+ * what choosing Skip tutorial means: skipping is recorded exactly like being taught, so
+ * it follows the person across courses and the tutorials are never offered again.
+ *
+ * Writes the six dotted paths in one update for the same reason the single-stage delegate
+ * does — a shallow `$set` of `instructorOnboarding` would replace the subdocument. Only
+ * ever sets `true`; a stage is never un-completed.
+ *
+ * @param ctx - MongoDalContext
+ * @param puid - Global identity key; never leaves this collection
+ *
+ * @returns Post-image `GlobalUser`, or `null` when no user matches `puid`
+ */
+export async function skipRemainingInstructorOnboardingStages(
+    ctx: MongoDalContext,
+    puid: string
+): Promise<GlobalUser | null> {
+    const collection = activeUsersMongoCollection(ctx.db);
+    const stageUpdates = Object.fromEntries(
+        INSTRUCTOR_ONBOARDING_TUTORIAL_STAGES.map(stage => [`instructorOnboarding.${stage}`, true])
+    );
+    const result = await collection.findOneAndUpdate(
+        { puid },
+        {
+            $set: {
+                ...stageUpdates,
+                updatedAt: new Date()
+            }
+        },
+        { returnDocument: 'after' }
+    );
+    return (result as unknown as GlobalUser | null) ?? null;
+}
+
 /**
  * updateGlobalUserAffiliation
  *

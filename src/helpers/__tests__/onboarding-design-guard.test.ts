@@ -218,3 +218,80 @@ describe('course setup feature checkboxes match the registry default', () => {
         }
     });
 });
+
+/**
+ * Skip tutorial affordance and tutorial chrome.
+ *
+ * Both are visual, so what is asserted is presence and palette compliance: a skip button
+ * on every stage that teaches only, none on the two stages that write real course state,
+ * and chrome styles that exist at all. The browser pass proves how they look.
+ */
+describe('skip tutorial affordance', () => {
+    const SKIPPABLE_COMPONENTS = [
+        'scenario-generation-setup.html',
+        'writing-feedback-setup.html',
+        'guided-pathway-setup.html',
+        'flag-setup.html',
+        'monitor-setup.html'
+    ] as const;
+    const NON_SKIPPABLE_COMPONENTS = ['course-setup.html', 'document-setup.html'] as const;
+
+    it.each(SKIPPABLE_COMPONENTS)('%s offers Skip tutorial in its navigation', file => {
+        const markup = readFileSync(join(COMPONENT_DIR, file), 'utf8');
+        expect(markup).toContain('id="skipTutorialBtn"');
+        expect(markup).toContain('Skip tutorial');
+    });
+
+    it.each(NON_SKIPPABLE_COMPONENTS)('%s does not offer Skip tutorial', file => {
+        const markup = readFileSync(join(COMPONENT_DIR, file), 'utf8');
+        expect(markup).not.toContain('skipTutorialBtn');
+    });
+
+    it('styles the skip button and the tutorial chrome', () => {
+        const onboardingCss = readFileSync(ONBOARDING_CSS, 'utf8');
+        expect(onboardingCss).toContain('.btn-skip-tutorial');
+        expect(onboardingCss).toContain('.tutorial-chrome__segment--done');
+        expect(onboardingCss).toContain('.tutorial-chrome__segment--current');
+    });
+});
+
+/**
+ * On-screen word ceilings per tutorial.
+ *
+ * An instructor at a workshop reported the tutorials were too long. The fix was to move
+ * second-order detail into the per-step Help panels rather than drop features, so these
+ * ceilings count only what a step renders on screen and deliberately exclude the
+ * `#help-step-N` panels, which open on request.
+ *
+ * A tutorial that needs more room on screen should earn it by a product decision, not by
+ * this number drifting upward, so each ceiling sits just above the trimmed copy. The trim took
+ * 4263 words down to 3148. `flag-setup` keeps the largest share of its original because what
+ * remains is the five-category taxonomy plus two interactive demos, where cutting further would
+ * remove information rather than repetition.
+ */
+describe('tutorial concision', () => {
+    const WORD_CEILINGS: Record<string, number> = {
+        'course-setup.html': 330,
+        'document-setup.html': 285,
+        'scenario-generation-setup.html': 340,
+        'writing-feedback-setup.html': 950,
+        'guided-pathway-setup.html': 430,
+        'flag-setup.html': 495,
+        'monitor-setup.html': 350
+    };
+
+    /** Strips the help panels, then the tags, and counts what a step renders. */
+    function onScreenWordCount(markup: string): number {
+        return markup
+            .replace(/<div id="help-step-[\s\S]*$/, '')
+            .replace(/<[^>]*>/g, ' ')
+            .replace(/&[a-z]+;/g, ' ')
+            .split(/\s+/)
+            .filter(Boolean).length;
+    }
+
+    it.each(Object.entries(WORD_CEILINGS))('%s stays within %i on-screen words', (file, ceiling) => {
+        const words = onScreenWordCount(readFileSync(join(COMPONENT_DIR, file), 'utf8'));
+        expect(words).toBeLessThanOrEqual(ceiling);
+    });
+});

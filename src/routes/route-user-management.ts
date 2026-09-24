@@ -261,6 +261,55 @@ router.patch('/onboarding/instructor-stage', asyncHandlerWithAuth(async (req: Re
 }));
 
 /**
+ * POST /onboarding/skip-remaining
+ * Records that the caller has chosen to leave the instructor tutorial, by marking every
+ * per-user tutorial stage taught on their own `GlobalUser` record.
+ *
+ * Skipping is deliberately recorded exactly like being taught, so it follows the person
+ * across courses and the tutorials are never offered again. `courseSetup` is untouched:
+ * it is course configuration, and Skip tutorial is never offered before it is complete.
+ *
+ * Writes only the caller's own record, so no course-scoped RBAC applies.
+ *
+ * @route POST /api/user/onboarding/skip-remaining
+ * @returns {object} { success: boolean, instructorOnboarding?: InstructorOnboardingProgress, error?: string }
+ * @response 200 - Success
+ * @response 401 - User not authenticated
+ * @response 404 - GlobalUser not found
+ * @response 500 - Failed to skip
+ */
+router.post('/onboarding/skip-remaining', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const globalUser = (req.session as any).globalUser;
+        if (!globalUser?.puid) {
+            return res.status(401).json({ success: false, error: 'User not authenticated' });
+        }
+
+        const mongoDB = await EngEAI_MongoDB.getInstance();
+        const updated = await mongoDB.skipRemainingInstructorOnboardingStages(globalUser.puid);
+
+        if (!updated) {
+            return res.status(404).json({ success: false, error: 'User not found' });
+        }
+
+        // Keep the session copy in step so a later read in the same session is not stale.
+        (req.session as any).globalUser = {
+            ...globalUser,
+            instructorOnboarding: updated.instructorOnboarding
+        };
+
+        appLogger.log(`[INSTRUCTOR-ONBOARDING] Skipped remaining tutorials for user ${globalUser.userId}`);
+        return res.json({ success: true, instructorOnboarding: updated.instructorOnboarding });
+    } catch (error) {
+        appLogger.error('[INSTRUCTOR-ONBOARDING] Skip error:', error);
+        return res.status(500).json({
+            success: false,
+            error: 'Failed to skip instructor onboarding'
+        });
+    }
+}));
+
+/**
  * GET /activity
  * Read-only idle poll. Does not bump lastActivityAt.
  *

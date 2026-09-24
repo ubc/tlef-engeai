@@ -274,6 +274,35 @@ export async function updateActiveCourse(
 }
 
 /**
+ * markCourseContentSetupComplete
+ *
+ * Records that Document Setup has filed this course's content.
+ *
+ * Kept out of {@link updateActiveCourse} because the course update route strips
+ * `contentSetup` on purpose, so a stale client cannot resurrect the deprecated tutorial
+ * flags on the course document. This is the one server-owned path that may set it.
+ *
+ * Only ever sets `true`: a course whose content has been filed never owes it again, and
+ * the per-viewer tutorial is tracked separately on `GlobalUser.instructorOnboarding`.
+ *
+ * @param ctx - MongoDalContext
+ * @param id - string — target `activeCourse.id`
+ *
+ * @returns Updated `activeCourse` after the write, or `null` when no course matches
+ */
+export async function markCourseContentSetupComplete(
+    ctx: MongoDalContext,
+    id: string
+): Promise<activeCourse | null> {
+    const result = await activeCourseListCollection(ctx.db).findOneAndUpdate(
+        { id },
+        { $set: { contentSetup: true, updatedAt: Date.now().toString() } },
+        { returnDocument: 'after' }
+    );
+    return (result as activeCourse | null) ?? null;
+}
+
+/**
  * deleteActiveCourse
  *
  * Removes the catalog row only — caller must still drop / clean per-course collections if required.

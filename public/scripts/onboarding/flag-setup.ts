@@ -28,6 +28,8 @@ import { activeCourse } from "../types.js";
 import { showErrorModal, showHelpModal } from "../ui/modal-overlay.js";
 import { updateStaffOnboardingProgress } from "./staff-onboarding-ui.js";
 import { completeInstructorOnboardingStage } from './onboarding-progress.js';
+import { renderTutorialChrome } from './onboarding-tutorial-chrome.js';
+import { offerSkipTutorial } from './onboarding-skip.js';
 
 // ===========================================
 // TYPE DEFINITIONS
@@ -166,6 +168,16 @@ function setupResizeListener(state: FlagSetupState): void {
 function setupNavigationListeners(state: FlagSetupState, instructorCourse: activeCourse): void {
     const backBtn = document.getElementById('backBtn') as HTMLButtonElement;
     const nextBtn = document.getElementById('nextBtn') as HTMLButtonElement;
+
+    // Skip tutorial: available from every stage that only teaches. A refused or failed
+    // skip leaves the instructor exactly where they were.
+    document.getElementById('skipTutorialBtn')?.addEventListener('click', () => {
+        void (async () => {
+            if (await offerSkipTutorial() === 'skipped') {
+                window.dispatchEvent(new CustomEvent('instructorOnboardingSkipped'));
+            }
+        })();
+    });
 
     if (backBtn) {
         backBtn.addEventListener('click', () => handleBackNavigation(state));
@@ -698,6 +710,7 @@ function updateStepDisplay(state: FlagSetupState): void {
     }
 
     updateStaffOnboardingProgress(state.currentStep, state.totalSteps);
+    renderTutorialChrome('flag-setup', (window as any).currentClass);
 }
 
 /**

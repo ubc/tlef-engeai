@@ -897,8 +897,46 @@ export async function showSkipOnboardingModal(
 }
 
 /**
+ * Action resolved when staff confirm leaving the staff tutorial.
+ *
+ * The modal resolves slugified button labels (`text.toLowerCase().replace(/\s+/g, '-')`),
+ * which keeps the label's comma, so the value is declared here rather than re-derived by
+ * every caller.
+ */
+export const SKIP_TUTORIAL_CONFIRM_ACTION = 'yes,-skip-it';
+
+/**
+ * Staff tutorial exit confirmation.
+ *
+ * Deliberately separate from {@link showSkipOnboardingModal}, which is the student
+ * per-course offer: this one states that the remaining tutorials are marked taught
+ * everywhere, because for staff the write is final.
+ *
+ * Continue is the primary button on purpose. Enter activates the primary button and
+ * Escape resolves to `escape`, so neither key can trigger the irreversible write.
+ *
+ * @returns Modal result whose `action` is {@link SKIP_TUTORIAL_CONFIRM_ACTION} only when
+ *          staff explicitly chose to leave
+ */
+export async function showSkipTutorialModal(): Promise<ModalResult> {
+    const modal = getModal();
+    return modal.show({
+        type: 'info',
+        title: 'Skip the onboarding tutorial?',
+        content:
+            'You can leave the tutorial now and go straight to your course. The remaining tutorials ' +
+            'will be marked as taught, so EngE-AI will not show them to you again — on this course or any other.',
+        maxWidth: '480px',
+        buttons: [
+            { text: 'Yes, skip it', type: 'muted', closeOnClick: true },
+            { text: 'No, continue with the tutorial', type: 'primary', closeOnClick: true }
+        ]
+    });
+}
+
+/**
  * Shows an input modal for text entry
- * 
+ *
  * @param title - Modal title
  * @param message - Instruction message
  * @param currentValue - Pre-filled value in the input
@@ -2076,6 +2114,7 @@ export default {
     showInfoModal,
     showConfirmModal,
     showSkipOnboardingModal,
+    showSkipTutorialModal,
     showInputModal,
     showHelpModal,
     showCustomModal,

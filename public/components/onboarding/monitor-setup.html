@@ -93,13 +93,13 @@
             <div class="content-step-inner">
                 <div class="step-header">
                     <h1>Welcome to Monitor Dashboard</h1>
-                    <p>Review course activity without treating it as a learning score</p>
+                    <p>Review course activity without reading it as a learning score</p>
                 </div>
                 
                 <div class="welcome-content">
                     <div class="welcome-message">
                         <h3>See how students are using EngE-AI</h3>
-                        <p>The Monitor Dashboard gives course staff a view of tutor activity over time, with access to individual chat sessions when closer review is appropriate.</p>
+                        <p>The Monitor Dashboard shows tutor activity over time, and opens individual chat sessions when closer review is warranted.</p>
                         
                         <div class="demo-explanation">
                             <h4>Course staff can:</h4>
@@ -107,12 +107,12 @@
                                 <li>Sort the roster by name or token usage</li>
                                 <li>Filter activity to a date range</li>
                                 <li>Open available student chat sessions</li>
-                                <li>Download a session when there is a course-support need</li>
+                                <li>Download a session when course support needs it</li>
                             </ul>
                         </div>
                         
                         <div class="completion-note">
-                            <p><strong>Use activity as context, not a conclusion.</strong> Token usage shows system activity. It does not prove engagement, understanding, effort, or learning.</p>
+                            <p><strong>Activity is context, not a conclusion.</strong> Token usage shows system activity, never engagement, understanding, or effort.</p>
                         </div>
                     </div>
                 </div>
@@ -130,7 +130,7 @@
                 <div class="demo-section">
                     <div class="demo-explanation">
                         <h3>Student List Management</h3>
-                        <p>The list shows enrolled students and the amount of text processed in their tutor sessions. Sorting can help course staff decide where to look next, but the number is not a learning score.</p>
+                        <p>The list shows enrolled students and how much text their sessions processed, so staff can decide where to look first.</p>
                     </div>
                     
                     <div class="demo-interactive">
@@ -158,9 +158,9 @@
                         <div class="demo-explanation" style="margin-top: 2rem;">
                             <h4>Sorting Options:</h4>
                             <ul class="feature-list">
-                                <li><strong>Token Usage:</strong> Sort by highest to lowest system activity (default)</li>
+                                <li><strong>Token Usage:</strong> sort by activity, highest first (default)</li>
                                 <li><strong>Alphabetical:</strong> Sort by student name alphabetically</li>
-                                <li><strong>Active Indicator:</strong> The blue button shows which sort is currently active</li>
+                                <li><strong>Active Indicator:</strong> the blue button marks the current sort</li>
                             </ul>
                         </div>
                     </div>
@@ -179,7 +179,7 @@
                 <div class="demo-section">
                     <div class="demo-explanation">
                         <h3>Student Detail View</h3>
-                        <p>Select a student to expand their card and view available chat sessions. Use this access only for legitimate course support and follow your institution's privacy practices.</p>
+                        <p>Expand a student to open their chat sessions. Use this only for legitimate course support.</p>
                     </div>
                     
                     <div class="demo-interactive">
@@ -195,10 +195,10 @@
                         <div class="demo-explanation" style="margin-top: 2rem;">
                             <h4>Student Detail Features:</h4>
                             <ul class="feature-list">
-                                <li><strong>Expandable Cards:</strong> Click any student name to expand their details</li>
+                                <li><strong>Expandable Cards:</strong> click a name for details</li>
                                 <li><strong>Chat sessions:</strong> Open sessions by title and date</li>
-                                <li><strong>Download:</strong> Export one session when needed for authorized course work</li>
-                                <li><strong>Token usage:</strong> See an activity signal for the selected date range</li>
+                                <li><strong>Download:</strong> export a session for authorized course work</li>
+                                <li><strong>Token usage:</strong> an activity signal for the date range</li>
                             </ul>
                         </div>
                     </div>
@@ -218,21 +218,21 @@
                     <div class="completion-message">
                         <div class="success-icon"><i data-feather="award" aria-hidden="true"></i></div>
                         <h3>Monitor Dashboard tutorial complete</h3>
-                        <p>You now know what the dashboard shows and what its activity numbers cannot tell you.</p>
+                        <p>You now know what the dashboard shows, and what it cannot tell you.</p>
                         <ul class="completion-list">
                             <li>Sorted the student list</li>
                             <li>Opened available student sessions</li>
                             <li>Interpreted token usage as an activity signal</li>
                         </ul>
                         <div class="completion-note">
-                            <p>Combine dashboard activity with other course evidence before deciding whether follow-up is needed.</p>
+                            <p>Weigh activity against other evidence before following up.</p>
                         </div>
                     </div>
 
                     <div class="next-steps">
                         <h4>What you can do next</h4>
                         <ul>
-                            <li><i data-feather="users" aria-hidden="true"></i> Filter and sort activity for a useful date range</li>
+                            <li>Filter and sort activity for a date range</li>
                             <li><i data-feather="file-text" aria-hidden="true"></i> Review a session when course support requires it</li>
                             <li><i data-feather="save" aria-hidden="true"></i> Download only when authorized and necessary</li>
                         </ul>
@@ -245,6 +245,10 @@
 
         <!-- Navigation -->
         <div class="onboarding-navigation">
+            <button class="nav-btn btn-skip-tutorial" id="skipTutorialBtn" type="button">
+                <span class="nav-btn-text">Skip tutorial</span>
+                <i data-feather="fast-forward"></i>
+            </button>
             <button class="nav-btn btn-back" id="backBtn" style="display: none;">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="15,18 9,12 15,6"></polyline>

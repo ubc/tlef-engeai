@@ -36,6 +36,8 @@
 }
 
 .onboarding {
+    /* Shared by the steps panel's logo box and the tutorial chrome so their dividers align. */
+    --onboarding-header-height: 56px;
     display: flex;
     height: 100%;
     width: 100%;
@@ -72,7 +74,7 @@
     background-color: var(--color-chbe-green);
     color: white;
     padding: 0.75rem;
-    height: 56px;
+    height: var(--onboarding-header-height, 56px);
     border-radius: 8px;
     display: flex;
     align-items: center;
@@ -747,6 +749,25 @@
 .btn-back:hover {
     filter: brightness(0.88);
     transform: translateY(-1px);
+}
+
+/* Muted sibling of Back: an exit, never the obvious next action. */
+.btn-skip-tutorial {
+    border: 1px solid var(--border-color);
+    background: #fff;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.btn-skip-tutorial:hover {
+    border-color: var(--color-chbe-green);
+    color: var(--color-chbe-green);
+    transform: translateY(-1px);
+}
+
+.btn-skip-tutorial svg {
+    width: 16px;
+    height: 16px;
 }
 
 .btn-next {
@@ -2615,6 +2636,89 @@
     .accordion-content {
         background-color: #fff;
         border: 2px solid #000;
+    }
+}
+
+/* ===========================================
+   TUTORIAL CHROME (STAGE PROGRESS)
+   Sized to mirror the steps panel's header so the two dividers
+   share one line: panel padding, a header-height row, then the
+   logo box's 1rem bottom margin. Both panels carry a 1px border,
+   so the offsets match without correction.
+   =========================================== */
+
+.tutorial-chrome {
+    display: flex;
+    position: relative;
+    z-index: 11;
+    flex-direction: column;
+    justify-content: center;
+    flex: 0 0 auto;
+    gap: 0.55rem;
+    box-sizing: content-box;
+    height: var(--onboarding-header-height);
+    padding: 0.75rem 2rem 1rem;
+    border-bottom: 1px solid var(--border-color);
+    background: #fff;
+}
+
+.tutorial-chrome__progress {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.tutorial-chrome__position {
+    color: var(--text-primary);
+    font-weight: 700;
+    letter-spacing: 0.01em;
+}
+
+.tutorial-chrome__stage {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-secondary);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* One pill per stage: finished, in progress, still to come. */
+.tutorial-chrome__segments {
+    display: flex;
+    gap: 4px;
+}
+
+.tutorial-chrome__segment {
+    flex: 1 1 0;
+    height: 8px;
+    border-radius: 999px;
+    background: rgba(92, 138, 58, 0.15);
+    transition: background-color 0.25s ease;
+}
+
+.tutorial-chrome__segment--done {
+    background: var(--color-chbe-green);
+}
+
+.tutorial-chrome__segment--current {
+    background: rgba(92, 138, 58, 0.4);
+    box-shadow: inset 0 0 0 1.5px var(--color-chbe-green);
+}
+
+@media (max-width: 768px) {
+    .tutorial-chrome {
+        height: auto;
+        padding: calc(0.6rem + env(safe-area-inset-top)) max(1rem, env(safe-area-inset-left)) 0.6rem;
+    }
+
+    .tutorial-chrome__progress {
+        font-size: 0.82rem;
+    }
+
+    .tutorial-chrome__segment {
+        height: 6px;
     }
 }
 

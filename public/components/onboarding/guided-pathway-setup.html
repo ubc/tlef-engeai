@@ -106,25 +106,25 @@
                 <div class="content-step-inner">
                     <div class="step-header">
                         <h1>Welcome to Guided Pathways</h1>
-                        <p>Predefined responses for the moments where an AI tutor should not improvise</p>
+                        <p>Approved answers for moments an AI tutor must not improvise</p>
                     </div>
 
                     <div class="welcome-content">
                         <div class="welcome-message">
                         <h3>Some messages need a known answer</h3>
-                        <p>A guided pathway watches for a defined kind of student message and replies with approved wording instead of a generated response. This is especially important when an improvised answer could cause harm.</p>
+                        <p>A guided pathway watches for one kind of message and answers with approved wording, not a generated reply.</p>
 
                             <div class="demo-explanation">
                                 <h4>Each pathway has three parts:</h4>
                                 <ul class="feature-list">
-                                    <li><strong>What it watches for</strong> — the kind of message that triggers it.</li>
-                                    <li><strong>What it says</strong> — the exact predefined response the student receives.</li>
-                                    <li><strong>Where it points</strong> — optional links or contacts shown alongside the response.</li>
+                                    <li><strong>What it watches for</strong> — the triggering message.</li>
+                                    <li><strong>What it says</strong> — the exact approved response.</li>
+                                    <li><strong>Where it points</strong> — optional links or contacts.</li>
                                 </ul>
                             </div>
 
                             <div class="completion-note">
-                                <p><strong>Your course starts protected.</strong> Two pathways are already active, so you do not have to configure anything for the safety cases to work.</p>
+                                <p><strong>Your course starts protected:</strong> two pathways are active already.</p>
                             </div>
                         </div>
                     </div>
@@ -136,7 +136,7 @@
                 <div class="content-step-inner">
                     <div class="step-header">
                         <h1>Your Pathways</h1>
-                        <p>Keep the recommended defaults, or configure your own now</p>
+                        <p>Keep the defaults, or configure your own</p>
                     </div>
 
                     <div class="gp-setup-defaults">
@@ -144,11 +144,11 @@
                         <ul class="gp-setup-pathway-list">
                             <li>
                                 <span class="gp-setup-pathway-name">Mental health crisis</span>
-                                <span class="gp-setup-pathway-note">Responds with crisis support contacts, including 9-8-8, Here2Talk, and UBC Counselling. Notifications on.</span>
+                                <span class="gp-setup-pathway-note">Crisis contacts: 9-8-8, Here2Talk, UBC Counselling. Notifications on.</span>
                             </li>
                             <li>
                                 <span class="gp-setup-pathway-name">Inappropriate content</span>
-                                <span class="gp-setup-pathway-note">Redirects the conversation back to course work. Notifications on.</span>
+                                <span class="gp-setup-pathway-note">Redirects back to course work. Notifications on.</span>
                             </li>
                         </ul>
                     </div>
@@ -161,7 +161,7 @@
                                 <input type="radio" name="gpSetupChoice" id="gpSetupKeepDefaults" checked>
                                 <div class="radio-content">
                                     <h3>Keep recommended defaults <span class="radio-badge">Recommended</span></h3>
-                                    <p>The two pathways above stay active exactly as configured. You can change them any time from the Pathway Library.</p>
+                                    <p>Both stay as configured. Change them any time in the Pathway Library.</p>
                                 </div>
                             </label>
 
@@ -169,7 +169,7 @@
                                 <input type="radio" name="gpSetupChoice" id="gpSetupCustomize">
                                 <div class="radio-content">
                                     <h3>Customize now</h3>
-                                    <p>Opens the real Pathway Library below. Changes you make here are saved to your course immediately.</p>
+                                    <p>Opens the real Pathway Library; changes save immediately.</p>
                                 </div>
                             </label>
                         </div>
@@ -184,11 +184,11 @@
                 <div class="content-step-inner">
                     <div class="step-header">
                         <h1>Pathway Notifications</h1>
-                        <p>Each pathway controls whether it records an alert for course staff</p>
+                        <p>Each pathway decides whether a trigger alerts staff</p>
                     </div>
 
                     <div class="demo-explanation">
-                        <p>Every pathway carries the production setting <strong>Notify instructor when triggered</strong>. When it is on, a trigger records an alert for course staff. When it is off, the student still receives the same predefined response, but no course alert is recorded.</p>
+                        <p>Every pathway carries <strong>Notify instructor when triggered</strong>. On, a trigger records a staff alert. Off, the student gets the same response and nothing is recorded.</p>
                     </div>
 
                     <div class="gp-setup-notify-demo">
@@ -203,11 +203,10 @@
                     </div>
 
                     <div class="completion-note">
-                        <p><strong>The student field is anonymous.</strong> Treat the message as sensitive because a student may include identifying information in their own text.</p>
+                        <p><strong>The student field is anonymous,</strong> but message text is sensitive: students may identify themselves in it. Notifications never gate the response.</p>
                     </div>
 
                     <div class="completion-note">
-                        <p><strong>Notifications do not control the response.</strong> Turning them off leaves the approved student response active.</p>
                     </div>
                 </div>
             </div>
@@ -217,11 +216,11 @@
                 <div class="content-step-inner">
                     <div class="step-header">
                         <h1>Responding to an Alert</h1>
-                        <p>Course staff can dismiss it or record an escalation</p>
+                        <p>Dismiss it, or record an escalation</p>
                     </div>
 
                     <div class="demo-explanation">
-                        <p>Alerts collect in the <strong>Flags</strong> page, which you'll set up in a later stage of this tutorial. Here is what one looks like. Choose a decision to continue.</p>
+                        <p>Alerts collect in the <strong>Flags</strong> page, set up later in this tutorial. Choose a decision to continue.</p>
                     </div>
 
                     <div class="gp-setup-alert-card">
@@ -237,23 +236,23 @@
                             <dt>Triggered</dt>
                             <dd>Today</dd>
                         </dl>
-                        <p class="gp-setup-alert-body">A message in this course matched the Mental health crisis pathway. The student received the approved crisis support response, including the contacts you configured.</p>
+                        <p class="gp-setup-alert-body">Matched the Mental health crisis pathway; the student received your approved response.</p>
 
                         <div class="gp-setup-alert-actions">
                             <button type="button" class="gp-setup-dismiss-btn" id="gpSetupDismissBtn">Dismiss</button>
                             <button type="button" class="gp-setup-escalate-btn" id="gpSetupEscalateBtn">Escalate to the admin team</button>
                         </div>
-                        <p class="gp-setup-escalation-note"><strong>What escalation does:</strong> This button only records a request for internal administrator review. It does not send email or notify anyone outside EngE-AI.</p>
+                        <p class="gp-setup-escalation-note"><strong>What escalation does:</strong> records a request for internal administrator review. No email, nobody outside EngE-AI.</p>
                     </div>
 
                     <div class="gp-setup-outcome gp-setup-outcome-dismissed" id="gpSetupDismissedState" hidden>
                         <h4>Dismissed</h4>
-                        <p>The alert is closed and no further action is recorded. Use this when the match did not reflect a real concern — a student quoting course material about a sensitive topic, for example.</p>
+                        <p>Closed with no further action — use it when the match was not a real concern.</p>
                     </div>
 
                     <div class="gp-setup-outcome gp-setup-outcome-escalated" id="gpSetupEscalatedState" hidden>
                         <h4>Escalated</h4>
-                        <p>The alert is marked for internal administrator review. For urgent situations, use your institution's real support and reporting channels.</p>
+                        <p>Marked for internal administrator review. Urgent situations need your institution&#39;s real support channels.</p>
                     </div>
                 </div>
             </div>
@@ -265,24 +264,24 @@
                         <div class="completion-message">
                             <div class="success-icon"><i data-feather="award" aria-hidden="true"></i></div>
                             <h3>Guided Pathways tutorial complete</h3>
-                            <p>You know how predefined responses and course alerts work together.</p>
+                            <p>You know how approved responses and staff alerts work together.</p>
                             <ul class="completion-list">
-                                <li>Learned what a guided pathway watches for and answers with</li>
-                                <li>Reviewed the recommended default pathways</li>
-                                <li>Understood per-pathway course-staff notifications</li>
-                                <li>Made a decision on an example anonymous alert</li>
+                                <li>Learned what a pathway watches for and says</li>
+                                <li>Reviewed the default pathways</li>
+                                <li>Understood per-pathway notifications</li>
+                                <li>Decided on an example alert</li>
                             </ul>
                             <div class="completion-note">
-                                <p>The student field stays anonymous, but staff should still handle message text as sensitive.</p>
+                                <p>Students stay anonymous; message text is sensitive.</p>
                             </div>
                         </div>
 
                         <div class="next-steps">
                             <h4>What you can do next</h4>
                             <ul>
-                                <li><i data-feather="shield" aria-hidden="true"></i> Your default pathways are already protecting students</li>
-                                <li><i data-feather="settings" aria-hidden="true"></i> Adjust wording, contacts, and notifications from the Pathway Library</li>
-                                <li><i data-feather="bell" aria-hidden="true"></i> Review incoming alerts on the Flags page you'll set up next</li>
+                                <li><i data-feather="shield" aria-hidden="true"></i> Your default pathways already protect students</li>
+                                <li><i data-feather="settings" aria-hidden="true"></i> Adjust wording, contacts, and notifications any time</li>
+                                <li><i data-feather="bell" aria-hidden="true"></i> Review alerts on the Flags page, set up next</li>
                             </ul>
                         </div>
                     </div>
@@ -293,6 +292,10 @@
 
         <!-- Navigation -->
         <div class="onboarding-navigation">
+            <button class="nav-btn btn-skip-tutorial" id="skipTutorialBtn" type="button">
+                <span class="nav-btn-text">Skip tutorial</span>
+                <i data-feather="fast-forward"></i>
+            </button>
             <button class="nav-btn btn-back" id="backBtn">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
                 <span class="nav-btn-text">Back</span>
