@@ -355,6 +355,67 @@ resurrect them.
   are new, so nobody has been taught them and everybody is owed them once their course
   enables the capability. See [DATA_MIGRATIONS.md](DATA_MIGRATIONS.md).
 
+### Student View test students (`student-view-mongo.ts`, `student-view-filter.ts`)
+
+A **test student** is one staff member's private stand-in for a brand-new student in one
+course. One per staff member per course, created lazily the first time that person enters
+Student View, never shared.
+
+- **Identity.** `GlobalUser.puid` is the synthetic `test-student:{courseId}:{ownerUserId}`,
+  derived only from ids this application generates, so no real PUID is ever copied.
+  `userId` comes from `idGenerator.globalUserID` over that synthetic value, which makes it
+  unique per owner and course. Name `Test student`, affiliation `student`, `coursesEnrolled`
+  holding this one course — which is what makes every other course unreachable, with no
+  extra check anywhere.
+- **Marker fields.** `isTestStudent?: boolean` and `testStudentOwnerUserId?: string` on both
+  `GlobalUser` (`active-users`) and `CourseUser` (`{courseName}_users`). The owner id is
+  staff-gated and never reaches a student-facing response.
+- **The `CourseUser`** is created through the ordinary `createStudent` with
+  `userOnboarding: true` and no chats, and gets the same empty `{courseName}_memory-agent`
+  row a real student receives on course entry, so what is being previewed is the real thing.
+
+**Exclusion.** `student-view-filter.ts` is a deliberately import-free leaf module holding the
+one rule, `EXCLUDE_TEST_STUDENTS_MATCH = { isTestStudent: { $ne: true } }`, plus
+`withoutTestStudents(filter)`. It is a leaf because `course-user-mongo.ts` needs the rule and
+`student-view-mongo.ts` needs `course-user-mongo.ts`; splitting it is what keeps that from
+being an import cycle. `$ne: true` and not `$exists: false`, so every document written before
+this feature still counts as a real user. Applied at:
+
+| Site | Query |
+|------|-------|
+| `course-user-mongo.ts` `courseSummaryEngagementFacetPipeline` | both `$match` stages |
+| `monitor-roster-mongo.ts` `getMonitorRosterUsers` | roster `find` |
+| `conversation-export-mongo.ts` `studentConversationZipExportPipeline` | first `$match` |
+| `conversation-export-mongo.ts` `listStudentStruggleRowsForZipExport` | roster `find` |
+| `course-backup-mongo.ts` `loadCourseMongoBackupPayloads` | users, flags, memory-agent slices |
+| `route-mongo.ts` `GET /monitor/:courseId/chat-titles` | inline duplicate of the roster read |
+| `guided-pathway-flag-mongo.ts` | **platform-admin queue and badge count only** |
+
+`monitor-conversations-mongo.ts`, `struggle-stats-mongo.ts`, `report-pdf-mongo.ts` and
+`src/report-generation/` hold no student query of their own; they consume the rows above.
+`{courseName}_memory-agent` documents carry no `affiliation`, so they are excluded by id:
+`listTestStudentUserIds` feeds `getAllMemoryAgentEntries(ctx, courseName, excludeUserIds)`
+from `struggle-stats-mongo.ts`.
+
+**Flags are the exception.** Manual flags and course-scoped Guided Pathway alerts raised
+while previewing stay in the instructor's Flags tab, tagged `Test student`, because the
+instructor needs to see what their own preview produced. Only the **cross-course
+platform-admin** queue and its badge count leave them out.
+
+**Reset** (`purgeTestStudentData`) deletes the `CourseUser` — which carries the chats — plus
+the memory-agent row, manual flags, Guided Pathway alerts (keyed `studentUserId`) and
+scenario progress, each scoped to the one `userId`, then recreates the student. It reads the
+subject with `{ userId, isTestStudent: true }` first and throws before any delete if that
+returns nothing, so a `userId` that is not a flagged test student can never be purged.
+
+**Not reachable by a test student, verified rather than filtered:** Writing Feedback keys
+submissions by a one-way hash of a *Canvas* identity (`canvas-import-service.ts`), never an
+EngE-AI `userId`; Canvas roster sync matches salted hashes of real PUIDs, which the synthetic
+identifier cannot collide with. Pinned by `student-view-exclusion-guard.test.ts`.
+
+**Façade:** `ensureTestStudent`, `findTestStudent`, `purgeTestStudent`,
+`listTestStudentUserIds` on `EngEAI_MongoDB`.
+
 - **TBD**: One-way deps (example: flags + user enrichment).
 
 ## Tests and coverage

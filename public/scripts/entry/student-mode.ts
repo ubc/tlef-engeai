@@ -14,6 +14,7 @@ import { authService } from '../services/auth-service.js';
 import { studentUserFactory } from '../factories/student-user-factory.js';
 import { renderStudentOnboarding } from '../onboarding/student-onboarding.js';
 import { initializeStudentFlagHistory } from '../feature/student-flag-history.js';
+import { renderStudentViewBanner } from '../student/student-view-banner.js';
 import { initializeScenariosStudent, isScenarioWorkspaceActive, confirmLeaveScenarioWorkspace, expandStudentSidebar, isScenariosStudentMounted, syncStudentScenariosFromURL } from '../feature/scenarios-student.js';
 import { showConfirmModal, showSkipOnboardingModal, showSimpleErrorModal, showInfoModal } from '../ui/modal-overlay.js';
 import { renderAbout } from '../about/about.js';
@@ -178,8 +179,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
         // Fetch current CourseUser and GlobalUser from session
         const response = await fetch('/api/user/current');
-        const { courseUser, globalUser } = await response.json();
-        
+        const { courseUser, globalUser, studentView } = await response.json();
+
+        // Student View banner: rendered before the onboarding branch below, so staff
+        // previewing the course can always see the mode and leave it.
+        renderStudentViewBanner(studentView ?? { active: false, courseId: null });
+
         if (!courseUser) {
             console.error('[STUDENT-MODE] ❌ No course user found');
             window.location.href = '/course-selection';

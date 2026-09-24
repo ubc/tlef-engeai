@@ -569,7 +569,11 @@ describe('guided-pathway-flag-mongo', () => {
             $match: {
                 status: 'escalated',
                 adminReviewedAt: { $exists: false },
-                $and: [{ $or: [{ origin: 'student' }, { origin: { $exists: false } }] }]
+                $and: [
+                    { $or: [{ origin: 'student' }, { origin: { $exists: false } }] },
+                    // Student View alerts stay in their own course queue, not the admin one.
+                    { isTestStudent: { $ne: true } }
+                ]
             }
         });
         expect(coll.countDocuments).toHaveBeenCalledWith({ courseId: 'course-1' });

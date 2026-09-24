@@ -1465,3 +1465,16 @@
         transition: none;
     }
 }
+
+/* Student View: a flag raised while an instructor previewed their own course. */
+.flag-test-student-tag {
+    flex-shrink: 0;
+    padding: 2px 8px;
+    border: 1px solid var(--border-color, #d0d0d0);
+    border-radius: 10px;
+    font-size: 11px;
+    line-height: 16px;
+    color: var(--text-secondary);
+    background: transparent;
+    white-space: nowrap;
+}

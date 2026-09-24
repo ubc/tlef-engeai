@@ -17,6 +17,7 @@ import onboardingRoutes from './routes/route-onboarding';
 import lmsRoutes from './routes/route-lms';  // Canvas + Moodle integration routes
 import authRoutes from './routes/route-auth';  // Import authentication routes
 import courseEntryRoutes from './routes/route-course-entry';  // Import course entry routes
+import studentViewRoutes from './routes/route-student-view';  // Student View enter/exit/reset
 import userManagementRoutes from './routes/route-user-management';  // Import user management routes
 import courseRoutes from './routes/route-course';  // Import course routes
 import { sendHtmlPageWithBuildComment } from './utils/build-info';
@@ -28,6 +29,7 @@ import adminManualFlagRoutes from './routes/mongo/admin-manual-flag-routes';
 // Import SAML authentication middleware
 import sessionMiddleware from './middleware/session';
 import { passport } from './middleware/passport';
+import { studentViewImpersonation } from './middleware/student-view';
 import { sessionActivityMiddleware } from './middleware/session-activity';
 import { EngEAI_MongoDB } from './db/enge-ai-mongodb';
 import { initAcademicPeriods } from './helpers/init-academic-periods';
@@ -56,6 +58,9 @@ app.use(sessionMiddleware);
 // Passport middleware
 app.use(passport.initialize());
 app.use(passport.session());
+
+// Student View: while a staff member is previewing, this request carries the test student.
+app.use(studentViewImpersonation);
 
 // Session idle: bump activity on /api/* (except poll endpoint); block expired sessions
 app.use(sessionActivityMiddleware);
@@ -285,6 +290,7 @@ app.use('/api/admin', adminCourseRoutes);
 app.use('/api/admin/guided-pathway-flags', adminGuidedPathwayFlagRoutes);
 app.use('/api/admin/manual-flags', adminManualFlagRoutes);
 app.use('/api/course', courseEntryRoutes);  // Course entry routes
+app.use('/api/course', studentViewRoutes);  // Student View controls (enter, exit, reset)
 app.use('/api/user', userManagementRoutes);  // User management routes
 app.use('/api/health', healthRoutes);    // Health check routes
 app.use('/api/version', versionRoutes);  // Version endpoint for UI display

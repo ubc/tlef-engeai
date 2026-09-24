@@ -46,6 +46,7 @@ import {
     type GuidedPathwayFlagCourseScope
 } from './guided-pathway-flag-collection-mongo';
 import type { MongoDalContext } from './mongo-context';
+import { EXCLUDE_TEST_STUDENTS_MATCH } from './student-view-filter';
 
 interface GuidedPathwayIdentityRevealEvent {
     adminUserId: string;
@@ -61,6 +62,8 @@ interface GuidedPathwayFlagDocument {
     messageText: string;
     origin?: GuidedPathwayFlagOrigin;
     studentUserId?: string;
+    /** True when the alert came from a Student View test student. */
+    isTestStudent?: boolean;
     dedupeKey: string;
     status: GuidedPathwayFlagStatus;
     adminSortPriority: number;
@@ -101,6 +104,7 @@ const SAFE_FLAG_PROJECTION = {
     pathwayTitle: 1,
     messageText: 1,
     origin: 1,
+    isTestStudent: 1,
     status: 1,
     triggeredAt: 1,
     decidedAt: 1,
@@ -169,6 +173,7 @@ function toSafeView(doc: Partial<GuidedPathwayFlagDocument>): GuidedPathwayFlagV
         status: doc.status as GuidedPathwayFlagStatus,
         triggeredAt: asIso(doc.triggeredAt as Date)
     };
+    if (doc.isTestStudent === true) view.isTestStudent = true;
     if (doc.decidedAt) view.decidedAt = asIso(doc.decidedAt);
     if (doc.decidedByName) view.decidedByName = doc.decidedByName;
     if (doc.adminReviewedAt) view.adminReviewedAt = asIso(doc.adminReviewedAt);
@@ -268,12 +273,19 @@ const STUDENT_ORIGIN_FILTER: Filter<GuidedPathwayFlagDocument> = {
     ]
 };
 
+/**
+ * Student View alerts stay in their own course's instructor queue, where the instructor who
+ * raised them is the audience, and are kept out of the cross-course platform-admin queue.
+ */
+const EXCLUDE_TEST_STUDENT_ALERTS: Filter<GuidedPathwayFlagDocument> =
+    EXCLUDE_TEST_STUDENTS_MATCH as Filter<GuidedPathwayFlagDocument>;
+
 function buildAdminListFilter(
     filters: GuidedPathwayFlagListFilters,
     omitOwnFacet?: 'pathwayId' | 'reviewer'
 ): Filter<GuidedPathwayFlagDocument> {
     const query = buildListFilter(filters, omitOwnFacet);
-    query.$and = [...(query.$and ?? []), STUDENT_ORIGIN_FILTER];
+    query.$and = [...(query.$and ?? []), STUDENT_ORIGIN_FILTER, EXCLUDE_TEST_STUDENT_ALERTS];
     return query;
 }
 
@@ -371,6 +383,7 @@ export async function createGuidedPathwayFlag(
         messageText: input.messageText,
         origin: input.actor.origin,
         ...(input.actor.origin === 'student' ? { studentUserId: input.actor.userId } : {}),
+        ...(input.actor.isTestStudent === true ? { isTestStudent: true } : {}),
         dedupeKey: dedupeKeyFor(input),
         status: 'pending',
         adminSortPriority: STATUS_PRIORITY.pending,
@@ -703,7 +716,7 @@ export async function countGuidedPathwayFlagsAwaitingAdminReview(ctx: MongoDalCo
             $match: {
                 status: 'escalated',
                 adminReviewedAt: { $exists: false },
-                $and: [STUDENT_ORIGIN_FILTER]
+                $and: [STUDENT_ORIGIN_FILTER, EXCLUDE_TEST_STUDENT_ALERTS]
             }
         },
         { $count: 'value' }

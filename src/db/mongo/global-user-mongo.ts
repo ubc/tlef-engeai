@@ -105,8 +105,11 @@ export async function addCourseToGlobalUser(
     courseId: string
 ): Promise<void> {
     const collection = activeUsersMongoCollection(ctx.db);
+    // A Student View test student belongs to exactly one course, permanently: that single
+    // enrolment is what makes every other course refuse it. Excluding it here keeps the
+    // invariant even if a future caller reaches this delegate without the route guard.
     await collection.updateOne(
-        { puid },
+        { puid, isTestStudent: { $ne: true } },
         {
             $addToSet: { coursesEnrolled: courseId },
             $set: { updatedAt: new Date() }
