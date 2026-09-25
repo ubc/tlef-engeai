@@ -105,30 +105,34 @@ export interface RosterSyncDeps {
     fetchRoster?: (api: CanvasApiClient, lmsCourseId: string) => Promise<LmsRosterUser[]>;
     /** Reads one course's TA roster. Defaults to the package's paginated `getCourseUsers`. */
     fetchTaRoster?: (api: CanvasApiClient, lmsCourseId: string) => Promise<LmsRosterUser[]>;
-    /** Reads one course's publish state. Defaults to a direct `/courses/:id` read. */
+    /** Reads one course's publish state. Defaults to a lookup in the credential's course list. */
     fetchWorkflowState?: (api: CanvasApiClient, lmsCourseId: string) => Promise<string | null>;
 }
 
 /**
  * fetchCourseWorkflowState — Canvas's publish state for one course.
  *
- * Called only when a roster comes back empty, so the common path pays nothing for it. The
- * package exposes no per-course getter, and its `getCourses` normalizes away everything except
- * `raw` — so this reads the endpoint directly, which the LMS guide names as the sanctioned
- * reason to use the raw client.
+ * Called only when a roster comes back empty, so the common path pays nothing for it. Reads the
+ * credential holder's course list rather than `/courses/:id`, so it needs no scope beyond the
+ * `/courses` one the course picker already requests. Canvas lists every non-deleted course to a
+ * teacher, unpublished ones included, and the credential here is the importing instructor's.
+ * `workflow_state` survives only on the package's `raw` payload.
  *
  * Returns `null` rather than throwing: this call exists to *explain* an empty roster, and
- * failing to explain it must not turn a successful sync into a failed one.
+ * failing to explain it must not turn a successful sync into a failed one. A course missing from
+ * the list is likewise `null`.
+ *
+ * Exported for testing.
  */
-async function fetchCourseWorkflowState(
+export async function fetchCourseWorkflowState(
     api: CanvasApiClient,
     lmsCourseId: string
 ): Promise<string | null> {
     try {
-        const course = await api.get<{ workflow_state?: string }>(
-            `/courses/${encodeURIComponent(lmsCourseId)}`
-        );
-        return course?.workflow_state ?? null;
+        const courses = await canvas.getCourses(api);
+        const course = courses.find((candidate) => candidate.id === String(lmsCourseId));
+        const state = (course?.raw as { workflow_state?: unknown } | undefined)?.workflow_state;
+        return typeof state === 'string' ? state : null;
     } catch {
         return null;
     }

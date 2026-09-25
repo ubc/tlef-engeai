@@ -17,7 +17,7 @@
  */
 
 jest.mock('@ubc/ubc-genai-toolkit-lms-integration', () => ({
-    canvas: { getCourseUsers: jest.fn(), loadConfigFromEnv: jest.fn(() => null) },
+    canvas: { getCourseUsers: jest.fn(), getCourses: jest.fn(), loadConfigFromEnv: jest.fn(() => null) },
     // `canvas-config` builds the shared token store at module load, and this suite reaches it
     // transitively through `canvas-credential`. Stubbed so importing the module under test does
     // not require Canvas environment variables.
@@ -37,7 +37,11 @@ jest.mock('../../utils/logger', () => ({
 }));
 
 import { canvas } from '@ubc/ubc-genai-toolkit-lms-integration';
-import { RosterSyncUnavailableError, syncCanvasCourseRoster } from '../canvas-roster-sync';
+import {
+    fetchCourseWorkflowState,
+    RosterSyncUnavailableError,
+    syncCanvasCourseRoster,
+} from '../canvas-roster-sync';
 import { hashRosterPuid, ROSTER_SALT_ENV } from '../../utils/roster-identity';
 import type { EngEAI_MongoDB } from '../../db/enge-ai-mongodb';
 import type { activeCourse, CourseRosterSnapshot } from '../../types/shared';
@@ -359,5 +363,35 @@ describe('syncCanvasCourseRoster', () => {
 
         // Reading a class roster for a sync that cannot hash it would be personal data for nothing.
         expect(fetchRoster).not.toHaveBeenCalled();
+    });
+});
+
+describe('fetchCourseWorkflowState', () => {
+    const api = {} as any;
+
+    it('reads the publish state from the course list, not a per-course endpoint', async () => {
+        // `/courses/:id` would need its own OAuth scope on the Developer Key; the list is
+        // already granted for the course picker.
+        (canvas.getCourses as jest.Mock).mockResolvedValueOnce([
+            { id: '899', raw: { workflow_state: 'available' } },
+            { id: '900', raw: { workflow_state: 'unpublished' } },
+        ]);
+
+        await expect(fetchCourseWorkflowState(api, '900')).resolves.toBe('unpublished');
+        expect(canvas.getCourses).toHaveBeenCalledWith(api);
+    });
+
+    it('returns null for a course missing from the list', async () => {
+        (canvas.getCourses as jest.Mock).mockResolvedValueOnce([
+            { id: '899', raw: { workflow_state: 'unpublished' } },
+        ]);
+
+        await expect(fetchCourseWorkflowState(api, '900')).resolves.toBeNull();
+    });
+
+    it('returns null rather than throwing when Canvas refuses the read', async () => {
+        (canvas.getCourses as jest.Mock).mockRejectedValueOnce(new Error('401'));
+
+        await expect(fetchCourseWorkflowState(api, '900')).resolves.toBeNull();
     });
 });

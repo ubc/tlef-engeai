@@ -58,7 +58,6 @@ export const CANVAS_REQUIRED_ENV = [
 export const CANVAS_OAUTH_SCOPES: readonly string[] = [
     'url:GET|/api/v1/users/:id',
     'url:GET|/api/v1/courses',
-    'url:GET|/api/v1/courses/:id',
     'url:GET|/api/v1/courses/:course_id/sections',
     'url:GET|/api/v1/courses/:course_id/users',
     'url:GET|/api/v1/courses/:course_id/enrollments',

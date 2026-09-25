@@ -807,9 +807,11 @@ provided by `@ubc/ubc-genai-toolkit-lms-integration`. Implemented in
   students whoever is enrolled — Canvas holds their enrollments in `creation_pending` until the
   course is published, and the roster read asks for `active` and `invited` only. That returns
   `status: 'unpublished'` naming the fix, and keeps the previous snapshot. A *published* course
-  with nobody in it stores a real empty snapshot as `ok`, so `syncedAt` advances. The extra
-  `/courses/:id` read happens only when the roster is empty, and a failure to read the publish
-  state degrades to the ordinary empty-roster result rather than failing the sync.
+  with nobody in it stores a real empty snapshot as `ok`, so `syncedAt` advances. The publish
+  state comes from the importing instructor's `/courses` list (Canvas lists unpublished courses
+  to teachers), so it needs no `/courses/:id` scope. That read happens only when the roster is
+  empty, and a failure to read the publish state, or a course missing from the list, degrades
+  to the ordinary empty-roster result rather than failing the sync.
 - **A roster with rows but no SIS identifiers is a Canvas permission gap, not an empty
   class.** That case returns `status: 'identifiers_withheld'` and leaves the previous
   snapshot in place. The same holds for `no_credential` (revoked token) and `failed`
@@ -934,7 +936,7 @@ provided by `@ubc/ubc-genai-toolkit-lms-integration`. Implemented in
 - `CANVAS_REDIRECT_URI` must match the Canvas Developer Key byte-for-byte,
   including port, and its path is this router's `/canvas/auth/callback`.
 - The OAuth authorize URL always requests scopes, from `CANVAS_OAUTH_SCOPES` in
-  `src/lms/canvas-config.ts` — 14 entries, one per endpoint the app calls: reads for the
+  `src/lms/canvas-config.ts` — 13 entries, one per endpoint the app calls: reads for the
   course picker, roster, and submission intake, plus three submission-scoped writes and
   the grade-post progress poll. There is no environment variable; adding a Canvas call
   means adding its scope there. A Developer Key's scope list is a ceiling, not a grant —
