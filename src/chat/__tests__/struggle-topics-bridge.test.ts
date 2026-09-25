@@ -20,6 +20,7 @@ describe('formatStruggleTopicsUserBridge', () => {
         expect(out).toContain('preserve student ownership');
         expect(out).toContain('partial representation');
         expect(out).toContain('LaTeX, lists, diagrams');
+        expect(out).toContain('Answer course logistics, policy, and schedule questions directly');
         // Routing direction must match struggle_topics.md: match -> interpretive, else socratic.
         expect(out).toContain(
             'When the question is an exact or strong match to a label above, begin a focused scaffold'

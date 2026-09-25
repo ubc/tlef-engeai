@@ -40,6 +40,8 @@ The compact support continuum is: `prompt → hint → partial representation �
 
 The adaptive guidance is repeated in `struggle-topics-bridge.ts`, which lands last in the user turn. This is the one deliberate duplication in the stack: the system message is built once per chat, so the bridge is the only per-turn channel. Formatting-based `findSocraticShapeViolations` telemetry was removed because it could not distinguish a useful partial scaffold from a full solution.
 
+Course logistics (v1.7.2+): questions about logistics, policies, and schedules (due dates, exam times, grading weights, late policy) are answered directly. They have no target reasoning to scaffold, so the Socratic rules apply only to course content. The rule lives in `socratic_conversation.md` and is repeated in the bridge's adaptive guidance.
+
 Formal mastery is separate from support: an explanation, hint, or modelled step is not evidence of understanding and cannot emit `<questionUnstruggle>`. The student must accept and answer the Apply-level practice check correctly before the analyser can emit it.
 
 ### Conditional assembly (v1.7.0+)

@@ -23,7 +23,8 @@ const SOCRATIC_ADAPTIVE_GUIDANCE =
     'On the Socratic path, preserve student ownership: increase help after repeated impasse ' +
     '(prompt, hint, partial representation, one modelled step, brief explanation), then require ' +
     'the student to explain, complete, or apply the next step. LaTeX, lists, diagrams, and concise ' +
-    'explanations are allowed when they make that next contribution possible.';
+    'explanations are allowed when they make that next contribution possible. Answer course ' +
+    'logistics, policy, and schedule questions directly; scaffold only course content.';
 
 /**
  * formatStruggleTopicsUserBridge - build user-turn struggle list context (no reveal tags).
