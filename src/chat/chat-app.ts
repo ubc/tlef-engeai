@@ -37,7 +37,7 @@ import {
     invokeDebugScenarioSuggestions,
     isScenarioDebugMessage,
 } from './system-prompts/debug-scenario-invoke';
-import { generateChatTitleFromResponse } from './chat-title';
+import { generateChatTitle } from './chat-title-generator';
 import { formatStruggleTopicsUserBridge } from './struggle-topics-bridge';
 
 /**
@@ -225,26 +225,6 @@ export class ChatApp {
     }
 
     /**
-     * Generate chat title from AI response text
-     * Extracts first 10 words from the response, cleaning up special characters
-     * 
-     * @param responseText - The AI response text
-     * @returns Clean title string with first 10 words
-     */
-    private generateChatTitleFromResponse(responseText: string): string {
-        try {
-            const title = generateChatTitleFromResponse(responseText);
-            
-            return title || 'New Chat'; // Fallback to "New Chat" if empty
-        } catch (error) {
-            //START DEBUG LOG : DEBUG-CODE(GENERATE-TITLE-ERROR)
-            appLogger.error(`[CHAT-APP] 🚨 Error generating title:`, error);
-            //END DEBUG LOG : DEBUG-CODE(GENERATE-TITLE-ERROR)
-            return 'New Chat'; // Fallback to "New Chat" on error
-        }
-    }
-
-    /**
      * DEBUG LOGGER - Print list of active chat IDs
      * TODO: Remove after testing lazy loading functionality
      */
@@ -261,60 +241,45 @@ export class ChatApp {
     }
 
     /**
-     * Update chat title if this is the first user-AI exchange
-     * Only updates title if current title is "New Chat" or empty
-     * 
-     * @param chatId - The chat ID
-     * @param assistantResponse - The AI response text
-     * @param courseName - The course name
-     * @param userId - The user ID
+     * Name the chat from its first user message while its title is still "New Chat".
+     *
+     * Runs the LLM title generator (with deterministic fallback) and persists the
+     * result. Never throws: a title failure must not break the chat flow.
+     * Logs chat id only — never the message or the title.
      */
-    public async updateChatTitleIfNeeded(chatId: string, assistantResponse: string, courseName: string, userId: string): Promise<void> {
-        //START DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-CHECK)
-        appLogger.log(`[CHAT-APP] 🔍 Checking if title needs update for chat ${chatId}`);
-        //END DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-CHECK)
-        
+    public async updateChatTitleIfNeeded(
+        chatId: string,
+        firstUserMessage: string,
+        courseName: string,
+        userId: string,
+        courseId?: string
+    ): Promise<void> {
         try {
-            // Get current chat from MongoDB to check title
+            // Step 1: only chats still carrying the sentinel title are renamed.
             const mongoDB = await EngEAI_MongoDB.getInstance();
             const userChats = await mongoDB.getUserChats(courseName, userId);
             const currentChat = userChats.find(chat => chat.id === chatId);
-            
-            if (!currentChat) {
-                //START DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-NO-CHAT)
-                appLogger.log(`[CHAT-APP] ⚠️ Chat ${chatId} not found in MongoDB`);
-                //END DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-NO-CHAT)
+            const currentTitle = currentChat?.itemTitle || '';
+            if (!currentChat || (currentTitle !== 'New Chat' && currentTitle !== '')) {
                 return;
             }
-            
-            // Check if title needs updating (is "New Chat" or empty)
-            const currentTitle = currentChat.itemTitle || '';
-            const needsUpdate = currentTitle === 'New Chat' || currentTitle === '';
-            
-            //START DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-DECISION)
-            appLogger.log(`[CHAT-APP] 📊 Title update decision: current="${currentTitle}", needsUpdate=${needsUpdate}`);
-            //END DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-DECISION)
-            
-            if (needsUpdate) {
-                // Generate new title from AI response
-                const newTitle = this.generateChatTitleFromResponse(assistantResponse);
-                
-                // Update title in MongoDB
-                await mongoDB.updateChatTitle(courseName, userId, chatId, newTitle);
-                
-                //START DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-SUCCESS)
-                appLogger.log(`[CHAT-APP] ✅ Chat title updated from "${currentTitle}" to "${newTitle}"`);
-                //END DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-SUCCESS)
-            } else {
-                //START DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-SKIP)
-                appLogger.log(`[CHAT-APP] ⏭️ Title update skipped - current title is not "New Chat"`);
-                //END DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-SKIP)
-            }
+
+            // Step 2: generate with the course chat model; generator falls back itself.
+            const modelSelection = ModelSelectionService.getInstance();
+            const llmOptions = courseId
+                ? await modelSelection.buildFeatureLlmCallOptions(courseId, 'chat')
+                : modelSelection.buildDefaultProviderOptions('chat');
+            const newTitle = await generateChatTitle({
+                firstUserMessage,
+                llm: this.llmModule,
+                llmOptions,
+            });
+
+            // Step 3: persist.
+            await mongoDB.updateChatTitle(courseName, userId, chatId, newTitle);
+            appLogger.log(`[CHAT-APP] ✅ Chat title generated for chat ${chatId}`);
         } catch (error) {
-            //START DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-ERROR)
-            appLogger.error(`[CHAT-APP] 🚨 Error updating chat title:`, error);
-            //END DEBUG LOG : DEBUG-CODE(UPDATE-TITLE-ERROR)
-            // Don't throw error - title update failure shouldn't break the chat flow
+            appLogger.error(`[CHAT-APP] 🚨 Error updating chat title for chat ${chatId}:`, error);
         }
     }
 
@@ -414,6 +379,9 @@ export class ChatApp {
 
         // Load course once for capability gates and LLM settings (fail-closed on Mongo errors).
         const course = await this.getCourseFeatures(courseName);
+
+        // Name a new chat from this message while the reply streams; never rejects.
+        const titleUpdate = this.updateChatTitleIfNeeded(chatId, message, courseName, userId, course?.id);
         if (conversationMode && isCourseFeatureEnabled(course, 'guidedPathway')) {
 
             const pathwayResult = await evaluatePathways({
@@ -733,8 +701,8 @@ ${forkedDump}
         // Add assistant message to original conversation
         conversation.addMessage('assistant', assistantResponse);
         
-        // Check if this is the first user-AI exchange and update title if needed
-        await this.updateChatTitleIfNeeded(chatId, assistantResponse, courseName, userId);
+        // Title is ready before the response returns, so the client refresh shows it.
+        await titleUpdate;
 
 
         // The forked message is automatically discarded after LLM call, so no cleanup needed
@@ -1596,7 +1564,7 @@ ${forkedDump}
         assistantResponse = ensureDebugModeTemplate(assistantResponse);
         const assistantMessage = this.addAssistantMessage(chatId, assistantResponse, userId, courseName);
         conversation.addMessage('assistant', assistantResponse);
-        await this.updateChatTitleIfNeeded(chatId, assistantResponse, courseName, userId);
+        await this.updateChatTitleIfNeeded(chatId, message, courseName, userId, courseForLlm?.id);
         return assistantMessage;
     }
 
