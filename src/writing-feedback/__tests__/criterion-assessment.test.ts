@@ -11,7 +11,9 @@ import type { WritingRubricDefinition } from '../contracts';
 import { buildDefaultWritingRubric } from '../default-rubric-profile';
 import {
     assertStaffCriteriaWritten,
+    defaultFormattingCriteriaToStaff,
     isStaffAssessed,
+    looksLikeFormattingCriterion,
     modelAssessedCriteria,
     staffAssessedCriteria
 } from '../criterion-assessment';
@@ -84,5 +86,37 @@ describe('assertStaffCriteriaWritten', () => {
 
     it('passes when the lens has no approved rubric', () => {
         expect(() => assertStaffCriteriaWritten(undefined, undefined)).not.toThrow();
+    });
+});
+
+describe('formatting criterion default', () => {
+    it.each([
+        'Formatting', 'Format and Layout', 'Formatted per template', 'Font and Margins',
+        'Line spacing', 'Typography', 'Document layout'
+    ])('treats "%s" as formatting', (label) => {
+        expect(looksLikeFormattingCriterion(label)).toBe(true);
+    });
+
+    it.each([
+        'Information Literacy', 'Formative Reflection', 'Formula Derivation',
+        'Report Presentation', 'Task Constraints', 'Organization'
+    ])('leaves "%s" to the model', (label) => {
+        expect(looksLikeFormattingCriterion(label)).toBe(false);
+    });
+
+    it('marks only the formatting rows staff-assessed', () => {
+        const criteria = defaultFormattingCriteriaToStaff([
+            { id: 'thesis', label: 'Thesis', description: 'd' },
+            { id: 'formatting', label: 'Formatting', description: 'd' }
+        ]);
+        expect(criteria.map((criterion) => criterion.assessedBy)).toEqual([undefined, 'staff']);
+    });
+
+    it('leaves a rubric unchanged when every row is formatting, since one must stay model-assessed', () => {
+        const criteria = defaultFormattingCriteriaToStaff([
+            { id: 'formatting', label: 'Formatting', description: 'd' },
+            { id: 'layout', label: 'Layout', description: 'd' }
+        ]);
+        expect(criteria.some(isStaffAssessed)).toBe(false);
     });
 });

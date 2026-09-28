@@ -29,6 +29,44 @@ export function isStaffAssessed(criterion: WritingRubricCriterion): boolean {
 }
 
 /**
+ * Label words naming how a document looks rather than what it says. Word boundaries keep
+ * "information", "formative", and "formula" out. "Presentation" is deliberately absent: in
+ * a criterion label it usually means how ideas or results are presented, which the model
+ * can judge. Mirrored in public/scripts/feature/writing-feedback-shared.ts; a parity test
+ * pins the two.
+ */
+export const FORMATTING_CRITERION_PATTERN = /\b(?:format(?:s|ted|ting)?|layouts?|fonts?|margins?|spacing|typograph(?:y|ic|ical))\b/i;
+
+/**
+ * looksLikeFormattingCriterion - whether a criterion's label names document formatting.
+ *
+ * Only the label is read. Descriptions mention format in passing on criteria that are
+ * mostly about content, and defaulting those to staff would withhold what the model can do.
+ *
+ * @param label - Criterion label as staff or Canvas wrote it
+ * @returns True when the label names formatting the model cannot see
+ */
+export function looksLikeFormattingCriterion(label: string): boolean {
+    return FORMATTING_CRITERION_PATTERN.test(label);
+}
+
+/**
+ * defaultFormattingCriteriaToStaff - marks formatting criteria staff-assessed on first entry.
+ *
+ * Runs only when criteria enter a rubric, never on load: an absent `assessedBy` also means
+ * staff chose the model on purpose, so re-running it would undo that choice. A rubric whose
+ * every label matches is returned unchanged, because approval requires one model-assessed row.
+ *
+ * @param criteria - Criteria about to seed a draft
+ * @returns The same criteria, formatting rows marked `'staff'`
+ */
+export function defaultFormattingCriteriaToStaff(criteria: WritingRubricCriterion[]): WritingRubricCriterion[] {
+    const matches = criteria.map((criterion) => looksLikeFormattingCriterion(criterion.label));
+    if (!matches.some(Boolean) || matches.every(Boolean)) return criteria;
+    return criteria.map((criterion, index) => (matches[index] ? { ...criterion, assessedBy: 'staff' as const } : criterion));
+}
+
+/**
  * modelAssessedCriteria - the criteria generation is allowed to see.
  *
  * Both structured-output schemas and every system prompt derive their criterion

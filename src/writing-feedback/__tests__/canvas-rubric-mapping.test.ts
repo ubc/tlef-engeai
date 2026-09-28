@@ -59,6 +59,15 @@ describe('canvasRubricToSeedShape', () => {
         }
     });
 
+    it('defaults a formatting row to course staff and leaves the rest to the model', () => {
+        const shape = canvasRubricToSeedShape(rubric([
+            row('Thesis', FULL_SCALE, 10),
+            row('Formatting', FULL_SCALE, 2)
+        ]))!;
+
+        expect(shape.criteria.map((c) => c.assessedBy)).toEqual([undefined, 'staff']);
+    });
+
     it('produces a rubric the draft schema accepts', () => {
         // The mapper's output is fed straight into a draft, so it has to validate as one.
         const shape = canvasRubricToSeedShape(rubric([row('Thesis', FULL_SCALE, 10)]))!;

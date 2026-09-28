@@ -31,6 +31,7 @@ import {
     createIconButton,
     createText,
     inputControl,
+    looksLikeFormattingCriterion,
     refreshIcons,
     textAreaControl
 } from './writing-feedback-shared.js';
@@ -437,13 +438,66 @@ function authorshipControl(
         input.value = value;
         input.checked = value === selected;
         input.disabled = !canEdit;
-        input.addEventListener('change', onChange);
+        input.addEventListener('change', () => {
+            void confirmAuthorship(input, rowIndex, criterion, onChange);
+        });
         option.append(input, createText('span', text, 'wf-grid-seg__text'));
         group.append(option);
     });
 
     wrapper.append(caption, group);
     return wrapper;
+}
+
+/** Resolved action of the formatting warning's confirm button (a slug of its label). */
+const USE_ENGE_AI_ACTION = 'use-enge-ai-anyway';
+
+/**
+ * confirmAuthorship - warns before EngE-AI is given a formatting criterion.
+ *
+ * The model receives only extracted text, so it cannot judge formatting. Staff may still
+ * choose it -- a label can mention format on a row that is mostly about content -- but they
+ * are told first. The label is read from the form, not the draft, so a row renamed since
+ * the last render is judged by what staff now see. `onChange` waits for the answer:
+ * autosave follows it within seconds, and a cancelled choice must never be saved.
+ *
+ * @param input - Radio staff just selected
+ * @param rowIndex - Row position, naming the label control and the sibling radio
+ * @param criterion - Criterion the row renders, supplying the label when no control does
+ * @param onChange - Dirty-marking callback, called only once the choice stands
+ */
+async function confirmAuthorship(
+    input: HTMLInputElement,
+    rowIndex: number,
+    criterion: RubricCriterion,
+    onChange: () => void
+): Promise<void> {
+    const row = input.closest<HTMLElement>('[data-criterion-index]');
+    const labelControl = row?.querySelector<HTMLInputElement>(`input[name="criterion.${rowIndex}.label"]`);
+    const label = labelControl?.value ?? criterion.label;
+    if (input.value !== 'model' || !looksLikeFormattingCriterion(label)) {
+        onChange();
+        return;
+    }
+
+    const choice = await showConfirmModal(
+        'EngE-AI can\u2019t check formatting',
+        '\u26a0\ufe0f EngE-AI cannot check formatting. Course staff '
+        + 'must check the formatting and enter their feedback and score manually on the rubric.',
+        'Use EngE-AI anyway',
+        'Keep course staff'
+    );
+    if (choice.action === USE_ENGE_AI_ACTION) {
+        onChange();
+        return;
+    }
+    const staffOption = row?.querySelector<HTMLInputElement>(
+        `input[name="criterion.${rowIndex}.assessedBy"][value="staff"]`
+    );
+    if (staffOption) {
+        staffOption.checked = true;
+        staffOption.focus();
+    }
 }
 
 /**

@@ -34,6 +34,7 @@ import type {
 } from './contracts';
 import type { ImportedRubricShape } from './rubric-seed';
 import { spaceBandsEvenly } from './rubric-bands';
+import { defaultFormattingCriteriaToStaff } from './criterion-assessment';
 
 export type { CanvasRubricIdMap, CanvasRubricRefusal };
 
@@ -219,7 +220,9 @@ function buildShape(rows: CanvasRubricRow[], widest: CanvasRubricRow): ImportedR
         };
     });
 
-    return { criteria, levels };
+    // Import is where Canvas rubrics first enter, so it is where formatting rows get their
+    // staff default. Staff can switch one back to EngE-AI in the grid.
+    return { criteria: defaultFormattingCriteriaToStaff(criteria), levels };
 }
 
 /**

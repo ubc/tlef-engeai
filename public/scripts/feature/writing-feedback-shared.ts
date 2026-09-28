@@ -102,6 +102,23 @@ export interface RubricCriterion {
     assessedBy?: 'model' | 'staff';
 }
 
+/**
+ * Label words naming how a document looks. Mirrors FORMATTING_CRITERION_PATTERN in
+ * src/writing-feedback/criterion-assessment.ts, which defaults these rows to staff on
+ * Canvas import; a parity test pins the two.
+ */
+export const FORMATTING_CRITERION_PATTERN = /\b(?:format(?:s|ted|ting)?|layouts?|fonts?|margins?|spacing|typograph(?:y|ic|ical))\b/i;
+
+/**
+ * looksLikeFormattingCriterion - whether a criterion label names document formatting.
+ *
+ * @param label - Criterion label as currently typed
+ * @returns True when the label names formatting the model cannot see
+ */
+export function looksLikeFormattingCriterion(label: string): boolean {
+    return FORMATTING_CRITERION_PATTERN.test(label);
+}
+
 /** One ordinal performance level, optionally carrying rubric point metadata. */
 export interface RubricLevel {
     id: WritingLevelId; // stable qualitative value emitted by structured feedback

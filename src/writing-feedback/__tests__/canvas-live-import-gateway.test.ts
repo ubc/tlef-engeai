@@ -14,6 +14,7 @@
 import { buildDefaultWritingAssignment } from '../default-rubric-profile';
 import { SafeCanvasImportService } from '../canvas-import-service';
 import { LiveCanvasImportGateway } from '../canvas-live-import-gateway';
+import { appLogger } from '../../utils/logger';
 import type { CanvasImportStore } from '../canvas-import-contracts';
 import type { DocumentExtractionService, WritingAssignment, WritingSubmission } from '../contracts';
 
@@ -523,5 +524,101 @@ describe('SafeCanvasImportService over a live gateway', () => {
         // post/put/delete on the fake client throw; reaching one fails the import loudly.
         const store = new MemoryStore();
         await expect(liveService(store, okDownload).service.importAssignment(request)).resolves.toMatchObject({ integration: 'canvas' });
+    });
+
+    describe('intake failure log', () => {
+        let warn: jest.SpyInstance;
+        beforeEach(() => { warn = jest.spyOn(appLogger, 'warn').mockImplementation(() => undefined); });
+        afterEach(() => warn.mockRestore());
+
+        function loggedReasons(contentKind = 'file_upload'): string[] {
+            return warn.mock.calls
+                .filter(([message, metadata]) => message === '[WritingFeedback] canvas_submission_intake_failed'
+                    && (metadata as { contentKind?: unknown }).contentKind === contentKind)
+                .map(([, metadata]) => String((metadata as { reason?: unknown }).reason));
+        }
+
+        it('names a download refusal, since its message carries no document content', async () => {
+            const store = new MemoryStore();
+            const { client } = fakeClient({
+                get: { '/assignments/101': { id: 101 }, '/submissions/901': { user_id: 901, attachments: [] } },
+                getAll: {
+                    '/assignments': [{ id: 101, name: 'Technical Description', submission_types: ['online_text_entry', 'online_upload'], has_submitted_submissions: true }],
+                    '/submissions': SUBMISSIONS
+                }
+            });
+            const service = new SafeCanvasImportService(
+                store,
+                new LiveCanvasImportGateway({ client, canvasCourseId: '55', canvasDomain: CANVAS_DOMAIN, extractor: passthroughExtractor })
+            );
+
+            await service.importAssignment(request);
+
+            expect(loggedReasons()).toEqual([
+                'CanvasAttachmentDownloadError: Canvas submission attachment has no download URL'
+            ]);
+        });
+
+        it('names a sign-in page as one even when its size differs from the attachment', async () => {
+            const info = jest.spyOn(appLogger, 'info').mockImplementation(() => undefined);
+            try {
+                const store = new MemoryStore();
+                const { client } = fakeClient({
+                    get: { '/assignments/101': { id: 101 }, '/submissions/901': SCOPED_SUBMISSION },
+                    getAll: {
+                        '/assignments': [{ id: 101, name: 'Technical Description', submission_types: ['online_text_entry', 'online_upload'], has_submitted_submissions: true }],
+                        '/submissions': SUBMISSIONS
+                    }
+                });
+                // Canvas declares 31 bytes; its login page is far longer.
+                const loginPage = `<!DOCTYPE html><html><body>${'Log in to Canvas '.repeat(20)}</body></html>`;
+                const fetchImpl = (async () => new Response(loginPage, { status: 200, headers: { 'content-type': 'text/html' } })) as unknown as typeof fetch;
+                const service = new SafeCanvasImportService(
+                    store,
+                    new LiveCanvasImportGateway({ client, canvasCourseId: '55', canvasDomain: CANVAS_DOMAIN, extractor: passthroughExtractor, fetchImpl })
+                );
+
+                await service.importAssignment(request);
+
+                expect(loggedReasons()).toEqual([
+                    'CanvasAttachmentDownloadError: Canvas returned a sign-in or error page instead of the attachment'
+                ]);
+                // What arrived is logged before any refusal, so its shape and verifier presence
+                // are on record whichever check fails.
+                expect(info).toHaveBeenCalledWith('[WritingFeedback] canvas_attachment_downloaded', expect.objectContaining({
+                    declaredBytes: 31,
+                    receivedBytes: Buffer.byteLength(loginPage),
+                    shape: 'html',
+                    verifierPresent: false
+                }));
+            } finally {
+                info.mockRestore();
+            }
+        });
+
+        it('still withholds a parser error, which may echo the document', async () => {
+            const store = new MemoryStore();
+            const { client } = fakeClient({
+                get: { '/assignments/101': { id: 101 }, '/submissions/901': SCOPED_SUBMISSION },
+                getAll: {
+                    '/assignments': [{ id: 101, name: 'Technical Description', submission_types: ['online_text_entry', 'online_upload'], has_submitted_submissions: true }],
+                    '/submissions': SUBMISSIONS
+                }
+            });
+            const fetchImpl = (async () => new Response(Buffer.from('Essay text from the attachment.'), { status: 200 })) as unknown as typeof fetch;
+            const leakyExtractor: DocumentExtractionService = {
+                async extract() { throw new Error('unexpected token near "Essay text from the attachment."'); }
+            };
+            const service = new SafeCanvasImportService(
+                store,
+                new LiveCanvasImportGateway({ client, canvasCourseId: '55', canvasDomain: CANVAS_DOMAIN, extractor: leakyExtractor, fetchImpl })
+            );
+
+            await service.importAssignment(request);
+
+            const reasons = loggedReasons();
+            expect(reasons).toEqual(['Error (message withheld: may carry submission content)']);
+            expect(reasons.join()).not.toContain('Essay text');
+        });
     });
 });

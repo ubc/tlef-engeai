@@ -35,6 +35,21 @@ import { canvas } from '@ubc/ubc-genai-toolkit-lms-integration';
 /** The package's authenticated Canvas client, as `canvas.requireAuth` puts it on the request. */
 type ApiClient = NonNullable<Parameters<typeof canvas.getCourses>[0]>;
 
+/**
+ * A download refusal whose message is built only from this process's own state.
+ *
+ * Every message is a fixed sentence plus, at most, a status code, a byte count, a host name, or
+ * a payload-shape label -- never a file name, a URL path, or any byte of the document. That is
+ * what lets the import log print it in full, where an arbitrary `Error` is withheld in case it
+ * echoes submission content. Throw this only when that guarantee holds for the message.
+ */
+export class CanvasAttachmentDownloadError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'CanvasAttachmentDownloadError';
+    }
+}
+
 /** Redirect statuses Canvas and its storage backends use for a file hand-off. */
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
@@ -118,12 +133,12 @@ function isPermittedHop(url: URL, canvasOrigin: string, hop: number): boolean {
  * @param response - Response whose body is read
  * @param maxBytes - Hard ceiling on buffered bytes
  * @returns The body as one buffer
- * @throws Error when the body exceeds the ceiling
+ * @throws CanvasAttachmentDownloadError when the body exceeds the ceiling
  */
 async function readCappedBody(response: Response, maxBytes: number): Promise<Buffer> {
     const declared = Number(response.headers.get('content-length'));
     if (Number.isFinite(declared) && declared > maxBytes) {
-        throw new Error(`Canvas attachment exceeds the ${maxBytes}-byte import limit`);
+        throw new CanvasAttachmentDownloadError(`Canvas attachment exceeds the ${maxBytes}-byte import limit`);
     }
     if (!response.body) return Buffer.alloc(0);
 
@@ -136,7 +151,7 @@ async function readCappedBody(response: Response, maxBytes: number): Promise<Buf
         total += value.byteLength;
         if (total > maxBytes) {
             await reader.cancel().catch(() => undefined);
-            throw new Error(`Canvas attachment exceeds the ${maxBytes}-byte import limit`);
+            throw new CanvasAttachmentDownloadError(`Canvas attachment exceeds the ${maxBytes}-byte import limit`);
         }
         chunks.push(Buffer.from(value));
     }
@@ -153,7 +168,8 @@ async function readCappedBody(response: Response, maxBytes: number): Promise<Buf
  * @param client - Authenticated Canvas client, used only for the scoped metadata read
  * @param options - Which attachment to fetch, the configured Canvas domain, and the byte ceiling
  * @returns The attachment bytes with the size Canvas declared alongside them
- * @throws Error when the attachment is absent, a hop is not permitted, or the body is too large
+ * @throws CanvasAttachmentDownloadError when the attachment is absent, a hop is not permitted, or the
+ *   body is too large; the Canvas metadata read throws the client's own `CanvasApiError`
  */
 export async function downloadSubmissionAttachmentUnauthenticated(
     client: ApiClient,
@@ -183,7 +199,7 @@ export async function downloadSubmissionAttachmentUnauthenticated(
         (candidate) => String(candidate?.id ?? '') === options.attachmentId
     );
     if (!attachment?.url) {
-        throw new Error('Canvas submission attachment has no download URL');
+        throw new CanvasAttachmentDownloadError('Canvas submission attachment has no download URL');
     }
 
     const canvasOrigin = new URL(options.canvasDomain.replace(/\/+$/, '')).origin;
@@ -192,7 +208,7 @@ export async function downloadSubmissionAttachmentUnauthenticated(
 
     for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
         if (!isPermittedHop(current, canvasOrigin, hop)) {
-            throw new Error(`Canvas named an unexpected file download host (rejected ${current.host})`);
+            throw new CanvasAttachmentDownloadError(`Canvas named an unexpected file download host (rejected ${current.host})`);
         }
         // No Authorization, and never an ambient cookie. The URL's own verifier is the
         // authorization; a bearer token here is what Enforce Scopes rejects.
@@ -200,7 +216,7 @@ export async function downloadSubmissionAttachmentUnauthenticated(
 
         if (!REDIRECT_STATUSES.has(response.status)) {
             if (!response.ok) {
-                throw new Error(`Canvas file download returned ${response.status}`);
+                throw new CanvasAttachmentDownloadError(`Canvas file download returned ${response.status}`);
             }
             return {
                 data: await readCappedBody(response, options.maxBytes),
@@ -214,9 +230,9 @@ export async function downloadSubmissionAttachmentUnauthenticated(
         }
 
         const location = response.headers.get('location');
-        if (!location) throw new Error('Canvas file download redirected without a destination');
+        if (!location) throw new CanvasAttachmentDownloadError('Canvas file download redirected without a destination');
         if (hop === MAX_REDIRECTS) break;
         current = new URL(location, current);
     }
-    throw new Error('Canvas file download exceeded the redirect limit');
+    throw new CanvasAttachmentDownloadError('Canvas file download exceeded the redirect limit');
 }

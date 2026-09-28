@@ -24,7 +24,10 @@
 
 import { canvas } from '@ubc/ubc-genai-toolkit-lms-integration';
 import { appLogger } from '../utils/logger';
-import { downloadSubmissionAttachmentUnauthenticated } from './canvas-attachment-download';
+import {
+    CanvasAttachmentDownloadError,
+    downloadSubmissionAttachmentUnauthenticated
+} from './canvas-attachment-download';
 import type {
     CanvasAssignmentDetails,
     CanvasImportedRubric,
@@ -481,7 +484,8 @@ export class LiveCanvasImportGateway implements CanvasImportGateway {
      * @param attachment - Attachment metadata from a preview in this same course
      * @param context - The assignment and student whose submission holds the attachment
      * @returns Extracted transcript, which remains unverified until staff confirm it
-     * @throws Error when the type is unsupported, or the download or parse fails
+     * @throws CanvasAttachmentDownloadError when the type is unsupported or the download fails;
+     *   whatever the extractor throws when the parse fails
      */
     async extractAttachmentText(
         attachment: CanvasImportAttachment,
@@ -489,10 +493,10 @@ export class LiveCanvasImportGateway implements CanvasImportGateway {
     ): Promise<string> {
         const extension = extensionOf(attachment.fileName);
         if (!PARSEABLE_EXTENSIONS.has(extension)) {
-            throw new Error(`Unsupported Canvas attachment type: .${extension || 'unknown'}`);
+            throw new CanvasAttachmentDownloadError(`Unsupported Canvas attachment type: .${extension || 'unknown'}`);
         }
         if (attachment.size !== undefined && attachment.size > MAX_ATTACHMENT_BYTES) {
-            throw new Error(`Canvas attachment exceeds the ${MAX_ATTACHMENT_BYTES}-byte import limit`);
+            throw new CanvasAttachmentDownloadError(`Canvas attachment exceeds the ${MAX_ATTACHMENT_BYTES}-byte import limit`);
         }
 
         // Logged before the attempt, so a download that throws still says which endpoint it was
@@ -521,16 +525,6 @@ export class LiveCanvasImportGateway implements CanvasImportGateway {
             fetchImpl: this.fetchImpl
         });
 
-        // Canvas reports the attachment's size; a mismatch means the body was truncated or
-        // re-encoded in transit. Caught here because the parser would report it as a corrupt
-        // document and send the reader looking at the wrong layer.
-        if (download.declaredBytes !== undefined && download.data.byteLength !== download.declaredBytes) {
-            throw new Error(
-                `Canvas file download was incomplete (expected ${download.declaredBytes} bytes, `
-                + `received ${download.data.byteLength})`
-            );
-        }
-
         // What arrived, before anything tries to parse it. The file name is deliberately absent
         // -- it identifies the student -- so the extension, the two byte counts, and the
         // payload's shape are what a staff-side download failure is diagnosed from.
@@ -549,18 +543,28 @@ export class LiveCanvasImportGateway implements CanvasImportGateway {
         // Both are caught here rather than in the parser, whose error would name a corrupt
         // file and send the reader looking in the wrong place.
         if (shape === 'html') {
-            throw new Error('Canvas returned a sign-in or error page instead of the attachment');
+            throw new CanvasAttachmentDownloadError('Canvas returned a sign-in or error page instead of the attachment');
         }
         if (shape === 'storage-error') {
-            throw new Error('Canvas file storage refused the download; the signed URL was rejected or had expired');
+            throw new CanvasAttachmentDownloadError('Canvas file storage refused the download; the signed URL was rejected or had expired');
+        }
+        // Canvas reports the attachment's size; a mismatch means the body was truncated or
+        // re-encoded in transit. Checked after the page checks above, because a sign-in page
+        // also differs in size and "incomplete" would misname it; and before the parser, which
+        // would report a corrupt document and send the reader looking at the wrong layer.
+        if (download.declaredBytes !== undefined && download.data.byteLength !== download.declaredBytes) {
+            throw new CanvasAttachmentDownloadError(
+                `Canvas file download was incomplete (expected ${download.declaredBytes} bytes, `
+                + `received ${download.data.byteLength})`
+            );
         }
         // Only these two formats carry a signature worth checking. TXT, Markdown, and HTML
-        // have none, and the toolkit has already rejected an HTML *response* above.
+        // have none, and an HTML payload has already been refused above.
         if (extension === 'pdf' && shape !== 'pdf') {
-            throw new Error(`Canvas attachment declared .pdf but its leading bytes are ${shape}`);
+            throw new CanvasAttachmentDownloadError(`Canvas attachment declared .pdf but its leading bytes are ${shape}`);
         }
         if (extension === 'docx' && shape !== 'zip') {
-            throw new Error(`Canvas attachment declared .docx but its leading bytes are ${shape}`);
+            throw new CanvasAttachmentDownloadError(`Canvas attachment declared .docx but its leading bytes are ${shape}`);
         }
 
         const extraction = await this.extractor.extract({

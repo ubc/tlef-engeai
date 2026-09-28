@@ -1077,7 +1077,7 @@ function collectRubricStructure(
     // The server refuses this at approval; saying so here keeps the answer next to the
     // control that caused it, rather than several steps later.
     if (working.criteria.every((criterion) => criterion.assessedBy === 'staff')) {
-        fail('At least one criterion must be AI-drafted. Set one to "Feedback: AI draft".');
+        fail('At least one criterion must be AI-drafted. Set one to be written by EngE-AI.');
     }
     if (working.levels.some((level) => !level.label || !level.description)) {
         fail('Every performance level needs a label and a description.');
