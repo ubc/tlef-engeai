@@ -51,6 +51,19 @@ export interface PublishedTaggedChunk extends RetrievedChunk {
     published: boolean;
 }
 
+/**
+ * One stored chunk as a course-material copy needs it: the point id, its embedding, and the
+ * full payload (chunk text plus material metadata).
+ */
+export interface MaterialChunkForCopy {
+    id: string;
+    vector: unknown;
+    payload: Record<string, unknown>;
+}
+
+/** Qdrant caps request bodies; embeddings make each point several KB. */
+const COPY_UPSERT_BATCH_SIZE = 64;
+
 const DEFAULT_RETRIEVE_LIMIT = 5;
 const DEFAULT_RETRIEVE_SCORE_THRESHOLD = 0.4;
 
@@ -753,6 +766,70 @@ export class RAGApp {
             { courseName, topicOrWeekTitle, itemTitle: oldItemTitle },
             { itemTitle: newItemTitle }
         );
+    }
+
+    /**
+     * Reads one material's chunks, embeddings included, so they can be written into another course.
+     *
+     * Filters on course name as well as material id: material ids are only unique within a course,
+     * and a copy must never pick up another course's chunks.
+     *
+     * @param materialId - `AdditionalMaterial.id` stamped on each chunk as `id`
+     * @param courseName - Course the material belongs to
+     * @returns Chunks in Qdrant scroll order; empty when none are stored
+     */
+    async getMaterialChunksForCopy(materialId: string, courseName: string): Promise<MaterialChunkForCopy[]> {
+        const docs = await this.rag.getDocumentsByMetadata({ id: materialId, courseName });
+        return (docs || []).map((doc: any) => ({
+            id: String(doc.id),
+            vector: doc.vector,
+            payload: (doc.metadata ?? {}) as Record<string, unknown>
+        }));
+    }
+
+    /**
+     * Writes already-embedded points into the shared collection, in batches.
+     *
+     * The toolkit only upserts text it embeds itself, so this goes to Qdrant's REST API the same
+     * way {@link updateChunkMetadata} does. Nothing is re-embedded.
+     *
+     * @param points - Points with fresh ids; an existing id would be overwritten
+     * @throws When any batch is rejected; earlier batches stay written and the caller must roll them back
+     */
+    async upsertCopiedChunks(points: MaterialChunkForCopy[]): Promise<void> {
+        if (points.length === 0) return;
+        const qdrantConfig = this.config.ragConfig.qdrantConfig;
+        if (!qdrantConfig?.url || !qdrantConfig?.collectionName) {
+            throw new Error('Qdrant config missing url or collectionName');
+        }
+        const url = `${qdrantConfig.url.replace(/\/$/, '')}/collections/${qdrantConfig.collectionName}/points?wait=true`;
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (qdrantConfig.apiKey) {
+            headers['api-key'] = qdrantConfig.apiKey;
+        }
+
+        for (let i = 0; i < points.length; i += COPY_UPSERT_BATCH_SIZE) {
+            const batch = points.slice(i, i + COPY_UPSERT_BATCH_SIZE);
+            const response = await fetch(url, {
+                method: 'PUT',
+                headers,
+                body: JSON.stringify({ points: batch })
+            });
+            if (!response.ok) {
+                const errText = await response.text();
+                throw new Error(`Qdrant upsert failed: ${response.status} ${errText}`);
+            }
+        }
+    }
+
+    /**
+     * Deletes chunks by point id. Used to undo or clean up after a material copy.
+     *
+     * @param ids - Qdrant point ids; an empty list is a no-op
+     */
+    async deleteChunksByIds(ids: string[]): Promise<void> {
+        if (ids.length === 0) return;
+        await this.rag.deleteDocumentsByIds(ids);
     }
 
     /**

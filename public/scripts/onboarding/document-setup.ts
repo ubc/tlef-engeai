@@ -30,6 +30,8 @@ import { DocumentUploadModule } from '../services/document-upload-module.js';
 import { completeInstructorOnboardingStage, markCourseContentSetupComplete } from './onboarding-progress.js';
 import { updateStaffOnboardingProgress } from './staff-onboarding-ui.js';
 import { renderTutorialChrome } from './onboarding-tutorial-chrome.js';
+import { runCourseMaterialCopy } from '../feature/course-material-copy.js';
+import { fetchCourse } from '../api/course-material-copy-api.js';
 
 // ===========================================
 // TYPE DEFINITIONS
@@ -149,6 +151,9 @@ async function initializeDocumentSetup(state: DocumentSetupState, instructorCour
     
     // Set up help button listener
     setupHelpListener(state);
+
+    // Set up the "copy from another course" shortcut on the welcome step
+    setupCopyMaterialsListener(state, instructorCourse);
     
     // Set up window resize listener for responsive justify-content
     setupResizeListener(state);
@@ -265,6 +270,34 @@ function setupDemoListeners(state: DocumentSetupState): void {
  * 
  * @param state - The document setup state object
  */
+/**
+ * Lets course staff copy another course's materials instead of adding them, then finishes this stage.
+ *
+ * @param state - The document setup state object
+ * @param instructorCourse - Course being set up; refreshed in place so later stages see the copy
+ */
+function setupCopyMaterialsListener(state: DocumentSetupState, instructorCourse: activeCourse): void {
+    const copyBtn = document.getElementById('copyMaterialsFromCourseBtn') as HTMLButtonElement | null;
+    if (!copyBtn) return;
+
+    copyBtn.addEventListener('click', async () => {
+        copyBtn.disabled = true;
+        try {
+            const result = await runCourseMaterialCopy(instructorCourse);
+            if (!result) return;
+            try {
+                Object.assign(instructorCourse, await fetchCourse(instructorCourse.id));
+            } catch (error) {
+                // The copy is saved server-side; later stages re-read the course when they need it.
+                console.warn('Could not refresh the course after copying materials:', error);
+            }
+            await handleFinalCompletion(state, instructorCourse);
+        } finally {
+            copyBtn.disabled = false;
+        }
+    });
+}
+
 function setupHelpListener(state: DocumentSetupState): void {
     const helpBtn = document.getElementById('helpBtn') as HTMLButtonElement;
     if (helpBtn) {

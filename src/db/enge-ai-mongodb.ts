@@ -27,6 +27,7 @@ import {
     GlobalUser,
     InitialAssistantPrompt,
     InstructorOnboardingProgress,
+    MaterialCopyLease,
     MemoryAgentEntry,
     SystemPromptItem,
     ScenarioMode,
@@ -55,6 +56,7 @@ import * as InstructorPromptMongo from './mongo/instructor-prompt-mongo';
 import * as SystemPromptConfigMongo from './mongo/system-prompt-config-mongo';
 import * as MemoryAgentMongo from './mongo/memory-agent-mongo';
 import * as ScheduledTaskMongo from './mongo/scheduled-task-mongo';
+import * as CourseMaterialCopyMongo from './mongo/course-material-copy-mongo';
 import * as TopicWeekMongo from './mongo/topic-week-mongo';
 import * as ConversationExportMongo from './mongo/conversation-export-mongo';
 import * as CourseBackupMongo from './mongo/course-backup-mongo';
@@ -202,6 +204,24 @@ export class EngEAI_MongoDB {
 
     public deleteActiveCourse = async (course: activeCourse) =>
         CourseMongo.deleteActiveCourse(this.ctx(), course);
+
+    /*
+     * Delegates — copying materials between courses: see course-material-copy-mongo.ts
+     */
+    public acquireMaterialCopyLease = async (courseId: string, lease: MaterialCopyLease) =>
+        CourseMaterialCopyMongo.acquireMaterialCopyLease(this.ctx(), courseId, lease);
+
+    public replaceCourseMaterialsUnderLease = async (
+        courseId: string,
+        token: string,
+        replacement: CourseMaterialCopyMongo.CourseMaterialReplacement
+    ) => CourseMaterialCopyMongo.replaceCourseMaterialsUnderLease(this.ctx(), courseId, token, replacement);
+
+    public releaseMaterialCopyLease = async (courseId: string, token: string) =>
+        CourseMaterialCopyMongo.releaseMaterialCopyLease(this.ctx(), courseId, token);
+
+    public listCoursesForMaterialCopy = async (instructorUserId: string | null) =>
+        CourseMaterialCopyMongo.listCoursesForMaterialCopy(this.ctx(), instructorUserId);
 
     /**
      * listWritingAssignments — lists course assignments without implicit record creation.

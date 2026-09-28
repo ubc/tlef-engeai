@@ -44,7 +44,7 @@ export type ScheduledPublishAuditKind =
     | 'COURSE_TASKS_READ_FAILED';
 
 /** Why the scheduled-task row was removed from Mongo (see {@link ScheduledPublishAudit.taskScheduleRemoved}). */
-export type TaskScheduleRemovedReason = 'user_cleared' | 'manual_publish' | 'topic_deleted';
+export type TaskScheduleRemovedReason = 'user_cleared' | 'manual_publish' | 'topic_deleted' | 'materials_replaced';
 
 let auditLogPathOverride: string | null = null;
 
@@ -215,7 +215,8 @@ export class ScheduledPublishAudit {
      * automatic publish (`PUBLISHED`) and orphan cleanups.
      *
      * @param fields.reason - `user_cleared` — PATCH schedule to null; `manual_publish` — marked published;
-     *   `topic_deleted` — topic/week instance removed.
+     *   `topic_deleted` — topic/week instance removed; `materials_replaced` — another course's materials
+     *   were copied over this course's topics/weeks.
      */
     async taskScheduleRemoved(fields: {
         courseId: string;

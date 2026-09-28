@@ -34,6 +34,8 @@ import { buildCatalogSectionForItem } from './catalog-section.js';
 import { showToast, showSuccessToast } from '../ui/toast-notification.js';
 import { renderFeatherIcons } from '../api/api.js';
 import { isBrowserCourseFeatureEnabled } from '../utils/course-features.js';
+import { runCourseMaterialCopy } from './course-material-copy.js';
+import { fetchCourse } from '../api/course-material-copy-api.js';
 
 // Feature flag for scheduled publish - set to true to enable
 const SCHEDULED_PUBLISH_ENABLED = true;
@@ -1740,6 +1742,40 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         (addDivisionBtn as any)._addDivisionHandler = addDivisionHandler;
         addDivisionBtn.addEventListener('click', addDivisionHandler);
         // console.log('🔧 Added add division handler'); // 🟢 MEDIUM: Handler management
+    }
+
+    // Copy materials from another course (replaces this course's materials)
+    const copyMaterialsBtn = document.getElementById('copy-materials-btn');
+    if (copyMaterialsBtn) {
+        const copyHandler = async () => {
+            const result = await runCourseMaterialCopy(currentClass);
+            if (!result) return;
+            try {
+                // Update the shared course object in place: instructor mode holds the same reference.
+                Object.assign(currentClass, await fetchCourse(currentClass.id));
+            } catch (error) {
+                await showSimpleErrorModal('The materials were copied, but the page could not refresh. Reload the page to see them.', 'Reload Needed');
+                return;
+            }
+            courseData = currentClass.topicOrWeekInstances || [];
+            updateDivisionButtonLabels(currentClass);
+            renderDocumentsPage(true);
+        };
+        const keyHandler = (e: KeyboardEvent) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                void copyHandler();
+            }
+        };
+        // Drop listeners from an earlier initialization of this page, as the other panel buttons do.
+        const previous = (copyMaterialsBtn as any)._copyMaterialsHandlers;
+        if (previous) {
+            copyMaterialsBtn.removeEventListener('click', previous.click);
+            copyMaterialsBtn.removeEventListener('keydown', previous.key);
+        }
+        (copyMaterialsBtn as any)._copyMaterialsHandlers = { click: copyHandler, key: keyHandler };
+        copyMaterialsBtn.addEventListener('click', copyHandler);
+        copyMaterialsBtn.addEventListener('keydown', keyHandler);
     }
 
     // Division overflow dropdown (mobile): trigger click on hidden desktop buttons

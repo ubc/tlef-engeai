@@ -928,6 +928,18 @@
     filter: brightness(0.88);
 }
 
+.demo-btn:focus-visible {
+    outline: 2px solid var(--color-chbe-green);
+    outline-offset: 2px;
+}
+
+/* Welcome step: copy another course's materials instead of adding them */
+.document-setup-copy {
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border-color);
+}
+
 /* Demo objectives list */
 .demo-objectives-list {
     margin-top: 2rem;

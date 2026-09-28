@@ -485,6 +485,44 @@ export interface activeCourse {
     features?: CourseFeatures;
     /** Per-feature LLM model + reasoning for Chat, Writing Feedback, Scenarios, Guided Pathway. */
     llmSettings?: CourseLlmSettings;
+    /**
+     * Server-owned lock held while another course's materials are being copied into this one.
+     * Present only during a copy (or after a crashed one, until `expiresAt` passes).
+     */
+    materialCopyLease?: MaterialCopyLease;
+}
+
+/** Lock that keeps two material copies from writing into the same course at once. */
+export interface MaterialCopyLease {
+    token: string;
+    expiresAt: Date;
+}
+
+/** A course the caller may copy materials from, as listed by `GET /api/courses/:courseId/material-copy-sources`. */
+export interface MaterialCopySourceCourse {
+    id: string;
+    courseName: string;
+    frameType: frameType;
+    topicOrWeekCount: number;
+    materialCount: number;
+}
+
+/** A source material left out of a copy because its content could not be found in the vector store. */
+export interface SkippedCopyMaterial {
+    name: string;
+    topicOrWeekTitle: string;
+    itemTitle: string;
+}
+
+/** Outcome of `POST /api/courses/:courseId/copy-materials`. */
+export interface CopyCourseMaterialsResult {
+    sourceCourseId: string;
+    topicsOrWeeksCopied: number;
+    materialsCopied: number;
+    chunksCopied: number;
+    /** Materials the target held before the copy; all of them were replaced. */
+    replacedMaterialCount: number;
+    skippedMaterials: SkippedCopyMaterial[];
 }
 
 /**
