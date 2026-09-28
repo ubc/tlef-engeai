@@ -3285,9 +3285,12 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     async function deleteAllDocuments(): Promise<void> {
         try {
             // Show confirmation modal
-            const result = await showDeleteConfirmationModal(
-                'All Documents',
-                `all documents from the RAG database for course "${currentClass.courseName}"`
+            const result = await showConfirmModal(
+                'Delete All Documents',
+                `Are you sure you want to delete all documents from the RAG database for the course "${currentClass.courseName}"? This action cannot be undone.`,
+                'Delete',
+                'Cancel',
+                'danger'
             );
 
             if (result.action !== 'delete') {

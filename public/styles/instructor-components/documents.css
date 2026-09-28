@@ -506,22 +506,21 @@ button.content-status {
 }
 
 .status-copy-materials {
-    background: rgba(76, 86, 175, 0.1);
-    color: var(--color-navy-blue);
-    border: 1px solid var(--color-navy-blue);
+    background: rgba(77, 122, 47, 0.1);
+    color: var(--color-chbe-green);
+    border: 1px solid var(--color-chbe-green);
     cursor: pointer;
     transition: all 0.3s ease;
 }
 
 .status-copy-materials:hover {
-    background: rgba(76, 86, 175, 0.2);
-    border-color: #4c56af;
+    background: rgba(77, 122, 47, 0.2);
     transform: translateY(-1px);
-    box-shadow: 0 2px 4px rgba(76, 86, 175, 0.3);
+    box-shadow: 0 2px 4px rgba(77, 122, 47, 0.3);
 }
 
 .status-copy-materials:focus-visible {
-    outline: 2px solid var(--color-navy-blue);
+    outline: 2px solid var(--color-chbe-green);
     outline-offset: 2px;
 }
 
