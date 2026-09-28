@@ -41,6 +41,17 @@ export interface GenerateChatTitleInput {
 }
 
 /**
+ * Cap a title to a maximum word count, then a maximum character count.
+ *
+ * Shared by the LLM-normalized title and the deterministic fallback so both
+ * paths enforce the same display length limits.
+ */
+function capChatTitleLength(title: string, maxWords: number, maxChars: number): string {
+    const words = title.split(' ').filter(Boolean).slice(0, maxWords);
+    return words.join(' ').slice(0, maxChars).trim();
+}
+
+/**
  * Clean raw model output into a display title.
  *
  * Keeps the first line, removes a leading "Title:", markdown emphasis, wrapping
@@ -53,10 +64,13 @@ export function normalizeGeneratedChatTitle(raw: string): string {
     title = title.replace(/[*_`#]/g, '');
     title = title.replace(/^["'“”‘’\s]+|["'“”‘’\s]+$/g, '');
     title = title.replace(/[.!?:;,\s]+$/g, '');
+    // Whitelist letters, digits, whitespace, and a small safe punctuation set so
+    // model output can never inject markup (angle brackets, quotes, parens, etc.)
+    // into a title that HTML sinks render.
+    title = title.replace(/[^\p{L}\p{N}\s'’ʼ\-&+/]/gu, '');
     title = title.replace(/\s+/g, ' ').trim();
 
-    const words = title.split(' ').filter(Boolean).slice(0, CHAT_TITLE_MAX_WORDS);
-    return words.join(' ').slice(0, CHAT_TITLE_MAX_CHARS).trim();
+    return capChatTitleLength(title, CHAT_TITLE_MAX_WORDS, CHAT_TITLE_MAX_CHARS);
 }
 
 /** Build the two-message prompt; only the (truncated) first user message is sent. */
@@ -73,7 +87,12 @@ export function buildChatTitleMessages(firstUserMessage: string): Message[] {
  * Never rejects and never returns an empty string.
  */
 export async function generateChatTitle(input: GenerateChatTitleInput): Promise<string> {
-    const fallback = generateChatTitleFromResponse(input.firstUserMessage);
+    const rawFallback = generateChatTitleFromResponse(input.firstUserMessage);
+    // The literal "New Chat" placeholder is already short; capping is a no-op
+    // for it, but skip the call so the constant is never accidentally altered.
+    const fallback = rawFallback === 'New Chat'
+        ? rawFallback
+        : capChatTitleLength(rawFallback, CHAT_TITLE_MAX_WORDS, CHAT_TITLE_MAX_CHARS);
 
     // Step 1: mock mode never calls a provider.
     if (isMockResponse()) {

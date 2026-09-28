@@ -54,6 +54,15 @@ describe('normalizeGeneratedChatTitle', () => {
     it('returns empty string for blank output', () => {
         expect(normalizeGeneratedChatTitle('  "" ')).toBe('');
     });
+
+    it('strips markup characters from an HTML injection payload', () => {
+        const result = normalizeGeneratedChatTitle('<img src=x onerror=alert(1)>');
+        expect(result).not.toMatch(/[<>=()]/);
+    });
+
+    it('keeps accented and non-Latin letters', () => {
+        expect(normalizeGeneratedChatTitle('¿Qué es la entalpía?')).toBe('Qué es la entalpía');
+    });
 });
 
 describe('buildChatTitleMessages', () => {
@@ -98,5 +107,23 @@ describe('generateChatTitle', () => {
         await expect(generateChatTitle({ firstUserMessage: 'distillation columns', llm }))
             .resolves.toBe('distillation columns');
         expect(llm.calls).toBe(0);
+    });
+
+    it('strips a script-tag payload from the LLM to a title with no angle brackets', async () => {
+        const llm = fakeLlm('<script>alert(1)</script>');
+        const result = await generateChatTitle({ firstUserMessage: 'tell me about reactors', llm });
+        expect(result).not.toMatch(/[<>]/);
+    });
+
+    it('keeps accented letters from an LLM title', async () => {
+        const llm = fakeLlm('¿Qué es la entalpía?');
+        await expect(generateChatTitle({ firstUserMessage: 'what is enthalpy', llm }))
+            .resolves.toBe('Qué es la entalpía');
+    });
+
+    it('falls back with accented letters preserved when the LLM throws', async () => {
+        const llm: ChatTitleLlm = { sendConversation: async () => { throw new Error('boom'); } };
+        await expect(generateChatTitle({ firstUserMessage: '¿Qué es la entalpía?', llm }))
+            .resolves.toBe('Qué es la entalpía');
     });
 });

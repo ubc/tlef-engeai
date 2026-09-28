@@ -679,7 +679,7 @@ class MonitorDashboard {
                                               .map(
                                                   (chat) => `
                                 <div class="chat-history-item">
-                                    <div class="chat-title">${chat.title}</div>
+                                    <div class="chat-title">${escapeHtml(chat.title)}</div>
                                     <button class="download-button" onclick="downloadChatHistory('${chat.id}')">
                                         <i data-feather="download"></i>
                                         Download
@@ -1113,6 +1113,17 @@ class MonitorDashboard {
                date1.getDate() === date2.getDate();
     }
 
+}
+
+/**
+ * Escape HTML to prevent XSS
+ * @param text - Text to escape
+ * @returns Escaped HTML
+ */
+function escapeHtml(text: string): string {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 declare global {
