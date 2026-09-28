@@ -184,11 +184,55 @@ export interface CriterionFeedback {
         revisionGuidance?: string;
         sflFindingIds?: string[];
         courseMaterialMention?: CourseMaterialMention;
+        supportingExcerptId?: string; // excerpt judged to support this passage's finding
         glossaryEntryId?: string;
         glossarySnapshot?: GlossarySnapshot;
     }>; // exact verified-text quote and the model's rationale for citing it
     explanation: string; // criterion-level formative explanation
     confidence: number; // staff-only diagnostic excluded from student output
+}
+
+/** Genres the diagnosis may say a text realizes. */
+export type RealizedGenre =
+    | 'descriptive_report' | 'data_commentary' | 'problem_solution'
+    | 'explanation' | 'recount' | 'procedure' | 'argument' | 'personal_response' | 'unclear';
+
+/** Which feedback a submission receives. */
+export type FeedbackMode = 'standard' | 'global_revision';
+
+/** Whole-text diagnosis shown to staff above the review. */
+export interface TextDiagnosis {
+    realizedGenre: RealizedGenre;
+    genreFit: 'fits' | 'partial' | 'mismatch';
+    stages: Array<{ stageId: string; status: 'present' | 'weak' | 'missing'; evidence?: string }>;
+    contradictingFeatures: Array<{ quote: string; note: string }>;
+    transferableStrengths: Array<{ text: string; quote?: string }>;
+    rationale: string;
+}
+
+/** Student-facing rewrite block. */
+export interface GlobalRevision {
+    diagnosisStatement: string;
+    whatToKeep: string[];
+    rewriteDirection: string;
+    supportingExcerptIds?: string[];
+}
+
+/** One coverage row on the rubric page. */
+export interface MaterialCoverageRow {
+    needId: string;
+    kind: 'genre' | 'stage' | 'task_requirement' | 'language_function' | 'contrast' | 'finding';
+    label: string;
+    covered: boolean;
+    materialLabels: string[];
+}
+
+/** Cached coverage returned by the coverage route. */
+export interface MaterialCoverage {
+    rubricVersion: number;
+    materialFingerprint: string;
+    computedAt: string;
+    rows: MaterialCoverageRow[];
 }
 
 /** Immutable model-run snapshot displayed as the starting point for staff review. */
@@ -201,7 +245,9 @@ export interface FeedbackRun {
         schemaVersion?: string; // V2 result schema, absent on older runs
         criteria: CriterionFeedback[]; // supported criterion judgments with exact evidence
         strengths: string[]; // positive observations included in student-facing output
-        revisionGoals: Array<{ skillTag: string; goal: string; guidedQuestion: string }>; // up to three actionable, Socratic priorities
+        revisionGoals: Array<{ skillTag: string; goal: string; action?: string; guidedQuestion?: string }>; // up to three priorities, each with a concrete action on new runs
+        gateDecision?: FeedbackMode; // gate decision at generation; absent on older runs
+        globalRevision?: GlobalRevision; // rewrite block, always produced on new runs
         internalFlags: string[]; // staff-only warnings excluded from PDF/release payloads
         courseMaterialMentions?: CourseMaterialMention[]; // deduplicated useful course resources
     }; // validated structured result; never edited in place by the browser
@@ -216,6 +262,10 @@ export interface FeedbackRun {
     redraftOfRunId?: string; // run this summary was redrafted from (D-125)
     sourceComments?: AnchoredComment[]; // annotations the redraft was drafted from; staff-only
     annotationsFingerprint?: string; // fingerprint of sourceComments, compared on Next
+    textDiagnosis?: TextDiagnosis; // whole-text diagnosis; staff-only
+    gateDecision?: FeedbackMode; // gate decision at generation
+    flags?: string[]; // staff-only pipeline flags, e.g. no_genre_material
+    supportedExcerptIds?: string[]; // excerpts judged to support a need
 }
 
 /** Staff-edited summary sections for one lens, bound to the run they were edited against (D-126). */
@@ -225,6 +275,7 @@ export interface StaffSummaryEdit {
     strengths: string[]; // "What you did well", 0..5
     criterionExplanations: Array<{ criterion: WritingCriterionId; explanation: string }>;
     revisionGoalsText?: string; // technical lens only
+    globalRevision?: { diagnosisStatement: string; whatToKeep: string[]; rewriteDirection: string }; // writing lens only
 }
 
 /** Which run a lens's summary currently comes from, and the annotations it reflects. */
@@ -299,6 +350,7 @@ export interface AnchoredComment {
     courseMaterialTitle?: string; // staff-authored lecture/reading title shown to the student
     courseMaterialId?: string; // id of the picked course material, when picked rather than typed
     courseMaterialMention?: CourseMaterialMention; // resolved course-material label preferred for V2
+    supportingExcerptId?: string; // excerpt that supported a model citation; staff-facing provenance
     glossaryDefinition?: { term: string; definition: string }; // optional disciplinary-language support
     glossaryEntryId?: string; // selected glossary entry id
     glossarySnapshot?: GlossarySnapshot; // definition retained for historical PDFs
@@ -311,6 +363,8 @@ export interface AnchoredComment {
     priority?: WfPriority;
     /** Read-time flag from the server: the verified text drifted from this anchor. */
     stale?: boolean;
+    /** Model seed withheld from the student while the effective mode is global revision. */
+    heldBack?: boolean;
 }
 
 /** Human-readable labels for function filters. */
@@ -345,6 +399,7 @@ export interface ReviewRevision {
     feedbackRunId?: string; // linguistic run the revision was saved against
     technicalFeedbackRunId?: string; // technical run the technical summary edits were saved against
     summaryEdits?: StaffSummaryEdit[]; // editable summary sections bound to their runs (D-126)
+    modeOverride?: FeedbackMode; // staff override of the gate decision
     createdAt: string; // server timestamp used to order immutable revisions
 }
 
@@ -474,6 +529,8 @@ export interface SubmissionDetail {
     workingComments?: AnchoredComment[];
     /** Per lens, the run the summary comes from and the fingerprint of annotations it reflects. */
     summarySources?: Partial<Record<WritingFeedbackLens, SummarySource>>;
+    modeOverride?: FeedbackMode; // staff override of the gate decision in force
+    globalRevision?: GlobalRevision; // rewrite block the student would receive (staff edit over model)
     release?: WritingReleaseSummary | null; // latest Canvas release/reconciliation state
     /** How many times this submission's feedback has reached the student in Canvas. */
     releaseCount?: number;

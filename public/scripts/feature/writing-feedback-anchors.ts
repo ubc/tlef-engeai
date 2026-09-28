@@ -19,6 +19,8 @@ import { showConfirmModal } from '../ui/modal-overlay.js';
 import {
     AnchoredComment,
     CourseMaterialTitle,
+    FeedbackMode,
+    FeedbackRun,
     FUNCTION_TAG_LABELS,
     FUNCTION_TAG_TONES,
     LEVEL_TAG_LABELS,
@@ -36,6 +38,8 @@ import {
     jsonRequest,
     request
 } from './writing-feedback-shared.js';
+import { readAgainLabel, splitHeldBack } from './writing-feedback-diagnosis-model.js';
+import { renderHeldBackGroup } from './writing-feedback-diagnosis.js';
 
 interface AnnotationContext {
     docHost: HTMLElement;
@@ -48,6 +52,10 @@ interface AnnotationContext {
      */
     lens: WritingFeedbackLens;
     markDirty: () => void;
+    /** Effective mode; in global revision, held-back model seeds are grouped apart. */
+    mode?: FeedbackMode;
+    /** Latest run for this lens, used to check that a model citation was supported. */
+    run?: FeedbackRun | null;
 }
 
 /**
@@ -438,8 +446,24 @@ function renderAnnotationList(context: AnnotationContext, rerender: () => void):
     if (comments.length && !visible.length) {
         list.append(createText('p', 'No annotations match the selected filters.', 'wf-muted-note'));
     }
-    visible.forEach((comment) => list.append(renderAnnotationCard(comment, numbers.get(comment.id), context, rerender)));
+    // Rewrite mode: model seeds the student will not see sit in their own collapsed group.
+    const split = splitHeldBack(visible, context.mode ?? 'standard');
+    split.visible.forEach((comment) => list.append(renderAnnotationCard(comment, numbers.get(comment.id), context, rerender)));
     host.append(list);
+    const heldBack = renderHeldBackGroup(
+        split.heldBack,
+        (comment) => renderAnnotationCard(comment, numbers.get(comment.id), context, rerender),
+        true,
+        (id) => {
+            const working = commentsFor(context.lens);
+            const at = working.findIndex((comment) => comment.id === id);
+            if (at === -1) return;
+            working[at] = { ...working[at], heldBack: false };
+            context.markDirty();
+            rerender();
+        }
+    );
+    if (heldBack) host.append(heldBack);
 }
 
 function renderAnnotationCard(
@@ -511,9 +535,8 @@ function renderCardDisplay(
     // links: the student reads this in the workspace and on a printed PDF, where a URL is
     // not clickable and says less than the name of the lecture it points at. A legacy
     // comment that carries only a link falls back to showing it as plain text.
-    const materialName = comment.courseMaterialMention?.label
-        ?? comment.courseMaterialTitle
-        ?? comment.courseMaterialLink;
+    // A model citation prints only when its excerpt was judged to support the passage.
+    const materialName = readAgainLabel(comment, context.run ?? null);
     if (materialName) {
         const box = document.createElement('div');
         box.className = 'wf-material-box';

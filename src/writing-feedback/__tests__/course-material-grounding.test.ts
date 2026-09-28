@@ -26,13 +26,16 @@ describe('Writing Feedback retrieval scope', () => {
     });
 });
 
+
 import {
-    MAX_RETRIEVAL_QUERIES,
-    buildFindingRetrievalQuery,
-    findingClusterKey,
-    resolveCourseMaterialGrounding
+    buildFindingNeeds,
+    retrieveForNeeds,
+    toExcerpts,
+    type WritingFeedbackMaterialRetriever
 } from '../course-material-mentions';
-import type { WritingFeedbackMaterialRetriever } from '../course-material-mentions';
+import { COURSE_MATERIAL_RESOLVER_VERSION } from '../sfl-foundation';
+import fs from 'fs';
+import path from 'path';
 import type { SflAnalysis, SflFinding, WritingAssignment } from '../contracts';
 
 const QUOTE = 'ZZQUOTEZZ the reaction proceeded rapidly';
@@ -110,201 +113,58 @@ function recordingRetriever(published = true): WritingFeedbackMaterialRetriever 
     };
 }
 
-describe('the per-finding query never contains student text', () => {
-    it('omits the evidence quote, the observation, and the interpretation', () => {
-        const query = buildFindingRetrievalQuery(assignment(), finding());
-        expect(query).not.toContain('ZZQUOTEZZ');
-        expect(query).not.toContain('ZZOBSERVATIONZZ');
-        expect(query).not.toContain('ZZINTERPRETATIONZZ');
-    });
-
-    it('carries the curated fields that make the query useful', () => {
-        const query = buildFindingRetrievalQuery(assignment(), finding({ stageId: 's1' }));
-        expect(query).toContain('content');
-        expect(query).toContain('clause_word');
-        expect(query).toContain('Process description');
-        expect(query).toContain('Method');
-    });
-
-    it('sends no query containing student text through a whole run', async () => {
+describe('the whole run sends no query containing student text', () => {
+    it('keeps quotes and analyzer prose out of every finding query', async () => {
         const retriever = recordingRetriever();
-        await resolveCourseMaterialGrounding(
-            assignment(),
-            analysisOf([finding(), finding({ id: 'f2', primaryFunction: 'organizational' })]),
-            retriever
-        );
-        retriever.queries.forEach((query) => {
-            expect(query).not.toMatch(/ZZQUOTEZZ|ZZOBSERVATIONZZ|ZZINTERPRETATIONZZ/);
-        });
+        await retrieveForNeeds(assignment(), buildFindingNeeds(assignment(), analysisOf([finding()])), { retriever, budgetChars: 4000, idPrefix: 'f' });
+        const sent = retriever.queries.join('\n');
+        expect(sent).not.toContain('ZZQUOTEZZ');
+        expect(sent).not.toContain('ZZOBSERVATIONZZ');
+        expect(sent).not.toContain('ZZINTERPRETATIONZZ');
+        expect(retriever.queries.length).toBeGreaterThan(0);
     });
 });
 
 describe('finding clustering', () => {
-    it('gives identical findings one query, not one each', async () => {
-        const retriever = recordingRetriever();
-        await resolveCourseMaterialGrounding(
-            assignment(),
-            analysisOf([finding(), finding({ id: 'f2' }), finding({ id: 'f3' })]),
-            retriever
-        );
-        // One clustered query plus the run-level query.
-        expect(retriever.queries).toHaveLength(2);
-    });
-
-    it('is insensitive to rule id order', () => {
-        expect(findingClusterKey(finding({ ruleIds: ['b', 'a'] })))
-            .toBe(findingClusterKey(finding({ id: 'other', ruleIds: ['a', 'b'] })));
-    });
-
-    it('caps the queries and falls back rather than dropping a finding', async () => {
-        const retriever = recordingRetriever();
-        const many = Array.from({ length: 12 }, (_, index) => finding({
-            id: `f${index}`,
-            ruleIds: [`rule-${index}`]
-        }));
-        const grounding = await resolveCourseMaterialGrounding(assignment(), analysisOf(many), retriever);
-        expect(retriever.queries.length).toBeLessThanOrEqual(MAX_RETRIEVAL_QUERIES + 1);
-        many.forEach((item) => {
-            expect(grounding.byFinding.get(item.id)?.length ?? 0).toBeGreaterThan(0);
-        });
+    it('gives identical findings one need, not one each', () => {
+        const needs = buildFindingNeeds(assignment(), analysisOf([finding(), finding({ id: 'f2' })]));
+        expect(needs).toHaveLength(1);
     });
 });
 
-describe('the student list stays inside the schema cap', () => {
-    it('keeps at most five mentions for the student while the allowlist stays whole', async () => {
-        const retriever = recordingRetriever();
-        const many = Array.from({ length: 12 }, (_, index) => finding({ id: 'f' + index, ruleIds: ['rule-' + index] }));
-        const grounding = await resolveCourseMaterialGrounding(assignment(), analysisOf(many), retriever);
-        expect(grounding.studentMentions).toHaveLength(5);
-        expect(grounding.mentions.length).toBeGreaterThan(5);
-    });
-});
-
-describe('citation is restricted to published material', () => {
-    it('keeps unpublished material out of the citable list and in the staff list', async () => {
-        const retriever = recordingRetriever(false);
-        const grounding = await resolveCourseMaterialGrounding(assignment(), analysisOf([finding()]), retriever);
-        expect(grounding.mentions).toEqual([]);
-        expect(grounding.studentMentions).toEqual([]);
-        expect(grounding.staffMentions.length).toBeGreaterThan(0);
-        expect(grounding.byFinding.get('f1') ?? []).toEqual([]);
-    });
-});
-
-describe('retrieval stays advisory', () => {
-    it('produces nothing rather than failing the run', async () => {
-        const grounding = await resolveCourseMaterialGrounding(
-            assignment(),
-            analysisOf([finding()]),
-            { async retrieve() { throw new Error('Qdrant unavailable'); } }
-        );
-        expect(grounding.mentions).toEqual([]);
-        expect(grounding.studentMentions).toEqual([]);
-        expect(grounding.staffMentions).toEqual([]);
-        expect(grounding.excerpts).toEqual([]);
-        expect(grounding.byFinding.size).toBe(0);
-    });
-});
-
-import { EXCERPT_BUDGET_CHARS, MAX_EXCERPT_CHARS } from '../course-material-mentions';
-import { COURSE_MATERIAL_RESOLVER_VERSION, SFL_WRITER_PROMPT_VERSION } from '../sfl-foundation';
-
-/** A retriever answering with chunks of a chosen length, score, and publication state. */
-function chunkyRetriever(chunks: Array<{ content: string; score: number; published: boolean; id: string }>): WritingFeedbackMaterialRetriever {
-    return {
-        async retrieve() {
-            return chunks.map((chunk) => ({
-                content: chunk.content,
-                score: chunk.score,
-                published: chunk.published,
-                metadata: { id: chunk.id, topicOrWeekTitle: 'Week 4', itemTitle: `Item ${chunk.id}`, name: chunk.id }
-            }));
-        }
-    };
-}
-
-describe('excerpt budgeting', () => {
-    it('truncates each chunk and stops at the total budget, highest score first', async () => {
-        const grounding = await resolveCourseMaterialGrounding(
-            assignment(),
-            analysisOf([finding()]),
-            chunkyRetriever([
-                { id: 'low', content: 'l'.repeat(2000), score: 0.5, published: true },
-                { id: 'high', content: 'h'.repeat(2000), score: 0.99, published: true },
-                { id: 'mid', content: 'm'.repeat(2000), score: 0.8, published: true }
-            ])
-        );
-        expect(grounding.excerpts[0]!.text.startsWith('h')).toBe(true);
-        grounding.excerpts.forEach((excerpt) => {
-            expect(excerpt.text.length).toBeLessThanOrEqual(MAX_EXCERPT_CHARS);
-        });
-        const total = grounding.excerpts.reduce((sum, excerpt) => sum + excerpt.text.length, 0);
-        expect(total).toBeLessThanOrEqual(EXCERPT_BUDGET_CHARS);
-    });
-
-    it('carries a citable id only for published material', async () => {
-        const grounding = await resolveCourseMaterialGrounding(
-            assignment(),
-            analysisOf([finding()]),
-            chunkyRetriever([
-                { id: 'open', content: 'published text', score: 0.9, published: true },
-                { id: 'draft', content: 'unpublished text', score: 0.8, published: false }
-            ])
-        );
-        const open = grounding.excerpts.find((excerpt) => excerpt.text === 'published text');
-        const draft = grounding.excerpts.find((excerpt) => excerpt.text === 'unpublished text');
-        expect(open?.mentionId).toBe('open');
-        expect(draft?.mentionId).toBeUndefined();
-    });
-});
-
-describe('prompt contract versions move with the contract', () => {
-    it('names the grounded writer and resolver versions', () => {
-        expect(SFL_WRITER_PROMPT_VERSION).toBe('sfl-feedback-writer-v2.3.0');
+describe('resolver version', () => {
+    it('names the resolver contract version', () => {
         expect(COURSE_MATERIAL_RESOLVER_VERSION).toBe('course-material-mentions-v2.0.0');
     });
 });
 
-import fs from 'fs';
-import path from 'path';
-
 describe('excerpt containment', () => {
-    it('keeps course text off every student-facing carrier', async () => {
-        const grounding = await resolveCourseMaterialGrounding(
-            assignment(),
-            analysisOf([finding()]),
-            chunkyRetriever([{ id: 'open', content: 'ZZEXCERPTZZ course text', score: 0.9, published: true }])
-        );
-        const serialisedMentions = JSON.stringify([...grounding.mentions, ...grounding.staffMentions]);
-        expect(serialisedMentions).not.toContain('ZZEXCERPTZZ');
-        expect(JSON.stringify([...grounding.byFinding.values()])).not.toContain('ZZEXCERPTZZ');
-        expect(grounding.excerpts.some((excerpt) => excerpt.text.includes('ZZEXCERPTZZ'))).toBe(true);
+    it('keeps course text off every label a student or staff list carries', async () => {
+        const retriever: WritingFeedbackMaterialRetriever = {
+            async retrieve() {
+                return [{ content: 'ZZEXCERPTZZ course text', score: 0.9, published: true, metadata: { id: 'open', topicOrWeekTitle: 'Week 4', itemTitle: 'Lecture 1', name: 'Flow' } }] as never;
+            }
+        };
+        const result = await retrieveForNeeds(assignment(), buildFindingNeeds(assignment(), analysisOf([finding()])), { retriever, budgetChars: 4000, idPrefix: 'f' });
+        expect(JSON.stringify(result.excerpts.map((excerpt) => [excerpt.mention, excerpt.staffMention]))).not.toContain('ZZEXCERPTZZ');
+        expect(toExcerpts(result.excerpts).some((excerpt) => excerpt.text.includes('ZZEXCERPTZZ'))).toBe(true);
     });
 
     it('never renders an excerpt in the student report', () => {
-        const report = fs.readFileSync(
-            path.join(__dirname, '..', '..', 'report-generation', 'writing-feedback-report.ts'),
-            'utf8'
-        );
+        const report = fs.readFileSync(path.join(__dirname, '..', '..', 'report-generation', 'writing-feedback-report.ts'), 'utf8');
         expect(report).not.toContain('courseMaterialExcerpts');
         expect(report).not.toContain('CourseMaterialExcerpt');
     });
 
     it('never mirrors the excerpt type into the browser bundle', () => {
-        const shared = fs.readFileSync(
-            path.join(__dirname, '..', '..', '..', 'public', 'scripts', 'feature', 'writing-feedback-shared.ts'),
-            'utf8'
-        );
+        const shared = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'public', 'scripts', 'feature', 'writing-feedback-shared.ts'), 'utf8');
         expect(shared).not.toContain('CourseMaterialExcerpt');
     });
 });
 
 describe('student-facing source list', () => {
     it('renders published labels only, with no scores or ids', () => {
-        const report = fs.readFileSync(
-            path.join(__dirname, '..', '..', 'report-generation', 'writing-feedback-report.ts'),
-            'utf8'
-        );
+        const report = fs.readFileSync(path.join(__dirname, '..', '..', 'report-generation', 'writing-feedback-report.ts'), 'utf8');
         const section = report.match(/function renderCourseMaterialSources[\s\S]*?\n}/)?.[0] ?? '';
         expect(section).toContain('Useful readings');
         expect(section).toContain('mention.label');
@@ -316,64 +176,18 @@ describe('student-facing source list', () => {
 });
 
 describe('mention identity', () => {
-    /** Answers with the same two materials every call, neither carrying a metadata id. */
-    function untaggedRetriever(): WritingFeedbackMaterialRetriever {
-        return {
-            async retrieve() {
-                return [
-                    { content: 'open text', score: 0.9, published: true, metadata: { topicOrWeekTitle: 'Week 4', itemTitle: 'Lecture 1', name: 'Information flow' } },
-                    { content: 'closed text', score: 0.8, published: false, metadata: { topicOrWeekTitle: 'Week 5', itemTitle: 'Lecture 2', name: 'Nominalisation' } }
-                ];
-            }
-        };
-    }
-
-    it('gives one material the same id wherever it appears', async () => {
+    it('gives one untagged material the same id however many needs found it', async () => {
         // Without a metadata id the label is all there is to go on. An id that also counted
-        // the chunk's position gave the same document different ids in the citable list, the
-        // staff list, and the per-finding map, which silently dropped the citation.
-        const grounding = await resolveCourseMaterialGrounding(
-            assignment(),
-            analysisOf([finding(), finding({ id: 'f2', primaryFunction: 'organizational' })]),
-            untaggedRetriever()
-        );
-        const citable = grounding.mentions[0]!;
-        expect(grounding.staffMentions.map((mention) => mention.id)).toContain(citable.id);
-        expect(grounding.byFinding.get('f1')?.map((mention) => mention.id)).toEqual([citable.id]);
-        expect(grounding.byFinding.get('f2')?.map((mention) => mention.id)).toEqual([citable.id]);
-    });
-});
-
-describe('published material past the student cap', () => {
-    /** One distinct published material per call, so a run retrieves more than five. */
-    function manyMaterialsRetriever(): WritingFeedbackMaterialRetriever {
-        let call = 0;
-        return {
+        // the chunk's position gave one document several ids and silently dropped citations.
+        const retriever: WritingFeedbackMaterialRetriever = {
             async retrieve() {
-                call += 1;
-                return [{
-                    content: `text ${call}`,
-                    score: 0.9,
-                    published: true,
-                    metadata: { id: `m${call}`, topicOrWeekTitle: 'Week 4', itemTitle: `Lecture ${call}`, name: `Handout ${call}` }
-                }];
+                return [{ content: 'open text', score: 0.9, published: true, metadata: { topicOrWeekTitle: 'Week 4', itemTitle: 'Lecture 1', name: 'Information flow' } }] as never;
             }
         };
-    }
-
-    it('stays citable and stays marked published beyond the five a student sees', async () => {
-        const findings = ['content', 'organizational', 'interpersonal', 'content', 'organizational', 'interpersonal']
-            .map((primaryFunction, index) => finding({
-                id: `f${index}`,
-                primaryFunction: primaryFunction as SflFinding['primaryFunction'],
-                languageLevel: index % 2 ? 'text' : 'clause_word'
-            }));
-        const grounding = await resolveCourseMaterialGrounding(assignment(), analysisOf(findings), manyMaterialsRetriever());
-
-        expect(grounding.studentMentions).toHaveLength(5);
-        expect(grounding.mentions.length).toBeGreaterThan(5);
-        // Every citable mention is published, so nothing past the student cap may be
-        // reported to staff as material the student cannot open.
-        expect(grounding.citableMentionIds).toEqual(grounding.mentions.map((mention) => mention.id));
+        const needs = buildFindingNeeds(assignment(), analysisOf([finding(), finding({ id: 'f2', primaryFunction: 'organizational' })]));
+        const result = await retrieveForNeeds(assignment(), needs, { retriever, budgetChars: 4000, idPrefix: 'f' });
+        expect(result.excerpts).toHaveLength(1);
+        expect(result.excerpts[0].needIds).toHaveLength(2);
+        expect(result.excerpts[0].mention?.id).toBe(result.excerpts[0].staffMention?.id);
     });
 });

@@ -29,7 +29,15 @@ export const summaryEditsInputSchema = z.array(z.object({
         criterion: z.string().trim().min(1).max(64),
         explanation: z.string().trim().min(1).max(4000)
     })).max(10),
-    revisionGoalsText: z.string().trim().min(1).max(30000).optional()
+    revisionGoalsText: z.string().trim().min(1).max(30000).optional(),
+    globalRevision: z.object({
+        diagnosisStatement: z.string().trim().min(1).max(1500),
+        whatToKeep: z.array(z.string().trim().min(1).max(300)).max(3),
+        rewriteDirection: z.string().trim().min(1).max(1500)
+    }).optional()
+}).refine((edit) => !edit.globalRevision || edit.lens === 'linguistic', {
+    message: 'Only the writing lens has a rewrite summary',
+    path: ['globalRevision']
 })).max(2);
 
 /**

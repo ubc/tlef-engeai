@@ -21,10 +21,16 @@ import {
 } from './contracts';
 
 /** Analyzer prompt contract version stamped on V2 linguistic feedback runs. */
-export const SFL_ANALYZER_PROMPT_VERSION = 'sfl-analyzer-v2.0.0';
+export const SFL_ANALYZER_PROMPT_VERSION = 'sfl-analyzer-v3.0.0';
 
 /** Feedback-writer prompt contract version stamped on V2 linguistic feedback runs. */
-export const SFL_WRITER_PROMPT_VERSION = 'sfl-feedback-writer-v2.3.0';
+export const SFL_WRITER_PROMPT_VERSION = 'sfl-feedback-writer-v3.0.0';
+
+/** Whole-text diagnosis prompt contract version (recorded in every run trace). */
+export const TEXT_DIAGNOSIS_PROMPT_VERSION = 'text-diagnosis-v1.0.0';
+
+/** Course-material relevance prompt contract version. */
+export const MATERIAL_RELEVANCE_PROMPT_VERSION = 'material-relevance-v1.0.0';
 
 /** Course-material mention resolver contract version stamped on V2 runs. */
 export const COURSE_MATERIAL_RESOLVER_VERSION = 'course-material-mentions-v2.0.0';
@@ -98,6 +104,14 @@ export const SFL_FERREIRA_RULES: ReadonlyArray<SflAnalyzerRule> = [
     { ruleId: 'O14', summary: 'Punctuation supports cohesion, readability, and information structure.', primaryFunction: 'organizational', crossFunctions: ['content'], languageLevel: 'clause_word', expectedness: { descriptive_report: 'O', data_commentary: 'O', problem_solution: 'O' }, gates: ['punctuation_affects_meaning'], sourceIds: [`${SOURCE_PREFIX}#table-4-r15`] }
 ];
 
+/** Plain-language meaning of the Ferreira expectedness codes carried on each rule. */
+export const EXPECTEDNESS_LEGEND = {
+    O: 'Obligatory for this genre: its absence or failure is a real problem.',
+    E: 'Expected: usually present in a good text of this genre; comment if missing.',
+    P: 'Possible: may appear; comment only when it helps or hurts this text.',
+    R: 'Rare: unusual for this genre; its presence may signal the text is drifting.'
+} as const;
+
 /** Fast rule lookup by id for validation and prompt assembly. */
 export const SFL_RULES_BY_ID = new Map(SFL_FERREIRA_RULES.map((rule) => [rule.ruleId, rule]));
 
@@ -123,17 +137,20 @@ export function sflFoundationPromptResource(): string {
             crossFunctions: rule.crossFunctions,
             languageLevel: rule.languageLevel,
             expectedness: rule.expectedness,
-            gates: rule.gates,
+            // Gates stay code-side: the model was never told how to use them, and one
+            // (theme_analysis_reliable) invited it to skip Theme analysis altogether.
             sourceIds: rule.sourceIds,
             dedupeKey: rule.dedupeKey
         })),
+        expectednessLegend: EXPECTEDNESS_LEGEND,
         globalRules: [
             'Use official assignment profile and rubric before the general framework.',
             'Keep observation, interpretation, rubric evaluation, and confidence separate.',
             'Do not extrapolate DR/DC/PS expectedness codes to custom or composite genres.',
             'Exact student evidence is required for every finding that can reach feedback.',
             'C01 and O01 share GENRE_STAGING and must not double-penalize one issue.',
-            'Abstain when context, source access, or evidence is insufficient.'
+            'Abstain when context, source access, or evidence is insufficient.',
+            'Analyze Theme at clause level for every full clause; abstain only for fragments.'
         ]
     });
 }

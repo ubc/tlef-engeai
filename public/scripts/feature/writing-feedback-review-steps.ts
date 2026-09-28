@@ -70,3 +70,21 @@ export function decideNextAction(input: { status: string; changedLenses: Lens[];
         ? { kind: 'confirm', lenses }
         : { kind: 'redraft', lenses };
 }
+
+/**
+ * needsModeRedraft - whether switching to standard feedback needs a writing-lens redraft.
+ *
+ * A rewrite-gated run's writer produced a rewrite goal and transferable strengths only, so
+ * standard feedback needs a fresh summary. One redraft suffices: the redraft run carries the
+ * run's gate decision forward, and its `redraftOfRunId` marks the summary as already standard.
+ *
+ * @param run - Latest writing-lens run
+ * @param mode - Effective mode on screen
+ * @returns True when the writing summary must be redrafted before the Summary step
+ */
+export function needsModeRedraft(
+    run: { gateDecision?: 'standard' | 'global_revision'; redraftOfRunId?: string },
+    mode: 'standard' | 'global_revision'
+): boolean {
+    return run.gateDecision === 'global_revision' && mode === 'standard' && !run.redraftOfRunId;
+}

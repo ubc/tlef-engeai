@@ -37,7 +37,10 @@ import type {
     WritingFeedbackResult,
     AnchoredComment,
     FeedbackPdfInclude,
+    FeedbackMode,
     FeedbackPdfLens,
+    GlobalRevision,
+    RevisionGoal,
     StaffFinalAssessment,
     WritingAssignment,
     WritingRubricDefinition,
@@ -88,6 +91,10 @@ export class StudentWritingFeedbackPdfService implements WritingFeedbackPdfServi
         lens?: FeedbackPdfLens;
         finalAssessment?: StaffFinalAssessment;
         annotationAuthor?: string;
+        /** Effective mode for the writing lens; global revision prints the rewrite block. */
+        mode?: FeedbackMode;
+        /** Rewrite block (staff edits over the model's), used when mode is global revision. */
+        globalRevision?: GlobalRevision;
         technicalFeedback?: WritingFeedbackResult;
         technicalRubric?: WritingRubricDefinition;
         technicalStaffFeedback?: string;
@@ -125,15 +132,27 @@ export class StudentWritingFeedbackPdfService implements WritingFeedbackPdfServi
                         if (input.assignment.isLabReport && input.technicalFeedback && input.technicalRubric) {
                             renderTechnicalSections(doc, input.technicalRubric, input.technicalFeedback, input.technicalStaffFeedback);
                         }
-                        renderGeneralSections(
-                            doc,
-                            input.assignment,
-                            input.feedback,
-                            input.staffFeedback,
-                            input.finalAssessment,
-                            input.technicalRubric,
-                            input.comments ?? []
-                        );
+                        if (input.mode === 'global_revision' && input.globalRevision) {
+                            renderGlobalRevisionSections(
+                                doc,
+                                input.assignment,
+                                input.feedback,
+                                input.globalRevision,
+                                input.finalAssessment,
+                                input.technicalRubric,
+                                input.comments ?? []
+                            );
+                        } else {
+                            renderGeneralSections(
+                                doc,
+                                input.assignment,
+                                input.feedback,
+                                input.staffFeedback,
+                                input.finalAssessment,
+                                input.technicalRubric,
+                                input.comments ?? []
+                            );
+                        }
                     }
                     if (include === 'annotated' || include === 'both') {
                         if (include === 'both') doc.addPage();
@@ -220,11 +239,44 @@ function renderGeneralSections(
         sectionHeading(doc, 'Priority revision goals');
         body(doc).text(staffFeedback.trim(), { lineGap: 3 });
     } else {
-        renderRevisionGoals(doc, feedback);
+        renderRevisionGoals(doc, feedback.revisionGoals);
     }
 
     renderCourseMaterialSources(doc, feedback, comments);
 
+}
+
+/**
+ * Rewrite-mode summary: the whole-text message, what to keep, how to rewrite, one goal.
+ * Criterion evidence is omitted on purpose: local comments would suggest the text can stay.
+ */
+function renderGlobalRevisionSections(
+    doc: PDFKit.PDFDocument,
+    assignment: WritingAssignment,
+    feedback: WritingFeedbackResult,
+    globalRevision: GlobalRevision,
+    finalAssessment?: StaffFinalAssessment,
+    technicalRubric?: WritingRubricDefinition,
+    comments: AnchoredComment[] = []
+): void {
+    sectionHeading(doc, 'What to do next: rewrite');
+    body(doc).text(globalRevision.diagnosisStatement.trim(), { lineGap: 3 });
+    if (globalRevision.whatToKeep.length) {
+        sectionHeading(doc, 'Keep');
+        globalRevision.whatToKeep.forEach((item) => bullet(doc, item));
+    }
+    sectionHeading(doc, 'How to rewrite');
+    body(doc).text(globalRevision.rewriteDirection.trim(), { lineGap: 3 });
+    // Only a rewrite-gated run's writer produced a rewrite goal; a standard run's first goal
+    // is about local revision, which rewrite feedback deliberately withholds.
+    if (feedback.gateDecision === 'global_revision') renderRevisionGoals(doc, feedback.revisionGoals.slice(0, 1));
+    if (finalAssessment) {
+        const gradedRubric = finalAssessment.lens === 'technical'
+            ? technicalRubric ?? assignment.technicalRubric
+            : assignment.rubric;
+        if (gradedRubric) renderFinalAssessment(doc, gradedRubric, finalAssessment);
+    }
+    renderCourseMaterialSources(doc, feedback, comments);
 }
 
 /**
@@ -318,16 +370,21 @@ function renderCriteriaEvidence(
  * seeded from these same goals, so printing both repeats the content to the student. The
  * technical lens has no staff-editable summary and always renders them.
  *
- * Each goal keeps its guided question so the student receives a concrete priority and a
- * Socratic prompt for thinking through the revision.
+ * Each goal prints its concrete action. A guided question prints only when the goal has
+ * one: new runs add a question only where it helps, and older runs always carry one.
  */
-function renderRevisionGoals(doc: PDFKit.PDFDocument, feedback: WritingFeedbackResult): void {
+function renderRevisionGoals(doc: PDFKit.PDFDocument, goals: RevisionGoal[]): void {
     sectionHeading(doc, 'Priority revision goals');
-    feedback.revisionGoals.slice(0, 3).forEach((goal, index) => {
+    goals.slice(0, 3).forEach((goal, index) => {
         doc.font(BOLD_FONT).fontSize(BODY_SIZE).fillColor(TEXT_COLOR)
-            .text(`${index + 1}.  ${goal.goal}`, { lineGap: 2 });
-        doc.font(ITALIC_FONT).fontSize(BODY_SIZE).fillColor(MUTED_COLOR)
-            .text(`Ask yourself: ${goal.guidedQuestion}`, { indent: 14, lineGap: 2, paragraphGap: 6 });
+            .text(`${index + 1}.  ${goal.goal}`, { lineGap: 2, paragraphGap: goal.action || goal.guidedQuestion ? 0 : 6 });
+        if (goal.action) {
+            body(doc).text(`Next step: ${goal.action}`, { indent: 14, lineGap: 2, paragraphGap: goal.guidedQuestion ? 0 : 6 });
+        }
+        if (goal.guidedQuestion) {
+            doc.font(ITALIC_FONT).fontSize(BODY_SIZE).fillColor(MUTED_COLOR)
+                .text(`Ask yourself: ${goal.guidedQuestion}`, { indent: 14, lineGap: 2, paragraphGap: 6 });
+        }
         doc.fillColor(TEXT_COLOR);
     });
 }
@@ -348,7 +405,7 @@ function renderTechnicalSections(
         sectionHeading(doc, 'Priority revision goals');
         body(doc).text(staffGoals.trim(), { lineGap: 3 });
     } else {
-        renderRevisionGoals(doc, feedback);
+        renderRevisionGoals(doc, feedback.revisionGoals);
     }
 }
 

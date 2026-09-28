@@ -93,3 +93,17 @@ describe('writing feedback rubric page source contract', () => {
         expect(source).toContain("control.setAttribute('aria-invalid', 'true')");
     });
 });
+
+describe('required stages and course-material coverage on the rubric page', () => {
+    it('saves the stage Required checkbox instead of forcing every stage required', () => {
+        expect(source).not.toMatch(/required: true, order: stages\.length \+ 1/);
+        expect(source).toContain('data-stage-required');
+        expect(source).toContain('If a student leaves out a required section, the student gets rewrite feedback only.');
+    });
+
+    it('shows coverage with a recheck action and the one-time required-stages notice', () => {
+        expect(source).toContain('/material-coverage');
+        expect(source).toContain('Recheck materials');
+        expect(source).toContain('shouldShowRequiredNotice(');
+    });
+});

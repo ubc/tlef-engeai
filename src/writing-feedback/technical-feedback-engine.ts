@@ -110,6 +110,7 @@ function deterministicTechnicalFeedback(rubric: WritingRubricDefinition, text: s
         revisionGoals: generated.slice(0, 3).map((criterion) => ({
             skillTag: criterion.id,
             goal: `Review the next revision for ${criterion.label}.`,
+            action: `Revise the part of the report that most affects ${criterion.label.toLowerCase()}.`,
             guidedQuestion: `What change would most improve ${criterion.label.toLowerCase()} in this report?`
         })),
         internalFlags: ['Developer mode produced this draft without a model call.']
@@ -145,7 +146,7 @@ export function buildTechnicalFeedbackSystemPrompt(assignment: WritingAssignment
         'Each evidence.revisionGuidance must give a concrete next revision action for that exact passage. It must not copy the criterion explanation, the rationale, or a full revision goal.',
         'Never make the same point twice. Two evidence items anywhere in the result, including under different criteria, must not carry the same advice in different words; if a point is already made, choose different text or return fewer items.',
         'Each explanation must synthesize that criterion\'s evidence as a whole — the pattern across its passages and why it sits at that level — not repeat any single rationale.',
-        'Return one to three revision goals, each phrased as an action or a question the student can act on.',
+        'Return one to three revision goals. Each has a concrete action and, only when it genuinely helps the student think, a guidedQuestion.',
         `<approved_technical_rubric version="${rubric.version}">${JSON.stringify({
             assignmentTitle: assignment.title,
             title: rubric.title,
@@ -218,7 +219,7 @@ export class TechnicalWritingFeedbackEngine implements WritingFeedbackEngine {
         ];
         const response = await this.llm.sendStructuredConversation(
             messages,
-            buildFeedbackSchema(rubric),
+            buildFeedbackSchema(rubric, { requireGlobalRevision: false }),
             {
                 structuredOutputName: 'lab_report_technical_feedback',
                 ...input.llmCallOptions

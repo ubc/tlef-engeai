@@ -360,3 +360,33 @@ describe('POST release', () => {
         expect(body).toContain('resolveReleaseService(req, mongo)');
     });
 });
+
+describe('review revision mode override', () => {
+    const reviewRoute = source.match(/router\.post\('\/:courseId\/writing-feedback\/submissions\/:submissionId\/reviews'[\s\S]*?\n}\)\);/)?.[0] ?? '';
+
+    it('accepts only the two feedback modes and refuses anything else with 400', () => {
+        expect(reviewRoute).toContain("req.body.modeOverride !== 'standard' && req.body.modeOverride !== 'global_revision'");
+        expect(reviewRoute).toContain("'modeOverride must be standard or global_revision'");
+    });
+
+    it('passes the override into the append-only revision', () => {
+        expect(reviewRoute).toMatch(/appendReview\([\s\S]*modeOverride,/);
+    });
+});
+
+describe('course-material coverage routes', () => {
+    it('declares the read and recompute routes on the assignment', () => {
+        expect(source).toContain("router.get('/:courseId/writing-feedback/assignments/:assignmentId/material-coverage'");
+        expect(source).toContain("router.post('/:courseId/writing-feedback/assignments/:assignmentId/material-coverage'");
+    });
+
+    it('builds per-course model options for the recompute, as generation does', () => {
+        const route = source.match(/router\.post\('\/:courseId\/writing-feedback\/assignments\/:assignmentId\/material-coverage'[\s\S]*?\n}\)\);/)?.[0] ?? '';
+        expect(route).toContain("buildFeatureLlmCallOptions(");
+        expect(route).toContain('recomputeMaterialCoverage(');
+    });
+
+    it('lets the fixed coverage refusal past the safeError allowlist', () => {
+        expect(source).toContain("'Approve the writing rubric before checking course-material coverage'");
+    });
+});

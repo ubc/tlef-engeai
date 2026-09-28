@@ -303,9 +303,14 @@ export function buildRedraftRun(
             strengths: output.strengths,
             revisionGoals: output.revisionGoals,
             internalFlags: result.internalFlags,
-            ...(result.courseMaterialMentions ? { courseMaterialMentions: result.courseMaterialMentions } : {})
+            ...(result.courseMaterialMentions ? { courseMaterialMentions: result.courseMaterialMentions } : {}),
+            // The whole-text judgment is not redrafted: a redraft must never flip the mode.
+            ...(result.gateDecision ? { gateDecision: result.gateDecision } : {}),
+            ...(result.globalRevision ? { globalRevision: result.globalRevision } : {})
         },
         modelMetadata: { engine: engineName, promptVersion: SUMMARY_REDRAFT_PROMPT_VERSION },
+        // A redraft belongs to the same generation, so a staff mode override still applies.
+        generatedAt: previous.generatedAt ?? previous.createdAt,
         redraftOfRunId: previousId,
         sourceComments: comments,
         annotationsFingerprint

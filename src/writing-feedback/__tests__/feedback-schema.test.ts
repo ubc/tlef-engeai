@@ -46,9 +46,11 @@ function feedbackFor(
         revisionGoals: [{
             skillTag: 'audience-awareness',
             goal: 'Define the key term.',
+            action: 'Add a formal definition before the term is used.',
             guidedQuestion: 'What does a reader need to know first?'
         }],
-        internalFlags: []
+        internalFlags: [],
+        globalRevision: { diagnosisStatement: 'The text fits the genre.', whatToKeep: [], rewriteDirection: 'Keep the stages.' }
     };
 }
 
@@ -254,7 +256,7 @@ describe('buildSummaryRedraftSchema', () => {
             criterion: criterion.id, suggestedLevel: rubric.levels[0].id, explanation: 'Why.', confidence: 0.5
         })),
         strengths: ['One.'],
-        revisionGoals: [{ skillTag: 'x', goal: 'Goal.', guidedQuestion: 'Question?' }]
+        revisionGoals: [{ skillTag: 'x', goal: 'Goal.', action: 'Do this.', guidedQuestion: 'Question?' }]
     });
 
     it('accepts a complete redraft', () => {

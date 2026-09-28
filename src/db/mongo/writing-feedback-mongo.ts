@@ -15,6 +15,7 @@ import { randomUUID } from 'crypto';
 import type { Collection, Filter, IndexDescriptionInfo, UpdateFilter } from 'mongodb';
 import type { MongoDalContext } from './mongo-context';
 import type {
+    MaterialCoverage,
     CanvasAssignmentDetails,
     CanvasImportedRubric,
     CanvasRubricIdMap,
@@ -247,6 +248,23 @@ export async function listWritingAssignments(ctx: MongoDalContext, courseId: str
 export async function getWritingAssignment(ctx: MongoDalContext, courseId: string, assignmentId: string): Promise<WritingAssignment | null> {
     const assignment = await assignments(ctx).findOne({ id: assignmentId, courseId });
     return assignment ? normalizeWritingAssignment(assignment) : null;
+}
+
+/**
+ * setWritingAssignmentMaterialCoverage — stores cached course-material coverage.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param assignmentId - Internal assignment id
+ * @param coverage - Coverage keyed by rubric version and material fingerprint
+ */
+export async function setWritingAssignmentMaterialCoverage(
+    ctx: MongoDalContext,
+    courseId: string,
+    assignmentId: string,
+    coverage: MaterialCoverage
+): Promise<void> {
+    await assignments(ctx).updateOne({ id: assignmentId, courseId }, { $set: { materialCoverage: coverage } });
 }
 
 /**

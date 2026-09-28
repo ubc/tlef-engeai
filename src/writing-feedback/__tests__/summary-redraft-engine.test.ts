@@ -104,7 +104,7 @@ describe('LlmSummaryRedraftEngine', () => {
         const parsed = {
             criteria: value.rubric.criteria.map((criterion) => ({ criterion: criterion.id, suggestedLevel: value.rubric.levels[2].id, explanation: 'New.', confidence: 0.7 })),
             strengths: ['New strength.'],
-            revisionGoals: [{ skillTag: 'x', goal: 'New goal.', guidedQuestion: 'New question?' }]
+            revisionGoals: [{ skillTag: 'x', goal: 'New goal.', action: 'New step.', guidedQuestion: 'New question?' }]
         };
         const llm = { sendStructuredConversation: jest.fn(async () => ({ parsed })) };
         const previousMock = process.env.MOCK_RESPONSE;

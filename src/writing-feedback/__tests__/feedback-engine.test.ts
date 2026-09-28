@@ -22,6 +22,7 @@ import {
 } from '../feedback-engine';
 import { NO_MODEL_CRITERIA_MESSAGE, buildFeedbackSchema, MAX_EVIDENCE_PER_CRITERION } from '../feedback-schema';
 import { approveRubricDraft } from '../rubric-schema';
+import { SFL_WRITER_PROMPT_VERSION } from '../sfl-foundation';
 import type { LLMModule } from 'ubc-genai-toolkit-llm';
 
 const dynamicCriteria: WritingRubricCriterion[] = [
@@ -90,6 +91,30 @@ function dynamicAssignment(): WritingAssignment {
         ]
     }, 'instructor-1', new Date('2026-01-01T00:00:00.000Z'));
     return assignment;
+}
+
+/**
+ * A fake model that answers every structured call the pipeline makes: a fitting diagnosis
+ * over the profile's stages, relevance that supports every pair, then the given analysis
+ * and writer results.
+ */
+function routedLlm(assignment: WritingAssignment, analysis: unknown, writerResult: unknown) {
+    return jest.fn(async (messages: Array<{ content: string }>, _schema: unknown, options: { structuredOutputName: string }) => {
+        switch (options.structuredOutputName) {
+            case 'text_diagnosis':
+                return { parsed: {
+                    realizedGenre: 'unclear', genreFit: 'fits',
+                    stages: assignment.rubric.sflContext!.stages.map((stage) => ({ stageId: stage.id, status: 'present', evidence: null })),
+                    contradictingFeatures: [], transferableStrengths: [], rationale: 'Fits.'
+                } };
+            case 'material_relevance': {
+                const pairs = JSON.parse(messages[1].content.replace(/^<pairs>|<\/pairs>$/g, '')) as Array<{ pairId: string }>;
+                return { parsed: { verdicts: pairs.map((pair) => ({ pairId: pair.pairId, verdict: 'supports' })) } };
+            }
+            case 'sfl_analysis': return { parsed: analysis };
+            default: return { parsed: writerResult };
+        }
+    });
 }
 
 describe('RubricWritingFeedbackEngine generic rubric contract', () => {
@@ -191,7 +216,8 @@ describe('RubricWritingFeedbackEngine generic rubric contract', () => {
                     rationale: 'The passage gives exact evidence for the criterion.',
                     revisionGuidance: 'Add one sentence explaining what the increase means for the conclusion.',
                     sflFindingIds: ['finding-1'],
-                    courseMaterialMention: mention
+                    // The finding pass's first excerpt: the only citation basis on new runs.
+                    supportingExcerptId: 'f1'
                 }],
                 explanation: `Revise ${criterion.label} directly against the evidence and profile.`,
                 confidence: 0.7
@@ -205,11 +231,7 @@ describe('RubricWritingFeedbackEngine generic rubric contract', () => {
             internalFlags: [],
             courseMaterialMentions: [mention]
         };
-        const sendStructuredConversation = jest.fn(async (_messages, _schema, options) => (
-            options.structuredOutputName === 'sfl_analysis'
-                ? { parsed: analysis }
-                : { parsed: writerResult }
-        ));
+        const sendStructuredConversation = routedLlm(assignment, analysis, writerResult);
         const llm = { sendStructuredConversation } as unknown as LLMModule;
         const retriever = { retrieve: jest.fn(async () => [{ content: 'x', score: 0.9, published: true, metadata: { id: 'material-1', topicOrWeekTitle: 'Week 4', itemTitle: 'Lecture 2', name: 'Information flow' } }]) };
 
@@ -217,101 +239,15 @@ describe('RubricWritingFeedbackEngine generic rubric contract', () => {
         try {
             const generated = await new RubricWritingFeedbackEngine(llm, retriever)
                 .generate({ assignment, verifiedText });
-            expect(sendStructuredConversation).toHaveBeenCalledTimes(2);
-            expect(sendStructuredConversation.mock.calls[0][2].structuredOutputName).toBe('sfl_analysis');
-            expect(sendStructuredConversation.mock.calls[1][2].structuredOutputName).toBe('writing_feedback_v2');
-            expect(sendStructuredConversation.mock.calls[1][0][1].content).toContain('<validated_sfl_analysis>');
-            expect(sendStructuredConversation.mock.calls[1][0][1].content).not.toContain('The conclusion does not explain');
+            const names = sendStructuredConversation.mock.calls.map((call) => call[2].structuredOutputName);
+            expect(names.filter((name) => name !== 'material_relevance')).toEqual(['text_diagnosis', 'sfl_analysis', 'writing_feedback_v2']);
+            const writerCall = sendStructuredConversation.mock.calls.find((call) => call[2].structuredOutputName === 'writing_feedback_v2')!;
+            expect(writerCall[0][1].content).toContain('<validated_sfl_analysis>');
+            expect(writerCall[0][1].content).not.toContain('The conclusion does not explain');
             expect(generated.schemaVersion).toBe('writing-feedback-v2');
             expect(generated.courseMaterialMentions?.[0].label).toBe('Week 4 · Lecture 2 · Information flow');
             expect(generated.runTrace?.sflAnalysis?.findings[0].id).toBe('finding-1');
-            expect(generated.runTrace?.writerPromptVersion).toBe('sfl-feedback-writer-v2.3.0');
-        } finally {
-            process.env.MOCK_RESPONSE = 'true';
-        }
-    });
-
-    it('cites material found for any linked finding, not only the first', async () => {
-        // Evidence may link several findings. Reading only the first meant a passage whose
-        // second finding matched a lecture was released with no reading beside it.
-        const assignment = dynamicAssignment();
-        const verifiedText = 'The measured outlet temperature increased steadily.';
-        const analysis = {
-            schemaVersion: 'writing-feedback-v2',
-            foundationVersion: SFL_FOUNDATION_VERSION,
-            profileGenreState: assignment.rubric.sflContext!.genreState,
-            findings: [
-                {
-                    id: 'finding-interpersonal',
-                    evidence: [{ quote: verifiedText }],
-                    observation: 'The claim is stated without hedging.',
-                    functionalInterpretation: 'It positions the reader to accept the claim as settled.',
-                    primaryFunction: 'interpersonal',
-                    crossFunctions: [],
-                    languageLevel: 'clause_word',
-                    ruleIds: [],
-                    sourceIds: [],
-                    confidence: 0.8,
-                    alternatives: []
-                },
-                {
-                    id: 'finding-content',
-                    evidence: [{ quote: verifiedText }],
-                    observation: 'The measurement is reported without its significance.',
-                    functionalInterpretation: 'The reader is left to infer why the increase matters.',
-                    primaryFunction: 'content',
-                    crossFunctions: [],
-                    languageLevel: 'section',
-                    ruleIds: [],
-                    sourceIds: [],
-                    confidence: 0.8,
-                    alternatives: []
-                }
-            ],
-            abstentions: [],
-            internalFlags: []
-        };
-        const writerResult = {
-            schemaVersion: 'writing-feedback-v2',
-            criteria: assignment.rubric.criteria.map((criterion) => ({
-                criterion: criterion.id,
-                suggestedLevel: 'established',
-                evidence: [{
-                    quote: verifiedText,
-                    rationale: 'The passage gives exact evidence for ' + criterion.label + '.',
-                    revisionGuidance: 'Revise the sentence so the reader can see why this detail matters.',
-                    sflFindingIds: ['finding-interpersonal', 'finding-content']
-                }],
-                explanation: 'Revise ' + criterion.label + ' against the evidence.',
-                confidence: 0.7
-            })),
-            strengths: [],
-            revisionGoals: [{
-                skillTag: 'content',
-                goal: 'Connect the reported increase to its significance.',
-                guidedQuestion: 'What does the increase show?'
-            }],
-            internalFlags: []
-        };
-        const sendStructuredConversation = jest.fn(async (_messages, _schema, options) => (
-            options.structuredOutputName === 'sfl_analysis' ? { parsed: analysis } : { parsed: writerResult }
-        ));
-        const llm = { sendStructuredConversation } as unknown as LLMModule;
-        // Only the content-side query finds a lecture; the interpersonal one finds nothing.
-        const retriever = {
-            retrieve: jest.fn(async ({ query }: { query: string }) => (
-                /significance|content/i.test(query)
-                    ? [{ content: 'x', score: 0.9, published: true, metadata: { id: 'material-9', topicOrWeekTitle: 'Week 6', itemTitle: 'Lecture 3', name: 'Reporting significance' } }]
-                    : []
-            ))
-        };
-
-        process.env.MOCK_RESPONSE = 'false';
-        try {
-            const generated = await new RubricWritingFeedbackEngine(llm, retriever)
-                .generate({ assignment, verifiedText });
-            const cited = generated.criteria[0].evidence[0].courseMaterialMention;
-            expect(cited?.label).toBe('Week 6 · Lecture 3 · Reporting significance');
+            expect(generated.runTrace?.writerPromptVersion).toBe(SFL_WRITER_PROMPT_VERSION);
         } finally {
             process.env.MOCK_RESPONSE = 'true';
         }
@@ -360,11 +296,7 @@ describe('RubricWritingFeedbackEngine generic rubric contract', () => {
             revisionGoals: [],
             internalFlags: []
         };
-        const sendStructuredConversation = jest.fn(async (_messages, _schema, options) => (
-            options.structuredOutputName === 'sfl_analysis'
-                ? { parsed: analysis }
-                : { parsed: writerResult }
-        ));
+        const sendStructuredConversation = routedLlm(assignment, analysis, writerResult);
         const llm = { sendStructuredConversation } as unknown as LLMModule;
         const retriever = { retrieve: jest.fn(async () => []) };
         const priorMockResponse = process.env.MOCK_RESPONSE;
@@ -435,8 +367,9 @@ describe('staff-assessed criteria are withheld from generation', () => {
         const result = {
             criteria: modelRows,
             strengths: [],
-            revisionGoals: [{ skillTag: 'x', goal: 'Revise.', guidedQuestion: 'Which passage?' }],
-            internalFlags: []
+            revisionGoals: [{ skillTag: 'x', goal: 'Revise.', action: 'Start with the weakest passage.', guidedQuestion: 'Which passage?' }],
+            internalFlags: [],
+            globalRevision: { diagnosisStatement: 'd', whatToKeep: [], rewriteDirection: 'r' }
         };
 
         expect(schema.safeParse(result).success).toBe(true);

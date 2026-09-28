@@ -535,6 +535,80 @@ describe('WritingFeedbackService anchored comments', () => {
             comments: [expect.objectContaining({ id: 'comment-1' })]
         }));
     });
+
+    describe('rewrite mode in the student PDF', () => {
+        function reviewWith(comments: AnchoredComment[], extra: Partial<StaffReviewRevision> = {}): StaffReviewRevision {
+            return {
+                id: 'review-1', submissionId: 'submission-1', feedbackRunId: 'run-1', staffUserId: 'instructor-1',
+                // After the run was generated, as a real staff save always is.
+                studentFeedback: 'Summary.', comments, createdAt: new Date(Date.now() + 60_000), ...extra
+            };
+        }
+        const held = () => storedComment({ id: 'held', origin: 'model_seed', heldBack: true });
+        const shown = () => storedComment({ id: 'shown', quote: 'student', startOffset: 9, endOffset: 16 });
+        const globalRevision = { diagnosisStatement: 'Model diagnosis.', whatToKeep: ['Keep this.'], rewriteDirection: 'Model direction.' };
+
+        async function renderWith(review: StaffReviewRevision, runExtra: Record<string, unknown>) {
+            const sub = submission('approved');
+            const mongo = {
+                getWritingSubmission: jest.fn(async () => ({ ...sub, reviews: [review] })),
+                getWritingAssignment: jest.fn(async () => assignment),
+                getLatestWritingFeedbackRun: jest.fn(async () => {
+                    const run = runFor(sub);
+                    return { ...run, rubricVersion: assignment.rubric.version, ...runExtra, result: { ...run.result, ...runExtra } };
+                })
+            } as unknown as EngEAI_MongoDB;
+            const pdfService = { render: jest.fn(async () => Buffer.from('pdf')) };
+            await new WritingFeedbackService(mongo, engine, pdfService).renderPdf('course-1', 'submission-1', 'both');
+            return (pdfService.render.mock.calls[0] as unknown as [Record<string, unknown>])[0];
+        }
+
+        it('withholds held-back annotations from a rewrite-mode PDF', async () => {
+            const input = await renderWith(reviewWith([held(), shown()]), { gateDecision: 'global_revision', globalRevision });
+            expect(input.mode).toBe('global_revision');
+            expect((input.comments as AnchoredComment[]).map((comment) => comment.id)).toEqual(['shown']);
+            expect(input.globalRevision).toEqual(globalRevision);
+        });
+
+        it('prints every annotation once staff switch to standard feedback', async () => {
+            const input = await renderWith(reviewWith([held(), shown()], { modeOverride: 'standard' }), { gateDecision: 'global_revision', globalRevision });
+            expect(input.mode).toBe('standard');
+            expect((input.comments as AnchoredComment[]).map((comment) => comment.id)).toEqual(['held', 'shown']);
+        });
+
+        it('treats a run stored before the gate as standard', async () => {
+            const input = await renderWith(reviewWith([held(), shown()]), {});
+            expect(input.mode).toBe('standard');
+            expect((input.comments as AnchoredComment[])).toHaveLength(2);
+        });
+
+        it('sends the review page the rewrite block the student will get, even after an unrelated save', async () => {
+            const sub = submission('draft_ready');
+            const edit = { lens: 'linguistic' as const, feedbackRunId: 'run-1', strengths: [], criterionExplanations: [], globalRevision: { diagnosisStatement: 'Staff diagnosis.', whatToKeep: [], rewriteDirection: 'Staff direction.' } };
+            const first = reviewWith([shown()], { id: 'review-1', summaryEdits: [edit] });
+            const second = reviewWith([shown()], { id: 'review-2', createdAt: new Date(Date.now() + 120_000) });
+            const mongo = {
+                getWritingSubmission: jest.fn(async () => ({ ...sub, reviews: [first, second] })),
+                getWritingAssignment: jest.fn(async () => assignment),
+                getLatestWritingFeedbackRun: jest.fn(async (_id: string, lens?: string) => {
+                    if (lens === 'technical') return null;
+                    const run = runFor(sub);
+                    return { ...run, gateDecision: 'global_revision', result: { ...run.result, gateDecision: 'global_revision', globalRevision } };
+                }),
+                getLatestWritingRelease: jest.fn(async () => null),
+                getHeldWritingReplacement: jest.fn(async () => null),
+                listWritingReleases: jest.fn(async () => [])
+            } as unknown as EngEAI_MongoDB;
+            const detail = await new WritingFeedbackService(mongo, engine).detail('course-1', 'submission-1');
+            expect(detail.globalRevision).toEqual({ diagnosisStatement: 'Staff diagnosis.', whatToKeep: [], rewriteDirection: 'Staff direction.' });
+        });
+
+        it('prints the staff-edited rewrite block over the model one', async () => {
+            const edit = { lens: 'linguistic' as const, feedbackRunId: 'run-1', strengths: [], criterionExplanations: [], globalRevision: { diagnosisStatement: 'Staff diagnosis.', whatToKeep: [], rewriteDirection: 'Staff direction.' } };
+            const input = await renderWith(reviewWith([shown()], { summaryEdits: [edit] }), { gateDecision: 'global_revision', globalRevision });
+            expect(input.globalRevision).toEqual({ diagnosisStatement: 'Staff diagnosis.', whatToKeep: [], rewriteDirection: 'Staff direction.' });
+        });
+    });
 });
 
 describe('two-lens generation', () => {

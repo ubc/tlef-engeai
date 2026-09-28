@@ -41,10 +41,14 @@ export interface SummaryBaseline {
  * @param goals - Revision goals from a run
  * @returns Plain text for the goals textarea
  */
-export function seedSummaryText(goals: Array<{ goal: string; guidedQuestion: string }>): string {
+export function seedSummaryText(goals: Array<{ goal: string; action?: string; guidedQuestion?: string }>): string {
     return goals
         .slice(0, 3)
-        .map((goal, index) => `${index + 1}. ${goal.goal}\nAsk yourself: ${goal.guidedQuestion}`)
+        .map((goal, index) => [
+            `${index + 1}. ${goal.goal}`,
+            goal.action ? `Next step: ${goal.action}` : undefined,
+            goal.guidedQuestion ? `Ask yourself: ${goal.guidedQuestion}` : undefined
+        ].filter(Boolean).join('\n'))
         .join('\n\n');
 }
 
@@ -57,6 +61,8 @@ interface LensControls {
 /** Per-lens editable summary controls. */
 export class SummaryEditor {
     private readonly lenses = new Map<WritingFeedbackLens, LensControls>();
+    /** Staff edits of the rewrite block, writing lens only. */
+    private readonly globalRevisions = new Map<WritingFeedbackLens, { diagnosisStatement: string; whatToKeep: string[]; rewriteDirection: string }>();
 
     /**
      * @param markDirty - Called on every edit so leaving the page asks first
@@ -221,9 +227,41 @@ export class SummaryEditor {
      * @param runId - Latest run id for the lens
      * @returns Edit for the review save
      */
+    /**
+     * setGlobalRevision - records the staff-edited rewrite block for a lens.
+     *
+     * @param lens - Lens being edited; only the writing lens has a rewrite block
+     * @param draft - Current editor contents
+     */
+    setGlobalRevision(lens: WritingFeedbackLens, draft: { diagnosisStatement: string; whatToKeep: string[]; rewriteDirection: string }): void {
+        this.globalRevisions.set(lens, draft);
+        this.markDirty();
+    }
+
+    /**
+     * seedGlobalRevision - loads the rewrite block on screen without marking the page dirty.
+     *
+     * Every save then resends it, so a later unrelated save never drops an earlier edit.
+     *
+     * @param lens - Lens being shown
+     * @param draft - Block currently displayed
+     */
+    seedGlobalRevision(lens: WritingFeedbackLens, draft: { diagnosisStatement: string; whatToKeep: string[]; rewriteDirection: string }): void {
+        this.globalRevisions.set(lens, draft);
+    }
+
     readEdit(lens: WritingFeedbackLens, runId: string): StaffSummaryEdit {
         const controls = this.controls(lens);
         const goals = controls.goals?.value.trim();
+        const global = this.globalRevisions.get(lens);
+        // The server refuses a block without both statements, so an unfinished one stays unsent.
+        const globalRevision = lens === 'linguistic' && global?.diagnosisStatement.trim() && global.rewriteDirection.trim()
+            ? {
+                diagnosisStatement: global.diagnosisStatement.trim(),
+                whatToKeep: global.whatToKeep.map((item) => item.trim()).filter(Boolean).slice(0, 3),
+                rewriteDirection: global.rewriteDirection.trim()
+            }
+            : undefined;
         return {
             lens,
             feedbackRunId: runId,
@@ -231,7 +269,8 @@ export class SummaryEditor {
             criterionExplanations: [...controls.explanations]
                 .map(([criterion, textarea]) => ({ criterion, explanation: textarea.value.trim() }))
                 .filter(({ explanation }) => explanation.trim().length > 0),
-            ...(lens === 'technical' && goals ? { revisionGoalsText: goals } : {})
+            ...(lens === 'technical' && goals ? { revisionGoalsText: goals } : {}),
+            ...(globalRevision ? { globalRevision } : {})
         };
     }
 }

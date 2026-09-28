@@ -25,6 +25,7 @@ import {
     autoGrow,
     CanvasAccountMismatchError,
     CriterionFeedback,
+    FeedbackMode,
     FeedbackRun,
     FUNCTION_TAG_LABELS,
     ReviewRevision,
@@ -67,9 +68,11 @@ import { connectUrlReturningTo } from './writing-feedback-canvas-connect.js';
 import { renderReplacementNotice } from './writing-feedback-replacement.js';
 import { GradeEntry } from './writing-feedback-grade-entry.js';
 import { describeApprovalBlocker, type GradeProgress } from './writing-feedback-grade-progress.js';
-import { changedLenses, decideNextAction, stepBarState, type ReviewStep } from './writing-feedback-review-steps.js';
+import { changedLenses, decideNextAction, needsModeRedraft, stepBarState, type ReviewStep } from './writing-feedback-review-steps.js';
 import { SummaryEditor, seedSummaryText, type SummaryBaseline } from './writing-feedback-summary-editor.js';
 import { fingerprintAnnotations } from './writing-feedback-annotation-fingerprint.js';
+import { diagnosisBannerView, resolvedMode } from './writing-feedback-diagnosis-model.js';
+import { renderDiagnosisBanner, renderGlobalRevisionEditor } from './writing-feedback-diagnosis.js';
 
 function latestReview(submission: Submission): ReviewRevision | undefined {
     return submission.reviews?.[submission.reviews.length - 1];
@@ -804,6 +807,9 @@ export function renderFeedbackPanel(
     // The technical lens leads: a lab report is graded on its technical rubric (D-098).
     const lenses = (['technical', 'linguistic'] as const).filter((lens) => lensRuns[lens]);
     const isLabReport = lenses.length > 1;
+    // Whole-text mode for the writing lens: the saved override, else the run's gate decision.
+    let modeOverride: FeedbackMode | undefined = detail.modeOverride;
+    const writingMode = (): FeedbackMode => resolvedMode(feedbackRun, modeOverride);
     // Assigned once the footer exists: every edit re-states what staff can do next.
     let refreshActions: () => void = () => undefined;
     const markDirty = () => {
@@ -878,7 +884,9 @@ export function renderFeedbackPanel(
             listHost,
             verifiedText: submission.verifiedText ?? submission.originalText,
             lens,
-            markDirty
+            markDirty,
+            mode: lens === 'linguistic' ? writingMode() : 'standard',
+            run: lensRuns[lens] ?? null
         });
     };
 
@@ -918,6 +926,25 @@ export function renderFeedbackPanel(
         renderLensAnnotations(lens);
     };
 
+    // Staff-only whole-text diagnosis, with the switch between rewrite and standard feedback.
+    const diagnosisHost = document.createElement('div');
+    const profileStages = rubricForRun(assignment, feedbackRun, 'linguistic')?.sflContext?.stages ?? [];
+    const summaryModeSetters: Array<(mode: FeedbackMode) => void> = [];
+    const renderDiagnosis = (): void => {
+        const view = diagnosisBannerView(feedbackRun, profileStages, writingMode());
+        diagnosisHost.replaceChildren(...(view
+            ? [renderDiagnosisBanner(view, writingMode(), true, (next) => {
+                modeOverride = next;
+                markDirty();
+                renderDiagnosis();
+                renderLensAnnotations(activeLens);
+                summaryModeSetters.forEach((apply) => apply(next));
+            })]
+            : []));
+    };
+    renderDiagnosis();
+    annotationsBody.append(diagnosisHost);
+
     const annotationTabs = lensTabs();
     if (annotationTabs) annotationsBody.append(annotationTabs);
     listHosts.forEach((host) => annotationsBody.append(host));
@@ -931,7 +958,8 @@ export function renderFeedbackPanel(
     let gradeEntryLens: WritingFeedbackLens | null = null;
     for (const lens of lenses) {
         const run = lensRuns[lens]!;
-        const lensSummary = renderSummaryLens({ assignment, lens, run, editor, markDirty, latest, preserved });
+        const lensSummary = renderSummaryLens({ assignment, lens, run, editor, markDirty, latest, preserved, mode: writingMode(), globalSeed: detail.globalRevision });
+        if (lensSummary.setMode) summaryModeSetters.push(lensSummary.setMode);
         lensPanels.set(lens, lensSummary.element);
         baselines.set(lens, lensSummary.baseline);
         evidenceRefreshers.push(lensSummary.refreshEvidence);
@@ -1205,7 +1233,9 @@ export function renderFeedbackPanel(
             comments: getWorkingComments(),
             ...(grades.complete ? { finalAssessment: grades.complete } : {}),
             ...(grades.draft ? { assessmentDraft: grades.draft } : {}),
-            summaryEdits: lenses.map((lens) => editor.readEdit(lens, lensRuns[lens]!.id))
+            summaryEdits: lenses.map((lens) => editor.readEdit(lens, lensRuns[lens]!.id)),
+            // Always the current toggle, so an unset field never means "back to the gate".
+            ...(feedbackRun!.textDiagnosis ? { modeOverride: resolvedMode(feedbackRun, modeOverride) } : {})
         });
         state.reviewDirty = false;
     }
@@ -1318,7 +1348,11 @@ export function renderFeedbackPanel(
             const source = detail.summarySources?.[lens];
             if (source) sourceFingerprints[lens] = source.annotationsFingerprint;
         });
-        const changed = changedLenses({ lenses: [...lenses], currentFingerprints, sourceFingerprints });
+        // In rewrite mode the writing summary is the staff-edited rewrite block, never redrafted.
+        const redraftable = lenses.filter((lens) => lens !== 'linguistic' || writingMode() !== 'global_revision');
+        const changed = changedLenses({ lenses: redraftable, currentFingerprints, sourceFingerprints });
+        // Switching a rewrite-gated run to standard feedback needs a standard summary too.
+        if (feedbackRun && needsModeRedraft(feedbackRun, writingMode()) && !changed.includes('linguistic')) changed.push('linguistic');
         const edited = lenses.filter((lens) => editor.isEdited(lens, baselines.get(lens)!));
         const action = decideNextAction({ status: submission.status, changedLenses: changed, editedLenses: edited });
 
@@ -1443,6 +1477,8 @@ interface LensSummary {
     gradeEntry: GradeEntry | null;
     /** Re-reads the working annotations into each criterion's evidence (called on entering step 2). */
     refreshEvidence: () => void;
+    /** Writing lens only: swaps the goals editor for the rewrite-block editor as the mode changes. */
+    setMode?: (mode: FeedbackMode) => void;
 }
 
 /**
@@ -1463,8 +1499,11 @@ function renderSummaryLens(input: {
     markDirty: () => void;
     latest: ReviewRevision | undefined;
     preserved: PendingReviewState | null;
+    mode: FeedbackMode;
+    /** Rewrite block the student would receive, resolved by the server. */
+    globalSeed?: { diagnosisStatement: string; whatToKeep: string[]; rewriteDirection: string };
 }): LensSummary {
-    const { assignment, lens, run, editor, markDirty, latest, preserved } = input;
+    const { assignment, lens, run, editor, markDirty, latest, preserved, mode, globalSeed } = input;
     const element = document.createElement('div');
     element.className = 'wf-summary-lens';
     const rubric = rubricForRun(assignment, run, lens);
@@ -1580,8 +1619,25 @@ function renderSummaryLens(input: {
     }
     element.append(goalsSection);
 
+    // Rewrite mode (writing lens): the student receives the rewrite block instead of the goals.
+    let setMode: ((next: FeedbackMode) => void) | undefined;
+    if (lens === 'linguistic' && (run.result.globalRevision || run.textDiagnosis)) {
+        const globalSection = document.createElement('section');
+        globalSection.className = 'wf-feedback-section';
+        globalSection.append(createText('h3', 'Rewrite feedback the student will receive'));
+        const seed = globalSeed ?? edit?.globalRevision ?? run.result.globalRevision ?? { diagnosisStatement: '', whatToKeep: [], rewriteDirection: '' };
+        editor.seedGlobalRevision('linguistic', seed);
+        globalSection.append(renderGlobalRevisionEditor(seed, true, (draft) => editor.setGlobalRevision('linguistic', draft)));
+        element.append(globalSection);
+        setMode = (next) => {
+            globalSection.hidden = next !== 'global_revision';
+            goalsSection.hidden = next === 'global_revision';
+        };
+        setMode(mode);
+    }
+
     refreshEvidence();
-    return { element, baseline, studentFeedback, gradeEntry, refreshEvidence };
+    return { element, baseline, studentFeedback, gradeEntry, refreshEvidence, ...(setMode ? { setMode } : {}) };
 }
 
 /**

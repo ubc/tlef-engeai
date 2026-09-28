@@ -247,6 +247,7 @@ export function buildAutofillPrompt(instructions: string, draft: WritingRubricDe
         '- Do not add, remove, or rename criteria or levels. Use exactly the ids given.',
         '- Also propose an SFL context profile for the assignment. Treat genre as a staged social purpose, not a format label.',
         '- If the assignment is unfamiliar or composite, set genreState to custom or composite and do not invent Ferreira DR/DC/PS stages.',
+        '- Mark a stage required only when a text missing it could not count as this genre (for a descriptive report: the general statement and the classification or composition stage). Mark closings and optional moves as not required.',
         '- Include task, purpose, audience, field, tenor, mode, actual evaluator, production conditions, explicit stages, embedded genres, task requirements, and learning outcomes.',
         '- Keep each of task, audience, purpose, and grading intent under 1000 characters.',
         '- Keep each criterion description and each descriptor to one or two sentences.',

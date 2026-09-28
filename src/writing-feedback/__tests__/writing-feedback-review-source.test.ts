@@ -188,3 +188,21 @@ describe('single release source contract', () => {
         expect(source).toContain('canvasReconnectUrl: error.connectUrl');
     });
 });
+
+describe('whole-text diagnosis on the review page', () => {
+    it('shows the diagnosis banner and saves the effective mode with every revision', () => {
+        expect(source).toContain('renderDiagnosisBanner(');
+        expect(source).toContain('modeOverride: resolvedMode(');
+    });
+
+    it('holds back annotations and gates course readings on supported citations', () => {
+        expect(anchorsSource).toContain('renderHeldBackGroup(');
+        expect(anchorsSource).toContain('splitHeldBack(');
+        expect(anchorsSource).toContain('readAgainLabel(');
+    });
+
+    it('edits the rewrite block instead of the goals in rewrite mode', () => {
+        expect(source).toContain('renderGlobalRevisionEditor(');
+        expect(source).toContain('setGlobalRevision(');
+    });
+});

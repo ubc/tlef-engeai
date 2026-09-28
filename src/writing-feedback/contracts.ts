@@ -112,6 +112,64 @@ export interface WritingSflContextProfile {
     approvedGlossaryTerms?: string[]; // optional course glossary terms relevant to this assignment
 }
 
+/** Genres the diagnosis may say a text realizes: the founded three plus common neighbours. */
+export const REALIZED_GENRES = [
+    'descriptive_report', 'data_commentary', 'problem_solution',
+    'explanation', 'recount', 'procedure', 'argument', 'personal_response', 'unclear'
+] as const;
+export type RealizedGenre = typeof REALIZED_GENRES[number];
+
+/** Which feedback a submission receives: local annotations, or rewrite-level feedback only. */
+export type FeedbackMode = 'standard' | 'global_revision';
+
+/** One profile stage as the diagnosis found it in the text. */
+export interface TextDiagnosisStage {
+    stageId: string; // a stage id from the approved profile
+    status: 'present' | 'weak' | 'missing';
+    evidence?: string; // exact quote; absent when the stage is missing
+}
+
+/**
+ * Whole-text judgment made before any local analysis. Staff-only except where the writer
+ * turns it into the student-facing {@link GlobalRevision}.
+ */
+export interface TextDiagnosis {
+    realizedGenre: RealizedGenre;
+    genreFit: 'fits' | 'partial' | 'mismatch';
+    stages: TextDiagnosisStage[]; // exactly one entry per approved profile stage
+    contradictingFeatures: Array<{ quote: string; note: string }>; // language doing another genre's work
+    transferableStrengths: Array<{ text: string; quote?: string }>; // choices worth keeping in a rewrite
+    rationale: string; // staff-only
+}
+
+/** Student-facing rewrite feedback used when the effective mode is global. */
+export interface GlobalRevision {
+    diagnosisStatement: string;
+    whatToKeep: string[];
+    rewriteDirection: string;
+    supportingExcerptIds?: string[];
+}
+
+/** What a retrieval need is about; also the coverage row type. */
+export type RetrievalNeedKind = 'genre' | 'stage' | 'task_requirement' | 'language_function' | 'contrast' | 'finding';
+
+/** One row of the staff-only course-material coverage report. */
+export interface MaterialCoverageRow {
+    needId: string;
+    kind: RetrievalNeedKind;
+    label: string;
+    covered: boolean;
+    materialLabels: string[]; // published material labels only
+}
+
+/** Coverage cached on an assignment, invalidated by rubric version or material changes. */
+export interface MaterialCoverage {
+    rubricVersion: number;
+    materialFingerprint: string;
+    computedAt: Date;
+    rows: MaterialCoverageRow[];
+}
+
 /**
  * One cell of the rubric grid: the points a criterion earns at one level, and the
  * descriptor that justifies it. A range rather than a single value, because staff
@@ -255,6 +313,8 @@ export interface WritingAssignment {
     dueAt?: Date;
     createdAt: Date; // assignment audit creation timestamp
     updatedAt: Date; // latest assignment/rubric state timestamp
+    /** Cached course-material coverage for the approved writing rubric; staff-only. */
+    materialCoverage?: MaterialCoverage;
 }
 
 /** Local, course-scoped student submission used by verification and staff review workflows. */
@@ -477,6 +537,8 @@ export interface RubricEvidence {
     sflFindingIds?: string[];
     /** Student-visible course-material label selected from server-validated retrieved sources. */
     courseMaterialMention?: CourseMaterialMention;
+    /** Excerpt judged to support this passage's finding; the only basis for a citation on new runs. */
+    supportingExcerptId?: string;
     /** Optional glossary entry id reused by staff/model; definitions are resolved server-side. */
     glossaryEntryId?: string;
     /** Definition snapshot retained so old annotations/PDFs do not change after glossary edits. */
@@ -501,9 +563,12 @@ export interface CriterionFeedback {
 
 /** One formative next-step prompt included in the reviewed feedback. */
 export interface RevisionGoal {
-    skillTag: string; // stable pedagogical category for staff scanning
+    skillTag: string; // stable pedagogical category for staff scanning; a stage id when it addresses a stage
     goal: string; // concise revision outcome
-    guidedQuestion: string; // student action/question rather than supplied rewrite
+    /** Concrete step the student takes. Required on new runs; absent on runs stored before it existed. */
+    action?: string;
+    /** Optional prompt to think with; runs stored before `action` always carry it. */
+    guidedQuestion?: string;
 }
 
 /** Structured model result before staff revision, approval, and release. */
@@ -514,6 +579,10 @@ export interface WritingFeedbackResult {
     strengths: string[]; // concise formative positives safe for staff review
     revisionGoals: RevisionGoal[]; // at most three prioritized next steps
     internalFlags: string[]; // staff-only uncertainty/constraint signals
+    /** Gate decision at generation time. Absent on runs stored before the gate: read as standard. */
+    gateDecision?: FeedbackMode;
+    /** Rewrite-level feedback, always produced on new runs so staff can flip the mode without regenerating. */
+    globalRevision?: GlobalRevision;
     /** Deduplicated student-visible course-material labels selected from validated retrieval. */
     courseMaterialMentions?: CourseMaterialMention[];
 }
@@ -574,6 +643,8 @@ export interface CourseMaterialMention {
  * a mention, a generated student PDF, or a release payload.
  */
 export interface CourseMaterialExcerpt {
+    /** Run-scoped excerpt identity that citations and relevance verdicts refer to. Absent on old runs. */
+    id?: string;
     /** Present only for published material, which is the only material the writer may cite. */
     mentionId?: string;
     /** Truncated course-document text. Never student writing. */
@@ -611,6 +682,15 @@ export interface WritingFeedbackRunTrace {
     sflAnalysis?: SflAnalysis; // validated analyzer trace, staff-only
     courseMaterialMentions?: CourseMaterialMention[]; // allowlisted retrieved sources used by writer
     courseMaterialExcerpts?: CourseMaterialExcerpt[]; // course text shown to the writer, staff-only
+    textDiagnosis?: TextDiagnosis; // staff-only
+    gateDecision?: FeedbackMode;
+    contrastExcerpts?: CourseMaterialExcerpt[]; // staff/model-only
+    /** Excerpt ids the relevance call judged `supports` for at least one need. */
+    supportedExcerptIds?: string[];
+    /** Staff-only pipeline flags, e.g. `no_genre_material`, `relevance_unavailable`. */
+    flags?: string[];
+    diagnosisPromptVersion?: string;
+    relevancePromptVersion?: string;
     staffCourseMaterialMentions?: CourseMaterialMention[]; // retrieved material including unpublished, staff-only
     citableCourseMaterialMentionIds?: string[]; // ids staff may cite; the rest are unpublished, staff-only
     courseSourceVersion?: string; // retrieval/metadata resolver contract version
@@ -645,10 +725,24 @@ export interface WritingFeedbackRun {
     staffCourseMaterialMentions?: CourseMaterialMention[];
     /** Staff/model-only course text excerpts shown to the writer. */
     courseMaterialExcerpts?: CourseMaterialExcerpt[];
+    textDiagnosis?: TextDiagnosis; // staff-only
+    gateDecision?: FeedbackMode;
+    contrastExcerpts?: CourseMaterialExcerpt[]; // staff/model-only
+    /** Excerpt ids the relevance call judged `supports` for at least one need. */
+    supportedExcerptIds?: string[];
+    /** Staff-only pipeline flags, e.g. `no_genre_material`, `relevance_unavailable`. */
+    flags?: string[];
+    diagnosisPromptVersion?: string;
+    relevancePromptVersion?: string;
     courseSourceVersion?: string;
     glossaryEntryVersions?: WritingGlossarySnapshot[];
     /** Run this summary was redrafted from (D-125); absent on generation runs. */
     redraftOfRunId?: string;
+    /**
+     * When the feedback this redraft descends from was generated; absent on generation runs,
+     * whose own `createdAt` is that time. Scopes staff mode overrides to one generation.
+     */
+    generatedAt?: Date;
     /**
      * Annotation working set, for this run's lens, that the summary was redrafted from. Staff
      * annotations are student-derived text: staff-only, never logged. Absent on generation runs.
@@ -693,6 +787,8 @@ export interface AnchoredComment {
     courseMaterialId?: string;
     /** Server-resolved course-material label. Preferred over a staff title for V2 feedback. */
     courseMaterialMention?: CourseMaterialMention;
+    /** Excerpt that supported the model's citation, carried from the run; staff-facing provenance. */
+    supportingExcerptId?: string;
     glossaryDefinition?: { term: string; definition: string }; // optional term support
     glossaryEntryId?: string; // selected course glossary entry, if any
     glossarySnapshot?: WritingGlossarySnapshot; // historical definition retained for PDFs
@@ -711,6 +807,11 @@ export interface AnchoredComment {
     functionTag?: WritingFunctionTag;
     levelTag?: 'text' | 'section' | 'clause_word';
     priority?: 'high' | 'medium' | 'low';
+    /**
+     * Model seed withheld from the student while the effective mode is global revision.
+     * Staff release clears it. Ignored in standard mode.
+     */
+    heldBack?: boolean;
 }
 
 /**
@@ -725,6 +826,8 @@ export interface StaffSummaryEdit {
     strengths: string[]; // "What you did well", 0..5
     criterionExplanations: Array<{ criterion: WritingCriterionId; explanation: string }>;
     revisionGoalsText?: string; // technical lens only; the writing lens keeps `studentFeedback`
+    /** Staff edits of the global rewrite block (writing lens only). */
+    globalRevision?: Pick<GlobalRevision, 'diagnosisStatement' | 'whatToKeep' | 'rewriteDirection'>;
 }
 
 /** Which run a lens's summary currently comes from, and the annotations it reflects. */
@@ -751,6 +854,8 @@ export interface StaffReviewRevision {
     technicalFeedbackRunId?: string;
     /** Editable summary sections per lens (D-126). */
     summaryEdits?: StaffSummaryEdit[];
+    /** Staff override of the gate decision; the effective mode is `modeOverride ?? run.gateDecision`. */
+    modeOverride?: FeedbackMode;
     createdAt: Date; // append-only revision timestamp
 }
 
@@ -903,6 +1008,16 @@ export interface WritingFeedbackEngine {
         verifiedText: string;
         llmCallOptions?: LLMOptions;
     }): Promise<WritingFeedbackResult>;
+    /**
+     * Genre-pass retrieval and relevance for coverage, reading only the approved profile.
+     * Optional: engines without course-material grounding omit it.
+     */
+    computeGenreGrounding?(assignment: WritingAssignment, llmCallOptions?: LLMOptions): Promise<{
+        needs: Array<{ id: string; kind: RetrievalNeedKind; label: string; query: string }>;
+        retrieval: { excerpts: Array<{ id: string; text: string; needIds: string[]; score: number; published: boolean; mention?: CourseMaterialMention }>; failed: boolean };
+        supported: Map<string, Set<string>>;
+        relevanceFailed: boolean;
+    }>;
 }
 
 /** Student PDF section selector used by staff download endpoints. */

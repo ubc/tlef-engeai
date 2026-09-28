@@ -125,3 +125,5 @@ output/
 /scripts/new-worktree.sh
 # Brainstorming visual companion mockups
 .superpowers/
+
+eval-reports/

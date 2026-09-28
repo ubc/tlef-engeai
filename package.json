@@ -28,6 +28,7 @@
     "prompts": "ts-node --transpile-only scripts/prompt-tools.ts",
     "prompts:validate": "ts-node --transpile-only scripts/prompt-tools.ts validate",
     "prompts:export-samples": "ts-node --transpile-only scripts/prompt-tools.ts export-samples",
+    "wf:eval": "ts-node --transpile-only scripts/wf-eval.ts",
     "version:patch": "npm version patch --no-git-tag-version",
     "version:minor": "npm version minor --no-git-tag-version",
     "version:major": "npm version major --no-git-tag-version"

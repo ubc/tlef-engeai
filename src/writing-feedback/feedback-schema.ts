@@ -14,10 +14,14 @@
 import { z } from 'zod';
 import { modelAssessedCriteria } from './criterion-assessment';
 import type {
+    CourseMaterialMention,
+    FeedbackMode,
+    TextDiagnosis,
     WritingFeedbackResult,
     WritingGlossarySnapshot,
     WritingRubricDefinition
 } from './contracts';
+import type { GroundingExcerpt } from './course-material-mentions';
 
 /** Maximum evidence items per criterion so a criterion seeds a selective annotation set. */
 export const MAX_EVIDENCE_PER_CRITERION = 3;
@@ -65,6 +69,7 @@ const evidenceSchema = z.object({
     revisionGuidance: z.string().min(1),
     sflFindingIds: z.array(z.string().trim().min(1).max(80)).max(6).nullish(),
     courseMaterialMention: courseMaterialMentionSchema().nullish(),
+    supportingExcerptId: z.string().trim().min(1).max(40).nullish(),
     glossaryEntryId: z.string().trim().min(1).max(120).nullish(),
     glossarySnapshot: glossarySnapshotSchema.nullish()
 });
@@ -72,7 +77,17 @@ const evidenceSchema = z.object({
 const revisionGoalSchema = z.object({
     skillTag: z.string().min(1),
     goal: z.string().min(1),
-    guidedQuestion: z.string().min(1)
+    // A concrete step, required on every new goal: students ranked actionability second.
+    action: z.string().min(1),
+    // Optional: a question only when it helps the student think, not by default.
+    guidedQuestion: z.string().min(1).nullish()
+});
+
+const globalRevisionSchema = z.object({
+    diagnosisStatement: z.string().min(1).max(1500),
+    whatToKeep: z.array(z.string().min(1).max(300)).max(3),
+    rewriteDirection: z.string().min(1).max(1500),
+    supportingExcerptIds: z.array(z.string().trim().min(1).max(40)).max(3).nullish()
 });
 
 /** Why a schema cannot be built for a rubric the model is asked nothing about. */
@@ -88,10 +103,12 @@ export const NO_MODEL_CRITERIA_MESSAGE =
  * is flexible, but every model-assessed criterion must appear exactly once.
  *
  * @param rubric - Assignment rubric governing the pending generation run
+ * @param options - `requireGlobalRevision` (default true) adds the rewrite block the
+ *                  linguistic writer always returns; the technical lens has no gate and opts out
  * @returns Zod schema accepting only a complete result for that rubric's model criteria
  * @throws Error when a rubric has no levels, no criteria, or none the model assesses
  */
-export function buildFeedbackSchema(rubric: WritingRubricDefinition) {
+export function buildFeedbackSchema(rubric: WritingRubricDefinition, options: { requireGlobalRevision?: boolean } = {}) {
     const criterionIds = modelAssessedCriteria(rubric).map((criterion) => criterion.id);
     const levelIds = rubric.levels.map((level) => level.id);
     if (!rubric.criteria.length || !levelIds.length) {
@@ -116,7 +133,9 @@ export function buildFeedbackSchema(rubric: WritingRubricDefinition) {
         strengths: z.array(z.string().min(1)).max(2),
         revisionGoals: z.array(revisionGoalSchema).min(1).max(3),
         internalFlags: z.array(z.string()).max(8),
-        courseMaterialMentions: z.array(courseMaterialMentionSchema()).max(5).nullish()
+        courseMaterialMentions: z.array(courseMaterialMentionSchema()).max(5).nullish(),
+        // Always produced by the linguistic writer, so staff can flip the mode without regenerating.
+        ...(options.requireGlobalRevision === false ? {} : { globalRevision: globalRevisionSchema })
     }).superRefine((feedback, ctx) => {
         const returnedIds = feedback.criteria.map((criterion) => criterion.criterion);
         if (new Set(returnedIds).size !== criterionIds.length) {
@@ -158,11 +177,7 @@ export function buildSummaryRedraftSchema(rubric: WritingRubricDefinition) {
             confidence: z.number().min(0).max(1)
         })).length(criterionIds.length),
         strengths: z.array(z.string().min(1)).max(2),
-        revisionGoals: z.array(z.object({
-            skillTag: z.string().min(1),
-            goal: z.string().min(1),
-            guidedQuestion: z.string().min(1)
-        })).min(1).max(3)
+        revisionGoals: z.array(revisionGoalSchema).min(1).max(3)
     }).superRefine((redraft, ctx) => {
         if (new Set(redraft.criteria.map((criterion) => criterion.criterion)).size !== criterionIds.length) {
             ctx.addIssue({
@@ -338,4 +353,88 @@ export function resolveNumericGrade(
     }
     const points = result.criteria.map((criterion) => gradeMapping[criterion.suggestedLevel!]!);
     return Math.round((points.reduce((sum, point) => sum + point, 0) / points.length) * 100) / 100;
+}
+
+/** Staff flag recorded when the strengths guard removes a strength. */
+export const STRENGTH_DROPPED_FLAG = 'A strength was removed because it praised language that contradicts the target genre.';
+
+function citableMention(excerpt: GroundingExcerpt | undefined): CourseMaterialMention | undefined {
+    return excerpt?.published ? excerpt.mention : undefined;
+}
+
+/**
+ * applyExcerptCitations - keeps only citations backed by an allowed, published excerpt.
+ *
+ * The student-facing mention is derived from the excerpt, never taken from the writer,
+ * so a label cannot appear without course text judged to support that passage.
+ *
+ * @param result - Writer output, mutated in place
+ * @param allowedByFinding - Finding id to excerpt ids judged `supports` for its cluster
+ * @param excerptsById - Finding-pass excerpts
+ * @returns How many citations were dropped
+ */
+export function applyExcerptCitations(
+    result: WritingFeedbackResult,
+    allowedByFinding: Map<string, Set<string>>,
+    excerptsById: Map<string, GroundingExcerpt>
+): number {
+    let dropped = 0;
+    for (const criterion of result.criteria) {
+        for (const evidence of criterion.evidence) {
+            const excerptId = evidence.supportingExcerptId;
+            const allowed = excerptId !== undefined
+                && (evidence.sflFindingIds ?? []).some((findingId) => allowedByFinding.get(findingId)?.has(excerptId));
+            const mention = allowed ? citableMention(excerptsById.get(excerptId!)) : undefined;
+            if (mention) {
+                evidence.courseMaterialMention = mention;
+                continue;
+            }
+            if (excerptId !== undefined) dropped += 1;
+            delete evidence.supportingExcerptId;
+            delete evidence.courseMaterialMention;
+        }
+    }
+    return dropped;
+}
+
+/**
+ * applyGlobalExcerptCitations - filters the global block's citations the same way.
+ *
+ * @param result - Writer output, mutated in place
+ * @param allowed - Excerpt ids judged `supports` for a genre or contrast need
+ * @param excerptsById - Genre- and contrast-pass excerpts
+ */
+export function applyGlobalExcerptCitations(
+    result: WritingFeedbackResult,
+    allowed: Set<string>,
+    excerptsById: Map<string, GroundingExcerpt>
+): void {
+    if (!result.globalRevision?.supportingExcerptIds) return;
+    result.globalRevision.supportingExcerptIds = result.globalRevision.supportingExcerptIds
+        .filter((excerptId) => allowed.has(excerptId) && citableMention(excerptsById.get(excerptId)));
+}
+
+function words(text: string): string {
+    return text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * guardStrengths - removes praise for language that shows the genre failure.
+ *
+ * @param result - Writer output, mutated in place
+ * @param diagnosis - Validated diagnosis
+ * @param mode - Gate decision the strengths will be read under
+ * @returns Staff flags to append to internal flags
+ */
+export function guardStrengths(result: WritingFeedbackResult, diagnosis: TextDiagnosis, mode: FeedbackMode): string[] {
+    const contradicting = diagnosis.contradictingFeatures.map((feature) => words(feature.quote)).filter(Boolean);
+    const before = result.strengths.length;
+    result.strengths = result.strengths.filter((strength) => !contradicting.some((quote) => words(strength).includes(quote)));
+    const flags = result.strengths.length < before ? [STRENGTH_DROPPED_FLAG] : [];
+    if (mode === 'global_revision') {
+        const transferable = diagnosis.transferableStrengths.map((strength) => strength.text);
+        const kept = result.strengths.filter((strength) => transferable.some((text) => words(text) === words(strength)));
+        result.strengths = (kept.length ? kept : transferable).slice(0, 2);
+    }
+    return flags;
 }

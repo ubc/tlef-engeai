@@ -50,7 +50,7 @@ const RULES = [
     'Re-judge each criterion\'s suggestedLevel against the rubric levels using the whole verified text and the final annotations.',
     'Each explanation must synthesize that criterion\'s final annotations as a whole: the pattern across them and why the criterion sits at that level. Do not restate a single annotation.',
     'Return at most 2 strengths, each grounded in the verified text.',
-    'Return one to three revision goals. Each has a goal the student can act on and a Socratic guidedQuestion that helps the student think it through.',
+    'Return one to three revision goals. Each has a goal, a concrete action the student can take, and, only when it genuinely helps the student think, a guidedQuestion.',
     'Never rewrite student sentences, paragraphs, or supply a model answer.',
     'Never state a confidence level, certainty, or how sure you are anywhere in prose. Confidence belongs only in the confidence field.',
     'Never tell the student what you did not assess, could not assess, or were not asked to assess. A scope limit, a feature of the document you cannot see, and anything outside this criterion go in internalFlags, never in explanation, strengths, or revision goals.',
@@ -137,7 +137,7 @@ export function deterministicSummaryRedraft(input: SummaryRedraftInput): Summary
         strengths: input.previousResult.strengths.slice(0, 2),
         revisionGoals: input.previousResult.revisionGoals.length
             ? input.previousResult.revisionGoals.slice(0, 3)
-            : [{ skillTag: 'revision', goal: 'Revise the annotated passages.', guidedQuestion: 'Which annotated passage would you change first, and why?' }]
+            : [{ skillTag: 'revision', goal: 'Revise the annotated passages.', action: 'Start with the annotated passage that matters most.', guidedQuestion: 'Which annotated passage would you change first, and why?' }]
     };
 }
 

@@ -17,7 +17,10 @@ import type {
     AnchoredComment,
     CanvasReleaseInput,
     CanvasReleaseService,
+    FeedbackMode,
     FeedbackPdfInclude,
+    GlobalRevision,
+    MaterialCoverage,
     FeedbackPdfLens,
     StaffReviewRevision,
     SummarySource,
@@ -37,6 +40,11 @@ import { RELEASE_LOCK_TTL_MS } from './contracts';
 import { computeReleaseFingerprint } from './canvas-release-service';
 import { seedCommentsFromRun, stampCommentAuthors, validateAnchoredComments, withStaleFlags, type AnchoredCommentWithState } from './anchored-comments';
 import { NO_REVISION_GOALS_MESSAGE, RubricWritingFeedbackEngine } from './feedback-engine';
+import { TEXT_DIAGNOSIS_FAILED_MESSAGE } from './text-diagnosis';
+import { effectiveMode, studentFacingComments } from './feedback-gate';
+import { buildCoverageRows, courseMaterialFingerprint, isCoverageCurrent } from './material-coverage';
+import type { GroundingExcerpt, RetrievalNeed } from './course-material-mentions';
+import type { LLMOptions } from 'ubc-genai-toolkit-llm';
 import { TECHNICAL_PROMPT_VERSION, TechnicalWritingFeedbackEngine } from './technical-feedback-engine';
 import { lensesForAssignment, selectRubric, rubricForVersion } from './rubric-lens';
 import { ModelSelectionService } from '../dashboard-setting/model-selection-service';
@@ -99,7 +107,6 @@ function isDuplicateKeyError(error: unknown): boolean {
 const SAFE_TO_LOG_MESSAGES = new Set([
     'An approved rubric requires performance levels',
     'Feedback referenced an unknown SFL finding',
-    'Feedback referenced a course material outside the retrieval allowlist',
     'Verified submission text is required',
     'An approved rubric is required before feedback generation',
     'An approved rubric requires criteria and performance levels',
@@ -113,8 +120,53 @@ const SAFE_TO_LOG_MESSAGES = new Set([
     'SFL analysis referenced an unknown source id',
     'SFL analysis duplicated a genre-staging finding',
     'SFL analysis returned too many findings',
-    NO_REVISION_GOALS_MESSAGE
+    NO_REVISION_GOALS_MESSAGE,
+    TEXT_DIAGNOSIS_FAILED_MESSAGE
 ]);
+
+/**
+ * latestModeOverride - the staff mode override in force for a submission.
+ *
+ * A later revision without an override keeps the earlier one. An override belongs to the
+ * feedback it was made against: regenerating starts from the new gate decision, while a
+ * summary redraft (same generation, see `generatedAt`) keeps it.
+ *
+ * @param submission - Submission with its append-only reviews
+ * @param run - Latest linguistic run; overrides saved before its generation are ignored
+ * @returns The newest applicable override since the last text edit, if any
+ */
+export function latestModeOverride(
+    submission: Pick<WritingSubmission, 'transcriptEditedAt'> & { reviews?: StaffReviewRevision[] },
+    run?: Pick<WritingFeedbackRun, 'createdAt' | 'generatedAt'> | null
+): FeedbackMode | undefined {
+    const since = run ? new Date(run.generatedAt ?? run.createdAt).getTime() : -Infinity;
+    return [...reviewsSinceTextEdit(submission)].reverse()
+        .find((review) => review.modeOverride && new Date(review.createdAt).getTime() > since)?.modeOverride;
+}
+
+/**
+ * resolveStudentView - what the student sees for the writing lens under the effective mode.
+ *
+ * @param run - Latest linguistic run
+ * @param submission - Submission with its reviews
+ * @param comments - Working-set comments for the writing lens
+ * @returns Effective mode, the global block (staff edits over the model's), and visible comments
+ */
+export function resolveStudentView(
+    run: WritingFeedbackRun,
+    submission: Pick<WritingSubmission, 'transcriptEditedAt'> & { reviews?: StaffReviewRevision[] },
+    comments: AnchoredComment[]
+): { mode: FeedbackMode; globalRevision?: GlobalRevision; comments: AnchoredComment[] } {
+    const mode = effectiveMode(run.gateDecision ?? run.result.gateDecision, latestModeOverride(submission, run));
+    const edit = [...reviewsSinceTextEdit(submission)].reverse()
+        .flatMap((review) => review.summaryEdits ?? [])
+        .find((candidate) => candidate.lens === 'linguistic' && candidate.feedbackRunId === run.id && candidate.globalRevision);
+    const base = run.result.globalRevision;
+    const globalRevision = base || edit?.globalRevision
+        ? { ...(base ?? { diagnosisStatement: '', whatToKeep: [], rewriteDirection: '' }), ...(edit?.globalRevision ?? {}) }
+        : undefined;
+    return { mode, ...(globalRevision ? { globalRevision } : {}), comments: studentFacingComments(comments, mode) };
+}
 
 /**
  * describeFailureSafely — renders a generation failure with no model or student content.
@@ -183,6 +235,10 @@ export interface SubmissionDetail {
     workingComments: AnchoredCommentWithState[];
     /** Per lens, the run the summary comes from and the annotations fingerprint it reflects. */
     summarySources: Partial<Record<WritingFeedbackLens, SummarySource>>;
+    /** Staff override of the gate decision in force since the last text edit, if any. */
+    modeOverride?: FeedbackMode;
+    /** The rewrite block the student would receive: newest staff edit over the model's. */
+    globalRevision?: GlobalRevision;
     /** Latest persisted Canvas release state, including any reconciliation requirement. */
     release: WritingRelease | null;
     /** How many times this submission's feedback has reached the student in Canvas. */
@@ -539,6 +595,11 @@ export class WritingFeedbackService {
             seedComments,
             workingComments,
             summarySources,
+            ...(latestModeOverride(submission, feedbackRun) ? { modeOverride: latestModeOverride(submission, feedbackRun) } : {}),
+            // Same resolution the PDF uses, so the editor shows exactly what the student gets.
+            ...(feedbackRun && resolveStudentView(feedbackRun, submission, []).globalRevision
+                ? { globalRevision: resolveStudentView(feedbackRun, submission, []).globalRevision }
+                : {}),
             release,
             releaseCount: countCompletedReleases(priorReleases),
             maxReleases: MAX_SUBMISSION_RELEASES
@@ -759,6 +820,50 @@ export class WritingFeedbackService {
     }
 
     /**
+     * getMaterialCoverage - cached coverage and whether it still describes the assignment.
+     *
+     * @param courseId - Course boundary
+     * @param assignmentId - Assignment
+     * @returns Cached coverage (or null) and whether it matches the rubric version and materials
+     */
+    async getMaterialCoverage(courseId: string, assignmentId: string): Promise<{ coverage: MaterialCoverage | null; current: boolean }> {
+        const assignment = await this.requireAssignment(courseId, assignmentId);
+        const rubric = selectRubric(assignment, 'linguistic').approved;
+        const course = await this.mongo.getActiveCourse(courseId);
+        const coverage = assignment.materialCoverage ?? null;
+        return {
+            coverage,
+            current: Boolean(rubric) && isCoverageCurrent(coverage ?? undefined, rubric!.version, courseMaterialFingerprint(course))
+        };
+    }
+
+    /**
+     * recomputeMaterialCoverage - runs the genre pass and stores fresh coverage.
+     *
+     * @param courseId - Course boundary
+     * @param assignmentId - Assignment with an approved writing rubric
+     * @param llmCallOptions - Per-course model options, built by the caller
+     * @returns The stored coverage
+     * @throws Error when the writing rubric is not approved or the engine cannot ground
+     */
+    async recomputeMaterialCoverage(courseId: string, assignmentId: string, llmCallOptions?: LLMOptions): Promise<MaterialCoverage> {
+        const assignment = await this.requireAssignment(courseId, assignmentId);
+        const rubric = selectRubric(assignment, 'linguistic').approved;
+        if (!rubric) throw new Error('Approve the writing rubric before checking course-material coverage');
+        if (!this.engine.computeGenreGrounding) throw new Error('Course-material coverage is unavailable for this engine');
+        const course = await this.mongo.getActiveCourse(courseId);
+        const grounding = await this.engine.computeGenreGrounding({ ...assignment, rubric }, llmCallOptions);
+        const coverage: MaterialCoverage = {
+            rubricVersion: rubric.version,
+            materialFingerprint: courseMaterialFingerprint(course),
+            computedAt: new Date(),
+            rows: buildCoverageRows(grounding.needs as RetrievalNeed[], grounding.retrieval.excerpts as GroundingExcerpt[], grounding.supported)
+        };
+        await this.mongo.setWritingAssignmentMaterialCoverage(courseId, assignmentId, coverage);
+        return coverage;
+    }
+
+    /**
      * Renders a student-safe PDF from the latest run and latest staff revision.
      *
      * Unreleased feedback must have been generated with the current approved rubric. Released
@@ -812,6 +917,8 @@ export class WritingFeedbackService {
             grade: studentDocument.latestReview?.finalAssessment?.totalPoints,
             staffFeedback: studentDocument.staffFeedback,
             comments: studentDocument.comments,
+            mode: studentDocument.mode,
+            ...(studentDocument.globalRevision ? { globalRevision: studentDocument.globalRevision } : {}),
             include,
             lens,
             finalAssessment: studentDocument.latestReview?.finalAssessment,
@@ -1243,7 +1350,9 @@ export class WritingFeedbackService {
         const technical = technicalRun
             ? resolveLensComments('technical', { revision, run: technicalRun, seeds: [] }, { includeSeeds: false })
             : { comments: [], origin: 'none' as const };
-        const linguisticComments = anchored(linguistic.comments);
+        // Rewrite mode withholds held-back annotations from everything the student receives.
+        const view = resolveStudentView(feedbackRun, submission, anchored(linguistic.comments));
+        const linguisticComments = view.comments;
         const technicalComments = anchored(technical.comments);
 
         // The grade belongs to one lens, so it supplies staff-assessed levels only there.
@@ -1254,6 +1363,8 @@ export class WritingFeedbackService {
 
         return {
             latestReview,
+            mode: view.mode,
+            ...(view.globalRevision ? { globalRevision: view.globalRevision } : {}),
             // Technical first, so a lab report's annotated pages lead with the graded rubric.
             comments: [...technicalComments, ...linguisticComments],
             feedback: applySummaryToResult(feedbackRun.result, {
@@ -1302,6 +1413,8 @@ export class WritingFeedbackService {
             staffFeedback: studentDocument.staffFeedback,
             finalAssessment: studentDocument.latestReview?.finalAssessment,
             comments: studentDocument.comments,
+            mode: studentDocument.mode,
+            ...(studentDocument.globalRevision ? { globalRevision: studentDocument.globalRevision } : {}),
             annotationAuthor: submission.approvedByName,
             ...(technicalRun && technicalRubric && studentDocument.technicalFeedback
                 ? {
