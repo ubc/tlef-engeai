@@ -397,6 +397,9 @@ export class ChatApp {
                 appLogger.log(`[CHAT-APP] Pathway: ${pathwayResult.winningPathwayId}`);
                 appLogger.log(`########################################################`);
 
+                // Title is ready before the response returns, so the client refresh shows it.
+                await titleUpdate;
+
                 return {
                     assistantMessage: this.addAssistantMessage(
                         chatId,
