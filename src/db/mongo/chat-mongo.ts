@@ -291,9 +291,7 @@ export async function updateChatTitle(
     chatId: string,
     newTitle: string
 ): Promise<void> {
-    appLogger.log(
-        `[MONGODB] 📝 Updating chat title for chat ${chatId} to "${newTitle}" for user userId: ${userId} in course: ${courseName}`
-    );
+    appLogger.log(`[MONGODB] 📝 Updating chat title for chat ${chatId} in course: ${courseName}`);
     try {
         const userCollection = await getCourseUsersMongoCollection(ctx, courseName);
         const result = await userCollection.updateOne(
@@ -308,7 +306,7 @@ export async function updateChatTitle(
         if (result.matchedCount === 0) {
             throw new Error(`Chat not found with ID: ${chatId} for user userId: ${userId}`);
         }
-        appLogger.log(`[MONGODB] ✅ Chat title updated successfully to "${newTitle}"`);
+        appLogger.log(`[MONGODB] ✅ Chat title updated successfully for chat ${chatId}`);
     } catch (error) {
         appLogger.error(`[MONGODB] 🚨 Error updating chat title:`, error);
         throw error;
