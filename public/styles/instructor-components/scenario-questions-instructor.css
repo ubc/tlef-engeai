@@ -19,6 +19,15 @@
     margin-bottom: 0;
 }
 
+/* Feature intro under the grid header — text styled like .pathway-library__subtitle.
+   The negative top margin collapses with .page-header's 3rem bottom margin, leaving a 1.25rem gap. */
+.sg-instructor-grid-intro {
+    margin: calc(1.25rem - var(--page-header-margin-bottom)) 0 1.75rem;
+    color: var(--text-secondary, #555);
+    line-height: 1.45;
+    max-width: 42rem;
+}
+
 .sg-instructor-view-toggles {
     display: flex;
     align-items: center;
