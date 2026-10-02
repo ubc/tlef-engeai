@@ -115,7 +115,7 @@ const partFlashcardIndex = new Map<string, number>();
 /** Last nav direction per part — drives enter animation class. */
 const partFlashcardNavDir = new Map<string, 'prev' | 'next'>();
 
-/** Base question pane: raw markdown editor vs rendered preview (mutually exclusive). */
+/** Scenario pane: raw markdown editor vs rendered preview (mutually exclusive). */
 let questionBodyViewMode: 'edit' | 'preview' = 'edit';
 
 /** Draft LO selection while the manage modal is open. */

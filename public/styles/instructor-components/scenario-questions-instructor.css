@@ -1830,7 +1830,7 @@
     line-height: 1.55;
 }
 
-/* Blank lines in base question / part prompts become separate .response-text paragraphs */
+/* Blank lines in scenario / part prompts become separate .response-text paragraphs */
 .sg-instructor-markdown-preview .response-text {
     margin-bottom: 0.85em;
 }
