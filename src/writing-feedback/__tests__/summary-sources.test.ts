@@ -276,7 +276,7 @@ describe('buildRedraftRun', () => {
         expect(built.rubricVersion).toBe(2);
         expect(built.lens).toBe('linguistic');
         expect(built.sflAnalysis).toEqual(previous.sflAnalysis);
-        expect(built.modelMetadata).toEqual({ engine: 'LlmSummaryRedraftEngine', promptVersion: 'summary-redraft-v1.1.0' });
+        expect(built.modelMetadata).toEqual({ engine: 'LlmSummaryRedraftEngine', promptVersion: 'summary-redraft-v1.2.0' });
         expect(built.result.criteria[0]).toEqual({
             criterion: 'content', suggestedLevel: 'proficient', explanation: 'Redrafted.', confidence: 0.8,
             evidence: [{ quote: 'A quoted passage', rationale: 'Name the claim.' }]

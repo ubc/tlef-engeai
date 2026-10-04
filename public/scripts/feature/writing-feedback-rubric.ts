@@ -121,10 +121,10 @@ const DEFAULT_WRITING_CRITERIA_MIRROR: Array<{ id: string; label: string; descri
         description: 'How effectively the text is staged and held together for this task.',
         sflDimension: 'Information sequencing, theme progression, cohesive ties, and paragraph boundaries.',
         descriptors: {
-            weak: 'Ideas appear in no clear sequence, paragraph boundaries are unclear or absent, and a reader must work to find related information.',
-            developing: 'A rough sequence is visible but transitions are missing or inconsistent, and some paragraphs mix unrelated ideas.',
-            proficient: 'Information is sequenced logically with clear paragraph boundaries and cohesive ties; a reader can follow the progression without re-reading.',
-            exemplary: "The sequence builds purposefully toward the task's goal, transitions make relationships between ideas explicit, and paragraphing reinforces the structure."
+            weak: 'Ideas come in no clear order, paragraphs are unclear or missing, and the reader has to search for related information.',
+            developing: 'There is a rough order, but links between ideas are missing or uneven, and some paragraphs mix unrelated ideas.',
+            proficient: 'Ideas follow a logical order in clear paragraphs, and linking words help the reader follow without re-reading.',
+            exemplary: 'The order of ideas builds toward the purpose of the task, links between ideas are always clear, and the paragraphs support the structure.'
         }
     },
     {
@@ -132,10 +132,10 @@ const DEFAULT_WRITING_CRITERIA_MIRROR: Array<{ id: string; label: string; descri
         description: 'How accurately and completely the text represents the subject of the assignment.',
         sflDimension: 'Technical entities, processes, participants, circumstances, and the relations between them.',
         descriptors: {
-            weak: 'The subject matter is mostly inaccurate, missing, or unrelated to what the task asked for.',
-            developing: 'Core content is present but incomplete or contains inaccuracies that a reader familiar with the topic would notice.',
-            proficient: 'The subject matter is represented accurately and completely, with entities, processes, and relationships explained correctly.',
-            exemplary: 'Content is accurate, complete, and precise, with relationships between entities and processes explained in a way that shows command of the subject.'
+            weak: 'The information is mostly wrong, missing, or not what the task asked for.',
+            developing: 'The main information is there but incomplete, or has mistakes that a reader who knows the topic would notice.',
+            proficient: 'The information is accurate and complete, and the things, processes and links between them are explained correctly.',
+            exemplary: 'The information is accurate, complete and precise, and explains how things and processes connect in a way that shows strong understanding.'
         }
     },
     {
@@ -143,10 +143,10 @@ const DEFAULT_WRITING_CRITERIA_MIRROR: Array<{ id: string; label: string; descri
         description: 'How effectively the writer positions the reader for the stated audience and purpose.',
         sflDimension: 'Modality, hedging, stance, and technicality calibrated to the stated audience.',
         descriptors: {
-            weak: 'Stance and tone do not match the stated audience or purpose; claims are overstated, unsupported, or written for the wrong reader.',
-            developing: 'Stance is mostly appropriate but modality, hedging, or technicality slip out of register in places.',
-            proficient: 'Modality, hedging, and technicality are calibrated to the stated audience and purpose throughout.',
-            exemplary: 'The writer positions the reader precisely and consistently, using stance and technicality that anticipate what this audience needs to be convinced or informed.'
+            weak: 'The tone does not fit the reader or purpose; claims are too strong, unsupported, or written for the wrong reader.',
+            developing: 'The tone mostly fits, but in places claims sound too sure or too unsure, or the wording is too casual or too technical for the reader.',
+            proficient: 'Claims sound as sure as the evidence allows, and the formality and technical words fit the reader and purpose throughout.',
+            exemplary: 'The writing speaks to the reader precisely and consistently, choosing tone, certainty and technical words that give this reader exactly what they need.'
         }
     }
 ];
@@ -429,10 +429,10 @@ function renderSflProfileBox(
     const taskRequirements = namedControl(textAreaControl((sflContext?.taskRequirements ?? []).join('\n'), 3), 'sfl.taskRequirements');
     taskRequirements.placeholder = 'One per line — e.g. at least three sources';
     const glossaryTerms = namedControl(textAreaControl((sflContext?.approvedGlossaryTerms ?? []).join('\n'), 2), 'sfl.approvedGlossaryTerms');
-    glossaryTerms.placeholder = 'One per line. Leave blank if none';
+    glossaryTerms.placeholder = 'One per line. Feedback may use these terms, with a short explanation. Leave blank if none';
     body.append(sflField({ label: 'Smaller pieces of writing inside it (optional)', control: embeddedGenres }));
     body.append(sflField({ label: 'What must they include?', control: taskRequirements, required: true }));
-    body.append(sflField({ label: 'Words from your course glossary (optional)', control: glossaryTerms }));
+    body.append(sflField({ label: 'Course terms students already know (optional)', control: glossaryTerms }));
 
     [genreLabelControl, fieldControl, tenorControl, modeControl, evaluatorControl, productionControl,
         embeddedGenres, taskRequirements, glossaryTerms].forEach((control) => bindTextControl(control, canEdit, onInput));

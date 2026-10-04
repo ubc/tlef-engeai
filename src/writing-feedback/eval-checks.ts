@@ -12,13 +12,14 @@
  */
 
 import type { EvalFixture } from './__tests__/fixtures/eval/eval-fixtures';
+import { lintFeedbackProse } from './plain-language';
 
 /** Loose view of engine output; every field optional so baseline output fits. */
 export interface EvalRunOutput {
     verifiedText: string;
     result: {
         gateDecision?: string;
-        criteria?: Array<{ evidence?: Array<{ quote?: string; courseMaterialMention?: { id: string; label: string }; supportingExcerptId?: string; sflFindingIds?: string[] }> }>;
+        criteria?: Array<{ explanation?: string; evidence?: Array<{ quote?: string; rationale?: string; revisionGuidance?: string; courseMaterialMention?: { id: string; label: string }; supportingExcerptId?: string; sflFindingIds?: string[] }> }>;
         strengths?: string[];
         revisionGoals?: Array<{ skillTag?: string; goal?: string; action?: string; guidedQuestion?: string }>;
         globalRevision?: { diagnosisStatement?: string; whatToKeep?: string[]; rewriteDirection?: string };
@@ -58,9 +59,10 @@ function normalize(text: string): string {
  *
  * @param output - Engine result, trace and student-facing comments for one fixture
  * @param fixture - The fixture that produced it
+ * @param knownTerms - Course terms students were taught; allowed by the plainLanguage check
  * @returns One result per check, in a fixed order
  */
-export function runEvalChecks(output: EvalRunOutput, fixture: EvalFixture): EvalCheckResult[] {
+export function runEvalChecks(output: EvalRunOutput, fixture: EvalFixture, knownTerms: string[] = []): EvalCheckResult[] {
     const { result, runTrace } = output;
     const expectation = fixture.expect;
     const mode = runTrace?.gateDecision ?? result.gateDecision;
@@ -75,7 +77,23 @@ export function runEvalChecks(output: EvalRunOutput, fixture: EvalFixture): Eval
         .filter(([stageId, status]) => stages.get(stageId) !== status)
         .map(([stageId, status]) => `${stageId}: expected ${status}, got ${stages.get(stageId) ?? 'absent'}`);
 
+    // Plain language: the student sees rewrite feedback only when the run was gated to it.
+    const plain = lintFeedbackProse({
+        criteria: (result.criteria ?? []).map((criterion) => ({ explanation: criterion.explanation, evidence: criterion.evidence ?? [] })),
+        strengths: result.strengths ?? [],
+        revisionGoals: goals.map((goal) => ({ goal: goal.goal ?? '', action: goal.action, guidedQuestion: goal.guidedQuestion })),
+        ...(mode === 'global_revision' && result.globalRevision ? { globalRevision: result.globalRevision } : {})
+    }, knownTerms);
+    const bannedPer100 = plain.words ? (100 * plain.bannedHits) / plain.words : 0;
+    const longShare = plain.sentences ? plain.longSentences / plain.sentences : 0;
+
     return [
+        check(
+            'plainLanguage',
+            plain.words > 0,
+            bannedPer100 <= 1 && longShare <= 0.05,
+            `${bannedPer100.toFixed(1)} analysis terms/100 words (${plain.bannedTerms.join(', ') || 'none'}); ${(longShare * 100).toFixed(0)}% sentences over 25 words`
+        ),
         check('mode', Boolean(expectation.mode), mode === expectation.mode, `expected ${expectation.mode ?? '-'}, got ${mode ?? 'absent'}`),
         check('stageStatuses', Boolean(expectation.stageStatuses), stageMismatches.length === 0, stageMismatches.join('; ') || 'all match'),
         check(

@@ -16,7 +16,8 @@ import { isMockResponse } from '../helpers/mock-response';
 import { buildSummaryRedraftSchema } from './feedback-schema';
 import { modelAssessedCriteria } from './criterion-assessment';
 import { stripNulls } from './strip-nulls';
-import { PRIME_DIRECTIVE } from './technical-feedback-engine';
+import { buildStudentReaderContract, knownTermsFor, LAB_REPORT_FAMILIAR_TERMS } from './plain-language';
+import { PRIME_DIRECTIVE, technicalKnownTerms } from './technical-feedback-engine';
 import type { SummaryRedraftOutput } from './summary-sources';
 import type {
     AnchoredComment,
@@ -70,7 +71,10 @@ export function buildSummaryRedraftSystemPrompt(
     const { rubric } = input;
     return [
         ...(input.lens === 'technical' ? [PRIME_DIRECTIVE] : []),
-        'You redraft the summary of staff-reviewed feedback. Your reader is the teaching team, who will edit and approve it.',
+        'You redraft the summary of staff-reviewed feedback. The teaching team edits and approves it, then the student reads it, so write for the student.',
+        input.lens === 'technical'
+            ? buildStudentReaderContract(technicalKnownTerms(input.assignment), LAB_REPORT_FAMILIAR_TERMS)
+            : buildStudentReaderContract(knownTermsFor(rubric.sflContext)),
         `Assess every criterion below exactly once. Use only these criterion ids: ${modelAssessedCriteria(rubric).map((criterion) => criterion.id).join(', ')}.`,
         `Use only these performance-level ids: ${rubric.levels.map((level) => level.id).join(', ')}.`,
         'Rules:',

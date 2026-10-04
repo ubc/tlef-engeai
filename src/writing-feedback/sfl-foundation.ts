@@ -24,7 +24,7 @@ import {
 export const SFL_ANALYZER_PROMPT_VERSION = 'sfl-analyzer-v3.0.0';
 
 /** Feedback-writer prompt contract version stamped on V2 linguistic feedback runs. */
-export const SFL_WRITER_PROMPT_VERSION = 'sfl-feedback-writer-v3.0.0';
+export const SFL_WRITER_PROMPT_VERSION = 'sfl-feedback-writer-v3.1.0';
 
 /** Whole-text diagnosis prompt contract version (recorded in every run trace). */
 export const TEXT_DIAGNOSIS_PROMPT_VERSION = 'text-diagnosis-v1.0.0';

@@ -68,6 +68,24 @@ export function diagnosisBannerView(
     };
 }
 
+const PLAIN_FLAG_PREFIX = 'Plain language: ';
+
+/**
+ * plainLanguageWarning - staff copy for a run whose comments drifted into jargon.
+ *
+ * Works for either lens and for runs without a diagnosis. The server's flag names terms
+ * and counts only, never prose, so it is safe to show as is.
+ *
+ * @param run - Latest run for one lens, if any
+ * @returns Warning text, or null when the run carries no plain-language flag
+ */
+export function plainLanguageWarning(run: FeedbackRun | null | undefined): string | null {
+    const flag = run?.result.internalFlags?.find((item) => item.startsWith(PLAIN_FLAG_PREFIX));
+    return flag
+        ? `Some comments may be hard for students to read: ${flag.slice(PLAIN_FLAG_PREFIX.length).replace(/\.$/, '')}. Check them before release.`
+        : null;
+}
+
 /**
  * splitHeldBack - comments shown normally versus held back, under a mode.
  *

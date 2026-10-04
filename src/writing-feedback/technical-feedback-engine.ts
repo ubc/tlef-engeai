@@ -24,6 +24,13 @@ import {
 import { selectRubric } from './rubric-lens';
 import { modelAssessedCriteria } from './criterion-assessment';
 import { stripNulls } from './strip-nulls';
+import {
+    buildStudentReaderContract,
+    knownTermsFor,
+    LAB_REPORT_FAMILIAR_TERMS,
+    lintFeedbackProse,
+    plainLanguageFlag
+} from './plain-language';
 import type {
     WritingAssignment,
     WritingFeedbackEngine,
@@ -32,7 +39,7 @@ import type {
 } from './contracts';
 
 /** Immutable provenance stamped on every technical run. */
-export const TECHNICAL_PROMPT_VERSION = 'lab-report-technical-v1.2.0';
+export const TECHNICAL_PROMPT_VERSION = 'lab-report-technical-v1.4.0';
 
 /**
  * The prime directive, stated before the rubric.
@@ -77,6 +84,19 @@ function requireApprovedTechnicalRubric(assignment: WritingAssignment): WritingR
     const approved = selectRubric(assignment, 'technical').approved;
     if (!approved) throw new Error('An approved technical rubric is required before feedback generation');
     return approved;
+}
+
+/**
+ * technicalKnownTerms - course terms the technical lens may use, glossed on first use.
+ *
+ * The technical rubric has no writing profile, so the terms come from the same
+ * assignment's approved writing rubric: its glossary, stage labels and genre label.
+ *
+ * @param assignment - Lab-report assignment
+ * @returns Known terms; empty when the writing rubric is not approved
+ */
+export function technicalKnownTerms(assignment: WritingAssignment): string[] {
+    return knownTermsFor(selectRubric(assignment, 'linguistic').approved?.sflContext);
 }
 
 function firstEvidence(text: string): string {
@@ -131,7 +151,8 @@ export function buildTechnicalFeedbackSystemPrompt(assignment: WritingAssignment
     const rubric = requireApprovedTechnicalRubric(assignment);
     return [
         PRIME_DIRECTIVE,
-        'You are a technical lab-report reviewer for a staff review workspace. Your reader is the teaching team, not the student.',
+        'You are a technical lab-report reviewer. The teaching team reviews your draft and releases it to the student, so the student is your reader.',
+        buildStudentReaderContract(technicalKnownTerms(assignment), LAB_REPORT_FAMILIAR_TERMS),
         `Assess every criterion below exactly once. Use only these criterion ids: ${modelAssessedCriteria(rubric).map((criterion) => criterion.id).join(', ')}.`,
         `Use only these performance-level ids: ${rubric.levels.map((level) => level.id).join(', ')}.`,
         'Apply these judgment axes:',
@@ -231,6 +252,10 @@ export class TechnicalWritingFeedbackEngine implements WritingFeedbackEngine {
         // uses (see feedback-engine.ts for the fuller explanation).
         const parsedResult = stripNulls(response.parsed) as WritingFeedbackResult;
         // Repair cosmetic quote drift only when it maps back to one exact source slice.
-        return reconcileExactEvidence(parsedResult, input.verifiedText);
+        const result = reconcileExactEvidence(parsedResult, input.verifiedText);
+        // Staff-only signal that the draft drifted into jargon or long sentences.
+        const plainFlag = plainLanguageFlag(lintFeedbackProse(result, [...technicalKnownTerms(input.assignment), ...LAB_REPORT_FAMILIAR_TERMS]));
+        if (plainFlag) result.internalFlags.push(plainFlag);
+        return result;
     }
 }

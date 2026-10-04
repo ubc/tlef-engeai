@@ -59,6 +59,23 @@ describe('writer prompt', () => {
         expect(global).toContain('<worked_example_global>');
     });
 
+it('writes for the student in plain language, not in SFL terms', () => {
+        const prompt = buildWritingFeedbackSystemPrompt(assignment, 'standard');
+        expect(prompt).not.toMatch(/light SFL terms/);
+        expect(prompt).toContain('<student_reader>');
+        expect(prompt).toMatch(/Never copy them\. Translate/);
+    });
+
+    it('offers the approved stage labels as known terms', () => {
+        const prompt = buildWritingFeedbackSystemPrompt(assignment, 'standard');
+        expect(prompt).toMatch(/Known course terms you may use:.*"General statement"/);
+    });
+
+    it('shows an abstract comment as one to avoid', () => {
+        const prompt = buildWritingFeedbackSystemPrompt(assignment, 'standard');
+        expect(prompt).toMatch(/Abstract annotation \(avoid\)/);
+    });
+
     it('names the weakest stage first on a partial fit', () => {
         expect(buildWritingFeedbackSystemPrompt(assignment, 'standard')).toMatch(/first revision goal.*weakest stage/i);
     });

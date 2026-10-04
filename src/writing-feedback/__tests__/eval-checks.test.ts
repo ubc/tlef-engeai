@@ -76,3 +76,24 @@ describe('runEvalChecks', () => {
         expect(checks.citationsSupported.status).toBe('fail');
     });
 });
+
+describe('plainLanguage check', () => {
+    const base = { verifiedText: text, result: { strengths: [], revisionGoals: [] } };
+
+    it('fails dense SFL prose', () => {
+        const output: EvalRunOutput = { ...base, result: { ...base.result, criteria: [{ explanation: 'The interpersonal choices are calibrated to the register.', evidence: [] }] } };
+        const check = runEvalChecks(output, fixture, []).find((item) => item.name === 'plainLanguage');
+        expect(check?.status).toBe('fail');
+    });
+
+    it('passes plain prose', () => {
+        const output: EvalRunOutput = { ...base, result: { ...base.result, criteria: [{ explanation: 'Your paragraph explains how sound travels. A report says what sound is.', evidence: [] }] } };
+        const check = runEvalChecks(output, fixture, []).find((item) => item.name === 'plainLanguage');
+        expect(check?.status).toBe('pass');
+    });
+
+    it('allows a known course term', () => {
+        const output: EvalRunOutput = { ...base, result: { ...base.result, criteria: [{ explanation: 'Your stance is clear.', evidence: [] }] } };
+        expect(runEvalChecks(output, fixture, ['stance']).find((item) => item.name === 'plainLanguage')?.status).toBe('pass');
+    });
+});

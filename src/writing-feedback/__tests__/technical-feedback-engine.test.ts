@@ -135,6 +135,58 @@ describe('technical engine generation', () => {
     });
 
     it('exposes a stable prompt version', () => {
-        expect(TECHNICAL_PROMPT_VERSION).toBe('lab-report-technical-v1.2.0');
+        expect(TECHNICAL_PROMPT_VERSION).toBe('lab-report-technical-v1.4.0');
+    });
+});
+
+describe('plain-language contract', () => {
+    const verifiedText = 'The experimental value was 35.3% higher than the literature value. The uncertainty was larger than the calculated value.';
+    const originalMockResponse = process.env.MOCK_RESPONSE;
+    afterAll(() => {
+        if (originalMockResponse === undefined) delete process.env.MOCK_RESPONSE;
+        else process.env.MOCK_RESPONSE = originalMockResponse;
+    });
+
+    it('names the student as the final reader, after the prime directive', () => {
+        const prompt = buildTechnicalFeedbackSystemPrompt(labAssignment());
+        expect(prompt).not.toMatch(/Your reader is the teaching team, not the student/);
+        expect(prompt.indexOf('<student_reader>')).toBeGreaterThan(0); // after PRIME_DIRECTIVE (D-055)
+    });
+
+    it('flags analysis terms for staff, naming terms only', async () => {
+        process.env.MOCK_RESPONSE = 'true';
+        const draft = await new TechnicalWritingFeedbackEngine().generate({ assignment: labAssignment(), verifiedText });
+        draft.criteria[0].evidence[0].rationale = 'This clause foregrounds the entity.';
+        draft.internalFlags = [];
+        process.env.MOCK_RESPONSE = 'false';
+        const llm = { sendStructuredConversation: jest.fn(async () => ({ parsed: draft })) };
+        const result = await new TechnicalWritingFeedbackEngine(llm as never).generate({ assignment: labAssignment(), verifiedText });
+        const flag = result.internalFlags.find((item) => item.startsWith('Plain language: '));
+        expect(flag).toContain('entity');
+        expect(flag).not.toContain('foregrounds the entity');
+    });
+});
+
+describe('technical known terms', () => {
+    it('lets standard lab terms and the course glossary through without a gloss', () => {
+        const assignment = labAssignment();
+        assignment.rubric = { ...assignment.rubric, sflContext: { ...(assignment.rubric.sflContext ?? {}), approvedGlossaryTerms: ['thermal expansion coefficient'] } as never };
+        const prompt = buildTechnicalFeedbackSystemPrompt(assignment);
+        expect(prompt).toMatch(/no explanation needed\):[^\n]*"percent error"/);
+        expect(prompt).toMatch(/Known course terms you may use:[^\n]*"thermal expansion coefficient"/);
+    });
+
+    it('does not flag calibration in technical feedback', async () => {
+        const verifiedText = 'The experimental value was 35.3% higher than the literature value. The uncertainty was larger than the calculated value.';
+        const original = process.env.MOCK_RESPONSE;
+        process.env.MOCK_RESPONSE = 'true';
+        const draft = await new TechnicalWritingFeedbackEngine().generate({ assignment: labAssignment(), verifiedText });
+        draft.criteria[0].evidence[0].rationale = 'Check the calibration of the thermometer.';
+        draft.internalFlags = [];
+        process.env.MOCK_RESPONSE = 'false';
+        const llm = { sendStructuredConversation: jest.fn(async () => ({ parsed: draft })) };
+        const result = await new TechnicalWritingFeedbackEngine(llm as never).generate({ assignment: labAssignment(), verifiedText });
+        if (original === undefined) delete process.env.MOCK_RESPONSE; else process.env.MOCK_RESPONSE = original;
+        expect(result.internalFlags.join(' ')).not.toMatch(/calibrated/);
     });
 });

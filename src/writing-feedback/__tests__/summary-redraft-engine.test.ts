@@ -120,3 +120,17 @@ describe('LlmSummaryRedraftEngine', () => {
         }
     });
 });
+
+describe('plain-language contract', () => {
+    it('names the student as the final reader and carries the contract', () => {
+        const prompt = buildSummaryRedraftSystemPrompt(input());
+        expect(prompt).not.toMatch(/Your reader is the teaching team/);
+        expect(prompt).toContain('<student_reader>');
+    });
+});
+
+describe('technical redraft terms', () => {
+    it('lets standard lab terms through without a gloss', () => {
+        expect(buildSummaryRedraftSystemPrompt(input('technical'))).toMatch(/no explanation needed\):[^\n]*"uncertainty"/);
+    });
+});

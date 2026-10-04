@@ -122,6 +122,20 @@ describe('RubricWritingFeedbackEngine pipeline', () => {
         expect(generated.runTrace?.supportedExcerptIds).toContain(evidence.supportingExcerptId);
     });
 
+    it('flags analysis terms in student-facing prose for staff, naming terms only', async () => {
+        const base = fakeLlm('fits', () => null);
+        const send = jest.fn(async (...args: Parameters<typeof base>) => {
+            const response = await base(...args) as { parsed: ReturnType<typeof writer> };
+            if (args[2].structuredOutputName !== 'writing_feedback_v2') return response;
+            response.parsed.criteria[0].evidence[0].rationale = 'Keep the entity as the Theme.';
+            return response;
+        });
+        const generated = await new RubricWritingFeedbackEngine({ sendStructuredConversation: send } as unknown as LLMModule, new InMemoryMaterialRetriever())
+            .generate({ assignment, verifiedText: text });
+        expect(generated.internalFlags.some((flag) => flag.startsWith('Plain language: '))).toBe(true);
+        expect(generated.internalFlags.join(' ')).not.toContain('Keep the entity');
+    });
+
     it('flags thin materials and still generates', async () => {
         const send = fakeLlm('mismatch', () => null);
         const generated = await new RubricWritingFeedbackEngine({ sendStructuredConversation: send } as unknown as LLMModule, new InMemoryMaterialRetriever([]))

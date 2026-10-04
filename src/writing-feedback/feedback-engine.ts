@@ -73,6 +73,7 @@ import {
 import { SanitizedJobError } from './job-runner';
 import { ANALYZER_EXAMPLES, WRITER_GLOBAL_EXAMPLE, WRITER_STANDARD_EXAMPLES } from './prompt-examples';
 import { resolveGateDecision } from './feedback-gate';
+import { buildStudentReaderContract, knownTermsFor, lintFeedbackProse, plainLanguageFlag } from './plain-language';
 import { buildRelevancePairs, judgeRelevance, supportedByNeed } from './material-relevance';
 import {
     buildTextDiagnosisSystemPrompt,
@@ -258,14 +259,15 @@ export function buildWritingFeedbackSystemPrompt(assignment: WritingAssignment, 
         'Method:',
         '1. globalRevision.diagnosisStatement: open with what is worth keeping, then say plainly what the text does compared with what the genre asks. Quote at most two contradicting features as examples.',
         '2. globalRevision.whatToKeep: one to three choices from transferableStrengths.',
-        '3. globalRevision.rewriteDirection: the stages the rewrite needs, in order, each with its purpose. Cite supporting genre_excerpts ids in supportingExcerptIds where they teach the stage.',
+        '3. globalRevision.rewriteDirection: the stages the rewrite needs, in order, as numbered steps one per line, each saying what to write in plain words. Cite supporting genre_excerpts ids in supportingExcerptIds where they teach the stage.',
         '4. Return exactly one revision goal: rewrite as the target genre, with an action naming the first stage to write.',
         '5. Strengths come only from transferableStrengths.',
         '6. Still assess every criterion with evidence as usual; staff review it, and the student does not see it unless staff release it.'
     ];
     return [
-        'You are the feedback-writer step in a staff review workspace for first-year academic writing.',
-        'Pedagogy: feedback builds the student\'s long-term capacity to write this kind of text, not a perfect copy of this one. Name precisely what works and what does not, give one concrete next move per issue, and use light SFL terms the course materials use. Be candid and respectful: direct about shortcomings, no praise sandwich, no euphemisms such as "you may want to consider".',
+        'You are the feedback-writer step. Staff review your draft and then release it to the student, so the student is your reader.',
+        'Pedagogy: feedback builds the student\'s long-term capacity to write this kind of text, not a perfect copy of this one. Say clearly what works and what does not, and give one concrete next move per issue. Be candid and respectful: direct about shortcomings, no praise sandwich, no euphemisms such as "you may want to consider".',
+        buildStudentReaderContract(knownTermsFor(rubric.sflContext)),
         ...(mode === 'global_revision' ? globalMethod : standardMethod),
         'Knowledge: the diagnosis, the validated SFL analysis, finding_excerpts (course text judged to support specific findings), genre_excerpts, and the approved rubric below.',
         `<worked_examples>\n${WRITER_STANDARD_EXAMPLES}\n</worked_examples>`,
@@ -533,6 +535,9 @@ export class RubricWritingFeedbackEngine implements WritingFeedbackEngine {
         if (dropped) result.internalFlags.push(`${dropped} course-material citation(s) were removed for lack of supporting material.`);
         applyGlobalExcerptCitations(result, new Set([...genreExcerpts, ...contrastExcerpts].map((excerpt) => excerpt.id)), excerptsById);
         result.internalFlags.push(...guardStrengths(result, diagnosis, gateDecision));
+        // Staff-only signal that the draft drifted into analysis terms or long sentences.
+        const plainFlag = plainLanguageFlag(lintFeedbackProse(result, knownTermsFor(input.assignment.rubric.sflContext)));
+        if (plainFlag) result.internalFlags.push(plainFlag);
         result.gateDecision = gateDecision;
         result.schemaVersion = WRITING_FEEDBACK_SCHEMA_V2;
 

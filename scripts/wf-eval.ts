@@ -1,7 +1,7 @@
 /**
  * Writing Feedback live eval — runs synthetic fixtures through the real engine
  *
- * Usage: npm run wf:eval -- [--runs N] [--only fixture-id] [--live-rag courseId]
+ * Usage: npm run wf:eval -- [--runs N] [--only fixture-id] [--lens linguistic|technical|all] [--live-rag courseId]
  * Needs LLM_PROVIDER / LLM_ENDPOINT / LLM_DEFAULT_MODEL (and LLM_API_KEY if the provider
  * requires it). Fixture texts are synthetic, so full outputs are written to the report.
  *
@@ -19,6 +19,9 @@ import type { WritingFeedbackMaterialRetriever } from '../src/writing-feedback/c
 import { EVAL_FIXTURES, buildEvalAssignment } from '../src/writing-feedback/__tests__/fixtures/eval/eval-fixtures';
 import { InMemoryMaterialRetriever } from '../src/writing-feedback/__tests__/fixtures/eval/eval-materials';
 import { runEvalChecks, type EvalRunOutput } from '../src/writing-feedback/eval-checks';
+import { knownTermsFor, LAB_REPORT_FAMILIAR_TERMS } from '../src/writing-feedback/plain-language';
+import { technicalKnownTerms, TechnicalWritingFeedbackEngine } from '../src/writing-feedback/technical-feedback-engine';
+import { buildLabEvalAssignment, LAB_EVAL_FIXTURES } from '../src/writing-feedback/__tests__/fixtures/eval/lab-eval-fixtures';
 
 function arg(name: string): string | undefined {
     const index = process.argv.indexOf(`--${name}`);
@@ -48,12 +51,13 @@ async function main(): Promise<void> {
     const runs = Math.max(1, Number(arg('runs') ?? 1));
     const only = arg('only');
     const liveRagCourse = arg('live-rag');
+    const lens = arg('lens') ?? 'all';
     const assignment = buildEvalAssignment();
     if (liveRagCourse) assignment.courseId = liveRagCourse;
 
     const report: Array<Record<string, unknown>> = [];
     const summary: string[] = [];
-    for (const fixture of EVAL_FIXTURES.filter((candidate) => !only || candidate.id === only)) {
+    for (const fixture of EVAL_FIXTURES.filter((candidate) => lens !== 'technical' && (!only || candidate.id === only))) {
         for (let run = 1; run <= runs; run += 1) {
             const retriever: WritingFeedbackMaterialRetriever | undefined = liveRagCourse
                 ? undefined
@@ -69,13 +73,33 @@ async function main(): Promise<void> {
                     runTrace,
                     studentComments: await studentComments(result as Record<string, unknown>, fixture.text)
                 };
-                const checks = runEvalChecks(output, fixture);
+                const checks = runEvalChecks(output, fixture, knownTermsFor(assignment.rubric.sflContext));
                 const failed = checks.filter((item) => item.status === 'fail');
                 summary.push(`${failed.length ? 'FAIL' : 'PASS'}  ${fixture.id} #${run}  ${failed.map((item) => item.name).join(', ')}`);
                 report.push({ fixture: fixture.id, run, ms: Date.now() - started, checks, output });
             } catch (error) {
                 summary.push(`ERROR ${fixture.id} #${run}  ${(error as Error).message}`);
                 report.push({ fixture: fixture.id, run, ms: Date.now() - started, error: (error as Error).message });
+            }
+        }
+    }
+
+    // Technical lens: synthetic lab reports; no retrieval, diagnosis or gate on this path.
+    const labAssignment = buildLabEvalAssignment();
+    const labKnownTerms = [...technicalKnownTerms(labAssignment), ...LAB_REPORT_FAMILIAR_TERMS];
+    for (const fixture of LAB_EVAL_FIXTURES.filter((candidate) => lens !== 'linguistic' && (!only || candidate.id === only))) {
+        for (let run = 1; run <= runs; run += 1) {
+            const started = Date.now();
+            try {
+                const result = await new TechnicalWritingFeedbackEngine().generate({ assignment: labAssignment, verifiedText: fixture.text });
+                const output: EvalRunOutput = { verifiedText: fixture.text, result: result as unknown as EvalRunOutput['result'] };
+                const checks = runEvalChecks(output, fixture, labKnownTerms);
+                const failed = checks.filter((item) => item.status === 'fail');
+                summary.push(`${failed.length ? 'FAIL' : 'PASS'}  ${fixture.id} #${run}  ${failed.map((item) => item.name).join(', ')}`);
+                report.push({ lens: 'technical', fixture: fixture.id, run, ms: Date.now() - started, checks, output });
+            } catch (error) {
+                summary.push(`ERROR ${fixture.id} #${run}  ${(error as Error).message}`);
+                report.push({ lens: 'technical', fixture: fixture.id, run, ms: Date.now() - started, error: (error as Error).message });
             }
         }
     }
@@ -89,7 +113,8 @@ async function main(): Promise<void> {
             analyzer: versions.SFL_ANALYZER_PROMPT_VERSION,
             writer: versions.SFL_WRITER_PROMPT_VERSION,
             diagnosis: versions.TEXT_DIAGNOSIS_PROMPT_VERSION ?? null,
-            relevance: versions.MATERIAL_RELEVANCE_PROMPT_VERSION ?? null
+            relevance: versions.MATERIAL_RELEVANCE_PROMPT_VERSION ?? null,
+            technical: (require('../src/writing-feedback/technical-feedback-engine') as Record<string, unknown>).TECHNICAL_PROMPT_VERSION
         },
         model: process.env.LLM_DEFAULT_MODEL,
         report

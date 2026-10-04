@@ -5,6 +5,7 @@ import {
     DEFAULT_WRITING_LEVELS
 } from '../default-rubric-profile';
 import { writingRubricDraftInputSchema } from '../rubric-schema';
+import { lintStudentProse } from '../plain-language';
 
 describe('default writing rubric profile', () => {
     it('uses the three SFL metafunction criteria', () => {
@@ -97,5 +98,28 @@ describe('default writing rubric profile', () => {
         first.criteria[0]!.cells!['weak']!.descriptor = 'changed';
         const second = buildDefaultWritingRubric();
         expect(second.criteria[0]!.cells!['weak']!.descriptor).not.toBe('changed');
+    });
+});
+
+describe('default descriptor language', () => {
+    it('writes default descriptors in plain language', () => {
+        const descriptors = buildDefaultWritingRubric().criteria.flatMap((criterion) =>
+            Object.values(criterion.cells ?? {}).map((cell) => cell.descriptor ?? ''));
+        expect(descriptors.filter(Boolean).length).toBeGreaterThan(0);
+        for (const descriptor of descriptors) {
+            expect(lintStudentProse(descriptor, []).bannedTerms).toEqual([]);
+        }
+    });
+});
+
+describe('frontend default descriptor mirror', () => {
+    it('carries the same descriptor text as the backend template', () => {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const source: string = require('fs').readFileSync(require('path').join(__dirname, '../../../public/scripts/feature/writing-feedback-rubric.ts'), 'utf8');
+        const descriptors = buildDefaultWritingRubric().criteria.flatMap((criterion) =>
+            Object.values(criterion.cells ?? {}).map((cell) => cell.descriptor ?? '')).filter(Boolean);
+        for (const descriptor of descriptors) {
+            expect(source).toContain(JSON.stringify(descriptor).slice(1, -1).replace(/'/g, "\\'"));
+        }
     });
 });
