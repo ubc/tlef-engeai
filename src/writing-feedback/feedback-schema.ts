@@ -79,14 +79,18 @@ const revisionGoalSchema = z.object({
     goal: z.string().min(1),
     // A concrete step, required on every new goal: students ranked actionability second.
     action: z.string().min(1),
-    // Optional: a question only when it helps the student think, not by default.
-    guidedQuestion: z.string().min(1).nullish()
+    // Required (D-153): the Socratic question lets the student find the change themselves.
+    guidedQuestion: z.string().min(1),
+    // Staff-only: whether the question is about the whole submission or one part of it.
+    questionScope: z.enum(['whole', 'part'])
 });
 
 const globalRevisionSchema = z.object({
     diagnosisStatement: z.string().min(1).max(1500),
     whatToKeep: z.array(z.string().min(1).max(300)).max(3),
     rewriteDirection: z.string().min(1).max(1500),
+    // Required (D-153): one question about the whole submission.
+    guidedQuestion: z.string().min(1).max(400),
     supportingExcerptIds: z.array(z.string().trim().min(1).max(40)).max(3).nullish()
 });
 

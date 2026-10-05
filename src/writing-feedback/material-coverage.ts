@@ -14,6 +14,9 @@ import { createHash } from 'crypto';
 import type { MaterialCoverage, MaterialCoverageRow } from './contracts';
 import type { GroundingExcerpt, RetrievalNeed } from './course-material-mentions';
 
+/** Bumped whenever buildGenreNeeds changes which rows exist, so cached rows rebuild once (D-154). */
+export const COVERAGE_NEEDS_VERSION = 'coverage-needs-v2';
+
 /** Needs that describe the assignment; contrast and finding needs are per-submission. */
 const COVERAGE_KINDS = new Set(['genre', 'stage', 'task_requirement', 'language_function']);
 
@@ -74,8 +77,11 @@ export function courseMaterialFingerprint(course: FingerprintCourse | null | und
  * @param coverage - Cached coverage, if any
  * @param rubricVersion - Current approved rubric version
  * @param fingerprint - Current course-material fingerprint
- * @returns True when both keys match
+ * @returns True when the rubric version, fingerprint and needs version all match
  */
 export function isCoverageCurrent(coverage: MaterialCoverage | undefined, rubricVersion: number, fingerprint: string): boolean {
-    return Boolean(coverage && coverage.rubricVersion === rubricVersion && coverage.materialFingerprint === fingerprint);
+    return Boolean(coverage
+        && coverage.rubricVersion === rubricVersion
+        && coverage.materialFingerprint === fingerprint
+        && coverage.needsVersion === COVERAGE_NEEDS_VERSION);
 }

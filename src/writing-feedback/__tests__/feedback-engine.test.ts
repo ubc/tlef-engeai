@@ -226,7 +226,8 @@ describe('RubricWritingFeedbackEngine generic rubric contract', () => {
             revisionGoals: [{
                 skillTag: 'content',
                 goal: 'Connect the reported increase to its significance.',
-                guidedQuestion: 'What does the increase show for the assignment purpose?'
+                guidedQuestion: 'What does the increase show for the assignment purpose?',
+                questionScope: 'whole'
             }],
             internalFlags: [],
             courseMaterialMentions: [mention]
@@ -367,9 +368,9 @@ describe('staff-assessed criteria are withheld from generation', () => {
         const result = {
             criteria: modelRows,
             strengths: [],
-            revisionGoals: [{ skillTag: 'x', goal: 'Revise.', action: 'Start with the weakest passage.', guidedQuestion: 'Which passage?' }],
+            revisionGoals: [{ skillTag: 'x', goal: 'Revise.', action: 'Start with the weakest passage.', guidedQuestion: 'Which passage?', questionScope: 'whole' }],
             internalFlags: [],
-            globalRevision: { diagnosisStatement: 'd', whatToKeep: [], rewriteDirection: 'r' }
+            globalRevision: { diagnosisStatement: 'd', whatToKeep: [], rewriteDirection: 'r', guidedQuestion: 'What does the reader need first?' }
         };
 
         expect(schema.safeParse(result).success).toBe(true);

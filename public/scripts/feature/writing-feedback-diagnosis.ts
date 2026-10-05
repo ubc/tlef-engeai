@@ -4,7 +4,7 @@
  */
 
 import type { AnchoredComment, FeedbackMode } from './writing-feedback-shared.js';
-import { createButton, createText } from './writing-feedback-shared.js';
+import { chip, createButton, createText, refreshIcons } from './writing-feedback-shared.js';
 import type { diagnosisBannerView } from './writing-feedback-diagnosis-model.js';
 
 type BannerView = NonNullable<ReturnType<typeof diagnosisBannerView>>;
@@ -14,6 +14,8 @@ export interface GlobalRevisionDraft {
     diagnosisStatement: string;
     whatToKeep: string[];
     rewriteDirection: string;
+    /** Whole-submission Socratic question (D-153); absent on runs stored before it. */
+    guidedQuestion?: string;
 }
 
 /**
@@ -31,35 +33,56 @@ export function renderDiagnosisBanner(
     canEdit: boolean,
     onToggle: (next: FeedbackMode) => void
 ): HTMLElement {
+    // Built on the annotation card so the panel reads as one family (D-155).
     const banner = document.createElement('section');
-    banner.className = mode === 'global_revision' ? 'wf-diagnosis wf-diagnosis--rewrite' : 'wf-diagnosis';
+    banner.className = 'wf-annotation-card wf-diagnosis';
     banner.setAttribute('aria-label', 'Whole-text diagnosis');
 
-    banner.append(createText('p', view.headline, 'wf-diagnosis-headline'));
+    const header = document.createElement('div');
+    header.className = 'wf-annotation-header wf-diagnosis-header';
+    header.append(createText('span', 'WHOLE-TEXT DIAGNOSIS', 'wf-filter-label'));
+    if (mode === 'global_revision') header.append(chip('Rewrite feedback', 'amber'));
+    banner.append(header);
+
+    banner.append(createText('h4', view.headline, 'wf-diagnosis-headline'));
     banner.append(createText('p', mode === 'global_revision'
         ? 'The student gets rewrite feedback only. Passage comments are held back.'
         : 'The student gets passage comments and revision goals.', 'wf-diagnosis-mode'));
 
     const stages = document.createElement('ul');
     stages.className = 'wf-diagnosis-stages';
-    view.stageChips.forEach((chip) => {
+    stages.setAttribute('aria-label', 'Stages');
+    view.stageChips.forEach((stage) => {
         const item = document.createElement('li');
-        item.className = `wf-diagnosis-stage wf-diagnosis-stage--${chip.status.toLowerCase().replace(/\s+/g, '-')}`;
-        item.textContent = `${chip.label}: ${chip.status}${chip.required ? ' (required)' : ''}`;
+        const node = chip(`${stage.label}: ${stage.status}`, stage.tone);
+        if (stage.required) {
+            const marker = document.createElement('span');
+            marker.className = 'wf-diagnosis-required';
+            marker.textContent = '*';
+            marker.title = 'Required stage';
+            marker.setAttribute('aria-label', 'required');
+            node.append(marker);
+        }
+        item.append(node);
         stages.append(item);
     });
     banner.append(stages);
 
     view.warnings.forEach((warning) => {
-        const note = createText('p', warning, 'wf-diagnosis-warning');
+        const note = document.createElement('p');
+        note.className = 'wf-diagnosis-note';
         note.setAttribute('role', 'note');
+        const icon = document.createElement('i');
+        icon.setAttribute('data-feather', 'info');
+        icon.setAttribute('aria-hidden', 'true');
+        note.append(icon, document.createTextNode(warning));
         banner.append(note);
     });
 
     const why = document.createElement('details');
     why.className = 'wf-diagnosis-why';
     const summary = document.createElement('summary');
-    summary.textContent = 'Why?';
+    summary.textContent = 'Why this diagnosis';
     why.append(summary, createText('p', view.rationale));
     banner.append(why);
 
@@ -70,6 +93,7 @@ export function renderDiagnosisBanner(
         toggle.classList.add('wf-diagnosis-toggle');
         banner.append(toggle);
     }
+    refreshIcons();
     return banner;
 }
 
@@ -147,7 +171,8 @@ export function renderGlobalRevisionEditor(
         field('wf-global-keep', 'Keep (one per line)', current.whatToKeep.join('\n'), 3, (raw) => {
             current.whatToKeep = raw.split('\n').map((line) => line.trim()).filter(Boolean).slice(0, 3);
         }),
-        field('wf-global-direction', 'How to rewrite', current.rewriteDirection, 4, (raw) => { current.rewriteDirection = raw; })
+        field('wf-global-direction', 'How to rewrite', current.rewriteDirection, 4, (raw) => { current.rewriteDirection = raw; }),
+        field('wf-global-question', 'Question for the student', current.guidedQuestion ?? '', 2, (raw) => { current.guidedQuestion = raw; })
     );
     return editor;
 }

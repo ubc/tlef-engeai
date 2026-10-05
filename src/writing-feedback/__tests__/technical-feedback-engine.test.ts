@@ -135,7 +135,7 @@ describe('technical engine generation', () => {
     });
 
     it('exposes a stable prompt version', () => {
-        expect(TECHNICAL_PROMPT_VERSION).toBe('lab-report-technical-v1.4.0');
+        expect(TECHNICAL_PROMPT_VERSION).toBe('lab-report-technical-v1.5.0');
     });
 });
 
@@ -153,18 +153,6 @@ describe('plain-language contract', () => {
         expect(prompt.indexOf('<student_reader>')).toBeGreaterThan(0); // after PRIME_DIRECTIVE (D-055)
     });
 
-    it('flags analysis terms for staff, naming terms only', async () => {
-        process.env.MOCK_RESPONSE = 'true';
-        const draft = await new TechnicalWritingFeedbackEngine().generate({ assignment: labAssignment(), verifiedText });
-        draft.criteria[0].evidence[0].rationale = 'This clause foregrounds the entity.';
-        draft.internalFlags = [];
-        process.env.MOCK_RESPONSE = 'false';
-        const llm = { sendStructuredConversation: jest.fn(async () => ({ parsed: draft })) };
-        const result = await new TechnicalWritingFeedbackEngine(llm as never).generate({ assignment: labAssignment(), verifiedText });
-        const flag = result.internalFlags.find((item) => item.startsWith('Plain language: '));
-        expect(flag).toContain('entity');
-        expect(flag).not.toContain('foregrounds the entity');
-    });
 });
 
 describe('technical known terms', () => {
@@ -176,17 +164,30 @@ describe('technical known terms', () => {
         expect(prompt).toMatch(/Known course terms you may use:[^\n]*"thermal expansion coefficient"/);
     });
 
-    it('does not flag calibration in technical feedback', async () => {
-        const verifiedText = 'The experimental value was 35.3% higher than the literature value. The uncertainty was larger than the calculated value.';
-        const original = process.env.MOCK_RESPONSE;
+});
+
+describe('Socratic questions (D-153)', () => {
+    const verifiedText = 'The experimental value was 35.3% higher than the literature value.';
+    const original = process.env.MOCK_RESPONSE;
+    afterAll(() => { if (original === undefined) delete process.env.MOCK_RESPONSE; else process.env.MOCK_RESPONSE = original; });
+
+    it('requires a scoped question in the prompt', () => {
+        const prompt = buildTechnicalFeedbackSystemPrompt(labAssignment());
+        expect(prompt).toContain('every revision goal has exactly one guidedQuestion and a questionScope');
+        expect(prompt).not.toContain('only when it genuinely helps the student think');
+        expect(TECHNICAL_PROMPT_VERSION).toBe('lab-report-technical-v1.5.0');
+    });
+
+    it('retries once when no goal asks about the whole report', async () => {
         process.env.MOCK_RESPONSE = 'true';
-        const draft = await new TechnicalWritingFeedbackEngine().generate({ assignment: labAssignment(), verifiedText });
-        draft.criteria[0].evidence[0].rationale = 'Check the calibration of the thermometer.';
-        draft.internalFlags = [];
+        const good = await new TechnicalWritingFeedbackEngine().generate({ assignment: labAssignment(), verifiedText });
+        const bad = { ...good, revisionGoals: good.revisionGoals.map((goal) => ({ ...goal, questionScope: 'part' as const })) };
         process.env.MOCK_RESPONSE = 'false';
-        const llm = { sendStructuredConversation: jest.fn(async () => ({ parsed: draft })) };
+        const llm = { sendStructuredConversation: jest.fn()
+            .mockResolvedValueOnce({ parsed: bad })
+            .mockResolvedValueOnce({ parsed: good }) };
         const result = await new TechnicalWritingFeedbackEngine(llm as never).generate({ assignment: labAssignment(), verifiedText });
-        if (original === undefined) delete process.env.MOCK_RESPONSE; else process.env.MOCK_RESPONSE = original;
-        expect(result.internalFlags.join(' ')).not.toMatch(/calibrated/);
+        expect(llm.sendStructuredConversation).toHaveBeenCalledTimes(2);
+        expect(result.revisionGoals.some((goal) => goal.questionScope === 'whole')).toBe(true);
     });
 });

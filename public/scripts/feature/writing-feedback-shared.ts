@@ -215,6 +215,7 @@ export interface GlobalRevision {
     diagnosisStatement: string;
     whatToKeep: string[];
     rewriteDirection: string;
+    guidedQuestion?: string; // whole-submission Socratic question; required on new runs (D-153)
     supportingExcerptIds?: string[];
 }
 
@@ -231,6 +232,7 @@ export interface MaterialCoverageRow {
 export interface MaterialCoverage {
     rubricVersion: number;
     materialFingerprint: string;
+    needsVersion?: string; // absent on coverage cached before D-154
     computedAt: string;
     rows: MaterialCoverageRow[];
 }
@@ -245,7 +247,7 @@ export interface FeedbackRun {
         schemaVersion?: string; // V2 result schema, absent on older runs
         criteria: CriterionFeedback[]; // supported criterion judgments with exact evidence
         strengths: string[]; // positive observations included in student-facing output
-        revisionGoals: Array<{ skillTag: string; goal: string; action?: string; guidedQuestion?: string }>; // up to three priorities, each with a concrete action on new runs
+        revisionGoals: Array<{ skillTag: string; goal: string; action?: string; guidedQuestion?: string; questionScope?: 'whole' | 'part' }>; // up to three priorities; action and question required on new runs
         gateDecision?: FeedbackMode; // gate decision at generation; absent on older runs
         globalRevision?: GlobalRevision; // rewrite block, always produced on new runs
         internalFlags: string[]; // staff-only warnings excluded from PDF/release payloads
@@ -275,7 +277,7 @@ export interface StaffSummaryEdit {
     strengths: string[]; // "What you did well", 0..5
     criterionExplanations: Array<{ criterion: WritingCriterionId; explanation: string }>;
     revisionGoalsText?: string; // technical lens only
-    globalRevision?: { diagnosisStatement: string; whatToKeep: string[]; rewriteDirection: string }; // writing lens only
+    globalRevision?: { diagnosisStatement: string; whatToKeep: string[]; rewriteDirection: string; guidedQuestion?: string }; // writing lens only
 }
 
 /** Which run a lens's summary currently comes from, and the annotations it reflects. */

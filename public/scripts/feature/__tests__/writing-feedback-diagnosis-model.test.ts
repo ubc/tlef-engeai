@@ -5,7 +5,6 @@
 
 import {
     diagnosisBannerView,
-    plainLanguageWarning,
     readAgainLabel,
     releaseHeldBack,
     resolvedMode,
@@ -39,17 +38,19 @@ describe('diagnosisBannerView', () => {
         const view = diagnosisBannerView(run, stages, 'global_revision')!;
         expect(view.headline).toBe('This reads as an explanation, not the target genre.');
         expect(view.stageChips).toEqual([
-            { label: 'General statement', status: 'Weak', required: true },
-            { label: 'Classification or composition', status: 'Missing', required: true },
-            { label: 'Closing', status: 'Missing', required: false }
+            { label: 'General statement', status: 'Weak', required: true, tone: 'amber' },
+            { label: 'Classification or composition', status: 'Missing', required: true, tone: 'red' },
+            { label: 'Closing', status: 'Missing', required: false, tone: 'red' }
         ]);
         expect(view.warnings).toEqual(['No course material on this genre was found, so the diagnosis relies on general knowledge.']);
         expect(view.toggleLabel).toBe('Switch to standard feedback');
     });
 
-    it('leaves plain-language drift to the per-lens warning', () => {
-        const drifted = { ...run, result: { ...run.result, internalFlags: ['Plain language: 1 analysis term(s) students may not know (Theme); 0 sentence(s) over 25 words; 0 comment(s) over length.'] } } as FeedbackRun;
-        expect(diagnosisBannerView(drifted, stages, 'standard')!.warnings.join(' ')).not.toMatch(/hard for students to read/);
+    it('colours Present green and an unchecked stage neutral', () => {
+        const fits = { ...run, textDiagnosis: { ...run.textDiagnosis!, stages: [{ stageId: stages[0].id, status: 'present' }] } } as FeedbackRun;
+        const chips = diagnosisBannerView(fits, stages, 'standard')!.stageChips;
+        expect(chips[0].tone).toBe('green');
+        expect(chips[1]).toMatchObject({ status: 'Not checked', tone: 'neutral' });
     });
 
     it('returns null for a run stored before the diagnosis existed', () => {
@@ -113,19 +114,5 @@ describe('splitHeldBack on a standard run switched to rewrite mode', () => {
         const split = splitHeldBack(seeds, 'global_revision');
         expect(split.heldBack.map((item) => item.id)).toEqual(['s1']);
         expect(split.visible.map((item) => item.id)).toEqual(['s2', 'st']);
-    });
-});
-
-describe('plainLanguageWarning', () => {
-    const withFlags = (internalFlags: string[]) => ({ ...run, textDiagnosis: undefined, result: { ...run.result, internalFlags } } as unknown as FeedbackRun);
-
-    it('turns the lint flag into staff copy, for any lens and without a diagnosis', () => {
-        expect(plainLanguageWarning(withFlags(['Plain language: 2 analysis term(s) students may not know (Theme, entity); 1 sentence(s) over 25 words; 0 comment(s) over length.'])))
-            .toBe('Some comments may be hard for students to read: 2 analysis term(s) students may not know (Theme, entity); 1 sentence(s) over 25 words; 0 comment(s) over length. Check them before release.');
-    });
-
-    it('returns null without a flag or a run', () => {
-        expect(plainLanguageWarning(withFlags(['Other flag.']))).toBeNull();
-        expect(plainLanguageWarning(null)).toBeNull();
     });
 });

@@ -34,6 +34,17 @@ describe('summaryEditsInputSchema', () => {
     });
 });
 
+describe('rewrite question edits (D-153)', () => {
+    it('accepts and keeps a staff-edited rewrite question', () => {
+        const edit = [{
+            lens: 'linguistic', feedbackRunId: 'run-l', strengths: [], criterionExplanations: [],
+            globalRevision: { diagnosisStatement: 'd', whatToKeep: [], rewriteDirection: 'r', guidedQuestion: 'What should your first sentence tell the reader?' }
+        }];
+        const parsed = summaryEditsInputSchema.safeParse(edit);
+        expect(parsed.success && parsed.data[0].globalRevision?.guidedQuestion).toBe('What should your first sentence tell the reader?');
+    });
+});
+
 describe('assertSummaryEditsBound', () => {
     const latest = { linguistic: runFor('run-l', 'linguistic'), technical: runFor('run-t', 'technical') };
 

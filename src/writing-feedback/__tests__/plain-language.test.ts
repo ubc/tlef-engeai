@@ -8,8 +8,7 @@ import {
     LAB_REPORT_FAMILIAR_TERMS,
     knownTermsFor,
     lintFeedbackProse,
-    lintStudentProse,
-    plainLanguageFlag
+    lintStudentProse
 } from '../plain-language';
 
 describe('knownTermsFor', () => {
@@ -66,7 +65,7 @@ describe('lintStudentProse', () => {
     });
 });
 
-describe('lintFeedbackProse and plainLanguageFlag', () => {
+describe('lintFeedbackProse', () => {
     const result = {
         criteria: [{
             explanation: 'Your paragraph explains how sound travels.',
@@ -82,15 +81,6 @@ describe('lintFeedbackProse and plainLanguageFlag', () => {
         expect(report.bannedHits).toBe(1);
     });
 
-    it('produces a staff flag with names and counts only', () => {
-        const flag = plainLanguageFlag(lintFeedbackProse(result, []));
-        expect(flag).toBe('Plain language: 1 analysis term(s) students may not know (Theme); 0 sentence(s) over 25 words; 0 comment(s) over length.');
-        expect(flag).not.toContain('scientists');
-    });
-
-    it('returns no flag for clean prose', () => {
-        expect(plainLanguageFlag(lintFeedbackProse({ ...result, criteria: [] }, []))).toBeUndefined();
-    });
 });
 
 describe('buildStudentReaderContract', () => {
@@ -131,5 +121,12 @@ describe('familiar lab-report terms', () => {
 
     it('ships standard lab terms, including calibration and uncertainty', () => {
         expect(LAB_REPORT_FAMILIAR_TERMS).toEqual(expect.arrayContaining(['calibration', 'uncertainty', 'percent error']));
+    });
+});
+
+describe('rewrite question lint (D-153)', () => {
+    it('lints the rewrite question', () => {
+        const report = lintFeedbackProse({ criteria: [], strengths: [], revisionGoals: [], globalRevision: { diagnosisStatement: 'Plain.', rewriteDirection: 'Plain.', guidedQuestion: 'How does the Theme work here?' } }, []);
+        expect(report.bannedTerms).toContain('Theme');
     });
 });

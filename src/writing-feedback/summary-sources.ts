@@ -30,7 +30,7 @@ import { earnedLevelFor } from './rubric-bands';
 import { isStaffAssessed } from './criterion-assessment';
 
 /** Prompt version stamped on every redraft run. */
-export const SUMMARY_REDRAFT_PROMPT_VERSION = 'summary-redraft-v1.2.0';
+export const SUMMARY_REDRAFT_PROMPT_VERSION = 'summary-redraft-v1.3.0';
 
 /** Validated writer-only redraft output for one lens. */
 export interface SummaryRedraftOutput {

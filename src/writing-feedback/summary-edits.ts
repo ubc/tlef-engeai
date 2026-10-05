@@ -33,7 +33,9 @@ export const summaryEditsInputSchema = z.array(z.object({
     globalRevision: z.object({
         diagnosisStatement: z.string().trim().min(1).max(1500),
         whatToKeep: z.array(z.string().trim().min(1).max(300)).max(3),
-        rewriteDirection: z.string().trim().min(1).max(1500)
+        rewriteDirection: z.string().trim().min(1).max(1500),
+        // An empty string is an explicit clear; absent keeps the model's question.
+        guidedQuestion: z.string().trim().max(400).optional()
     }).optional()
 }).refine((edit) => !edit.globalRevision || edit.lens === 'linguistic', {
     message: 'Only the writing lens has a rewrite summary',

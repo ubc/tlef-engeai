@@ -45,7 +45,7 @@ const analysis = {
     internalFlags: []
 };
 
-function writer(criteria: Array<{ id: string }>, levelId: string, excerptId: string | null) {
+function writer(criteria: Array<{ id: string }>, levelId: string, excerptId: string | null, goals?: unknown[]) {
     return {
         criteria: criteria.map((criterion) => ({
             criterion: criterion.id,
@@ -55,9 +55,9 @@ function writer(criteria: Array<{ id: string }>, levelId: string, excerptId: str
             confidence: 0.6
         })),
         strengths: ['Clear sequencing: "First, the vibrating object pushes on the air particles next to it."'],
-        revisionGoals: [{ skillTag: 'identify', goal: 'Define sound formally.', action: 'Name the class sound belongs to.', guidedQuestion: null }],
+        revisionGoals: goals ?? [{ skillTag: 'identify', goal: 'Define sound formally.', action: 'Name the class sound belongs to.', guidedQuestion: 'What group of things does sound belong to?', questionScope: 'whole' }],
         internalFlags: [],
-        globalRevision: { diagnosisStatement: 'The text explains a process.', whatToKeep: ['Sound'], rewriteDirection: 'Classify the types of sound.', supportingExcerptIds: null }
+        globalRevision: { diagnosisStatement: 'The text explains a process.', whatToKeep: ['Sound'], rewriteDirection: 'Classify the types of sound.', guidedQuestion: 'What should your reader learn about sound first?', supportingExcerptIds: null }
     };
 }
 
@@ -83,6 +83,46 @@ describe('RubricWritingFeedbackEngine pipeline', () => {
     afterAll(() => {
         if (originalMock === undefined) delete process.env.MOCK_RESPONSE;
         else process.env.MOCK_RESPONSE = originalMock;
+    });
+
+    it('retries the writer once when a goal has no question, sending the problems back', async () => {
+        const levelId = assignment.rubric.levels[0].id;
+        const criteria = modelAssessedCriteria(assignment.rubric);
+        const base = fakeLlm('fits', () => null);
+        let writerCalls = 0;
+        const send = jest.fn(async (messages: Array<{ role: string; content: string }>, schema: unknown, options: { structuredOutputName: string }) => {
+            if (options.structuredOutputName !== 'writing_feedback_v2') return base(messages, schema, options);
+            writerCalls += 1;
+            return { parsed: writerCalls === 1
+                ? writer(criteria, levelId, null, [{ skillTag: 'identify', goal: 'g', action: 'a', guidedQuestion: null, questionScope: 'part' }])
+                : writer(criteria, levelId, null) };
+        });
+        const generated = await new RubricWritingFeedbackEngine({ sendStructuredConversation: send } as unknown as LLMModule, new InMemoryMaterialRetriever())
+            .generate({ assignment, verifiedText: text });
+        expect(writerCalls).toBe(2);
+        const retryMessages = send.mock.calls.filter((call) => call[2].structuredOutputName === 'writing_feedback_v2')[1][0];
+        expect(retryMessages[retryMessages.length - 1].content).toContain('Goal 1 has no guidedQuestion.');
+        expect(generated.revisionGoals[0].questionScope).toBe('whole');
+    });
+
+    it('fails with the fixed message when the retry still has no whole-submission question', async () => {
+        const levelId = assignment.rubric.levels[0].id;
+        const criteria = modelAssessedCriteria(assignment.rubric);
+        const base = fakeLlm('fits', () => null);
+        const send = jest.fn(async (messages: Array<{ role: string; content: string }>, schema: unknown, options: { structuredOutputName: string }) =>
+            options.structuredOutputName === 'writing_feedback_v2'
+                ? { parsed: writer(criteria, levelId, null, [{ skillTag: 'identify', goal: 'g', action: 'a', guidedQuestion: 'Which word names the class?', questionScope: 'part' }]) }
+                : base(messages, schema, options));
+        await expect(new RubricWritingFeedbackEngine({ sendStructuredConversation: send } as unknown as LLMModule, new InMemoryMaterialRetriever())
+            .generate({ assignment, verifiedText: text })).rejects.toThrow('Feedback questions were incomplete; regenerate.');
+    });
+
+    it('mock mode emits a whole-submission question and a rewrite question', async () => {
+        process.env.MOCK_RESPONSE = 'true';
+        const generated = await new RubricWritingFeedbackEngine(undefined, new InMemoryMaterialRetriever()).generate({ assignment, verifiedText: text });
+        expect(generated.revisionGoals.some((goal) => goal.questionScope === 'whole')).toBe(true);
+        expect(generated.revisionGoals.every((goal) => goal.guidedQuestion?.endsWith('?'))).toBe(true);
+        expect(generated.globalRevision?.guidedQuestion).toMatch(/\?$/);
     });
 
     it('runs diagnosis first and gates a mismatch to global revision', async () => {
@@ -120,20 +160,6 @@ describe('RubricWritingFeedbackEngine pipeline', () => {
         const evidence = generated.criteria[0].evidence[0];
         expect(evidence.courseMaterialMention?.label).toBe('Week 2 · Lecture · Writing formal definitions');
         expect(generated.runTrace?.supportedExcerptIds).toContain(evidence.supportingExcerptId);
-    });
-
-    it('flags analysis terms in student-facing prose for staff, naming terms only', async () => {
-        const base = fakeLlm('fits', () => null);
-        const send = jest.fn(async (...args: Parameters<typeof base>) => {
-            const response = await base(...args) as { parsed: ReturnType<typeof writer> };
-            if (args[2].structuredOutputName !== 'writing_feedback_v2') return response;
-            response.parsed.criteria[0].evidence[0].rationale = 'Keep the entity as the Theme.';
-            return response;
-        });
-        const generated = await new RubricWritingFeedbackEngine({ sendStructuredConversation: send } as unknown as LLMModule, new InMemoryMaterialRetriever())
-            .generate({ assignment, verifiedText: text });
-        expect(generated.internalFlags.some((flag) => flag.startsWith('Plain language: '))).toBe(true);
-        expect(generated.internalFlags.join(' ')).not.toContain('Keep the entity');
     });
 
     it('flags thin materials and still generates', async () => {

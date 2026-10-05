@@ -98,3 +98,39 @@ describe('rewrite mode forced on a standard run', () => {
         expect(text).not.toContain('STANDARDGOALMARKER');
     });
 });
+
+describe('rewrite question (D-153)', () => {
+    const gated = (goal: WritingFeedbackResult['revisionGoals'][number]) => ({ ...feedback(goal), gateDecision: 'global_revision' as const });
+
+    it('prints the rewrite block question even when the goal has none', async () => {
+        const text = searchableText(await service.render({
+            assignment, submission,
+            feedback: gated({ skillTag: 'rewrite', goal: 'Rewrite as a report.', action: 'Start with a definition.' }),
+            mode: 'global_revision',
+            globalRevision: { ...globalRevision, guidedQuestion: 'BLOCKQMARKER what does the genre ask?' }
+        }));
+        expect(text).toContain('BLOCKQMARKER');
+    });
+
+    it('prints the rewrite question once, after How to rewrite', async () => {
+        const text = searchableText(await service.render({
+            assignment, submission,
+            feedback: gated({ skillTag: 'rewrite', goal: 'Rewrite as a report.', action: 'Start with a definition.', guidedQuestion: 'QMARKER what should your reader learn first?', questionScope: 'whole' }),
+            mode: 'global_revision',
+            globalRevision: { ...globalRevision, guidedQuestion: 'QMARKER what should your reader learn first?' }
+        }));
+        const drawn = text.slice(text.lastIndexOf('\n'));
+        expect(drawn.match(/QMARKER/g)).toHaveLength(1);
+        expect(drawn.indexOf('How to rewrite')).toBeLessThan(drawn.indexOf('QMARKER'));
+    });
+
+    it('still renders a legacy rewrite block with no question', async () => {
+        const text = searchableText(await service.render({
+            assignment, submission,
+            feedback: gated({ skillTag: 'rewrite', goal: 'Rewrite as a report.' }),
+            mode: 'global_revision', globalRevision
+        }));
+        expect(text).toContain('How to rewrite');
+        expect(text).not.toContain('Ask yourself');
+    });
+});

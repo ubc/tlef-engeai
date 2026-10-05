@@ -24,6 +24,7 @@ alwaysApply: false
 
 - Student-facing prose follows `buildStudentReaderContract` in `src/writing-feedback/plain-language.ts`: the student (EAL, about IELTS 5.5–6.5) is the reader; ≤25-word sentences; rationale/guidance ≤2 sentences, explanation ≤3.
 - The analyzer and the diagnosis may use SFL terms; writers must translate them. Only known terms (glossary terms, stage labels, genre label) may reach students, glossed on first use.
-- Any new student-facing writer must inject the contract and add the `plainLanguageFlag` line to `internalFlags`.
+- Any new student-facing writer must inject the contract. The plain-language lint (`lintFeedbackProse`) runs only in the eval harness; engines no longer write a staff flag (D-155).
 - The technical lens and the technical summary redraft pass `LAB_REPORT_FAMILIAR_TERMS` (used freely, no gloss) plus `technicalKnownTerms(assignment)` (the writing rubric's glossary, stage labels and genre label). A known term overrides the banned list.
-- Both lenses show the plain-language flag as a per-lens staff warning on the review page (`plainLanguageWarning`). `npm run wf:eval -- --lens technical` measures the technical lens on synthetic lab reports.
+- `npm run wf:eval -- --lens technical` measures the technical lens on synthetic lab reports.
+- Every revision goal carries a Socratic `guidedQuestion` and a `questionScope` (`whole` | `part`), at least one `whole` per run, no yes/no openers; the rewrite block carries one whole-submission question. Writers inject `SOCRATIC_QUESTION_RULES` and wrap their structured call in `withQuestionGate` (D-153).

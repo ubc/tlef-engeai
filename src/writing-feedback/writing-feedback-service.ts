@@ -42,7 +42,7 @@ import { seedCommentsFromRun, stampCommentAuthors, validateAnchoredComments, wit
 import { NO_REVISION_GOALS_MESSAGE, RubricWritingFeedbackEngine } from './feedback-engine';
 import { TEXT_DIAGNOSIS_FAILED_MESSAGE } from './text-diagnosis';
 import { effectiveMode, studentFacingComments } from './feedback-gate';
-import { buildCoverageRows, courseMaterialFingerprint, isCoverageCurrent } from './material-coverage';
+import { buildCoverageRows, COVERAGE_NEEDS_VERSION, courseMaterialFingerprint, isCoverageCurrent } from './material-coverage';
 import type { GroundingExcerpt, RetrievalNeed } from './course-material-mentions';
 import type { LLMOptions } from 'ubc-genai-toolkit-llm';
 import { TECHNICAL_PROMPT_VERSION, TechnicalWritingFeedbackEngine } from './technical-feedback-engine';
@@ -162,9 +162,12 @@ export function resolveStudentView(
         .flatMap((review) => review.summaryEdits ?? [])
         .find((candidate) => candidate.lens === 'linguistic' && candidate.feedbackRunId === run.id && candidate.globalRevision);
     const base = run.result.globalRevision;
-    const globalRevision = base || edit?.globalRevision
+    const merged: GlobalRevision | undefined = base || edit?.globalRevision
         ? { ...(base ?? { diagnosisStatement: '', whatToKeep: [], rewriteDirection: '' }), ...(edit?.globalRevision ?? {}) }
         : undefined;
+    // Staff clearing the rewrite question (an empty string) removes the model's question.
+    const { guidedQuestion, ...rest } = merged ?? ({} as GlobalRevision);
+    const globalRevision = merged ? (guidedQuestion?.trim() ? merged : rest as GlobalRevision) : undefined;
     return { mode, ...(globalRevision ? { globalRevision } : {}), comments: studentFacingComments(comments, mode) };
 }
 
@@ -856,6 +859,7 @@ export class WritingFeedbackService {
         const coverage: MaterialCoverage = {
             rubricVersion: rubric.version,
             materialFingerprint: courseMaterialFingerprint(course),
+            needsVersion: COVERAGE_NEEDS_VERSION,
             computedAt: new Date(),
             rows: buildCoverageRows(grounding.needs as RetrievalNeed[], grounding.retrieval.excerpts as GroundingExcerpt[], grounding.supported)
         };

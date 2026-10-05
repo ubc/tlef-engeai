@@ -104,7 +104,7 @@ describe('LlmSummaryRedraftEngine', () => {
         const parsed = {
             criteria: value.rubric.criteria.map((criterion) => ({ criterion: criterion.id, suggestedLevel: value.rubric.levels[2].id, explanation: 'New.', confidence: 0.7 })),
             strengths: ['New strength.'],
-            revisionGoals: [{ skillTag: 'x', goal: 'New goal.', action: 'New step.', guidedQuestion: 'New question?' }]
+            revisionGoals: [{ skillTag: 'x', goal: 'New goal.', action: 'New step.', guidedQuestion: 'New question?', questionScope: 'whole' }]
         };
         const llm = { sendStructuredConversation: jest.fn(async () => ({ parsed })) };
         const previousMock = process.env.MOCK_RESPONSE;
@@ -132,5 +132,37 @@ describe('plain-language contract', () => {
 describe('technical redraft terms', () => {
     it('lets standard lab terms through without a gloss', () => {
         expect(buildSummaryRedraftSystemPrompt(input('technical'))).toMatch(/no explanation needed\):[^\n]*"uncertainty"/);
+    });
+});
+
+describe('Socratic questions in the redraft (D-153)', () => {
+    it('retries once when a redrafted goal has a yes/no question', async () => {
+        const value = input();
+        const goodGoal = { skillTag: 'x', goal: 'New goal.', action: 'New step.', guidedQuestion: 'What does your reader need first?', questionScope: 'whole' };
+        const criteria = value.rubric.criteria.map((criterion) => ({ criterion: criterion.id, suggestedLevel: value.rubric.levels[2].id, explanation: 'New.', confidence: 0.7 }));
+        const llm = { sendStructuredConversation: jest.fn()
+            .mockResolvedValueOnce({ parsed: { criteria, strengths: [], revisionGoals: [{ ...goodGoal, guidedQuestion: 'Is it clear?' }] } })
+            .mockResolvedValueOnce({ parsed: { criteria, strengths: [], revisionGoals: [goodGoal] } }) };
+        const previousMock = process.env.MOCK_RESPONSE;
+        delete process.env.MOCK_RESPONSE;
+        try {
+            const output = await new LlmSummaryRedraftEngine(llm as never).redraft(value);
+            expect(llm.sendStructuredConversation).toHaveBeenCalledTimes(2);
+            expect(output.revisionGoals[0].guidedQuestion).toBe('What does your reader need first?');
+        } finally {
+            if (previousMock !== undefined) process.env.MOCK_RESPONSE = previousMock;
+        }
+    });
+
+    it('requires scoped questions in the redraft prompt', () => {
+        const prompt = buildSummaryRedraftSystemPrompt(input());
+        expect(prompt).toContain('every revision goal has exactly one guidedQuestion and a questionScope');
+        expect(prompt).not.toContain('only when it genuinely helps the student think');
+    });
+
+    it('mock fallback goal carries a whole-submission question', () => {
+        const value = input();
+        value.previousResult = { ...value.previousResult, revisionGoals: [] };
+        expect(deterministicSummaryRedraft(value).revisionGoals[0]).toMatchObject({ questionScope: 'whole' });
     });
 });

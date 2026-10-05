@@ -71,9 +71,10 @@ import {
     WRITING_FEEDBACK_COURSE_SOURCE_VERSION
 } from './course-material-mentions';
 import { SanitizedJobError } from './job-runner';
-import { ANALYZER_EXAMPLES, WRITER_GLOBAL_EXAMPLE, WRITER_STANDARD_EXAMPLES } from './prompt-examples';
+import { ANALYZER_EXAMPLES, SOCRATIC_QUESTION_RULES, WRITER_GLOBAL_EXAMPLE, WRITER_STANDARD_EXAMPLES } from './prompt-examples';
+import { validateSocraticQuestions, withQuestionGate } from './socratic-questions';
 import { resolveGateDecision } from './feedback-gate';
-import { buildStudentReaderContract, knownTermsFor, lintFeedbackProse, plainLanguageFlag } from './plain-language';
+import { buildStudentReaderContract, knownTermsFor } from './plain-language';
 import { buildRelevancePairs, judgeRelevance, supportedByNeed } from './material-relevance';
 import {
     buildTextDiagnosisSystemPrompt,
@@ -218,17 +219,21 @@ function deterministicFeedback(
             confidence: 0.5
         })),
         strengths: [],
-        revisionGoals: generated.slice(0, 3).map((criterion) => ({
+        revisionGoals: generated.slice(0, 3).map((criterion, index) => ({
             skillTag: criterion.id,
             goal: `Revise the passage or section that most affects ${criterion.label}.`,
             action: `Revise the passage that most affects ${criterion.label}.`,
-            guidedQuestion: `What exact change would make ${criterion.label.toLowerCase()} fit the assignment purpose and reader?`
+            guidedQuestion: index === 0
+                ? 'Who will read your text, and what do they need to know first?'
+                : `Which passage most affects ${criterion.label.toLowerCase()}, and what would make it clearer for your reader?`,
+            questionScope: index === 0 ? 'whole' as const : 'part' as const
         })),
         internalFlags: [...analysis.abstentions],
         globalRevision: {
             diagnosisStatement: 'The draft needs staff review against the approved genre profile.',
             whatToKeep: [],
-            rewriteDirection: 'Revise the draft so each stage in the profile does its purpose.'
+            rewriteDirection: 'Revise the draft so each stage in the profile does its purpose.',
+            guidedQuestion: 'What does the assignment ask your text to do, and what does your text do now?'
         }
     };
 }
@@ -250,9 +255,9 @@ export function buildWritingFeedbackSystemPrompt(assignment: WritingAssignment, 
         '3. Each evidence.rationale must name the specific problem in that passage; do not restate the quote and do not repeat the criterion explanation. Each evidence.revisionGuidance must give a concrete next revision action for that exact passage. It must not copy the criterion explanation, the rationale, or a full revision goal.',
         '4. Where finding_citations lists an excerpt for a finding linked to the passage, set supportingExcerptId to that id. Otherwise leave it null. Never cite for decoration.',
         '5. Each explanation must synthesize that criterion\'s evidence as a whole — the pattern across its passages and why it sits at that level — not repeat any single rationale.',
-        '6. Return one to three revision goals, each with a concrete action. Add a guidedQuestion only when it genuinely helps the student think.',
+        '6. Return one to three revision goals, each with a concrete action, a guidedQuestion and a questionScope (see Questions).',
         '7. Return zero to two strengths that serve the target genre. Never praise a contradictingFeature from the diagnosis.',
-        '8. Also fill globalRevision (used if staff switch this submission to rewrite feedback): diagnosisStatement, whatToKeep, rewriteDirection.'
+        '8. Also fill globalRevision (used if staff switch this submission to rewrite feedback): diagnosisStatement, whatToKeep, rewriteDirection, guidedQuestion.'
     ];
     const globalMethod = [
         'This text needs a rewrite: it does not do the target genre\'s work, or leaves out a required stage. The student will see only the rewrite feedback, so it carries the whole message.',
@@ -260,14 +265,16 @@ export function buildWritingFeedbackSystemPrompt(assignment: WritingAssignment, 
         '1. globalRevision.diagnosisStatement: open with what is worth keeping, then say plainly what the text does compared with what the genre asks. Quote at most two contradicting features as examples.',
         '2. globalRevision.whatToKeep: one to three choices from transferableStrengths.',
         '3. globalRevision.rewriteDirection: the stages the rewrite needs, in order, as numbered steps one per line, each saying what to write in plain words. Cite supporting genre_excerpts ids in supportingExcerptIds where they teach the stage.',
-        '4. Return exactly one revision goal: rewrite as the target genre, with an action naming the first stage to write.',
-        '5. Strengths come only from transferableStrengths.',
-        '6. Still assess every criterion with evidence as usual; staff review it, and the student does not see it unless staff release it.'
+        '4. globalRevision.guidedQuestion: one question about the whole submission that helps the student see what the genre asks.',
+        '5. Return exactly one revision goal: rewrite as the target genre, with an action naming the first stage to write and a whole-submission guidedQuestion (questionScope "whole").',
+        '6. Strengths come only from transferableStrengths.',
+        '7. Still assess every criterion with evidence as usual; staff review it, and the student does not see it unless staff release it.'
     ];
     return [
         'You are the feedback-writer step. Staff review your draft and then release it to the student, so the student is your reader.',
         'Pedagogy: feedback builds the student\'s long-term capacity to write this kind of text, not a perfect copy of this one. Say clearly what works and what does not, and give one concrete next move per issue. Be candid and respectful: direct about shortcomings, no praise sandwich, no euphemisms such as "you may want to consider".',
         buildStudentReaderContract(knownTermsFor(rubric.sflContext)),
+        SOCRATIC_QUESTION_RULES,
         ...(mode === 'global_revision' ? globalMethod : standardMethod),
         'Knowledge: the diagnosis, the validated SFL analysis, finding_excerpts (course text judged to support specific findings), genre_excerpts, and the approved rubric below.',
         `<worked_examples>\n${WRITER_STANDARD_EXAMPLES}\n</worked_examples>`,
@@ -504,24 +511,27 @@ export class RubricWritingFeedbackEngine implements WritingFeedbackEngine {
             if (ids) allowedByFinding.set(finding.id, ids);
         });
 
-        // Step 7: the writer produces standard and global content in one call.
+        // Step 7: the writer produces standard and global content in one call; the question
+        // gate (D-153) gives it one corrective retry when a goal lacks a valid question.
+        const writerUserContent = mock ? '' : [
+            `<text_diagnosis>${JSON.stringify(diagnosis)}</text_diagnosis>`,
+            `<validated_sfl_analysis>${JSON.stringify(analysis)}</validated_sfl_analysis>`,
+            `<finding_excerpts>${JSON.stringify(findingRetrieval.excerpts
+                .filter((excerpt) => [...allowedByFinding.values()].some((ids) => ids.has(excerpt.id)))
+                .map(({ id, text }) => ({ id, text, citable: true })))}</finding_excerpts>`,
+            `<finding_citations>${JSON.stringify(Object.fromEntries([...allowedByFinding].map(([findingId, ids]) => [findingId, [...ids]])))}</finding_citations>`,
+            `<genre_excerpts>${JSON.stringify([...genreExcerpts, ...contrastExcerpts].map(({ id, text }) => ({ id, text })))}</genre_excerpts>`
+        ].join('\n');
         const writerResult = mock
             ? deterministicFeedback(input.assignment, input.verifiedText, analysis, allowedByFinding, findingRetrieval.excerpts)
-            : stripNulls((await this.llm!.sendStructuredConversation([
-                { role: 'system', content: buildWritingFeedbackSystemPrompt(input.assignment, gateDecision) },
-                {
-                    role: 'user',
-                    content: [
-                        `<text_diagnosis>${JSON.stringify(diagnosis)}</text_diagnosis>`,
-                        `<validated_sfl_analysis>${JSON.stringify(analysis)}</validated_sfl_analysis>`,
-                        `<finding_excerpts>${JSON.stringify(findingRetrieval.excerpts
-                            .filter((excerpt) => [...allowedByFinding.values()].some((ids) => ids.has(excerpt.id)))
-                            .map(({ id, text }) => ({ id, text, citable: true })))}</finding_excerpts>`,
-                        `<finding_citations>${JSON.stringify(Object.fromEntries([...allowedByFinding].map(([findingId, ids]) => [findingId, [...ids]])))}</finding_citations>`,
-                        `<genre_excerpts>${JSON.stringify([...genreExcerpts, ...contrastExcerpts].map(({ id, text }) => ({ id, text })))}</genre_excerpts>`
-                    ].join('\n')
-                }
-            ], buildFeedbackSchema(input.assignment.rubric), { structuredOutputName: 'writing_feedback_v2', ...input.llmCallOptions })).parsed) as WritingFeedbackResult;
+            : await withQuestionGate(
+                async (correction) => stripNulls((await this.llm!.sendStructuredConversation([
+                    { role: 'system', content: buildWritingFeedbackSystemPrompt(input.assignment, gateDecision) },
+                    { role: 'user', content: writerUserContent },
+                    ...(correction ? [{ role: 'user' as const, content: correction }] : [])
+                ], buildFeedbackSchema(input.assignment.rubric), { structuredOutputName: 'writing_feedback_v2', ...input.llmCallOptions })).parsed) as WritingFeedbackResult,
+                (parsed) => validateSocraticQuestions(parsed.revisionGoals ?? [], parsed.globalRevision ?? null)
+            );
 
         if (!writerResult.revisionGoals?.length) throw new SanitizedJobError(NO_REVISION_GOALS_MESSAGE);
 
@@ -535,9 +545,6 @@ export class RubricWritingFeedbackEngine implements WritingFeedbackEngine {
         if (dropped) result.internalFlags.push(`${dropped} course-material citation(s) were removed for lack of supporting material.`);
         applyGlobalExcerptCitations(result, new Set([...genreExcerpts, ...contrastExcerpts].map((excerpt) => excerpt.id)), excerptsById);
         result.internalFlags.push(...guardStrengths(result, diagnosis, gateDecision));
-        // Staff-only signal that the draft drifted into analysis terms or long sentences.
-        const plainFlag = plainLanguageFlag(lintFeedbackProse(result, knownTermsFor(input.assignment.rubric.sflContext)));
-        if (plainFlag) result.internalFlags.push(plainFlag);
         result.gateDecision = gateDecision;
         result.schemaVersion = WRITING_FEEDBACK_SCHEMA_V2;
 

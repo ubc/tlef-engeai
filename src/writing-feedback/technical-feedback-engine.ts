@@ -24,12 +24,12 @@ import {
 import { selectRubric } from './rubric-lens';
 import { modelAssessedCriteria } from './criterion-assessment';
 import { stripNulls } from './strip-nulls';
+import { SOCRATIC_QUESTION_RULES } from './prompt-examples';
+import { validateSocraticQuestions, withQuestionGate } from './socratic-questions';
 import {
     buildStudentReaderContract,
     knownTermsFor,
-    LAB_REPORT_FAMILIAR_TERMS,
-    lintFeedbackProse,
-    plainLanguageFlag
+    LAB_REPORT_FAMILIAR_TERMS
 } from './plain-language';
 import type {
     WritingAssignment,
@@ -39,7 +39,7 @@ import type {
 } from './contracts';
 
 /** Immutable provenance stamped on every technical run. */
-export const TECHNICAL_PROMPT_VERSION = 'lab-report-technical-v1.4.0';
+export const TECHNICAL_PROMPT_VERSION = 'lab-report-technical-v1.5.0';
 
 /**
  * The prime directive, stated before the rubric.
@@ -127,11 +127,14 @@ function deterministicTechnicalFeedback(rubric: WritingRubricDefinition, text: s
             confidence: 0.5
         })),
         strengths: ['The submission contains verified text that can be reviewed against the approved technical rubric.'],
-        revisionGoals: generated.slice(0, 3).map((criterion) => ({
+        revisionGoals: generated.slice(0, 3).map((criterion, index) => ({
             skillTag: criterion.id,
             goal: `Review the next revision for ${criterion.label}.`,
             action: `Revise the part of the report that most affects ${criterion.label.toLowerCase()}.`,
-            guidedQuestion: `What change would most improve ${criterion.label.toLowerCase()} in this report?`
+            guidedQuestion: index === 0
+                ? 'What should a reader understand about your results before anything else?'
+                : `Which part of your report most affects ${criterion.label.toLowerCase()}, and what would a reader need there?`,
+            questionScope: index === 0 ? 'whole' as const : 'part' as const
         })),
         internalFlags: ['Developer mode produced this draft without a model call.']
     };
@@ -167,7 +170,8 @@ export function buildTechnicalFeedbackSystemPrompt(assignment: WritingAssignment
         'Each evidence.revisionGuidance must give a concrete next revision action for that exact passage. It must not copy the criterion explanation, the rationale, or a full revision goal.',
         'Never make the same point twice. Two evidence items anywhere in the result, including under different criteria, must not carry the same advice in different words; if a point is already made, choose different text or return fewer items.',
         'Each explanation must synthesize that criterion\'s evidence as a whole — the pattern across its passages and why it sits at that level — not repeat any single rationale.',
-        'Return one to three revision goals. Each has a concrete action and, only when it genuinely helps the student think, a guidedQuestion.',
+        'Return one to three revision goals. Each has a concrete action, a guidedQuestion and a questionScope.',
+        SOCRATIC_QUESTION_RULES,
         `<approved_technical_rubric version="${rubric.version}">${JSON.stringify({
             assignmentTitle: assignment.title,
             title: rubric.title,
@@ -238,24 +242,19 @@ export class TechnicalWritingFeedbackEngine implements WritingFeedbackEngine {
                 })}</assignment_context>\n<verified_student_text>\n${input.verifiedText}\n</verified_student_text>`
             }
         ];
-        const response = await this.llm.sendStructuredConversation(
-            messages,
-            buildFeedbackSchema(rubric, { requireGlobalRevision: false }),
-            {
-                structuredOutputName: 'lab_report_technical_feedback',
-                ...input.llmCallOptions
-            }
-        );
-
         // stripNulls omits any structured-output null the API required on an optional
         // field, matching the plain absent-means-unset contract WritingFeedbackResult
-        // uses (see feedback-engine.ts for the fuller explanation).
-        const parsedResult = stripNulls(response.parsed) as WritingFeedbackResult;
+        // uses (see feedback-engine.ts for the fuller explanation). The question gate
+        // (D-153) allows one corrective retry.
+        const parsedResult = await withQuestionGate(
+            async (correction) => stripNulls((await this.llm!.sendStructuredConversation(
+                [...messages, ...(correction ? [{ role: 'user' as const, content: correction }] : [])],
+                buildFeedbackSchema(rubric, { requireGlobalRevision: false }),
+                { structuredOutputName: 'lab_report_technical_feedback', ...input.llmCallOptions }
+            )).parsed) as WritingFeedbackResult,
+            (parsed) => validateSocraticQuestions(parsed.revisionGoals ?? [])
+        );
         // Repair cosmetic quote drift only when it maps back to one exact source slice.
-        const result = reconcileExactEvidence(parsedResult, input.verifiedText);
-        // Staff-only signal that the draft drifted into jargon or long sentences.
-        const plainFlag = plainLanguageFlag(lintFeedbackProse(result, [...technicalKnownTerms(input.assignment), ...LAB_REPORT_FAMILIAR_TERMS]));
-        if (plainFlag) result.internalFlags.push(plainFlag);
-        return result;
+        return reconcileExactEvidence(parsedResult, input.verifiedText);
     }
 }

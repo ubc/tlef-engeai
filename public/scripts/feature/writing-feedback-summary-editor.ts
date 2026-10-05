@@ -62,7 +62,7 @@ interface LensControls {
 export class SummaryEditor {
     private readonly lenses = new Map<WritingFeedbackLens, LensControls>();
     /** Staff edits of the rewrite block, writing lens only. */
-    private readonly globalRevisions = new Map<WritingFeedbackLens, { diagnosisStatement: string; whatToKeep: string[]; rewriteDirection: string }>();
+    private readonly globalRevisions = new Map<WritingFeedbackLens, { diagnosisStatement: string; whatToKeep: string[]; rewriteDirection: string; guidedQuestion?: string }>();
 
     /**
      * @param markDirty - Called on every edit so leaving the page asks first
@@ -233,7 +233,7 @@ export class SummaryEditor {
      * @param lens - Lens being edited; only the writing lens has a rewrite block
      * @param draft - Current editor contents
      */
-    setGlobalRevision(lens: WritingFeedbackLens, draft: { diagnosisStatement: string; whatToKeep: string[]; rewriteDirection: string }): void {
+    setGlobalRevision(lens: WritingFeedbackLens, draft: { diagnosisStatement: string; whatToKeep: string[]; rewriteDirection: string; guidedQuestion?: string }): void {
         this.globalRevisions.set(lens, draft);
         this.markDirty();
     }
@@ -246,7 +246,7 @@ export class SummaryEditor {
      * @param lens - Lens being shown
      * @param draft - Block currently displayed
      */
-    seedGlobalRevision(lens: WritingFeedbackLens, draft: { diagnosisStatement: string; whatToKeep: string[]; rewriteDirection: string }): void {
+    seedGlobalRevision(lens: WritingFeedbackLens, draft: { diagnosisStatement: string; whatToKeep: string[]; rewriteDirection: string; guidedQuestion?: string }): void {
         this.globalRevisions.set(lens, draft);
     }
 
@@ -259,7 +259,9 @@ export class SummaryEditor {
             ? {
                 diagnosisStatement: global.diagnosisStatement.trim(),
                 whatToKeep: global.whatToKeep.map((item) => item.trim()).filter(Boolean).slice(0, 3),
-                rewriteDirection: global.rewriteDirection.trim()
+                rewriteDirection: global.rewriteDirection.trim(),
+                // Sent whenever the editor holds it, so clearing the field reaches the server.
+                ...(global.guidedQuestion !== undefined ? { guidedQuestion: global.guidedQuestion.trim() } : {})
             }
             : undefined;
         return {

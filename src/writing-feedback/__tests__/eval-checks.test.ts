@@ -97,3 +97,30 @@ describe('plainLanguage check', () => {
         expect(runEvalChecks(output, fixture, ['stance']).find((item) => item.name === 'plainLanguage')?.status).toBe('pass');
     });
 });
+
+describe('socraticQuestions check (D-153)', () => {
+    const output = (goals: NonNullable<EvalRunOutput['result']['revisionGoals']>, gateDecision = 'standard', globalRevision?: EvalRunOutput['result']['globalRevision']): EvalRunOutput => ({
+        verifiedText: text,
+        result: { gateDecision, criteria: [], strengths: [], revisionGoals: goals, ...(globalRevision ? { globalRevision } : {}) }
+    });
+
+    it('passes with a whole and a part question', () => {
+        expect(byName(output([
+            { goal: 'g', guidedQuestion: 'Who reads your report, and what do they need first?', questionScope: 'whole' },
+            { goal: 'g', guidedQuestion: 'Which word in your first sentence names the class?', questionScope: 'part' }
+        ])).socraticQuestions.status).toBe('pass');
+    });
+
+    it('fails when a goal has no question or none is about the whole text', () => {
+        expect(byName(output([{ goal: 'g', questionScope: 'whole' }])).socraticQuestions.status).toBe('fail');
+        expect(byName(output([{ goal: 'g', guidedQuestion: 'Which word names the class?', questionScope: 'part' }])).socraticQuestions.status).toBe('fail');
+    });
+
+    it('fails a rewrite run whose rewrite block has no question', () => {
+        expect(byName(output(
+            [{ goal: 'g', guidedQuestion: 'What does your reader need first?', questionScope: 'whole' }],
+            'global_revision',
+            { diagnosisStatement: 'd', rewriteDirection: 'r' }
+        )).socraticQuestions.status).toBe('fail');
+    });
+});

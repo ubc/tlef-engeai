@@ -196,7 +196,7 @@ export function lintFeedbackProse(result: LintableFeedback, knownTerms: string[]
         ...result.revisionGoals.flatMap((goal) => [goal.goal, goal.action, goal.guidedQuestion]
             .filter((text): text is string => Boolean(text))
             .map((text) => [text, undefined] as [string, undefined])),
-        ...[result.globalRevision?.diagnosisStatement, result.globalRevision?.rewriteDirection]
+        ...[result.globalRevision?.diagnosisStatement, result.globalRevision?.rewriteDirection, result.globalRevision?.guidedQuestion]
             .filter((text): text is string => Boolean(text))
             .map((text) => [text, undefined] as [string, undefined])
     ];
@@ -211,18 +211,6 @@ export function lintFeedbackProse(result: LintableFeedback, knownTerms: string[]
         words: issues.reduce((sum, issue) => sum + issue.words, 0),
         overLongComments: issues.filter((issue) => issue.tooManySentences).length
     };
-}
-
-/**
- * plainLanguageFlag - staff-only internal flag line, or nothing when clean.
- *
- * @param report - Aggregated lint
- * @returns A flag naming terms and counts, never prose
- */
-export function plainLanguageFlag(report: PlainLanguageReport): string | undefined {
-    if (!report.bannedHits && !report.longSentences && !report.overLongComments) return undefined;
-    const terms = report.bannedTerms.length ? ` (${report.bannedTerms.join(', ')})` : '';
-    return `Plain language: ${report.bannedHits} analysis term(s) students may not know${terms}; ${report.longSentences} sentence(s) over ${MAX_SENTENCE_WORDS} words; ${report.overLongComments} comment(s) over length.`;
 }
 
 /** One string's lint result. */
@@ -249,5 +237,5 @@ export interface LintableFeedback {
     criteria: Array<{ explanation?: string; evidence: Array<{ rationale?: string; revisionGuidance?: string }> }>;
     strengths: string[];
     revisionGoals: Array<{ goal: string; action?: string; guidedQuestion?: string }>;
-    globalRevision?: { diagnosisStatement?: string; rewriteDirection?: string };
+    globalRevision?: { diagnosisStatement?: string; rewriteDirection?: string; guidedQuestion?: string };
 }

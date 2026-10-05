@@ -71,7 +71,7 @@ import { describeApprovalBlocker, type GradeProgress } from './writing-feedback-
 import { changedLenses, decideNextAction, needsModeRedraft, stepBarState, type ReviewStep } from './writing-feedback-review-steps.js';
 import { SummaryEditor, seedSummaryText, type SummaryBaseline } from './writing-feedback-summary-editor.js';
 import { fingerprintAnnotations } from './writing-feedback-annotation-fingerprint.js';
-import { diagnosisBannerView, plainLanguageWarning, resolvedMode } from './writing-feedback-diagnosis-model.js';
+import { diagnosisBannerView, resolvedMode } from './writing-feedback-diagnosis-model.js';
 import { renderDiagnosisBanner, renderGlobalRevisionEditor } from './writing-feedback-diagnosis.js';
 
 function latestReview(submission: Submission): ReviewRevision | undefined {
@@ -854,15 +854,6 @@ export function renderFeedbackPanel(
     annotationsBody.className = 'wf-panel-body';
     annotationsBody.id = 'wf-step-panel-annotations';
     const listHosts = new Map<WritingFeedbackLens, HTMLElement>(lenses.map((lens) => [lens, document.createElement('div')]));
-    // Staff-only: the server flagged comments that drifted into jargon or long sentences.
-    const plainHosts = new Map<WritingFeedbackLens, HTMLElement>(lenses.map((lens) => {
-        const host = document.createElement('p');
-        host.className = 'wf-callout wf-callout--warning';
-        host.setAttribute('role', 'note');
-        host.textContent = plainLanguageWarning(lensRuns[lens]) ?? '';
-        host.hidden = !host.textContent;
-        return [lens, host];
-    }));
 
     // Summary step: grading progress, lens tabs, then one panel per lens.
     const summaryBody = document.createElement('div');
@@ -923,7 +914,6 @@ export function renderFeedbackPanel(
     const selectLens = (lens: WritingFeedbackLens) => {
         activeLens = lens;
         listHosts.forEach((host, key) => { host.hidden = key !== lens; });
-        plainHosts.forEach((host, key) => { host.hidden = key !== lens || !host.textContent; });
         lensPanels.forEach((panelElement, key) => { panelElement.hidden = key !== lens; });
         tabLists.forEach((list) => list.querySelectorAll<HTMLButtonElement>('.wf-tab-btn').forEach((button) => {
             const selected = button.dataset.lens === lens;
@@ -957,7 +947,6 @@ export function renderFeedbackPanel(
 
     const annotationTabs = lensTabs();
     if (annotationTabs) annotationsBody.append(annotationTabs);
-    plainHosts.forEach((host) => annotationsBody.append(host));
     listHosts.forEach((host) => annotationsBody.append(host));
 
     const summaryTabs = lensTabs();

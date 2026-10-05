@@ -19,6 +19,9 @@ const GENRE_NAMES: Record<string, string> = {
 
 const STATUS_LABELS: Record<string, string> = { present: 'Present', weak: 'Weak', missing: 'Missing' };
 
+/** Chip tone per status, matching the annotation chips (status is also spelled out). */
+const STATUS_TONES: Record<string, 'green' | 'amber' | 'red' | 'neutral'> = { Present: 'green', Weak: 'amber', Missing: 'red' };
+
 /**
  * resolvedMode - the effective mode on the review page.
  *
@@ -42,7 +45,7 @@ export function diagnosisBannerView(
     run: FeedbackRun,
     stages: Array<{ id: string; label: string; required?: boolean }>,
     mode: FeedbackMode
-): { headline: string; stageChips: Array<{ label: string; status: string; required: boolean }>; warnings: string[]; rationale: string; toggleLabel: string } | null {
+): { headline: string; stageChips: Array<{ label: string; status: string; required: boolean; tone: 'green' | 'amber' | 'red' | 'neutral' }>; warnings: string[]; rationale: string; toggleLabel: string } | null {
     const diagnosis = run.textDiagnosis;
     if (!diagnosis) return null;
     const genre = GENRE_NAMES[diagnosis.realizedGenre] ?? diagnosis.realizedGenre;
@@ -57,33 +60,14 @@ export function diagnosisBannerView(
     if (run.flags?.includes('relevance_unavailable')) warnings.push('Course materials could not be checked for this run, so no readings were cited.');
     return {
         headline,
-        stageChips: stages.map((stage) => ({
-            label: stage.label,
-            status: STATUS_LABELS[byId.get(stage.id) ?? ''] ?? 'Not checked',
-            required: stage.required === true
-        })),
+        stageChips: stages.map((stage) => {
+            const status = STATUS_LABELS[byId.get(stage.id) ?? ''] ?? 'Not checked';
+            return { label: stage.label, status, required: stage.required === true, tone: STATUS_TONES[status] ?? 'neutral' };
+        }),
         warnings,
         rationale: diagnosis.rationale,
         toggleLabel: mode === 'global_revision' ? 'Switch to standard feedback' : 'Switch to rewrite feedback only'
     };
-}
-
-const PLAIN_FLAG_PREFIX = 'Plain language: ';
-
-/**
- * plainLanguageWarning - staff copy for a run whose comments drifted into jargon.
- *
- * Works for either lens and for runs without a diagnosis. The server's flag names terms
- * and counts only, never prose, so it is safe to show as is.
- *
- * @param run - Latest run for one lens, if any
- * @returns Warning text, or null when the run carries no plain-language flag
- */
-export function plainLanguageWarning(run: FeedbackRun | null | undefined): string | null {
-    const flag = run?.result.internalFlags?.find((item) => item.startsWith(PLAIN_FLAG_PREFIX));
-    return flag
-        ? `Some comments may be hard for students to read: ${flag.slice(PLAIN_FLAG_PREFIX.length).replace(/\.$/, '')}. Check them before release.`
-        : null;
 }
 
 /**

@@ -22,7 +22,8 @@ import type {
     RetrievalNeedKind,
     SflAnalysis,
     SflFinding,
-    WritingAssignment
+    WritingAssignment,
+    WritingFoundedGenreId
 } from './contracts';
 import { COURSE_MATERIAL_RESOLVER_VERSION, SFL_RULES_BY_ID } from './sfl-foundation';
 
@@ -130,20 +131,95 @@ export const WRITING_FEEDBACK_COURSE_SOURCE_VERSION = COURSE_MATERIAL_RESOLVER_V
 export const GENRE_EXCERPT_BUDGET_CHARS = 4000;
 /** Finding-pass budget: course text the writer may read. */
 export const FINDING_EXCERPT_BUDGET_CHARS = 4000;
-/** Genre pass: 1 genre + up to 5 stages + up to 3 requirements + 5 language functions. */
+/** Genre pass: 1 genre + up to 5 stages + up to 3 requirements + up to 5 language functions. */
 export const MAX_GENRE_QUERIES = 14;
 
+/** A language skill course materials might teach, offered only for the genres that use it. */
+export interface LanguageFunctionNeed {
+    key: string;
+    label: string; // staff-facing and readable; no SFL theory names
+    query: string; // retrieval wording; may keep the technical words course notes use
+    /** Dropped when an approved stage label matches: the stage row already covers it. */
+    overlapsStage?: RegExp;
+}
+
+const SENTENCE_OPENINGS: LanguageFunctionNeed = { key: 'theme', label: 'Sentence openings that guide the reader', query: 'theme rheme point of departure thematic progression information flow' };
+const LINKING: LanguageFunctionNeed = { key: 'cohesion', label: 'Linking ideas across sentences', query: 'cohesion linking words reference connecting sentences' };
+const OBJECTIVE_STANCE: LanguageFunctionNeed = { key: 'stance', label: 'Objective stance', query: 'objective impersonal academic tone avoiding personal opinion' };
+
 /**
- * Curated query terms per language function. These double as coverage rows, which is why
- * they are fixed rather than derived from the rubric.
+ * Language skills per founded genre (D-154). These double as coverage rows, so each one is
+ * a skill that genre actually asks for; custom genres get the general `default` list.
  */
-export const LANGUAGE_FUNCTION_QUERIES: Record<string, { label: string; query: string }> = {
-    definition: { label: 'Formal definition', query: 'formal definition term class distinguishing features' },
-    classification: { label: 'Classification into types', query: 'classification types subtypes classify an entity' },
-    composition: { label: 'Composition into parts', query: 'composition whole parts components of an entity' },
-    theme: { label: 'Theme and thematic progression', query: 'theme rheme point of departure thematic progression information flow' },
-    noun_groups: { label: 'Noun groups', query: 'noun group expanded noun phrase modifier qualifier' }
+export const GENRE_LANGUAGE_FUNCTIONS: Record<WritingFoundedGenreId | 'default', LanguageFunctionNeed[]> = {
+    descriptive_report: [
+        { key: 'definition', label: 'Defining the entity', query: 'formal definition term class distinguishing features', overlapsStage: /general statement|definition|identif/i },
+        { key: 'classification', label: 'Classifying or naming parts', query: 'classification types subtypes composition parts of an entity', overlapsStage: /classif|composition|parts/i },
+        SENTENCE_OPENINGS,
+        { key: 'noun_groups', label: 'Building precise noun phrases', query: 'noun group expanded noun phrase modifier qualifier' },
+        OBJECTIVE_STANCE
+    ],
+    data_commentary: [
+        { key: 'trends', label: 'Describing trends and comparisons', query: 'describing trends comparisons figures tables data' },
+        { key: 'data_claims', label: 'Linking data to claims', query: 'interpreting data linking evidence to claims location statement' },
+        { key: 'hedging', label: 'Matching claims to the evidence', query: 'hedging modality qualifying claims tentative language' },
+        SENTENCE_OPENINGS
+    ],
+    problem_solution: [
+        { key: 'problem', label: 'Stating a problem and its cause', query: 'stating a problem cause and effect situation problem', overlapsStage: /problem/i },
+        { key: 'solution', label: 'Proposing and justifying a solution', query: 'proposing a solution justification response', overlapsStage: /solution|response/i },
+        { key: 'evaluation', label: 'Evaluating a solution', query: 'evaluating a solution advantages limitations', overlapsStage: /evaluat/i },
+        LINKING
+    ],
+    default: [SENTENCE_OPENINGS, LINKING, OBJECTIVE_STANCE]
 };
+
+/** Requirements about length, format, timing or conditions: no reading teaches them. */
+const LOGISTICS: RegExp[] = [
+    /\b\d+\s*[–-]\s*\d+\s*(words?|pages?)\b/i,
+    /\b\d+\s*(words?|pages?)\b/i,
+    // Phrases, not bare words: "due to", "length of" and "format:" also appear in skill requirements.
+    /\b(word count|word limit|page limit|font size|double[- ]spaced|margins?|file type|deadline)\b/i,
+    /\.(docx|pdf)\b/i,
+    /^\s*length\s*:/i,
+    /\bdue\b(?!\s+to\b)/i,
+    /\b(submit|upload)\b/i,
+    /\bno (outside )?sources? (are )?required\b/i,
+    /\b(individually|in groups?|in class|typed afterwards)\b/i
+];
+
+const STOP_WORDS = new Set(['a', 'an', 'the', 'and', 'or', 'of', 'to', 'into', 'its', 'it', 'that', 'this', 'your', 'you', 'for', 'in', 'on', 'with', 'as', 'by', 'their', 'main', 'write']);
+
+function contentWords(text: string): string[] {
+    return text.toLowerCase().replace(/[^a-z0-9\s-]/g, ' ').split(/\s+/).filter((word) => word.length > 2 && !STOP_WORDS.has(word));
+}
+
+/**
+ * isTeachableRequirement - whether course materials could teach this requirement.
+ *
+ * Logistics, a list of the stages, and a restatement of the task are not topics a
+ * reading teaches, so they would only ever show as uncovered.
+ *
+ * @param requirement - One approved task requirement
+ * @param stageLabels - Approved stage labels
+ * @param task - The profile's task statement
+ * @returns False for logistics, stage repeats and task restatements
+ */
+export function isTeachableRequirement(requirement: string, stageLabels: string[], task: string): boolean {
+    if (LOGISTICS.some((pattern) => pattern.test(requirement))) return false;
+    const lower = requirement.toLowerCase();
+    if (stageLabels.filter((label) => lower.includes(label.toLowerCase())).length >= 2) return false;
+    const words = contentWords(requirement);
+    const taskWords = new Set(contentWords(task));
+    if (words.length && words.filter((word) => taskWords.has(word)).length / words.length >= 0.6) return false;
+    return true;
+}
+
+/** First clause of a requirement, at most 60 characters, for a coverage label. */
+function requirementLabel(requirement: string): string {
+    const clause = requirement.split(/[.;:]/)[0].trim();
+    return clause.length > 60 ? `${clause.slice(0, 59).trimEnd()}…` : clause;
+}
 
 /**
  * Curated vocabulary per rule, matched to how course notes word the idea. A rule absent
@@ -223,6 +299,11 @@ export interface NeedRetrieval {
 export function buildGenreNeeds(assignment: WritingAssignment): RetrievalNeed[] {
     const profile = assignment.rubric.sflContext;
     if (!profile) return [];
+    const stageLabels = profile.stages.map((stage) => stage.label);
+    const genreKey = (profile.genreId ?? '') in GENRE_LANGUAGE_FUNCTIONS && profile.genreId !== 'default'
+        ? profile.genreId as WritingFoundedGenreId
+        : 'default';
+    const functions = GENRE_LANGUAGE_FUNCTIONS[genreKey];
     const needs: RetrievalNeed[] = [
         { id: 'genre', kind: 'genre', label: profile.genreLabel, query: `${profile.genreLabel}: ${profile.purpose}`.slice(0, 280) },
         ...profile.stages.slice(0, 5).map((stage) => ({
@@ -232,18 +313,18 @@ export function buildGenreNeeds(assignment: WritingAssignment): RetrievalNeed[] 
             query: `${profile.genreLabel} ${stage.label}: ${stage.purpose}`.slice(0, 280),
             stageId: stage.id
         })),
-        ...profile.taskRequirements.slice(0, 3).map((requirement, index) => ({
-            id: `task:${index}`,
-            kind: 'task_requirement' as const,
-            label: requirement,
-            query: requirement.slice(0, 280)
-        })),
-        ...Object.entries(LANGUAGE_FUNCTION_QUERIES).map(([key, entry]) => ({
-            id: `function:${key}`,
-            kind: 'language_function' as const,
-            label: entry.label,
-            query: entry.query
-        }))
+        ...profile.taskRequirements
+            .filter((requirement) => isTeachableRequirement(requirement, stageLabels, profile.task ?? ''))
+            .slice(0, 3)
+            .map((requirement, index) => ({
+                id: `task:${index}`,
+                kind: 'task_requirement' as const,
+                label: requirementLabel(requirement),
+                query: requirement.slice(0, 280)
+            })),
+        ...functions
+            .filter((entry) => !entry.overlapsStage || !stageLabels.some((label) => entry.overlapsStage!.test(label)))
+            .map((entry) => ({ id: `function:${entry.key}`, kind: 'language_function' as const, label: entry.label, query: entry.query }))
     ];
     return needs.slice(0, MAX_GENRE_QUERIES);
 }

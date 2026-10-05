@@ -4,7 +4,7 @@
  */
 
 import type { GroundingExcerpt, RetrievalNeed } from '../course-material-mentions';
-import { buildCoverageRows, courseMaterialFingerprint, isCoverageCurrent } from '../material-coverage';
+import { buildCoverageRows, COVERAGE_NEEDS_VERSION, courseMaterialFingerprint, isCoverageCurrent } from '../material-coverage';
 
 const needs: RetrievalNeed[] = [
     { id: 'stage:classify', kind: 'stage', label: 'Classification', query: 'q', stageId: 'classify' },
@@ -52,10 +52,18 @@ describe('courseMaterialFingerprint', () => {
     });
 
     it('is current only for the same rubric version and fingerprint', () => {
-        const coverage = { rubricVersion: 2, materialFingerprint: 'abc', computedAt: new Date(), rows: [] };
+        const coverage = { rubricVersion: 2, materialFingerprint: 'abc', needsVersion: COVERAGE_NEEDS_VERSION, computedAt: new Date(), rows: [] };
         expect(isCoverageCurrent(coverage, 2, 'abc')).toBe(true);
         expect(isCoverageCurrent(coverage, 3, 'abc')).toBe(false);
         expect(isCoverageCurrent(coverage, 2, 'xyz')).toBe(false);
         expect(isCoverageCurrent(undefined, 2, 'abc')).toBe(false);
+    });
+});
+
+describe('coverage needs version (D-154)', () => {
+    it('treats coverage cached before the needs version as out of date', () => {
+        const old = { rubricVersion: 2, materialFingerprint: 'f', computedAt: new Date(), rows: [] };
+        expect(isCoverageCurrent(old, 2, 'f')).toBe(false);
+        expect(isCoverageCurrent({ ...old, needsVersion: COVERAGE_NEEDS_VERSION }, 2, 'f')).toBe(true);
     });
 });

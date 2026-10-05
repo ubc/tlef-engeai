@@ -12,6 +12,9 @@
  */
 
 import type { LLMOptions } from 'ubc-genai-toolkit-llm';
+import type { QuestionScope } from './socratic-questions';
+
+export type { QuestionScope } from './socratic-questions';
 
 /** Template identifier stored with new assignments and feedback runs for traceability. */
 export const DEFAULT_WRITING_PROFILE_VERSION = 'writing-feedback-v2';
@@ -147,6 +150,8 @@ export interface GlobalRevision {
     diagnosisStatement: string;
     whatToKeep: string[];
     rewriteDirection: string;
+    /** Whole-submission Socratic question. Required on new runs (D-153). */
+    guidedQuestion?: string;
     supportingExcerptIds?: string[];
 }
 
@@ -166,6 +171,7 @@ export interface MaterialCoverageRow {
 export interface MaterialCoverage {
     rubricVersion: number;
     materialFingerprint: string;
+    needsVersion?: string; // absent on coverage cached before D-154, which then reads as stale
     computedAt: Date;
     rows: MaterialCoverageRow[];
 }
@@ -567,8 +573,10 @@ export interface RevisionGoal {
     goal: string; // concise revision outcome
     /** Concrete step the student takes. Required on new runs; absent on runs stored before it existed. */
     action?: string;
-    /** Optional prompt to think with; runs stored before `action` always carry it. */
+    /** Socratic question. Required on new runs (D-153); absent on some runs stored before it. */
     guidedQuestion?: string;
+    /** Staff-only: whole-submission or part question. Required on new runs; never printed. */
+    questionScope?: QuestionScope;
 }
 
 /** Structured model result before staff revision, approval, and release. */
@@ -827,7 +835,7 @@ export interface StaffSummaryEdit {
     criterionExplanations: Array<{ criterion: WritingCriterionId; explanation: string }>;
     revisionGoalsText?: string; // technical lens only; the writing lens keeps `studentFeedback`
     /** Staff edits of the global rewrite block (writing lens only). */
-    globalRevision?: Pick<GlobalRevision, 'diagnosisStatement' | 'whatToKeep' | 'rewriteDirection'>;
+    globalRevision?: Pick<GlobalRevision, 'diagnosisStatement' | 'whatToKeep' | 'rewriteDirection' | 'guidedQuestion'>;
 }
 
 /** Which run a lens's summary currently comes from, and the annotations it reflects. */

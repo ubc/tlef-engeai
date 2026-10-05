@@ -267,9 +267,14 @@ function renderGlobalRevisionSections(
     }
     sectionHeading(doc, 'How to rewrite');
     body(doc).text(globalRevision.rewriteDirection.trim(), { lineGap: 3 });
+    const blockQuestion = globalRevision.guidedQuestion?.trim();
+    if (blockQuestion) body(doc).text(`Ask yourself: ${blockQuestion}`, { lineGap: 3 });
     // Only a rewrite-gated run's writer produced a rewrite goal; a standard run's first goal
-    // is about local revision, which rewrite feedback deliberately withholds.
-    if (feedback.gateDecision === 'global_revision') renderRevisionGoals(doc, feedback.revisionGoals.slice(0, 1));
+    // is about local revision, which rewrite feedback deliberately withholds. The goal's own
+    // question is left off when the block already asks one, so the student reads it once.
+    if (feedback.gateDecision === 'global_revision') {
+        renderRevisionGoals(doc, feedback.revisionGoals.slice(0, 1).map((goal) => (blockQuestion ? { ...goal, guidedQuestion: undefined } : goal)));
+    }
     if (finalAssessment) {
         const gradedRubric = finalAssessment.lens === 'technical'
             ? technicalRubric ?? assignment.technicalRubric

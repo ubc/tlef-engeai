@@ -80,3 +80,13 @@ it('writes for the student in plain language, not in SFL terms', () => {
         expect(buildWritingFeedbackSystemPrompt(assignment, 'standard')).toMatch(/first revision goal.*weakest stage/i);
     });
 });
+
+describe('Socratic questions in the writer prompt (D-153)', () => {
+    it('requires a scoped Socratic question on every goal and the rewrite block', () => {
+        const prompt = buildWritingFeedbackSystemPrompt(buildEvalAssignment());
+        expect(prompt).toContain('every revision goal has exactly one guidedQuestion and a questionScope');
+        expect(prompt).not.toContain('Add a guidedQuestion only when it genuinely helps');
+        const global = buildWritingFeedbackSystemPrompt(buildEvalAssignment(), 'global_revision');
+        expect(global).toContain('globalRevision.guidedQuestion');
+    });
+});

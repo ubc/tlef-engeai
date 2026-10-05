@@ -13,6 +13,7 @@
 
 import type { EvalFixture } from './__tests__/fixtures/eval/eval-fixtures';
 import { lintFeedbackProse } from './plain-language';
+import { validateSocraticQuestions } from './socratic-questions';
 
 /** Loose view of engine output; every field optional so baseline output fits. */
 export interface EvalRunOutput {
@@ -21,8 +22,8 @@ export interface EvalRunOutput {
         gateDecision?: string;
         criteria?: Array<{ explanation?: string; evidence?: Array<{ quote?: string; rationale?: string; revisionGuidance?: string; courseMaterialMention?: { id: string; label: string }; supportingExcerptId?: string; sflFindingIds?: string[] }> }>;
         strengths?: string[];
-        revisionGoals?: Array<{ skillTag?: string; goal?: string; action?: string; guidedQuestion?: string }>;
-        globalRevision?: { diagnosisStatement?: string; whatToKeep?: string[]; rewriteDirection?: string };
+        revisionGoals?: Array<{ skillTag?: string; goal?: string; action?: string; guidedQuestion?: string; questionScope?: string }>;
+        globalRevision?: { diagnosisStatement?: string; whatToKeep?: string[]; rewriteDirection?: string; guidedQuestion?: string };
     };
     runTrace?: {
         gateDecision?: string;
@@ -84,6 +85,8 @@ export function runEvalChecks(output: EvalRunOutput, fixture: EvalFixture, known
         revisionGoals: goals.map((goal) => ({ goal: goal.goal ?? '', action: goal.action, guidedQuestion: goal.guidedQuestion })),
         ...(mode === 'global_revision' && result.globalRevision ? { globalRevision: result.globalRevision } : {})
     }, knownTerms);
+    // Every goal needs a scoped question; a rewrite-gated run's block needs one too (D-153).
+    const socraticProblems = validateSocraticQuestions(goals, mode === 'global_revision' ? (result.globalRevision ?? {}) : null);
     const bannedPer100 = plain.words ? (100 * plain.bannedHits) / plain.words : 0;
     const longShare = plain.sentences ? plain.longSentences / plain.sentences : 0;
 
@@ -93,6 +96,12 @@ export function runEvalChecks(output: EvalRunOutput, fixture: EvalFixture, known
             plain.words > 0,
             bannedPer100 <= 1 && longShare <= 0.05,
             `${bannedPer100.toFixed(1)} analysis terms/100 words (${plain.bannedTerms.join(', ') || 'none'}); ${(longShare * 100).toFixed(0)}% sentences over 25 words`
+        ),
+        check(
+            'socraticQuestions',
+            goals.length > 0,
+            socraticProblems.length === 0,
+            socraticProblems.join('; ') || `${goals.length} goals, all with questions`
         ),
         check('mode', Boolean(expectation.mode), mode === expectation.mode, `expected ${expectation.mode ?? '-'}, got ${mode ?? 'absent'}`),
         check('stageStatuses', Boolean(expectation.stageStatuses), stageMismatches.length === 0, stageMismatches.join('; ') || 'all match'),

@@ -660,7 +660,7 @@ describe('two-lens generation', () => {
         const technicalRun = mongo.createWritingFeedbackRun.mock.calls
             .map(([input]: [{ lens: string; modelMetadata: { promptVersion: string } }]) => input)
             .find((input) => input.lens === 'technical');
-        expect(technicalRun?.modelMetadata.promptVersion).toBe('lab-report-technical-v1.4.0');
+        expect(technicalRun?.modelMetadata.promptVersion).toBe('lab-report-technical-v1.5.0');
     });
 });
 
@@ -958,7 +958,7 @@ describe('WritingFeedbackService summary redraft', () => {
         expect(created[0].redraftOfRunId).toBe('run-gen');
         expect(created[0].sourceComments).toEqual([staffComment]);
         expect(created[0].annotationsFingerprint).toMatch(/^[0-9a-f]{8}$/);
-        expect(created[0].modelMetadata.promptVersion).toBe('summary-redraft-v1.2.0');
+        expect(created[0].modelMetadata.promptVersion).toBe('summary-redraft-v1.3.0');
         expect(result.detail.summarySources.linguistic?.runId).toBe(created[0].id);
         expect(result.detail.workingComments.map((comment) => comment.id)).toEqual(['c-staff']);
     });

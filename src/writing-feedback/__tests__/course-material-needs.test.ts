@@ -8,6 +8,7 @@ import {
     buildContrastNeed,
     buildFindingNeeds,
     buildGenreNeeds,
+    isTeachableRequirement,
     retrieveForNeeds,
     MAX_GENRE_QUERIES
 } from '../course-material-mentions';
@@ -39,7 +40,7 @@ describe('need builders', () => {
         expect(needs.length).toBeLessThanOrEqual(MAX_GENRE_QUERIES);
         expect(needs.filter((need) => need.kind === 'stage').map((need) => need.stageId))
             .toEqual(['identify', 'classify', 'describe', 'conclude']);
-        expect(needs.some((need) => need.kind === 'language_function' && /theme/i.test(need.query))).toBe(true);
+        expect(needs.some((need) => need.kind === 'language_function' && /theme/i.test(need.query))).toBe(true); // retrieval wording keeps the technical term
         needs.forEach((need) => expect(need.query.length).toBeLessThan(300));
     });
 
@@ -100,5 +101,62 @@ describe('retrieveForNeeds', () => {
         const retriever = { retrieve: jest.fn(async () => { throw new Error('qdrant down'); }) };
         const result = await retrieveForNeeds(assignment, buildGenreNeeds(assignment), { retriever, budgetChars: 4000, idPrefix: 'g' });
         expect(result).toEqual({ excerpts: [], failed: true });
+    });
+});
+
+const MOCK_TASK = 'Write a descriptive report (250–350 words) that classifies an everyday engineering or scientific entity into its main types, or breaks it into its main parts.';
+const MOCK_STAGES = ['General statement', 'Classification', 'Description', 'Closing'];
+
+describe('isTeachableRequirement (D-154)', () => {
+    it.each([
+        'Use 250–350 words.',
+        'Length: 1–2 pages',
+        'Submit as a .docx file',
+        'Due Friday at 11:59 pm',
+        'No outside sources required.',
+        'Drafted individually in class, typed afterwards.'
+    ])('drops logistics: %s', (requirement) => {
+        expect(isTeachableRequirement(requirement, MOCK_STAGES, MOCK_TASK)).toBe(false);
+    });
+
+    it('drops a requirement that repeats two or more stages', () => {
+        expect(isTeachableRequirement('Include a general statement, classification, and description.', MOCK_STAGES, MOCK_TASK)).toBe(false);
+    });
+
+    it('drops a restatement of the task', () => {
+        expect(isTeachableRequirement('Classify an everyday engineering or scientific entity into its main types or break it into its main parts.', MOCK_STAGES, MOCK_TASK)).toBe(false);
+    });
+
+    it.each([
+        'Explain how each type changes due to heating.',
+        'Compare the length and mass of each type.',
+        'Follow the formal definition format: term, class, features.'
+    ])('keeps a skill requirement that shares a logistics word: %s', (requirement) => {
+        expect(isTeachableRequirement(requirement, MOCK_STAGES, MOCK_TASK)).toBe(true);
+    });
+
+    it('keeps a real skill requirement', () => {
+        expect(isTeachableRequirement('Use at least two sources to support each type', MOCK_STAGES, MOCK_TASK)).toBe(true);
+        expect(isTeachableRequirement('Include a title that names the entity.', MOCK_STAGES, MOCK_TASK)).toBe(true);
+    });
+});
+
+describe('genre language functions (D-154)', () => {
+    it('drops functions that repeat a stage and uses readable labels', () => {
+        const labels = buildGenreNeeds(assignment).filter((need) => need.kind === 'language_function').map((need) => need.label);
+        expect(labels).toEqual(['Sentence openings that guide the reader', 'Building precise noun phrases', 'Objective stance']);
+        labels.forEach((label) => expect(label).not.toMatch(/\b(theme|rheme|noun group|thematic)\b/i));
+    });
+
+    it('gives a custom genre the default list', () => {
+        const custom = buildEvalAssignment();
+        custom.rubric = { ...custom.rubric, sflContext: { ...custom.rubric.sflContext!, genreId: 'custom_memo' as never, stages: [] } };
+        expect(buildGenreNeeds(custom).filter((need) => need.kind === 'language_function').map((need) => need.label))
+            .toEqual(['Sentence openings that guide the reader', 'Linking ideas across sentences', 'Objective stance']);
+    });
+
+    it('keeps the eval assignment title requirement as a short label', () => {
+        expect(buildGenreNeeds(assignment).filter((need) => need.kind === 'task_requirement').map((need) => need.label))
+            .toEqual(['A title that names the entity']);
     });
 });

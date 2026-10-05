@@ -14,6 +14,8 @@
 import { LLMModule, type LLMOptions, type Message } from 'ubc-genai-toolkit-llm';
 import { isMockResponse } from '../helpers/mock-response';
 import { buildSummaryRedraftSchema } from './feedback-schema';
+import { SOCRATIC_QUESTION_RULES } from './prompt-examples';
+import { validateSocraticQuestions, withQuestionGate } from './socratic-questions';
 import { modelAssessedCriteria } from './criterion-assessment';
 import { stripNulls } from './strip-nulls';
 import { buildStudentReaderContract, knownTermsFor, LAB_REPORT_FAMILIAR_TERMS } from './plain-language';
@@ -51,7 +53,7 @@ const RULES = [
     'Re-judge each criterion\'s suggestedLevel against the rubric levels using the whole verified text and the final annotations.',
     'Each explanation must synthesize that criterion\'s final annotations as a whole: the pattern across them and why the criterion sits at that level. Do not restate a single annotation.',
     'Return at most 2 strengths, each grounded in the verified text.',
-    'Return one to three revision goals. Each has a goal, a concrete action the student can take, and, only when it genuinely helps the student think, a guidedQuestion.',
+    'Return one to three revision goals. Each has a goal, a concrete action the student can take, a guidedQuestion and a questionScope.',
     'Never rewrite student sentences, paragraphs, or supply a model answer.',
     'Never state a confidence level, certainty, or how sure you are anywhere in prose. Confidence belongs only in the confidence field.',
     'Never tell the student what you did not assess, could not assess, or were not asked to assess. A scope limit, a feature of the document you cannot see, and anything outside this criterion go in internalFlags, never in explanation, strengths, or revision goals.',
@@ -75,6 +77,7 @@ export function buildSummaryRedraftSystemPrompt(
         input.lens === 'technical'
             ? buildStudentReaderContract(technicalKnownTerms(input.assignment), LAB_REPORT_FAMILIAR_TERMS)
             : buildStudentReaderContract(knownTermsFor(rubric.sflContext)),
+        SOCRATIC_QUESTION_RULES,
         `Assess every criterion below exactly once. Use only these criterion ids: ${modelAssessedCriteria(rubric).map((criterion) => criterion.id).join(', ')}.`,
         `Use only these performance-level ids: ${rubric.levels.map((level) => level.id).join(', ')}.`,
         'Rules:',
@@ -141,7 +144,7 @@ export function deterministicSummaryRedraft(input: SummaryRedraftInput): Summary
         strengths: input.previousResult.strengths.slice(0, 2),
         revisionGoals: input.previousResult.revisionGoals.length
             ? input.previousResult.revisionGoals.slice(0, 3)
-            : [{ skillTag: 'revision', goal: 'Revise the annotated passages.', action: 'Start with the annotated passage that matters most.', guidedQuestion: 'Which annotated passage would you change first, and why?' }]
+            : [{ skillTag: 'revision', goal: 'Revise the annotated passages.', action: 'Start with the annotated passage that matters most.', guidedQuestion: 'Which annotated passage would change your reader\'s understanding most, and why?', questionScope: 'whole' }]
     };
 }
 
@@ -175,11 +178,14 @@ export class LlmSummaryRedraftEngine implements SummaryRedraftEngine {
             { role: 'system', content: buildSummaryRedraftSystemPrompt(input) },
             { role: 'user', content: buildSummaryRedraftUserMessage(input) }
         ];
-        const response = await this.llm.sendStructuredConversation(
-            messages,
-            buildSummaryRedraftSchema(input.rubric),
-            { structuredOutputName: 'writing_summary_redraft', ...input.llmCallOptions }
+        // The question gate (D-153) allows one corrective retry.
+        return withQuestionGate(
+            async (correction) => stripNulls((await this.llm!.sendStructuredConversation(
+                [...messages, ...(correction ? [{ role: 'user' as const, content: correction }] : [])],
+                buildSummaryRedraftSchema(input.rubric),
+                { structuredOutputName: 'writing_summary_redraft', ...input.llmCallOptions }
+            )).parsed) as SummaryRedraftOutput,
+            (parsed) => validateSocraticQuestions(parsed.revisionGoals ?? [])
         );
-        return stripNulls(response.parsed) as SummaryRedraftOutput;
     }
 }

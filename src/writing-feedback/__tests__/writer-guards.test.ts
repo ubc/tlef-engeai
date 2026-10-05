@@ -99,13 +99,17 @@ describe('buildFeedbackSchema', () => {
             confidence: 0.5
         })),
         strengths: [],
-        revisionGoals: [{ skillTag: 'identify', goal: 'g', action: 'Add a class word.', guidedQuestion: null }],
+        revisionGoals: [{ skillTag: 'identify', goal: 'g', action: 'Add a class word.', guidedQuestion: 'What group does it belong to?', questionScope: 'whole' }],
         internalFlags: [],
-        globalRevision: { diagnosisStatement: 'd', whatToKeep: [], rewriteDirection: 'r', supportingExcerptIds: null }
+        globalRevision: { diagnosisStatement: 'd', whatToKeep: [], rewriteDirection: 'r', guidedQuestion: 'What does the genre ask?', supportingExcerptIds: null }
     };
 
-    it('accepts a goal with an action and no question', () => {
+    it('accepts a goal with an action, a question and a scope', () => {
         expect(schema.safeParse(base).success).toBe(true);
+    });
+
+    it('rejects a goal with no question (D-153)', () => {
+        expect(schema.safeParse({ ...base, revisionGoals: [{ ...base.revisionGoals[0], guidedQuestion: null }] }).success).toBe(false);
     });
 
     it('rejects a goal without an action', () => {
