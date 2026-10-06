@@ -253,27 +253,6 @@ function delay(ms: number): Promise<void> {
     return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-// The worker retries a failed attempt up to maxAttempts (3) with up to a 60s lease
-// each, so a job that fails once and succeeds on retry can legitimately take past
-// two minutes. This ceiling stays comfortably above that worst case, and matches
-// the server's default idle-session window (5 minutes) so a submission that is
-// still generating when this loop gives up has, in practice, already logged the
-// user out rather than doing so silently after this promise settles.
-const GENERATION_POLL_TIMEOUT_MS = 300_000;
-
-async function waitForGeneration(submissionId: string): Promise<SubmissionDetail> {
-    const deadline = Date.now() + GENERATION_POLL_TIMEOUT_MS;
-    while (Date.now() < deadline) {
-        const detail = await request<SubmissionDetail>(`/submissions/${encodeURIComponent(submissionId)}`);
-        if (detail.submission.status === 'draft_ready') return detail;
-        if (detail.submission.status === 'failed') {
-            throw new Error('Feedback generation failed. Check the rubric/profile and try again.');
-        }
-        await delay(2000);
-    }
-    throw new Error('Feedback generation is taking longer than expected. It may still finish — refresh this submission in a moment to check.');
-}
-
 /**
  * followReviewGeneration - refreshes an open review page once its submission leaves `generating`.
  *
@@ -311,6 +290,10 @@ async function waitUntilGenerated(submissionId: string, stillShown: () => boolea
         if (detail.submission.status === 'generating') continue;
         if (stillShown()) {
             followedGenerationId = null;
+            // A missing technical run is not toasted: the refreshed page shows its own warning.
+            if (detail.submission.status === 'failed') {
+                showErrorToast('Feedback generation failed. Check the rubric/profile and try again.');
+            } else showSuccessToast('Feedback draft generated for staff review.');
             await refreshReview(submissionId);
         }
         return;
@@ -325,8 +308,9 @@ interface ReleaseStatus {
 }
 
 // A live release uploads the feedback PDF, posts a Canvas comment, and waits on Canvas's own grade job.
-// Five minutes is well past the worst case observed against Canvas and matches the generation
-// ceiling above, including its reasoning about the idle-session window.
+// Five minutes is well past the worst case observed against Canvas, and matches the server's
+// default idle-session window, so a release still running when this gives up has, in practice,
+// already logged the user out.
 const RELEASE_POLL_TIMEOUT_MS = 300_000;
 
 /**
@@ -786,10 +770,8 @@ export function renderFeedbackPanel(
                         'POST'
                     );
                     showSuccessToast('Feedback generation queued. This page will refresh when it is ready.');
-                    const settled = await waitForGeneration(submission.id);
-                    if (assignment?.isLabReport && assignment.technicalRubric?.status === 'approved' && !settled.technicalFeedbackRun) {
-                        showErrorToast('Technical feedback was not generated. Check that the technical rubric is approved, then generate again.');
-                    } else showSuccessToast('Feedback draft generated for staff review.');
+                    // The submission is now `generating`, so the refresh shows the generating
+                    // panel, whose follower waits only while staff stay on this submission.
                     await refreshReview(submission.id);
                 },
                 submission.requiresVerification
