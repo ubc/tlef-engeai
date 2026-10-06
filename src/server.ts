@@ -15,7 +15,7 @@ import healthRoutes from './routes/route-health';
 import versionRoutes from './routes/route-version';
 import onboardingRoutes from './routes/route-onboarding';
 import lmsRoutes from './routes/route-lms';  // Canvas + Moodle integration routes
-import authRoutes from './routes/route-auth';  // Import authentication routes
+import authRoutes, { samlCallbackHandler } from './routes/route-auth';  // Import authentication routes
 import courseEntryRoutes from './routes/route-course-entry';  // Import course entry routes
 import studentViewRoutes from './routes/route-student-view';  // Student View enter/exit/reset
 import userManagementRoutes from './routes/route-user-management';  // Import user management routes
@@ -34,8 +34,8 @@ import { sessionActivityMiddleware } from './middleware/session-activity';
 import { EngEAI_MongoDB } from './db/enge-ai-mongodb';
 import { initAcademicPeriods } from './helpers/init-academic-periods';
 import { getCourseSelectionRedirectPath } from './helpers/course-selection-redirect';
-import { isAppEntryBlockedAffiliation, resolveAffiliation, type AffiliationValue } from './utils/affiliation';
-import { isAdminUser, isAdminName } from './utils/admin';
+import { isAppEntryBlockedAffiliation, type AffiliationValue } from './utils/affiliation';
+import { isAdminUser } from './utils/admin';
 
 dotenv.config();
 
@@ -138,97 +138,10 @@ app.use('/auth', authRoutes);
 // Course routes (must be before static file serving to catch course routes first)
 app.use('/', courseRoutes);
 
-// SAML callback route at IdP-registered path
-// This is the path registered with UBC's Identity Provider
-// It redirects to the main auth callback handler
-app.post('/Shibboleth.sso/SAML2/POST', (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    logger.info('[AUTH] SAML callback received at IdP-registered path: /Shibboleth.sso/SAML2/POST');
-    logger.info('[AUTH] Forwarding to passport authentication handler...');
-
-    passport.authenticate('ubcshib', {
-        failureRedirect: '/auth/login-failed',
-        failureFlash: false
-    })(req, res, next);
-}, async (req: express.Request, res: express.Response) => {
-    try {
-        // Extract user data from SAML profile
-        const puid = (req.user as any).puid;
-        const firstName = (req.user as any).firstName || '';
-        const lastName = (req.user as any).lastName || '';
-        const name = `${firstName} ${lastName}`.trim();
-        const cwlAffiliation = (req.user as any).affiliation; // From Passport (mapAffiliation)
-
-        // Get MongoDB instance
-        const mongoDB = await EngEAI_MongoDB.getInstance();
-
-        // Check if GlobalUser exists in active-users collection
-        let globalUser = await mongoDB.findGlobalUserByPUID(puid);
-
-        // Resolve affiliation: CWL takes precedence over DB when they differ
-        const resolution = resolveAffiliation(cwlAffiliation, globalUser?.affiliation);
-        const affiliation = resolution.affiliation;
-
-        logger.info('[AUTH] ✅ SAML authentication successful');
-        logger.info(`[AUTH] User PUID: ${puid}`);
-        logger.info(`[AUTH] User Name: ${name}`);
-        logger.info(`[AUTH] Affiliation: ${affiliation} (CWL: ${cwlAffiliation}, DB: ${globalUser?.affiliation ?? 'N/A'})`);
-
-        if (!globalUser) {
-            logger.info('[AUTH] 🆕 Creating new GlobalUser');
-
-            globalUser = await mongoDB.createGlobalUser({
-                puid,
-                name,
-                userId: mongoDB.idGenerator.globalUserID(puid, name, affiliation),
-                coursesEnrolled: [],
-                affiliation: affiliation as 'student' | 'faculty' | 'staff' | 'empty',
-                status: 'active',
-                isAdmin: isAdminName(name)
-            });
-
-            logger.info(`[AUTH] ✅ GlobalUser created: ${globalUser.userId}`);
-        } else {
-            logger.info(`[AUTH] ✅ GlobalUser found: ${globalUser.userId}`);
-
-            // Reconcile DB with CWL when DB has inconsistent data (e.g. dual student+instructor stored as faculty)
-            if (resolution.needsDbUpdate) {
-                logger.info(`[AUTH] 🔄 Updating GlobalUser affiliation: DB had ${globalUser.affiliation}, CWL says ${affiliation}`);
-                globalUser = await mongoDB.updateGlobalUserAffiliation(globalUser.userId, affiliation as 'student' | 'faculty' | 'staff' | 'empty');
-                (req.user as any).affiliation = affiliation;
-                logger.info(`[AUTH] ✅ GlobalUser affiliation updated: ${globalUser.userId}`);
-            }
-
-            // Reconcile admin status against the ADMINS allowlist
-            const shouldBeAdmin = isAdminName(name);
-            if (globalUser.isAdmin !== shouldBeAdmin) {
-                logger.info(`[AUTH] 🔄 Updating GlobalUser isAdmin: was ${globalUser.isAdmin}, now ${shouldBeAdmin}`);
-                globalUser = await mongoDB.updateGlobalUser(globalUser.puid, { isAdmin: shouldBeAdmin });
-            }
-        }
-
-        // Store GlobalUser in session
-        (req.session as any).globalUser = globalUser;
-
-        // Save session before redirect
-        req.session.save((saveErr) => {
-            if (saveErr) {
-                logger.error('[AUTH] ❌ Session save error:', saveErr as any);
-                return res.redirect('/');
-            }
-
-            const redirectPath = isAppEntryBlockedAffiliation(affiliation as AffiliationValue) && !isAdminUser(globalUser)
-                ? '/role-restricted'
-                : getCourseSelectionRedirectPath(globalUser);
-            logger.info(`[AUTH] 🚀 Session saved, redirecting to ${redirectPath}`);
-            logger.info(`[AUTH] 📋 Session ID: ${(req as any).sessionID}`);
-            res.redirect(redirectPath);
-        });
-
-    } catch (error) {
-        logger.error('[AUTH] 🚨 Error in authentication callback:', error as any);
-        res.redirect('/');
-    }
-});
+// SAML callback at the path registered with UBC's Identity Provider, which is where deployed
+// environments receive CWL sign-ins. Mounts the same handler as /auth/saml/callback; do not fork
+// it, or login-time work such as Canvas roster enrollment runs locally but not when deployed.
+app.post('/Shibboleth.sso/SAML2/POST', ...samlCallbackHandler);
 
 // Page routes
 app.get('/role-restricted', (req: any, res: any) => {

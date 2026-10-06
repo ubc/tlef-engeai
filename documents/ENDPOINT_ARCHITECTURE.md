@@ -317,7 +317,8 @@ Live Canvas OAuth is provided by `/api/lms/canvas/*`. Writing Feedback release r
 | GET | `/auth/login` | No | Login page |
 | GET | `/auth/login/cwl` | No | CWL login redirect |
 | POST | `/auth/login` | No | Form login |
-| POST | `/auth/saml/callback` | No | SAML callback |
+| POST | `/auth/saml/callback` | No | SAML callback (local SAML testing) |
+| POST | `/Shibboleth.sso/SAML2/POST` | No | SAML callback at the UBC IdP-registered path (deployed environments); mounted in `server.ts`, runs the same `samlCallbackHandler`, including Canvas roster enrollment |
 | GET | `/auth/login-failed` | No | Login failure page |
 | GET | `/auth/logout` | No | Logout |
 | GET | `/auth/logout/callback` | No | Logout callback |
