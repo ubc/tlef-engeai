@@ -74,6 +74,7 @@ import {
     type RubricGridSource
 } from '../writing-feedback/rubric-autofill';
 import type { WritingFeedbackLens, WritingRubricDefinition } from '../writing-feedback/contracts';
+import { RELEASE_REFUSAL_PREFIXES } from '../writing-feedback/release-refusals';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -158,7 +159,8 @@ function safeError(error: unknown): string {
         'This assignment is not linked to Canvas', DUPLICATE_STUDENT_SUBMISSION, 'decision must be',
         REVIEW_WHILE_GENERATING_MESSAGE, APPROVE_WHILE_GENERATING_MESSAGE,
         ...Object.values(REPLACEMENT_ERRORS),
-        ...Object.values(BATCH_ERRORS)
+        ...Object.values(BATCH_ERRORS),
+        ...RELEASE_REFUSAL_PREFIXES
     ];
     return safePrefixes.some((prefix) => message.startsWith(prefix))
         ? message

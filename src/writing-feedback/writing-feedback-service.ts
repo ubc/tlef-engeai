@@ -57,6 +57,7 @@ import {
     releaseCapMessage
 } from './release-cap';
 import { SanitizedJobError } from './job-runner';
+import { toSanitizedReleaseError } from './release-refusals';
 import { resolveQueuedReleaseService } from './queued-release-service';
 import {
     TEXT_EDITED_MESSAGE,
@@ -1025,6 +1026,10 @@ export class WritingFeedbackService {
         try {
             await this.previewRelease(courseId, submissionId, resolved.service);
             await this.release(courseId, submissionId, resolved.service);
+        } catch (error) {
+            // Nobody is watching this run, so a fixable refusal has to reach the job error in
+            // its own words rather than as the runner's generic sentence.
+            throw toSanitizedReleaseError(error);
         } finally {
             // However this ended, the next attempt reads how far it got from the release
             // status; holding the lock past the run would only make staff wait out the

@@ -37,6 +37,19 @@ describe('writing feedback review source contract', () => {
         expect(source).toContain('const GENERATION_POLL_TIMEOUT_MS = 300_000;');
     });
 
+    it('explains a refused Canvas write from the release record, by the step it stopped at', () => {
+        // A refused write is recorded on the release and the job still completes, so the
+        // polling loop must read the reason from the record rather than the job.
+        const waitForRelease = source.match(/async function waitForRelease[\s\S]*?\n}/)?.[0] ?? '';
+        expect(waitForRelease).toContain("status.release?.status === 'failed'");
+        expect(waitForRelease).toContain('describeFailedRelease(status.release)');
+        const describe = source.match(/function describeFailedRelease[\s\S]*?\n}/)?.[0] ?? '';
+        expect(describe).toContain("case 'feedback':");
+        expect(describe).toContain("case 'grade':");
+        expect(describe).toContain("case 'progress':");
+        expect(source).toContain("message = describeFailedRelease(priorRelease);");
+    });
+
     it('shows revision goals once, in one editable section named for them', () => {
         // A separate read-only section rendered the same result.revisionGoals that seed the
         // editable textarea, so staff read every goal twice and could edit only one copy.

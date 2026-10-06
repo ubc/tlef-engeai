@@ -327,6 +327,31 @@ interface ReleaseStatus {
 const RELEASE_POLL_TIMEOUT_MS = 300_000;
 
 /**
+ * describeFailedRelease - why a release stopped, and what the student already has.
+ *
+ * Canvas is written in steps — PDF upload and comment, rubric, grade — and a failure part-way
+ * leaves some of them done. Staff need to know which before deciding whether to retry.
+ *
+ * @param release - A release record whose status is `failed`
+ * @returns The stored reason followed by what it means for the student and for a retry
+ */
+function describeFailedRelease(release: NonNullable<SubmissionDetail['release']>): string {
+    const reason = release.sanitizedError || 'The Canvas release failed';
+    switch (release.failureStage) {
+        case 'feedback':
+            return `${reason}. Nothing reached the student, so the release can be retried.`;
+        case 'grade':
+            return `${reason}. The feedback PDF is already attached to the student's Canvas submission, but the grade was not written. `
+                + 'Releasing again sends only the rubric scores and grade.';
+        case 'progress':
+            return `${reason}. The feedback PDF is attached and Canvas accepted the grade, but did not finish applying it. `
+                + 'Check the grade in the Canvas Gradebook before retrying — releasing again attaches the PDF a second time.';
+        default:
+            return `${reason}. Check the submission in Canvas before retrying.`;
+    }
+}
+
+/**
  * waitForRelease - polls a queued release until Canvas has been written to, or has refused.
  *
  * @param submissionId - Submission whose release job is running
@@ -347,10 +372,13 @@ async function waitForRelease(submissionId: string): Promise<ReleaseStatus> {
         if (status.jobState === 'failed') {
             throw new Error(status.jobError || 'Canvas did not confirm the complete release.');
         }
-        // The handler finished, yet the record is not terminal: the release did not happen and
-        // no retry will be scheduled, so say so instead of polling to the deadline.
+        // The handler finished, yet the record is not terminal: no retry will be scheduled, so
+        // say so instead of polling to the deadline. A Canvas write that was refused is recorded
+        // on the release rather than failing the job, so its reason is read from there.
         if (status.jobState === 'completed') {
-            throw new Error('The release finished without confirming Canvas. Check the submission in Canvas before retrying.');
+            throw new Error(status.release?.status === 'failed'
+                ? describeFailedRelease(status.release)
+                : 'The release finished without confirming Canvas. Check the submission in Canvas before retrying.');
         }
         await delay(2000);
     }
@@ -1819,7 +1847,7 @@ function releaseReadiness(submission: Submission, detail: SubmissionDetail): { r
     }
     else if (submission.status !== 'approved') message = 'Approve the staff-reviewed feedback before release.';
     else if (priorRelease?.releaseLockedAt) message = 'A release is already on its way to Canvas for this submission.';
-    else if (priorRelease?.status === 'failed') message = priorRelease.sanitizedError || 'The prior Canvas release failed safely and may be retried.';
+    else if (priorRelease?.status === 'failed') message = describeFailedRelease(priorRelease);
     else if (priorRelease?.status === 'feedback_attached') message = 'Feedback is attached; the Canvas grade still needs confirmation.';
     else if (priorRelease?.status === 'grade_queued') message = 'Canvas accepted the grade job; check its completion before retrying.';
     else {

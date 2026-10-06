@@ -13,6 +13,7 @@
 import { buildDefaultWritingAssignment } from '../default-rubric-profile';
 import { approveRubricDraft } from '../rubric-schema';
 import { MAX_SUBMISSION_RELEASES } from '../release-cap';
+import { SanitizedJobError } from '../job-runner';
 import { computeReleaseFingerprint } from '../canvas-release-service';
 import type {
     CanvasReleaseInput,
@@ -449,6 +450,30 @@ describe('running a queued release', () => {
         });
         await service.runQueuedRelease('course-1', 'submission-1');
         expect(releaseService.release).not.toHaveBeenCalled();
+    });
+
+    // Staff only ever see the job error, so a refusal they can act on must survive the runner.
+    it('fails with the refusal itself when the release stops for a fixable reason', async () => {
+        const { service, releaseService } = buildWorkerService({
+            stored: queuedRelease(),
+            resolution: { integration: 'canvas', service: {} }
+        });
+        releaseService.release.mockRejectedValueOnce(new Error(
+            'Canvas has a newer submission attempt; regenerate and approve feedback for the current attempt'
+        ));
+        const failure = service.runQueuedRelease('course-1', 'submission-1');
+        await expect(failure).rejects.toBeInstanceOf(SanitizedJobError);
+        await expect(failure).rejects.toThrow('Canvas has a newer submission attempt');
+    });
+
+    it('leaves an unrecognised failure for the runner to replace', async () => {
+        const { service, releaseService } = buildWorkerService({
+            stored: queuedRelease(),
+            resolution: { integration: 'canvas', service: {} }
+        });
+        releaseService.preview.mockRejectedValueOnce(new Error('provider said: <student text>'));
+        await expect(service.runQueuedRelease('course-1', 'submission-1'))
+            .rejects.not.toBeInstanceOf(SanitizedJobError);
     });
 });
 
