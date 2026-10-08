@@ -16,6 +16,7 @@ import type {
 } from './contracts';
 import { computeReleaseFingerprint } from './canvas-release-service';
 import { planRubricWrite, rubricRefusalMessage, type RubricWritePlan } from './canvas-rubric-write';
+import { appLogger } from '../utils/logger';
 
 type ApiClient = NonNullable<Parameters<typeof canvas.getCourses>[0]>;
 type GradeBatch = Parameters<typeof canvas.preflightGradeExport>[1]['batch'];
@@ -314,7 +315,12 @@ export class LiveCanvasReleaseService implements CanvasReleaseService {
                 });
                 fileIds.push(uploaded.id);
             }
-        } catch {
+        } catch (error) {
+            // Only the stage and status: the error message carries the upload path, which names
+            // the Canvas user id.
+            appLogger.error('[WritingFeedback] canvas_pdf_upload_failed', error instanceof canvas.CanvasUploadError
+                ? { stage: error.stage, statusCode: error.statusCode, uploadedFiles: fileIds.length }
+                : { errorType: error instanceof Error ? error.name : typeof error, uploadedFiles: fileIds.length });
             const updated = await this.updateRelease(fingerprint, {
                 status: 'failed',
                 failureStage: 'feedback',
