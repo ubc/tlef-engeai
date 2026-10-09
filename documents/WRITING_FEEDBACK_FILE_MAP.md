@@ -53,6 +53,7 @@ Line counts are a rough guide to reading cost, not a target.
 | `lab-report-profile.ts` | 177 | Builds the editable lab-report technical rubric template. | `lab-report-profile.test.ts` | the technical rubric template changes |
 | `staff-final-assessment.ts` | 106 | Builds and validates the staff-final rubric assessment and its total. | `staff-final-assessment.test.ts` | grading maths change |
 | `assignment-type.ts` | 129 | Records the one-time writing / lab report choice and seeds the technical rubric (D-123). | `assignment-type.test.ts` | the assignment type flow changes |
+| `autofill-sources.ts` | 146 | Lists, selects, and labels the material "Fill these in for me" reads, within the 60,000-character limit. | `autofill-sources.test.ts` | which sources auto-fill offers or reads changes |
 | `source-material-extraction.ts` | 203 | Turns instructor files and pastes into text, keeping Word and HTML tables as markdown tables. | `source-material-extraction.test.ts` | accepted material types, table handling, or material limits change |
 
 ### Review
@@ -107,6 +108,7 @@ Line counts are a rough guide to reading cost, not a target.
 | `public/scripts/feature/writing-feedback-review-steps.ts` | 72 | DOM-free step bar state and Next decision for the three-step review. | the review steps change |
 | `public/scripts/feature/writing-feedback-summary-editor.ts` | 193 | Editable summary sections and edit detection per lens. | editable summary UI changes |
 | `public/scripts/feature/writing-feedback-annotation-fingerprint.ts` | 56 | Browser mirror of the annotation fingerprint. | what counts as an annotation change |
+| `public/scripts/feature/writing-feedback-sources.ts` | 283 | The "Assignment material" list in step 1: ticks, upload, paste with table HTML, remove, and the character total. | the source list or how material is added changes |
 | `public/scripts/feature/writing-feedback-assignment-type.ts` | 93 | The "What kind of assignment is this?" modal and save flow. | the assignment type modal changes |
 | `public/scripts/feature/writing-feedback-assignment-type-state.ts` | 45 | DOM-free labels and pending-assignment selection for that modal. | the modal labels change |
 | `public/styles/instructor-components/writing-feedback.css` | 3567 | Every Writing Feedback style. | the workspace, rubric, review, or release step is restyled |

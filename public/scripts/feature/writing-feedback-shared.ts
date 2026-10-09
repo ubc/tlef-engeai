@@ -276,6 +276,22 @@ export interface WritingSourceMaterial {
     addedBy: string; // internal user id, never a PUID
 }
 
+/** One piece of material "Fill these in for me" can read. Mirrors src/writing-feedback/autofill-sources.ts. */
+export interface AutofillSource {
+    id: string; // 'instructions', 'canvas_description', or a source-material id
+    kind: 'instructions' | 'canvas_description' | 'file' | 'paste';
+    label: string;
+    text: string;
+    characterCount: number;
+    hasTables: boolean;
+}
+
+/** GET /assignments/:assignmentId/autofill-sources */
+export interface AutofillSourcesResponse {
+    sources: AutofillSource[];
+    maxCharacters: number; // most characters one fill may read
+}
+
 export interface WritingGlossaryEntry {
     id: string; // glossary entry id
     courseId: string; // owning course

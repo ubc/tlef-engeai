@@ -76,6 +76,13 @@ import {
 import type { WritingFeedbackLens, WritingRubricDefinition } from '../writing-feedback/contracts';
 import { RELEASE_REFUSAL_PREFIXES } from '../writing-feedback/release-refusals';
 import {
+    AUTOFILL_SOURCE_ERRORS,
+    MAX_AUTOFILL_SOURCE_CHARS,
+    composeAutofillMaterial,
+    listAutofillSources,
+    selectAutofillSources
+} from '../writing-feedback/autofill-sources';
+import {
     MAX_SOURCE_MATERIALS,
     SOURCE_MATERIAL_ERRORS,
     extractPastedSource,
@@ -758,9 +765,39 @@ router.put(
     })
 );
 
+/** The `sourceIds` a fill request names, or undefined when it names none (read every source). */
+function requestedSourceIds(body: unknown): string[] | undefined {
+    const value = (body as { sourceIds?: unknown } | undefined)?.sourceIds;
+    if (value === undefined || value === null) return undefined;
+    if (!Array.isArray(value) || value.length > 20 || value.some((id) => typeof id !== 'string' || id.length > 64)) {
+        throw new Error('sourceIds must be a list of source ids');
+    }
+    return value as string[];
+}
+
 /**
- * Proposes a rubric draft from the assignment instructions and merges it into the
- * current draft. How much of the grid the proposal may overwrite depends on where
+ * Lists the material "Fill these in for me" can read for an assignment: its instructions,
+ * the Canvas description when it differs from them, and every uploaded file or paste, each
+ * with its text, plus the character limit one fill may read.
+ */
+router.get(
+    '/:courseId/writing-feedback/assignments/:assignmentId/autofill-sources',
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        const mongo = await EngEAI_MongoDB.getInstance();
+        const assignment = await mongo.getWritingAssignment(courseId(req), String(req.params.assignmentId));
+        if (!assignment) return res.status(404).json({ success: false, error: 'Writing assignment not found' });
+        const materials = await mongo.listWritingSourceMaterials(courseId(req), assignment.id);
+        res.json({
+            success: true,
+            data: { sources: listAutofillSources(assignment, materials), maxCharacters: MAX_AUTOFILL_SOURCE_CHARS }
+        });
+    })
+);
+
+/**
+ * Proposes a rubric draft from the assignment material and merges it into the
+ * current draft. The body's `sourceIds` names which sources to read (see the
+ * `autofill-sources` route); without it every source is read. How much of the grid the proposal may overwrite depends on where
  * the grid came from — an instructor's imported rubric and the department's APSC
  * 182 evaluation form both outrank anything a model proposes. Never touches the
  * approved rubric; approval stays the gate that lets a rubric reach the model.
@@ -780,8 +817,18 @@ router.post(
         if (lens === 'technical' && !assignment.isLabReport) {
             return res.status(409).json({ success: false, error: 'Mark this assignment as a lab report before editing its technical rubric' });
         }
-        if (!assignment.instructions?.trim()) {
-            return res.status(409).json({ success: false, error: 'Add the assignment instructions first' });
+        // Step 1: the material this fill reads, refused before any model call when unusable.
+        let material: string;
+        try {
+            const sourceIds = requestedSourceIds(req.body);
+            const sources = listAutofillSources(assignment, await mongo.listWritingSourceMaterials(courseId(req), assignment.id));
+            material = composeAutofillMaterial(selectAutofillSources(sources, sourceIds));
+        } catch (error) {
+            const known = Object.values(AUTOFILL_SOURCE_ERRORS) as string[];
+            const message = error instanceof Error ? error.message : '';
+            return known.includes(message)
+                ? res.status(409).json({ success: false, error: message })
+                : res.status(400).json({ success: false, error: 'sourceIds must be a list of source ids' });
         }
 
         const selected = selectRubric(assignment, lens);
@@ -800,7 +847,7 @@ router.post(
         const source: RubricGridSource = gridSourceFor(assignment, lens);
 
         try {
-            const proposal = await proposeRubricFromInstructions(assignment.instructions, draft);
+            const proposal = await proposeRubricFromInstructions(material, draft);
             const merged = mergeAutofill(draft, proposal, autofillMergeRules(source));
 
             // Reuse the same validation the PUT path enforces (band ordering, cells keyed
@@ -815,7 +862,7 @@ router.post(
         } catch {
             // Model errors and responses can carry the prompt body, which includes the
             // instructions. Never log or return them; staff see a fixed, generic message.
-            res.status(502).json({ success: false, error: 'Could not read the instructions. Fill the rubric in by hand.' });
+            res.status(502).json({ success: false, error: 'Could not read the assignment material. Fill the rubric in by hand.' });
         }
     })
 );

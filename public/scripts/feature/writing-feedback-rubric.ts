@@ -26,6 +26,7 @@ import { showSuccessToast } from '../ui/toast-notification.js';
 import { AutosaveSignedOutError, createAutosave } from './writing-feedback-autosave.js';
 import type { Autosave } from './writing-feedback-autosave.js';
 import { ensureAssignmentTypeChosen } from './writing-feedback-assignment-type.js';
+import { renderSourcesPanel, type SourcesPanel } from './writing-feedback-sources.js';
 import {
     MIN_RATINGS_PER_CRITERION,
     deriveGenreState,
@@ -1165,11 +1166,14 @@ function shouldFillMissingDraftOnFirstOpen(
 
 async function fillRubricDraftFromInstructions(
     assignmentId: string,
-    lens: WritingFeedbackLens
+    lens: WritingFeedbackLens,
+    sourceIds?: string[]
 ): Promise<Assignment> {
+    // Without `sourceIds` the server reads every source, which is what a first-open fill wants.
     return jsonRequest<Assignment>(
         `/assignments/${encodeURIComponent(assignmentId)}/rubric-draft/fill${rubricLensQuery(lens)}`,
-        'POST'
+        'POST',
+        sourceIds ? { sourceIds } : undefined
     );
 }
 
@@ -1197,10 +1201,7 @@ function announceDetailsStatus(status: HTMLElement, message: string, tone: 'info
     window.requestAnimationFrame(() => { status.textContent = message; });
 }
 
-async function fillRubricsFromInstructions(context: RubricPageContext, status: HTMLElement): Promise<void> {
-    if (!context.assignment.instructions?.trim()) {
-        throw new Error('Add the assignment instructions first');
-    }
+async function fillRubricsFromInstructions(context: RubricPageContext, status: HTMLElement, sourceIds: string[]): Promise<void> {
     const targets = new Set<WritingFeedbackLens>(
         context.sections.filter((section) => section.canEdit).map((section) => section.lens)
     );
@@ -1211,23 +1212,23 @@ async function fillRubricsFromInstructions(context: RubricPageContext, status: H
         throw new Error('You do not have permission to edit this rubric.');
     }
 
-    announceDetailsStatus(status, 'Reading the instructions…');
+    announceDetailsStatus(status, 'Reading the assignment material…');
     try {
         const orderedTargets = [...targets].sort((left, right) => {
             if (left === right) return 0;
             return left === 'technical' ? -1 : 1;
         });
         for (const lens of orderedTargets) {
-            await fillRubricDraftFromInstructions(context.assignment.id, lens);
+            await fillRubricDraftFromInstructions(context.assignment.id, lens, sourceIds);
         }
         state.panelDirty = false;
         state.assignments = await request<Assignment[]>('/assignments');
         // The toast is the whole report for an explicit fill. No pending notice:
         // the reopened page would raise the same sentence as a banner beside it.
-        showSuccessToast('Filled from the instructions. Review before approving.');
+        showSuccessToast('Filled from the assignment material. Review before approving.');
         await openRubricPage(context.assignment.id);
     } catch (error) {
-        const message = error instanceof Error ? error.message : 'Could not read the instructions. Fill the rubric in by hand.';
+        const message = error instanceof Error ? error.message : 'Could not read the assignment material. Fill the rubric in by hand.';
         // The status line sits beside the control that failed, and the caller
         // reports the same error in a modal; a third copy in the banner persists
         // after both are gone.
@@ -1270,11 +1271,11 @@ export async function openRubricPage(assignmentId: string): Promise<void> {
             technicalData = assignment.isLabReport
                 ? await request<RubricResponse>(`/assignments/${encodeURIComponent(assignmentId)}/rubric?lens=technical`)
                 : undefined;
-            pendingRubricNotice = { message: 'Filled from the instructions. Review before approving.', tone: 'success' };
+            pendingRubricNotice = { message: 'Filled from the assignment material. Review before approving.', tone: 'success' };
         }
     } catch (error) {
         pendingRubricNotice = {
-            message: error instanceof Error ? error.message : 'Could not read the instructions. Fill the rubric in by hand.',
+            message: error instanceof Error ? error.message : 'Could not read the assignment material. Fill the rubric in by hand.',
             tone: 'error'
         };
     }
@@ -1510,11 +1511,12 @@ function renderRubricPage(
 
     const step1Body = document.createElement('div');
     step1Body.className = 'wf-step-body';
+    const sources = renderSourcesPanel(assignment.id, linguisticData.permissions.canEdit);
     const detailsForm = renderAssignmentDetails(step1Body, writingSource, {
         canEdit: linguisticData.permissions.canEdit,
         isLabReport,
         labContext: technicalSource?.labContext ?? '',
-        hasInstructions: Boolean(assignment.instructions?.trim()),
+        sources,
         notice,
         onInput: () => {
             if (linguisticData.permissions.canEdit) state.panelDirty = true;
@@ -1523,7 +1525,7 @@ function renderRubricPage(
         },
         onFillFromInstructions: async (status) => {
             if (!context) throw new Error('The rubric page is still loading.');
-            await fillRubricsFromInstructions(context, status);
+            await fillRubricsFromInstructions(context, status, sources.selectedIds());
         }
     });
 
@@ -2171,7 +2173,8 @@ interface AssignmentDetailsOptions {
     isLabReport: boolean;
     /** Current lab handout text, which lives on the technical rubric only. */
     labContext: string;
-    hasInstructions: boolean;
+    /** The source list, shown above the details and read by the fill button. */
+    sources: SourcesPanel;
     notice?: { message: string; tone: 'success' | 'error' };
     onInput: () => void;
     onFillFromInstructions: (status: HTMLElement) => Promise<void>;
@@ -2241,9 +2244,16 @@ function renderAssignmentDetails(
             'Fill these in for me',
             'outline',
             async () => options.onFillFromInstructions(fillStatus),
-            !options.hasInstructions
+            !options.sources.canFill()
         );
-        if (!options.hasInstructions) fillButton.title = 'Add the assignment instructions first';
+        const updateFillButton = (): void => {
+            // A running fill owns the button until it settles; it is re-enabled from here after.
+            if (fillButton.getAttribute('aria-busy') === 'true') return;
+            fillButton.disabled = !options.sources.canFill();
+            fillButton.title = options.sources.blockedReason();
+        };
+        options.sources.onChange(updateFillButton);
+        updateFillButton();
         headingRow.append(fillButton);
     }
 
@@ -2376,7 +2386,7 @@ function renderAssignmentDetails(
     }
 
     form.append(grid);
-    section.append(headingRow, fillStatus, form);
+    section.append(options.sources.element, headingRow, fillStatus, form);
     container.append(section);
     return form;
 }
