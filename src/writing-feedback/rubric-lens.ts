@@ -100,6 +100,24 @@ export function selectRubric(assignment: WritingAssignment, lens: WritingFeedbac
     };
 }
 
+/** Where one lens's grid came from, as stored on the assignment. */
+export type StoredGridSource = 'builtin' | 'canvas' | 'uploaded';
+
+/**
+ * storedGridSource - reads one lens's grid provenance without exposing field names.
+ *
+ * The writing lens stores it in `rubricSource` and the technical lens in
+ * `technicalRubricSource`; a missing or built-in value on either reads as `'builtin'`.
+ *
+ * @param assignment - Assignment whose grid provenance is read
+ * @param lens - Lens whose grid is asked about
+ * @returns Whether that lens's grid came from Canvas, uploaded material, or the built-in profile
+ */
+export function storedGridSource(assignment: WritingAssignment, lens: WritingFeedbackLens): StoredGridSource {
+    const stored = lens === 'linguistic' ? assignment.rubricSource : assignment.technicalRubricSource;
+    return stored === 'canvas' || stored === 'uploaded' ? stored : 'builtin';
+}
+
 /**
  * lensesForAssignment - lists the lenses an assignment must generate.
  *

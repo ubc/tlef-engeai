@@ -40,6 +40,10 @@ Operational CLI migrations (OB-001, OB-002) are documented here but are **not** 
 | **WF-001** | Writing Canvas mapping index repair | Lazy (first Writing Feedback index ensure) | `ensureWritingFeedbackIndexes` in `src/db/mongo/writing-feedback-mongo.ts` | unique compound sparse `{ courseId, canvasAssignmentId }` → unique partial index limited to string Canvas ids | Keep while deployments may carry the legacy index |
 | **WF-002** | Writing rubric level-rank compatibility | Lazy (assignment read) | `normalizeWritingAssignment` in `src/db/mongo/writing-feedback-mongo.ts` | missing `rubric.levels[].rank` in current/draft/history → detached value using array position + 1 | Keep while any pre-Spec-1 rubric may lack rank |
 
+### Additive changes that need no migration
+
+- **2026-10-08 — Writing rubric grid source `'uploaded'`.** `writing-assignments.rubricSource` and `technicalRubricSource` gained an `'uploaded'` value. Existing documents keep `'internal_profile'`, `'canvas'`, `'builtin'` or no value, all of which read exactly as before (`storedGridSource` in `src/writing-feedback/rubric-lens.ts`). Release now uses `canvasRubricImport.ids` only while the graded lens's source is `'canvas'`; wherever those ids describe the graded grid, that source is `'canvas'`, because import and lab-report routing write the two together. An assignment holding ids for a grid it no longer grades on (for example a lab report whose technical rubric predates routing) previously had its release refused as an unmapped rubric; it now releases a total alone.
+
 ---
 
 ## WF-001: Writing Canvas mapping index repair

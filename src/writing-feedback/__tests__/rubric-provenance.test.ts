@@ -52,7 +52,29 @@ describe('gridSourceFor', () => {
     });
 });
 
+describe('gridSourceFor with uploaded material', () => {
+    it('protects an uploaded writing grid', () => {
+        expect(gridSourceFor(assignment({ rubricSource: 'uploaded' }), 'linguistic')).toBe('uploaded');
+    });
+
+    it('protects an uploaded writing grid even on a lab report', () => {
+        expect(gridSourceFor(
+            assignment({ isLabReport: true, rubricSource: 'uploaded' }), 'linguistic'
+        )).toBe('uploaded');
+    });
+
+    it('protects an uploaded technical grid', () => {
+        expect(gridSourceFor(
+            assignment({ isLabReport: true, technicalRubricSource: 'uploaded' }), 'technical'
+        )).toBe('uploaded');
+    });
+});
+
 describe('autofillMergeRules', () => {
+    it('never revises a rubric the instructor uploaded', () => {
+        expect(autofillMergeRules('uploaded')).toEqual(autofillMergeRules('canvas'));
+    });
+
     it('locks the three metafunctions but lets auto-fill write their meaning', () => {
         expect(autofillMergeRules('metafunctions'))
             .toEqual({ mayAddRows: false, mayWriteRow: true, mayWriteCells: true });

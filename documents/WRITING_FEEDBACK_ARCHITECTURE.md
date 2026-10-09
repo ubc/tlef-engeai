@@ -88,9 +88,11 @@ Rubric provenance is recorded per lens, because a lab report's two grids can com
 
 | Field | Lens | Values | Consequence |
 |---|---|---|---|
-| `rubricSource` | Writing | `internal_profile` \| `canvas` | A `canvas` writing rubric suppresses the metafunctions auto-fill, which assumes the built-in profile's criteria |
-| `technicalRubricSource` | Technical | `canvas` \| `builtin` | Absent means the technical grid was seeded from the built-in lab profile |
-| `canvasRubricImport` | Whichever lens the import seeded | `{ shape, ids, importedAt }` | `ids` are Canvas's own criterion/rating ids, and are the only way release can write points back into the instructor's Canvas rubric |
+| `rubricSource` | Writing | `internal_profile` \| `canvas` \| `uploaded` | A `canvas` or `uploaded` writing rubric is the instructor's own, so auto-fill never rewrites its rows or cells |
+| `technicalRubricSource` | Technical | `canvas` \| `builtin` \| `uploaded` | Absent means the technical grid was seeded from the built-in lab profile |
+| `canvasRubricImport` | Whichever lens the import seeded | `{ shape, ids, importedAt }` | `ids` are Canvas's own criterion/rating ids, and are the only way release can write points back into the instructor's Canvas rubric. Release uses them only while the graded lens's source is `canvas`; any other grid releases a total alone |
+
+`storedGridSource` (`rubric-lens.ts`) reads either field for a lens. When Canvas grades the assignment by its rubric (`use_rubric_for_grading`), release skips the total only after it has written the rubric assessment; otherwise it posts the total.
 
 On a lab report, an imported Canvas rubric goes to the *technical* lens: it is the grid the assignment is graded on, and the writing lens keeps the SFL-grounded profile that generation depends on.
 

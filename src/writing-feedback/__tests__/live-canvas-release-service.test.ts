@@ -300,6 +300,7 @@ function liveCanvasRubric() {
 
 describe('canvas rubric assessment', () => {
     beforeEach(() => {
+        assignment.rubricSource = 'canvas';
         assignment.canvasRubricImport = {
             shape: { criteria: assignment.rubric.criteria, levels: assignment.rubric.levels },
             ids: Object.fromEntries(assignment.rubric.criteria.map((criterion) => [
@@ -329,7 +330,42 @@ describe('canvas rubric assessment', () => {
 
     afterEach(() => {
         delete assignment.canvasRubricImport;
+        assignment.rubricSource = 'internal_profile';
+        delete assignment.isLabReport;
+        delete assignment.technicalRubricSource;
         jest.restoreAllMocks();
+    });
+
+    function rubricAssessmentPut(client: { put: jest.Mock }) {
+        return client.put.mock.calls.find(([, body]) => body && 'rubric_assessment' in body);
+    }
+
+    it('releases a total alone once the graded grid no longer comes from the canvas rubric', async () => {
+        assignment.rubricSource = 'uploaded';
+        const { service, client } = harness({
+            get: jest.fn(async (path: string) => (path.includes('/submissions/')
+                ? { assignment_id: 88, user_id: 42, attempt: 2 }
+                : { id: 88, rubric: [{ id: 'unrelated_canvas_row' }], use_rubric_for_grading: true }))
+        });
+        const releaseInput = input('submission-uploaded-grid');
+        await service.preview(releaseInput);
+        const released = await service.release(releaseInput);
+
+        expect(rubricAssessmentPut(client)).toBeUndefined();
+        expect(canvas.postGrades).toHaveBeenCalled();
+        expect(released.status).toBe('released');
+    });
+
+    it('fills the canvas rubric for a lab report graded on a canvas-seeded technical grid', async () => {
+        assignment.rubricSource = 'internal_profile';
+        assignment.isLabReport = true;
+        assignment.technicalRubricSource = 'canvas';
+        const { service, client } = harness();
+        const releaseInput = input('submission-lab-canvas');
+        await service.preview(releaseInput);
+        await service.release(releaseInput);
+
+        expect(rubricAssessmentPut(client)).toBeDefined();
     });
 
     it('writes the rubric assessment criterion by criterion, before the total grade', async () => {
