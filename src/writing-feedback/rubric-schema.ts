@@ -100,7 +100,8 @@ export const writingRubricDraftInputSchema = z.object({
         sflDimension: optionalCompactText,
         points: z.number().finite().min(0).max(1000).optional(),
         cells: z.record(rubricCell).optional(),
-        assessedBy: z.enum(['model', 'staff']).optional()
+        assessedBy: z.enum(['model', 'staff']).optional(),
+        descriptionOrigin: z.enum(['proposed']).optional()
     })).min(1).max(10),
     levels: z.array(z.object({
         id: slug,
@@ -339,6 +340,9 @@ function canonicalRubricContent(value: unknown): unknown {
  * each cell's name in from its level on every save. Compared as stored, every such rubric
  * looked edited for good, however carefully staff undid their changes.
  *
+ * Who wrote a description (`origin`, `descriptionOrigin`) is dropped too: it says nothing
+ * about what the rubric asks for.
+ *
  * @param rubric - Rubric whose cells may be unnamed
  * @returns A copy whose cells each carry a name, their own or their level's
  */
@@ -346,10 +350,10 @@ function withCellNamesResolved(rubric: WritingRubricDefinition): WritingRubricDe
     const levelLabels = new Map((rubric.levels ?? []).map((level) => [level.id, level.label]));
     return {
         ...rubric,
-        criteria: (rubric.criteria ?? []).map((criterion) => (criterion.cells
+        // Who wrote a description is not what it says, so the origin markers are left out here.
+        criteria: (rubric.criteria ?? []).map(({ descriptionOrigin: _descriptionOrigin, ...criterion }) => (criterion.cells
             ? {
                 ...criterion,
-                // Who wrote a descriptor is not what it says, so `origin` is left out here.
                 cells: Object.fromEntries(Object.entries(criterion.cells).map(([levelId, { origin: _origin, ...cell }]) => [
                     levelId,
                     { ...cell, label: cell.label?.trim() || levelLabels.get(levelId) }

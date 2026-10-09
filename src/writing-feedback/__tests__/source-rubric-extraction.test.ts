@@ -158,6 +158,8 @@ describe('convertExtractedRubric', () => {
         expect(converted.shape!.criteria[0]!.cells!.weak).toEqual({ min: 0, max: 7 });
         expect(converted.notes.join(' ')).toMatch(/states no rating levels, so the grid uses the Weak \/ Developing/);
         expect(converted.needsDescriptions).toEqual(['organization', 'content']);
+        // Organization's guiding question is its description; Content has none.
+        expect(converted.needsCriterionDescriptions).toEqual(['content']);
     });
 
     it('uses the UBC percentage bands as shares of each criterion\'s points when chosen', () => {

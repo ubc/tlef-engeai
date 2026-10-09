@@ -1438,7 +1438,8 @@
     font-size: 12px;
 }
 
-/* A rating description EngE-AI suggested, until staff change it */
+/* A description EngE-AI suggested, until staff change it */
+.wf-grid-text.wf-grid-text--proposed,
 .wf-grid-cell--proposed .wf-grid-text {
     background: #fff8e1;
     border-style: dashed;

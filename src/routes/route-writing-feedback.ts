@@ -91,7 +91,12 @@ import {
     type ExtractedRubricRefusal
 } from '../writing-feedback/source-rubric-extraction';
 import { suggestScale } from '../writing-feedback/rubric-scale-presets';
-import { countProposedCells, proposeCellDescriptions, type ProposalContext } from '../writing-feedback/rubric-cell-proposals';
+import {
+    countProposedCells,
+    proposeCellDescriptions,
+    type ProposalContext,
+    type ProposalTargets
+} from '../writing-feedback/rubric-cell-proposals';
 import type { RubricProvenanceUpdate } from '../db/mongo/writing-feedback-mongo';
 import { gradedLensFor } from '../writing-feedback/staff-final-assessment';
 import {
@@ -125,20 +130,22 @@ const sourceMaterialUpload = multer({
  */
 async function describeRows(
     shape: ImportedRubricShape,
-    criterionIds: string[],
+    targets: ProposalTargets,
     context: ProposalContext
 ): Promise<{ shape: ImportedRubricShape; notes: string[] }> {
-    if (!criterionIds.length) return { shape, notes: [] };
+    if (!targets.cells.length && !targets.descriptions.length) return { shape, notes: [] };
+    const missing = [targets.descriptions.length ? 'criterion' : '', targets.cells.length ? 'rating' : '']
+        .filter(Boolean).join(' and ');
     try {
-        const result = await proposeCellDescriptions(shape, criterionIds, context);
+        const result = await proposeCellDescriptions(shape, targets, context);
         return {
             shape: result.shape,
             notes: result.proposed
-                ? ['EngE-AI suggested the rating descriptions this rubric did not give; they are marked "Suggested". Check each one before approving.']
-                : ['This rubric gives no rating descriptions. Write them in the grid before approving.']
+                ? [`EngE-AI suggested the ${missing} descriptions this rubric did not give; they are marked "Suggested". Check each one before approving.`]
+                : [`This rubric gives no ${missing} descriptions. Write them in the grid before approving.`]
         };
     } catch {
-        return { shape, notes: ['EngE-AI could not suggest rating descriptions this time. Write them in the grid, or fill in the assignment again.'] };
+        return { shape, notes: [`EngE-AI could not suggest ${missing} descriptions this time. Write them in the grid, or fill in the assignment again.`] };
     }
 }
 
@@ -146,7 +153,7 @@ async function describeRows(
 function withProposalsAccepted(draft: WritingRubricDefinition): WritingRubricDefinition {
     return {
         ...draft,
-        criteria: draft.criteria.map((criterion) => (criterion.cells
+        criteria: draft.criteria.map(({ descriptionOrigin: _descriptionOrigin, ...criterion }) => (criterion.cells
             ? {
                 ...criterion,
                 cells: Object.fromEntries(Object.entries(criterion.cells).map(([levelId, cell]) => [
@@ -1035,7 +1042,8 @@ router.post(
                                 shape: candidate.shape!,
                                 notes: candidate.notes,
                                 deductions: candidate.deductions,
-                                needsDescriptions: candidate.needsDescriptions
+                                needsDescriptions: candidate.needsDescriptions,
+                                needsCriterionDescriptions: candidate.needsCriterionDescriptions
                             })),
                             createdAt: new Date()
                         }
@@ -1043,7 +1051,10 @@ router.post(
                 } else {
                     // Rows the source left undescribed get proposed descriptions, written for the
                     // assignment the details proposal just described.
-                    const described = await describeRows(usable[0]!.shape!, usable[0]!.needsDescriptions, {
+                    const described = await describeRows(usable[0]!.shape!, {
+                        cells: usable[0]!.needsDescriptions,
+                        descriptions: usable[0]!.needsCriterionDescriptions
+                    }, {
                         title: proposal.title || draft.title,
                         task: proposal.task || draft.task,
                         audience: proposal.audience || draft.audience,
@@ -1139,7 +1150,10 @@ router.post(
                 ? { ...selected.approved, status: 'draft', version: selected.approved.version + 1 }
                 : seedRubricForLens({ lens, actorUserId: globalUser.userId }));
         // Descriptions are proposed only now, for the version staff chose, not for every one held.
-        const described = await describeRows(chosen.shape, chosen.needsDescriptions ?? [], base);
+        const described = await describeRows(chosen.shape, {
+            cells: chosen.needsDescriptions ?? [],
+            descriptions: chosen.needsCriterionDescriptions ?? []
+        }, base);
         const draft: WritingRubricDefinition = {
             ...withGrid(base, described.shape, chosen.deductions),
             gridSource: { kind: 'uploaded', label: pending.sourceLabel, notes: [...chosen.notes, ...described.notes] }
@@ -1219,7 +1233,7 @@ router.post(
         if (proposedCells > 0 && req.body?.acknowledgeProposed !== true) {
             return res.status(409).json({
                 success: false,
-                error: `${proposedCells} rating ${proposedCells === 1 ? 'description was' : 'descriptions were'} suggested by EngE-AI. Review them, then confirm to approve.`
+                error: `${proposedCells} ${proposedCells === 1 ? 'description was' : 'descriptions were'} suggested by EngE-AI. Review them, then confirm to approve.`
             });
         }
 

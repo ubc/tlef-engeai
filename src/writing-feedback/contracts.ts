@@ -136,6 +136,12 @@ export interface WritingRubricCriterion {
     id: WritingCriterionId; // stable instructor-authored slug shared across model output and staff UI
     label: string; // staff/student-facing criterion name
     description: string; // instructor-authored assessment meaning
+    /**
+     * `'proposed'` when EngE-AI wrote the description because staff material gave none.
+     * Absent means staff wrote or accepted it; editing the description removes the marker,
+     * and approval clears it.
+     */
+    descriptionOrigin?: 'proposed';
     functionTag?: WritingFunctionTag; // optional SFL metafunction used by staff filters
     sflDimension?: string; // optional instructor-editable linguistic lens supplied to generation
     /** Maximum points this criterion contributes. Absent means the rubric is ordinal only. */
@@ -253,7 +259,7 @@ export interface WritingAssignment {
     pendingRubricExtraction?: {
         lens: WritingFeedbackLens;
         sourceLabel: string;
-        candidates: Array<{ title: string; shape: ImportedRubricShape; notes: string[]; deductions: string[]; needsDescriptions?: string[] }>;
+        candidates: Array<{ title: string; shape: ImportedRubricShape; notes: string[]; deductions: string[]; needsDescriptions?: string[]; needsCriterionDescriptions?: string[] }>;
         createdAt: Date;
     };
     /**

@@ -95,6 +95,7 @@ export interface RubricCriterion {
     id: WritingCriterionId; // stable key used to join rubric criteria to model feedback
     label: string; // student-facing criterion name editable by authorized staff
     description: string; // assignment-specific expectations supplied to generation
+    descriptionOrigin?: 'proposed'; // written by EngE-AI because staff material gave none; absent once edited
     functionTag?: WfFunctionTag; // optional SFL communicative-function filter tag
     sflDimension?: string; // optional instructor-authored linguistic lens
     points?: number; // maximum points this criterion contributes

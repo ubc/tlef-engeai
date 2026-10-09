@@ -94,6 +94,7 @@ describe('auto-fill source routes', () => {
         mongo.listWritingSourceMaterials.mockResolvedValue([rubricMaterial]);
         mongo.saveWritingRubricDraft.mockImplementation(async () => ({ id: 'assignment-1' }));
         proposeRubricFromInstructions.mockResolvedValue({});
+        proposeCellDescriptions.mockImplementation(async (shape: unknown) => ({ shape, proposed: 0 }));
     });
 
     it('lists the sources with their text and the character limit', async () => {
@@ -270,7 +271,8 @@ describe('auto-fill source routes', () => {
             expect(saved.criteria.map((criterion: { label: string; points: number }) => [criterion.label, criterion.points]))
                 .toEqual([['Thesis', 10], ['Evidence', 20]]);
             expect(saved.constraints).toContain('Subtract 1 point for each day late.');
-            expect(saved.gridSource).toEqual({ kind: 'uploaded', label: 'rubric.docx', notes: ['A model note.'] });
+            expect(saved.gridSource).toMatchObject({ kind: 'uploaded', label: 'rubric.docx' });
+            expect(saved.gridSource.notes[0]).toBe('A model note.');
             expect(provenance).toEqual({ pendingRubricExtraction: null });
         });
 
@@ -379,12 +381,12 @@ describe('auto-fill source routes', () => {
                 .send({ rubricFrom: { sourceId: 'material-1', scale: 'three_level_met' } });
 
             expect(response.body.data.grid).toBe('applied');
-            const [shape, criterionIds] = proposeCellDescriptions.mock.calls[0];
+            const [shape, targets] = proposeCellDescriptions.mock.calls[0];
             expect(shape.levels.map((level: { label: string }) => level.label)).toEqual(['Not met', 'Partly met', 'Met']);
-            expect(criterionIds).toEqual(['introduction', 'results']);
+            expect(targets).toEqual({ cells: ['introduction', 'results'], descriptions: ['introduction', 'results'] });
             const saved = mongo.saveWritingRubricDraft.mock.calls[0][2];
             expect(saved.criteria[0].cells.met).toMatchObject({ descriptor: 'Proposed', origin: 'proposed' });
-            expect(saved.gridSource.notes.join(' ')).toMatch(/EngE-AI suggested the rating descriptions/);
+            expect(saved.gridSource.notes.join(' ')).toMatch(/EngE-AI suggested the criterion and rating descriptions/);
         });
 
         it('still builds the grid when proposing fails, with a note to write them', async () => {
@@ -394,7 +396,7 @@ describe('auto-fill source routes', () => {
             const response = await request(app()).post(`${ASSIGNMENT}/rubric-draft/fill`).send({ rubricFrom: { sourceId: 'material-1' } });
 
             expect(response.body.data.grid).toBe('applied');
-            expect(mongo.saveWritingRubricDraft.mock.calls[0][2].gridSource.notes.join(' ')).toMatch(/could not suggest rating descriptions/);
+            expect(mongo.saveWritingRubricDraft.mock.calls[0][2].gridSource.notes.join(' ')).toMatch(/could not suggest criterion and rating descriptions/);
         });
     });
 
@@ -417,7 +419,7 @@ describe('auto-fill source routes', () => {
             const response = await request(app()).post(`${ASSIGNMENT}/rubric-draft/approve`);
 
             expect(response.status).toBe(409);
-            expect(response.body.error).toMatch(/^1 rating description was suggested by EngE-AI/);
+            expect(response.body.error).toMatch(/^1 description was suggested by EngE-AI/);
             expect(mongo.approveWritingRubricDraft).not.toHaveBeenCalled();
         });
 

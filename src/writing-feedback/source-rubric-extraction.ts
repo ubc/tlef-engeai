@@ -99,6 +99,8 @@ export interface ConvertedRubric {
     deductions: string[];
     /** Ids of criteria whose cells carry no description, for EngE-AI to propose. */
     needsDescriptions: string[];
+    /** Ids of criteria the source gave no description of, for EngE-AI to propose. */
+    needsCriterionDescriptions: string[];
 }
 
 /**
@@ -278,8 +280,8 @@ export function convertExtractedRubric(rubric: ExtractedRubric, scale: ScalePres
     const deductions = (rubric.deductions ?? []).map((deduction) => capped(deduction, MAX_CONSTRAINT).text);
     const title = rubric.title || 'Rubric';
     const reportedCriteria = groupCriteria(rubric.criteria, notes);
-    if (reportedCriteria.length === 0) return { title, shape: null, refusal: 'no_criteria', notes, deductions, needsDescriptions: [] };
-    if (reportedCriteria.length > MAX_CRITERIA) return { title, shape: null, refusal: 'too_many_criteria', notes, deductions, needsDescriptions: [] };
+    if (reportedCriteria.length === 0) return { title, shape: null, refusal: 'no_criteria', notes, deductions, needsDescriptions: [], needsCriterionDescriptions: [] };
+    if (reportedCriteria.length > MAX_CRITERIA) return { title, shape: null, refusal: 'too_many_criteria', notes, deductions, needsDescriptions: [], needsCriterionDescriptions: [] };
 
     // Step 1: the columns.
     const ratingCounts = reportedCriteria.map((criterion) => criterion.ratings?.length ?? 0);
@@ -293,7 +295,7 @@ export function convertExtractedRubric(rubric: ExtractedRubric, scale: ScalePres
         ? [...listedLevels].sort((left, right) => levelSortKey(left)! - levelSortKey(right)!)
         : listedLevels;
     const noRatings = Math.max(...ratingCounts) === 0;
-    if (reportedLevels.length > MAX_LEVELS) return { title, shape: null, refusal: 'too_many_levels', notes, deductions, needsDescriptions: [] };
+    if (reportedLevels.length > MAX_LEVELS) return { title, shape: null, refusal: 'too_many_levels', notes, deductions, needsDescriptions: [], needsCriterionDescriptions: [] };
     const levelIds = new Set<string>();
     const usesPreset = reportedLevels.length < 2;
     const levels: WritingRubricLevel[] = !usesPreset
@@ -312,6 +314,7 @@ export function convertExtractedRubric(rubric: ExtractedRubric, scale: ScalePres
     // Step 3: each row.
     const criterionIds = new Set<string>();
     const cutLabels: string[] = [];
+    const undescribed = new Set<string>();
     const criteria: WritingRubricCriterion[] = reportedCriteria.map((reported, rowIndex) => {
         const fullLabel = reported.parentLabel ? `${reported.parentLabel}: ${reported.label}` : reported.label;
         const label = capped(fullLabel, MAX_CRITERION_LABEL);
@@ -347,8 +350,10 @@ export function convertExtractedRubric(rubric: ExtractedRubric, scale: ScalePres
         // A row with no ratings still gets its bands, so only the descriptions are owed.
         if (!(reported.ratings ?? []).length) Object.assign(cells, evenBands);
 
+        const id = uniqueSlug(slugify(label.text || `criterion_${rowIndex + 1}`, rowIndex), criterionIds);
+        if (!descriptionText) undescribed.add(id);
         return {
-            id: uniqueSlug(slugify(label.text || `criterion_${rowIndex + 1}`, rowIndex), criterionIds),
+            id,
             label: label.text,
             description: description.text,
             ...(points !== undefined ? { points } : {}),
@@ -392,5 +397,12 @@ export function convertExtractedRubric(rubric: ExtractedRubric, scale: ScalePres
     const needsDescriptions = criteria
         .filter((criterion) => !Object.values(criterion.cells ?? {}).some((cell) => cell.descriptor))
         .map((criterion) => criterion.id);
-    return { title, shape: { criteria: defaultFormattingCriteriaToStaff(criteria), levels }, notes, deductions, needsDescriptions };
+    return {
+        title,
+        shape: { criteria: defaultFormattingCriteriaToStaff(criteria), levels },
+        notes,
+        deductions,
+        needsDescriptions,
+        needsCriterionDescriptions: [...undescribed]
+    };
 }

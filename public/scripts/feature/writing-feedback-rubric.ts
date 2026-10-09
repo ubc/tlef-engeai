@@ -701,10 +701,16 @@ function syncStructuredValues(form: HTMLFormElement, working: RubricDefinition):
         const assessedBy = rawAssessedBy === undefined
             ? criterion.assessedBy
             : (rawAssessedBy === 'staff' ? 'staff' as const : undefined);
+        const description = optionalControlValue(form, `criterion.${index}.description`) ?? criterion.description;
+        // A suggested description stays marked only while it reads as EngE-AI wrote it.
+        const descriptionOrigin = criterion.descriptionOrigin && description === criterion.description
+            ? criterion.descriptionOrigin
+            : undefined;
         return {
             id: criterion.id,
             label: optionalControlValue(form, `criterion.${index}.label`) ?? criterion.label,
-            description: optionalControlValue(form, `criterion.${index}.description`) ?? criterion.description,
+            description,
+            ...(descriptionOrigin ? { descriptionOrigin } : {}),
             ...(functionTag ? { functionTag } : {}),
             ...(sflDimension ? { sflDimension } : {}),
             ...(points !== undefined ? { points } : {}),
@@ -2399,10 +2405,11 @@ async function approveEveryRubric(context: RubricPageContext): Promise<void> {
         const snapshot = detachedRubric(section.working);
         syncStructuredValues(section.form, snapshot);
         return total + snapshot.criteria.reduce((sum, criterion) => sum
+            + (criterion.descriptionOrigin === 'proposed' ? 1 : 0)
             + Object.values(criterion.cells ?? {}).filter((cell) => cell.origin === 'proposed').length, 0);
     }, 0);
     if (suggested > 0) {
-        lines.push(`${suggested} rating ${suggested === 1 ? 'description was' : 'descriptions were'} suggested by EngE-AI (marked "Suggested"). Approving confirms you have read ${suggested === 1 ? 'it' : 'them'}.`);
+        lines.push(`${suggested} ${suggested === 1 ? 'description was' : 'descriptions were'} suggested by EngE-AI (marked "Suggested"). Approving confirms you have read ${suggested === 1 ? 'it' : 'them'}.`);
     }
     const confirmLabel = firstApproval ? 'Approve rubric' : 'Approve changes';
     const confirmation = await showConfirmModal(

@@ -943,7 +943,24 @@ export function renderRubricGrid(
         description.className = 'wf-grid-text';
         autoGrow(description);
         description.addEventListener('input', onChange);
-        rowHead.append(bar, description, authorshipControl(criterion, rowIndex, gridId, canEdit, onChange));
+        rowHead.append(bar, description);
+        // A description EngE-AI wrote is labelled, as suggested cells are, until staff change it.
+        if (criterion.descriptionOrigin === 'proposed') {
+            const tag = document.createElement('span');
+            tag.className = 'wf-grid-suggested';
+            tag.textContent = 'Suggested';
+            tag.id = `${gridId}-suggested-description-${rowIndex}`;
+            description.setAttribute('aria-describedby', tag.id);
+            description.classList.add('wf-grid-text--proposed');
+            const original = criterion.description;
+            description.addEventListener('input', () => {
+                const unchanged = description.value === original;
+                description.classList.toggle('wf-grid-text--proposed', unchanged);
+                tag.hidden = !unchanged;
+            });
+            rowHead.append(tag);
+        }
+        rowHead.append(authorshipControl(criterion, rowIndex, gridId, canEdit, onChange));
 
         row.append(rowHead);
 
