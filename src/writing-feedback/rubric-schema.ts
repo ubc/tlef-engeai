@@ -19,6 +19,12 @@ import type {
 import { resolveBand } from './rubric-bands';
 import { modelAssessedCriteria } from './criterion-assessment';
 
+/** Longest criterion description a rubric may carry; long enough for a section's full brief. */
+export const MAX_CRITERION_DESCRIPTION = 2000;
+
+/** Longest performance descriptor one grid cell may carry. */
+export const MAX_CELL_DESCRIPTOR = 800;
+
 const compactText = z.string().trim().min(1).max(1200);
 const optionalCompactText = z.string().trim().max(1200).optional();
 const slug = z.string()
@@ -69,7 +75,7 @@ const rubricCell = z.object({
     // the column. Optional: a hand-authored grid may carry none, and the level's own
     // label stands in wherever a cell has not been named.
     label: z.string().trim().max(60).optional(),
-    descriptor: z.string().trim().max(400).optional()
+    descriptor: z.string().trim().max(MAX_CELL_DESCRIPTOR).optional()
 });
 
 /** Instructor-editable rubric payload required before a draft can be saved or approved. */
@@ -88,7 +94,7 @@ export const writingRubricDraftInputSchema = z.object({
     criteria: z.array(z.object({
         id: slug,
         label: z.string().trim().min(1).max(80),
-        description: compactText,
+        description: z.string().trim().min(1).max(MAX_CRITERION_DESCRIPTION),
         functionTag: z.enum(['content', 'interpersonal', 'organizational']).optional(),
         sflDimension: optionalCompactText,
         points: z.number().finite().min(0).max(1000).optional(),

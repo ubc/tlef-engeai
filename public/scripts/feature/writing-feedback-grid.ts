@@ -50,8 +50,9 @@ export const RUBRIC_SLUG = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
 const MAX_SLUG_LENGTH = 64;
 const MAX_CRITERION_LABEL = 80;
 const MAX_LEVEL_LABEL = 60;
-const MAX_DESCRIPTOR = 400;
-const MAX_TEXT = 1200;
+// Mirrors MAX_CELL_DESCRIPTOR and MAX_CRITERION_DESCRIPTION in src/writing-feedback/rubric-schema.ts.
+const MAX_DESCRIPTOR = 800;
+const MAX_TEXT = 2000;
 
 /* ------------------------------------------------------------------------- *
  * Band arithmetic

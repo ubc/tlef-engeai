@@ -263,6 +263,7 @@ export class EngEAI_MongoDB {
      * @param canvasRubric - Canvas rubric grid seeding the draft, when one could be mapped
      * @param canvasRubricRefusal - Why the Canvas rubric could not seed the draft, when it could not
      * @param canvasRubricIds - Canvas criterion and rating ids for the mapped grid, retained for release write-back
+     * @param canvasRubricShortened - Whether the mapped grid holds Canvas descriptions cut to fit
      * @returns Newly created or concurrently existing assignment
      */
     public createCanvasWritingAssignment = async (
@@ -273,7 +274,8 @@ export class EngEAI_MongoDB {
         dueAt?: Date,
         canvasRubric?: ImportedRubricShape,
         canvasRubricRefusal?: CanvasRubricRefusal,
-        canvasRubricIds?: CanvasRubricIdMap
+        canvasRubricIds?: CanvasRubricIdMap,
+        canvasRubricShortened?: boolean
     ) => WritingFeedbackMongo.createCanvasWritingAssignment(
         this.ctx(),
         courseId,
@@ -283,7 +285,8 @@ export class EngEAI_MongoDB {
         dueAt,
         canvasRubric,
         canvasRubricRefusal,
-        canvasRubricIds
+        canvasRubricIds,
+        canvasRubricShortened
     );
 
     /**

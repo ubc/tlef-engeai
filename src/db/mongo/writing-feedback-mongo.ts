@@ -383,6 +383,8 @@ export async function deleteWritingAssignment(
  * @param dueAt - Optional Canvas deadline
  * @param canvasRubric - Canvas rubric grid, when it could be represented as a draft
  * @param canvasRubricRefusal - Why the Canvas rubric could not be represented, when it could not
+ * @param canvasRubricIds - Canvas criterion and rating ids for the mapped grid
+ * @param canvasRubricShortened - Whether the mapped grid holds Canvas descriptions cut to fit
  * @returns Newly inserted or concurrently existing assignment
  * @throws Non-duplicate MongoDB errors
  */
@@ -395,7 +397,8 @@ export async function createCanvasWritingAssignment(
     dueAt?: Date,
     canvasRubric?: ImportedRubricShape,
     canvasRubricRefusal?: CanvasRubricRefusal,
-    canvasRubricIds?: CanvasRubricIdMap
+    canvasRubricIds?: CanvasRubricIdMap,
+    canvasRubricShortened?: boolean
 ): Promise<WritingAssignment> {
     await ensureWritingFeedbackIndexes(ctx);
     const now = new Date();
@@ -426,6 +429,7 @@ export async function createCanvasWritingAssignment(
         // Recorded only where the rubric did not seed: the grid staff are about to see is
         // the built-in profile, and nothing else on the page would say so.
         ...(!canvasRubric && canvasRubricRefusal ? { canvasRubricRefusal } : {}),
+        ...(canvasRubric && canvasRubricShortened ? { canvasRubricShortened: true } : {}),
         ...(dueAt ? { dueAt } : {})
     };
     try {

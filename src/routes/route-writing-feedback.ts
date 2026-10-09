@@ -449,7 +449,8 @@ router.post('/:courseId/writing-feedback/canvas/import', withCanvasClientWhenLin
             preview.assignment.dueAt ? new Date(preview.assignment.dueAt) : undefined,
             seedGrid,
             mapping.refusal,
-            mapping.ids
+            mapping.ids,
+            mapping.shortened
         );
 
         // The brief is stored whether or not the assignment is new: an instructor who edited it

@@ -192,7 +192,11 @@ export interface WritingAssignment {
     courseId: string; // authorization and persistence boundary
     title: string; // staff/student-facing assignment label
     profileVersion: string; // originating platform-template provenance retained on feedback runs
-    rubricSource: 'internal_profile' | 'canvas'; // import provenance, not synchronization state
+    /**
+     * Where the writing grid came from: the built-in profile, the Canvas rubric, or a rubric
+     * extracted from instructor-uploaded material. Provenance, not synchronization state.
+     */
+    rubricSource: 'internal_profile' | 'canvas' | 'uploaded';
     /** Raw instructor-approved assignment directions used as rubric-editor context. */
     instructions?: string;
     /** Legacy complete level-to-points mapping derived at approval when levels carry points. */
@@ -226,6 +230,11 @@ export interface WritingAssignment {
      */
     canvasRubricRefusal?: CanvasRubricRefusal;
     /**
+     * Set when the imported Canvas rubric seeded the draft but some of its descriptions were
+     * longer than the grid allows and were shortened. Written at creation only.
+     */
+    canvasRubricShortened?: boolean;
+    /**
      * The Canvas rubric exactly as imported, held independently of which lens uses it.
      *
      * Kept whole because lens routing cannot happen at import time: `isLabReport` is set by a
@@ -248,7 +257,7 @@ export interface WritingAssignment {
      * Split per lens so a Canvas-seeded technical rubric does not make the writing lens report
      * `canvas` and lose the metafunctions auto-fill that a lab report's writing lens needs.
      */
-    technicalRubricSource?: 'canvas' | 'builtin';
+    technicalRubricSource?: 'canvas' | 'builtin' | 'uploaded';
     /** Assignment description and metadata imported from Canvas; reference material only. */
     canvasDetails?: CanvasAssignmentDetails;
     /** Submission deadline shown to staff; sourced from Canvas or manual entry. */

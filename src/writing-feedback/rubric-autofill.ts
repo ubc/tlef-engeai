@@ -16,6 +16,8 @@ import { z } from 'zod';
 import { LLMModule, type Message } from 'ubc-genai-toolkit-llm';
 import { isMockResponse } from '../helpers/mock-response';
 import { spaceBandsEvenly } from './rubric-bands';
+import { storedGridSource } from './rubric-lens';
+import { MAX_CELL_DESCRIPTOR, MAX_CRITERION_DESCRIPTION } from './rubric-schema';
 import { stripNulls, type WithoutNull } from './strip-nulls';
 import type {
     WritingAssignment,
@@ -29,7 +31,7 @@ import type {
 } from './contracts';
 
 /** Where a draft's grid came from, which decides how much auto-fill may rewrite. */
-export type RubricGridSource = 'canvas' | 'apsc182' | 'metafunctions';
+export type RubricGridSource = 'canvas' | 'uploaded' | 'apsc182' | 'metafunctions';
 
 /**
  * gridSourceFor - the merge-table row an assignment's grid falls under for a lens.
@@ -43,6 +45,9 @@ export type RubricGridSource = 'canvas' | 'apsc182' | 'metafunctions';
  * writing lens ignores it outright. A lab handout describes an experiment, not linguistic
  * expectations, so the three metafunctions always govern it no matter what Canvas supplied.
  *
+ * A grid extracted from instructor-uploaded material is the instructor's own rubric on either
+ * lens, and is checked first so a lab report can never route it to the metafunctions row.
+ *
  * A manually created writing assignment lands on `metafunctions` too. It and a lab report's
  * writing lens are the same case: the three criteria are fixed and auto-fill writes only what
  * they mean for this assignment, which keeps feedback comparable across an instructor's work.
@@ -52,11 +57,11 @@ export type RubricGridSource = 'canvas' | 'apsc182' | 'metafunctions';
  * @returns The grid source row that decides `autofillMergeRules`
  */
 export function gridSourceFor(assignment: WritingAssignment, lens: WritingFeedbackLens): RubricGridSource {
-    if (lens === 'technical') {
-        return assignment.technicalRubricSource === 'canvas' ? 'canvas' : 'apsc182';
-    }
+    const stored = storedGridSource(assignment, lens);
+    if (stored === 'uploaded') return 'uploaded';
+    if (lens === 'technical') return stored === 'canvas' ? 'canvas' : 'apsc182';
     if (assignment.isLabReport) return 'metafunctions';
-    return assignment.rubricSource === 'canvas' ? 'canvas' : 'metafunctions';
+    return stored === 'canvas' ? 'canvas' : 'metafunctions';
 }
 
 /** What auto-fill is permitted to change in one draft. */
@@ -90,8 +95,10 @@ export interface AutofillProposal {
  */
 export function autofillMergeRules(source: RubricGridSource): AutofillMergeRules {
     switch (source) {
-        // An instructor's real rubric is never revised by a model.
+        // An instructor's real rubric is never revised by a model, whether it came from Canvas
+        // or from material they uploaded.
         case 'canvas':
+        case 'uploaded':
             return { mayAddRows: false, mayWriteRow: false, mayWriteCells: false };
         // The evaluation form's sections and weights belong to the department.
         case 'apsc182':
@@ -310,13 +317,13 @@ export const autofillProposalSchema = z.object({
         cells: z.record(z.object({
             min: z.number().finite().min(0).max(1000),
             max: z.number().finite().min(0).max(1000),
-            descriptor: z.string().trim().max(400).nullish()
+            descriptor: z.string().trim().max(MAX_CELL_DESCRIPTOR).nullish()
         })).nullish()
     })).max(10)
 });
 
-// Matches `compactText`'s cap in rubric-schema.ts (task/audience/purpose/gradingIntent/
-// criterion description). `autofillProposalSchema` deliberately allows more headroom
+// Matches `compactText`'s cap in rubric-schema.ts (task/audience/purpose/gradingIntent).
+// Criterion descriptions have their own, longer cap (`MAX_CRITERION_DESCRIPTION`). `autofillProposalSchema` deliberately allows more headroom
 // than this so a good-faith model response is not refused outright for length; see
 // `clipToDraftLimit`, which reconciles the gap after validation instead.
 const DRAFT_TEXT_LIMIT = 1200;
@@ -331,11 +338,12 @@ const DRAFT_TEXT_LIMIT = 1200;
  * proposal beats a refused one.
  *
  * @param text - Validated proposal text, already within the proposal schema's own cap
+ * @param limit - The draft field's cap; the shared `compactText` cap unless given
  * @returns Text at or under the draft limit, cut at the last whole word when clipped
  */
-function clipToDraftLimit(text: string): string {
-    if (text.length <= DRAFT_TEXT_LIMIT) return text;
-    const clipped = text.slice(0, DRAFT_TEXT_LIMIT);
+function clipToDraftLimit(text: string, limit: number = DRAFT_TEXT_LIMIT): string {
+    if (text.length <= limit) return text;
+    const clipped = text.slice(0, limit);
     const lastSpace = clipped.lastIndexOf(' ');
     return (lastSpace > 0 ? clipped.slice(0, lastSpace) : clipped).trim();
 }
@@ -472,6 +480,6 @@ export async function proposeRubricFromInstructions(
         sflContext,
         criteria: validatedData.criteria
             .filter((criterion) => known.has(criterion.id))
-            .map((criterion) => ({ ...criterion, description: clipToDraftLimit(criterion.description) }))
+            .map((criterion) => ({ ...criterion, description: clipToDraftLimit(criterion.description, MAX_CRITERION_DESCRIPTION) }))
     };
 }

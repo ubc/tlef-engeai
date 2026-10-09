@@ -110,6 +110,19 @@ export interface RubricCriterion {
 export const FORMATTING_CRITERION_PATTERN = /\b(?:format(?:s|ted|ting)?|layouts?|fonts?|margins?|spacing|typograph(?:y|ic|ical))\b/i;
 
 /**
+ * gridSeededFromCanvas - whether one lens's grid came from the imported Canvas rubric.
+ *
+ * @param assignment - Assignment whose grid provenance is read
+ * @param lens - Lens whose grid is asked about
+ * @returns True when that lens's grid was seeded from Canvas
+ */
+export function gridSeededFromCanvas(assignment: Assignment, lens: 'linguistic' | 'technical'): boolean {
+    return lens === 'linguistic'
+        ? assignment.rubricSource === 'canvas'
+        : assignment.technicalRubricSource === 'canvas';
+}
+
+/**
  * looksLikeFormattingCriterion - whether a criterion label names document formatting.
  *
  * @param label - Criterion label as currently typed
@@ -153,9 +166,10 @@ export interface Assignment {
     title: string; // queue and review heading
     canvasAssignmentId?: string; // external key retained only for Canvas-linked intake/release
     canvasRubricRefusal?: CanvasRubricRefusal; // why an imported Canvas rubric could not seed this grid
-    rubricSource: 'internal_profile' | 'canvas'; // provenance label for the WRITING lens; import never implies approval
+    canvasRubricShortened?: boolean; // the imported Canvas rubric had descriptions cut to fit the grid
+    rubricSource: 'internal_profile' | 'canvas' | 'uploaded'; // provenance label for the WRITING lens; import never implies approval
     /** Where the technical grid came from. Split per lens so a Canvas technical rubric does not silence writing auto-fill. */
-    technicalRubricSource?: 'canvas' | 'builtin';
+    technicalRubricSource?: 'canvas' | 'builtin' | 'uploaded';
     /** The Canvas rubric as imported, kept unrouted until the lab-report flag decides which lens owns it. */
     canvasRubricImport?: { ids: CanvasRubricIdMap; importedAt: string | Date };
     instructions?: string; // instructor-approved assignment directions shown beside rubric setup

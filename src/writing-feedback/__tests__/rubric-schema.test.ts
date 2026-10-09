@@ -20,7 +20,9 @@ import {
     gradeMappingFromApprovedRubric,
     requireCompleteRubricCells,
     writingRubricDraftInputSchema,
-    rubricContentEquals
+    rubricContentEquals,
+    MAX_CELL_DESCRIPTOR,
+    MAX_CRITERION_DESCRIPTION
 } from '../rubric-schema';
 import type { WritingRubricDraftInput } from '../rubric-schema';
 import type { WritingRubricDefinition } from '../contracts';
@@ -649,5 +651,32 @@ describe('rubricContentEquals with cells approved before they carried names', ()
     it('still sees a cell renamed to something other than its level label', () => {
         const draft = draftSavedFromGrid({ needs_improvement: 'Needs Improvement', excellent: 'Outstanding' });
         expect(rubricContentEquals(draft, approvedWithUnnamedCells())).toBe(false);
+    });
+});
+
+describe('rubric text limits', () => {
+    function withFirstCriterion(change: (criterion: WritingRubricDraftInput['criteria'][number]) => void): WritingRubricDraftInput {
+        const draft = structuredClone(buildStaffedWritingRubric('user-1')) as unknown as WritingRubricDraftInput;
+        change(draft.criteria[0]!);
+        return draft;
+    }
+
+    it('accepts a cell descriptor up to the cell limit and refuses one past it', () => {
+        const levelId = Object.keys(buildStaffedWritingRubric('user-1').criteria[0]!.cells ?? {})[0]!;
+        const at = withFirstCriterion((criterion) => { criterion.cells![levelId]!.descriptor = 'd'.repeat(MAX_CELL_DESCRIPTOR); });
+        const past = withFirstCriterion((criterion) => { criterion.cells![levelId]!.descriptor = 'd'.repeat(MAX_CELL_DESCRIPTOR + 1); });
+
+        expect(MAX_CELL_DESCRIPTOR).toBe(800);
+        expect(writingRubricDraftInputSchema.safeParse(at).success).toBe(true);
+        expect(writingRubricDraftInputSchema.safeParse(past).success).toBe(false);
+    });
+
+    it('accepts a criterion description up to the criterion limit and refuses one past it', () => {
+        const at = withFirstCriterion((criterion) => { criterion.description = 'c'.repeat(MAX_CRITERION_DESCRIPTION); });
+        const past = withFirstCriterion((criterion) => { criterion.description = 'c'.repeat(MAX_CRITERION_DESCRIPTION + 1); });
+
+        expect(MAX_CRITERION_DESCRIPTION).toBe(2000);
+        expect(writingRubricDraftInputSchema.safeParse(at).success).toBe(true);
+        expect(writingRubricDraftInputSchema.safeParse(past).success).toBe(false);
     });
 });

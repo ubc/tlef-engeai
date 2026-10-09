@@ -52,6 +52,7 @@ import {
     DISCLOSURE_TRANSITION_TIMEOUT_MS,
     assignmentOriginText,
     CanvasRubricRefusal,
+    gridSeededFromCanvas,
     RubricCell,
     RubricCriterion,
     RubricDefinition,
@@ -1598,10 +1599,17 @@ function renderRubricPage(
         }
         : undefined;
 
+    // A Canvas rubric that did seed the grid may still have had descriptions cut to fit.
+    // The note sits on whichever grid that rubric seeded, until that grid is approved.
+    const shortenedNoticeFor = (lens: 'linguistic' | 'technical', approved: boolean): (() => HTMLElement) | undefined =>
+        (assignment.canvasRubricShortened && gridSeededFromCanvas(assignment, lens) && !approved
+            ? canvasShortenedNotice
+            : undefined);
+
     // The heading names the rubric (D-066) and the plain-English line explains it. A lab
     // report shows two grids at once, so the name is what tells them apart.
     step2Body.append(renderRubricSection(pageContext, linguisticData, 'linguistic', {
-        notice: canvasRefusalNotice,
+        notice: canvasRefusalNotice ?? shortenedNoticeFor('linguistic', Boolean(linguisticData.approved)),
         heading: isLabReport ? 'Writing rubric' : 'Rubric',
         subtitle: isLabReport
             ? 'How they wrote it — structure, clarity, and how the writing speaks to its reader'
@@ -1618,6 +1626,7 @@ function renderRubricPage(
             step2Body.append(renderMissingTechnicalRubric(assignment));
         } else {
             step2Body.append(renderRubricSection(pageContext, technicalData, 'technical', {
+                notice: shortenedNoticeFor('technical', Boolean(technicalData.approved)),
                 heading: 'Technical rubric',
                 subtitle: 'The experiment itself — whether the reasoning holds together and the data supports the claims',
                 errorLabel: 'the technical rubric',
@@ -2550,6 +2559,29 @@ async function autosaveAssignmentRubrics(context: RubricPageContext): Promise<vo
  * @param refusal - Reason recorded at import
  * @returns One sentence naming what put the rubric out of contract
  */
+/**
+ * canvasShortenedNotice - tells staff the imported Canvas rubric lost text to the grid's limits.
+ *
+ * @returns Callout built fresh for each redraw of the grid it sits above
+ */
+function canvasShortenedNotice(): HTMLElement {
+    const shortened = document.createElement('div');
+    shortened.className = 'wf-owed';
+    // Decorative: the sentences beside it carry the message.
+    const icon = document.createElement('i');
+    icon.dataset.feather = 'info';
+    icon.className = 'wf-owed__icon';
+    icon.setAttribute('aria-hidden', 'true');
+    const body = document.createElement('div');
+    body.className = 'wf-owed__body';
+    body.append(
+        createText('p', 'Some Canvas rubric text was shortened', 'wf-owed__title'),
+        createText('p', 'A few descriptions in the Canvas rubric were longer than EngE-AI allows (800 characters per rating, 2,000 per criterion), so their ends were cut. Compare the grid below with the rubric in Canvas before approving.')
+    );
+    shortened.append(icon, body);
+    return shortened;
+}
+
 function canvasRefusalReason(refusal: CanvasRubricRefusal): string {
     switch (refusal) {
         case 'too_few_ratings':
