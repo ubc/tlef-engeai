@@ -56,7 +56,17 @@ export interface SourcesPanel {
 interface GridChoice {
     kind: 'keep' | 'canvas' | 'default' | 'material';
     sourceId?: string;
+    scale?: ScaleChoice;
 }
+
+/** The scales a rubric without levels can use, as the picker lists them. */
+type ScaleChoice = 'suggested' | 'four_level' | 'three_level_met' | 'ubc_percent_bands';
+const SCALE_OPTIONS: ReadonlyArray<{ value: ScaleChoice; label: string }> = [
+    { value: 'suggested', label: 'Suggested by EngE-AI' },
+    { value: 'four_level', label: 'Weak / Developing / Proficient / Exemplary' },
+    { value: 'three_level_met', label: 'Not met / Partly met / Met' },
+    { value: 'ubc_percent_bands', label: 'UBC percentage bands (<50% to 80–100%)' }
+];
 
 /** The grid choice staff made, per assignment, while the workspace is open. */
 const rubricChoiceByAssignment = new Map<string, GridChoice>();
@@ -70,7 +80,7 @@ function choiceForCurrent(current: GradedGridState['current']): GridChoice {
 
 /** The choice in the form the fill request takes. */
 function toRequestChoice(choice: GridChoice): RubricSourceChoice {
-    if (choice.kind === 'material') return choice.sourceId ? { sourceId: choice.sourceId } : 'keep';
+    if (choice.kind === 'material') return choice.sourceId ? { sourceId: choice.sourceId, scale: choice.scale ?? 'suggested' } : 'keep';
     return choice.kind;
 }
 
@@ -287,12 +297,30 @@ export function renderSourcesPanel(assignmentId: string, canEdit: boolean): Sour
                 item.selected = chosen.kind === 'material' ? chosen.sourceId === source.id : source === materials[0];
                 select.append(item);
             });
-            radio.addEventListener('change', () => { if (radio.checked) choose({ kind: 'material', sourceId: select.value }); });
-            select.addEventListener('change', () => {
-                radio.checked = true;
-                choose({ kind: 'material', sourceId: select.value });
+            // For a rubric that states no rating levels: which scale to give it.
+            const scale = document.createElement('select');
+            scale.className = 'wf-sources__material-select';
+            scale.disabled = !canEdit;
+            const scaleId = `wf-rubric-scale-${assignmentId}`;
+            scale.id = scaleId;
+            SCALE_OPTIONS.forEach((option) => {
+                const item = document.createElement('option');
+                item.value = option.value;
+                item.textContent = option.label;
+                item.selected = (chosen.kind === 'material' ? chosen.scale ?? 'suggested' : 'suggested') === option.value;
+                scale.append(item);
             });
-            row.append(select);
+            const scaleLabel = document.createElement('label');
+            scaleLabel.htmlFor = scaleId;
+            scaleLabel.className = 'wf-sources__scale-label';
+            scaleLabel.textContent = 'If it has no rating levels, use:';
+            const materialChoice = (): GridChoice => ({ kind: 'material', sourceId: select.value, scale: scale.value as ScaleChoice });
+            radio.addEventListener('change', () => { if (radio.checked) choose(materialChoice()); });
+            [select, scale].forEach((control) => control.addEventListener('change', () => {
+                radio.checked = true;
+                choose(materialChoice());
+            }));
+            row.append(select, scaleLabel, scale);
             return row;
         });
         const hint = createText(

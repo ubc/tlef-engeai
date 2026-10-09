@@ -1069,6 +1069,24 @@ export function renderRubricGrid(
 
             // Points first, then the rating's name, then what earns it.
             cell.append(bandInput, ratingName, descriptor);
+
+            // A description EngE-AI wrote says so, in words as well as shading, until staff
+            // change it; the editor then stops carrying its origin.
+            if (band?.origin === 'proposed' && band.descriptor) {
+                const tag = document.createElement('span');
+                tag.className = 'wf-grid-suggested';
+                tag.textContent = 'Suggested';
+                tag.id = `${gridId}-suggested-${rowIndex}-${columnIndex}`;
+                descriptor.setAttribute('aria-describedby', tag.id);
+                cell.classList.add('wf-grid-cell--proposed');
+                cell.append(tag);
+                const original = band.descriptor;
+                descriptor.addEventListener('input', () => {
+                    const unchanged = descriptor.value === original;
+                    cell.classList.toggle('wf-grid-cell--proposed', unchanged);
+                    tag.hidden = !unchanged;
+                });
+            }
             row.append(cell);
         });
 

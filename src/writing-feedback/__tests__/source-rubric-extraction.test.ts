@@ -141,11 +141,11 @@ describe('convertExtractedRubric', () => {
         });
 
         expect(Object.values(shape!.criteria[0]!.cells!)).toEqual([
-            { min: 0, max: 7, descriptor: 'a' }, { min: 7.5, max: 15, descriptor: 'b' }
+            { min: 0, max: 7, descriptor: 'a', origin: 'source' }, { min: 7.5, max: 15, descriptor: 'b', origin: 'source' }
         ]);
     });
 
-    it('gives a rubric with no levels EngE-AI\'s default levels and even bands, and says so', () => {
+    it('gives a rubric with no levels the chosen scale and its bands, and lists the rows to describe', () => {
         const converted = convertExtractedRubric({
             title: 'Weighted list', shape: 'weighted_list', notes: [],
             criteria: [
@@ -156,7 +156,27 @@ describe('convertExtractedRubric', () => {
 
         expect(converted.shape!.levels.map((level) => level.label)).toEqual(['Weak', 'Developing', 'Proficient', 'Exemplary']);
         expect(converted.shape!.criteria[0]!.cells!.weak).toEqual({ min: 0, max: 7 });
-        expect(converted.notes.join(' ')).toMatch(/no rating descriptions/);
+        expect(converted.notes.join(' ')).toMatch(/states no rating levels, so the grid uses the Weak \/ Developing/);
+        expect(converted.needsDescriptions).toEqual(['organization', 'content']);
+    });
+
+    it('uses the UBC percentage bands as shares of each criterion\'s points when chosen', () => {
+        const converted = convertExtractedRubric({
+            title: 'Weighted list', shape: 'weighted_list', notes: [],
+            criteria: [{ label: 'Content', weight: { value: 20, unit: 'points' } }]
+        }, 'ubc_percent_bands');
+
+        expect(converted.shape!.levels.map((level) => level.label)).toEqual(['<50%', '50–54%', '55–67%', '68–79%', '80–100%']);
+        expect(converted.shape!.criteria[0]!.cells!.pct_80_100).toEqual({ min: 16, max: 20 });
+    });
+
+    it('lists only the rows a grid rubric left without ratings', () => {
+        const converted = convertExtractedRubric({
+            ...grid,
+            criteria: [...grid.criteria, { label: 'References', weight: { value: 10, unit: 'percent' } }]
+        });
+
+        expect(converted.needsDescriptions).toEqual(['references']);
     });
 
     it('appends checklist items to the description and keeps deductions out of the grid', () => {

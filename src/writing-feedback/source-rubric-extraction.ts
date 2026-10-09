@@ -22,8 +22,8 @@ import { LLMModule, type Message } from 'ubc-genai-toolkit-llm';
 import { isMockResponse } from '../helpers/mock-response';
 import { CANVAS_IMPORT_PLACEHOLDERS, slugify, uniqueSlug } from './canvas-rubric-mapping';
 import { defaultFormattingCriteriaToStaff } from './criterion-assessment';
-import { DEFAULT_WRITING_LEVELS } from './default-rubric-profile';
 import { spaceBandsEvenly } from './rubric-bands';
+import { scaleBands, scaleLevels, SCALE_NAMES, type ScalePresetId } from './rubric-scale-presets';
 import { MAX_CELL_DESCRIPTOR, MAX_CRITERION_DESCRIPTION } from './rubric-schema';
 import { stripNulls, type WithoutNull } from './strip-nulls';
 import type { ImportedRubricShape, WritingRubricCell, WritingRubricCriterion, WritingRubricLevel } from './contracts';
@@ -97,6 +97,8 @@ export interface ConvertedRubric {
     notes: string[];
     /** Penalties the source states; they become assignment rules, never scored rows. */
     deductions: string[];
+    /** Ids of criteria whose cells carry no description, for EngE-AI to propose. */
+    needsDescriptions: string[];
 }
 
 /**
@@ -257,24 +259,27 @@ function sameLabel(left: string, right: string): boolean {
  * - A weight in points is the criterion's points. A percentage is that share of the stated
  *   total, or of 100 when no total in points is stated.
  * - Levels are the reported headings, weakest first; failing those, the ratings of the
- *   criterion with the most of them; failing those, EngE-AI's default four levels with no
- *   descriptions, for staff to fill.
+ *   criterion with the most of them; failing those, the chosen scale preset, with bands from
+ *   that preset and no descriptions (they are proposed separately).
  * - A rating is matched to its level by label, then by position.
  * - A stated band is used as written in points, or as a share of the criterion's points when
  *   stated in percent. Without one, the criterion's points are spread evenly. Without points,
  *   cells keep their descriptions on a zero band until staff set the criterion's points.
  * - Checklist items are appended to the description; humanOnly criteria are staff-assessed.
  *
+ * Cells copied from the source are marked `origin: 'source'`.
+ *
  * @param rubric - One rubric as the model reported it
- * @returns The grid, or a refusal, with notes and deductions
+ * @param scale - The preset used when the rubric states no levels
+ * @returns The grid, or a refusal, with notes, deductions, and the rows still to describe
  */
-export function convertExtractedRubric(rubric: ExtractedRubric): ConvertedRubric {
+export function convertExtractedRubric(rubric: ExtractedRubric, scale: ScalePresetId = 'four_level'): ConvertedRubric {
     const notes = [...rubric.notes];
     const deductions = (rubric.deductions ?? []).map((deduction) => capped(deduction, MAX_CONSTRAINT).text);
     const title = rubric.title || 'Rubric';
     const reportedCriteria = groupCriteria(rubric.criteria, notes);
-    if (reportedCriteria.length === 0) return { title, shape: null, refusal: 'no_criteria', notes, deductions };
-    if (reportedCriteria.length > MAX_CRITERIA) return { title, shape: null, refusal: 'too_many_criteria', notes, deductions };
+    if (reportedCriteria.length === 0) return { title, shape: null, refusal: 'no_criteria', notes, deductions, needsDescriptions: [] };
+    if (reportedCriteria.length > MAX_CRITERIA) return { title, shape: null, refusal: 'too_many_criteria', notes, deductions, needsDescriptions: [] };
 
     // Step 1: the columns.
     const ratingCounts = reportedCriteria.map((criterion) => criterion.ratings?.length ?? 0);
@@ -288,19 +293,18 @@ export function convertExtractedRubric(rubric: ExtractedRubric): ConvertedRubric
         ? [...listedLevels].sort((left, right) => levelSortKey(left)! - levelSortKey(right)!)
         : listedLevels;
     const noRatings = Math.max(...ratingCounts) === 0;
-    if (reportedLevels.length > MAX_LEVELS) return { title, shape: null, refusal: 'too_many_levels', notes, deductions };
+    if (reportedLevels.length > MAX_LEVELS) return { title, shape: null, refusal: 'too_many_levels', notes, deductions, needsDescriptions: [] };
     const levelIds = new Set<string>();
-    const levels: WritingRubricLevel[] = reportedLevels.length >= 2
+    const usesPreset = reportedLevels.length < 2;
+    const levels: WritingRubricLevel[] = !usesPreset
         ? reportedLevels.map((level, index) => ({
             id: uniqueSlug(slugify(level.label || `level_${index + 1}`, index), levelIds),
             label: capped(level.label || `Level ${index + 1}`, MAX_LEVEL_LABEL).text,
             description: CANVAS_IMPORT_PLACEHOLDERS.levelDescription,
             rank: index + 1
         }))
-        : DEFAULT_WRITING_LEVELS.map((level) => ({ ...level }));
-    if (noRatings) {
-        notes.push('This rubric gives no rating descriptions, so the grid uses EngE-AI\'s default levels with empty cells for you to describe.');
-    }
+        : scaleLevels(scale);
+    if (usesPreset) notes.push(`This rubric states no rating levels, so the grid uses the ${SCALE_NAMES[scale]} scale.`);
 
     // Step 2: the total that percentages are a share of.
     const totalPoints = rubric.total?.unit === 'points' ? rubric.total.value : 100;
@@ -320,7 +324,7 @@ export function convertExtractedRubric(rubric: ExtractedRubric): ConvertedRubric
         const description = capped(descriptionText || CANVAS_IMPORT_PLACEHOLDERS.criterionDescription, MAX_CRITERION_DESCRIPTION);
         if (label.cut || description.cut) cutLabels.push(label.text);
 
-        const evenBands = points !== undefined ? spaceBandsEvenly(points, levels) : {};
+        const evenBands = usesPreset ? scaleBands(scale, points, levels) : (points !== undefined ? spaceBandsEvenly(points, levels) : {});
         const cells: Record<string, WritingRubricCell> = {};
         (reported.ratings ?? []).forEach((rating, ratingIndex) => {
             const level = levels.find((candidate) => sameLabel(candidate.label, rating.levelLabel)) ?? levels[ratingIndex];
@@ -337,11 +341,11 @@ export function convertExtractedRubric(rubric: ExtractedRubric): ConvertedRubric
             cells[level.id] = {
                 ...band,
                 ...(sameLabel(rating.levelLabel, level.label) || !rating.levelLabel ? {} : { label: capped(rating.levelLabel, MAX_LEVEL_LABEL).text }),
-                ...(descriptor.text ? { descriptor: descriptor.text } : {})
+                ...(descriptor.text ? { descriptor: descriptor.text, origin: 'source' as const } : {})
             };
         });
-        // A rubric with no ratings still gets its bands, so staff only write the descriptions.
-        if (noRatings) Object.assign(cells, evenBands);
+        // A row with no ratings still gets its bands, so only the descriptions are owed.
+        if (!(reported.ratings ?? []).length) Object.assign(cells, evenBands);
 
         return {
             id: uniqueSlug(slugify(label.text || `criterion_${rowIndex + 1}`, rowIndex), criterionIds),
@@ -385,5 +389,8 @@ export function convertExtractedRubric(rubric: ExtractedRubric): ConvertedRubric
         notes.push(`Some text was longer than the grid allows and was shortened: ${[...new Set(cutLabels)].join(', ')}.`);
     }
 
-    return { title, shape: { criteria: defaultFormattingCriteriaToStaff(criteria), levels }, notes, deductions };
+    const needsDescriptions = criteria
+        .filter((criterion) => !Object.values(criterion.cells ?? {}).some((cell) => cell.descriptor))
+        .map((criterion) => criterion.id);
+    return { title, shape: { criteria: defaultFormattingCriteriaToStaff(criteria), levels }, notes, deductions, needsDescriptions };
 }

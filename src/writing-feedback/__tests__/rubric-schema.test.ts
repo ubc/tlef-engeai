@@ -680,3 +680,17 @@ describe('rubric text limits', () => {
         expect(writingRubricDraftInputSchema.safeParse(past).success).toBe(false);
     });
 });
+
+describe('rubricContentEquals and cell origin', () => {
+    it('treats a suggested description and the same accepted one as the same rubric', () => {
+        const accepted = buildStaffedWritingRubric('user-1');
+        const [first, ...rest] = accepted.criteria;
+        const [levelId] = Object.keys(first!.cells ?? {});
+        const suggested = {
+            ...accepted,
+            criteria: [{ ...first!, cells: { ...first!.cells, [levelId!]: { ...first!.cells![levelId!]!, origin: 'proposed' as const } } }, ...rest]
+        };
+
+        expect(rubricContentEquals(suggested, accepted)).toBe(true);
+    });
+});

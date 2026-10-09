@@ -123,6 +123,12 @@ export interface WritingRubricCell {
     max: number; // highest points awardable in this band, inclusive
     label?: string; // rating name for this criterion at this level, as Canvas names it per row
     descriptor?: string; // criterion-specific meaning of this level
+    /**
+     * Who wrote the descriptor: copied from staff material (`source`), or written by EngE-AI
+     * because the material had none (`proposed`). Absent means staff wrote or accepted it;
+     * editing a cell's descriptor removes the marker, and approval clears `proposed`.
+     */
+    origin?: 'source' | 'proposed';
 }
 
 /** One instructor-authored criterion in a versioned Writing Feedback rubric. */
@@ -247,7 +253,7 @@ export interface WritingAssignment {
     pendingRubricExtraction?: {
         lens: WritingFeedbackLens;
         sourceLabel: string;
-        candidates: Array<{ title: string; shape: ImportedRubricShape; notes: string[]; deductions: string[] }>;
+        candidates: Array<{ title: string; shape: ImportedRubricShape; notes: string[]; deductions: string[]; needsDescriptions?: string[] }>;
         createdAt: Date;
     };
     /**

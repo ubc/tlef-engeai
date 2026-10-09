@@ -90,6 +90,8 @@ import {
     extractRubricsFromMaterial,
     type ExtractedRubricRefusal
 } from '../writing-feedback/source-rubric-extraction';
+import { suggestScale } from '../writing-feedback/rubric-scale-presets';
+import { countProposedCells, proposeCellDescriptions, type ProposalContext } from '../writing-feedback/rubric-cell-proposals';
 import type { RubricProvenanceUpdate } from '../db/mongo/writing-feedback-mongo';
 import { gradedLensFor } from '../writing-feedback/staff-final-assessment';
 import {
@@ -117,6 +119,45 @@ const sourceMaterialUpload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: 10 * 1024 * 1024, fieldSize: 2 * 1024 * 1024, files: 1, fields: 4 }
 });
+/**
+ * Proposes descriptions for rows a rubric's source left undescribed, and says what happened.
+ * A failed proposal leaves the rows empty with a note, never the whole fill.
+ */
+async function describeRows(
+    shape: ImportedRubricShape,
+    criterionIds: string[],
+    context: ProposalContext
+): Promise<{ shape: ImportedRubricShape; notes: string[] }> {
+    if (!criterionIds.length) return { shape, notes: [] };
+    try {
+        const result = await proposeCellDescriptions(shape, criterionIds, context);
+        return {
+            shape: result.shape,
+            notes: result.proposed
+                ? ['EngE-AI suggested the rating descriptions this rubric did not give; they are marked "Suggested". Check each one before approving.']
+                : ['This rubric gives no rating descriptions. Write them in the grid before approving.']
+        };
+    } catch {
+        return { shape, notes: ['EngE-AI could not suggest rating descriptions this time. Write them in the grid, or fill in the assignment again.'] };
+    }
+}
+
+/** The draft with every suggestion marker cleared, as approval records it. */
+function withProposalsAccepted(draft: WritingRubricDefinition): WritingRubricDefinition {
+    return {
+        ...draft,
+        criteria: draft.criteria.map((criterion) => (criterion.cells
+            ? {
+                ...criterion,
+                cells: Object.fromEntries(Object.entries(criterion.cells).map(([levelId, cell]) => [
+                    levelId,
+                    cell.origin === 'proposed' ? (({ origin: _origin, ...rest }) => rest)(cell) : cell
+                ]))
+            }
+            : criterion))
+    };
+}
+
 /** What a fill did to the graded grid, as the rubric page reports it. */
 type FillGridOutcome = 'unchanged' | 'applied' | 'needs_confirmation' | 'needs_decision' | 'not_found' | 'refused' | 'failed';
 
@@ -968,7 +1009,11 @@ router.post(
             let extractedGrid: { shape: ImportedRubricShape; deductions: string[]; notes: string[] } | undefined;
             if (rubricMaterial && !awaitingConfirmation) {
                 const label = rubricMaterial.label;
-                const converted = (extracted ?? []).map(convertExtractedRubric);
+                const scaleChoice = typeof target === 'object' ? target.scale ?? 'suggested' : 'suggested';
+                const converted = (extracted ?? []).map((rubric) => convertExtractedRubric(
+                    rubric,
+                    scaleChoice === 'suggested' ? suggestScale(rubric.shape, rubricMaterial.text) : scaleChoice
+                ));
                 const usable = converted.filter((candidate) => candidate.shape);
                 if (extractionFailed) {
                     gridOutcome = 'failed';
@@ -986,13 +1031,29 @@ router.post(
                             lens,
                             sourceLabel: label,
                             candidates: usable.map((candidate) => ({
-                                title: candidate.title, shape: candidate.shape!, notes: candidate.notes, deductions: candidate.deductions
+                                title: candidate.title,
+                                shape: candidate.shape!,
+                                notes: candidate.notes,
+                                deductions: candidate.deductions,
+                                needsDescriptions: candidate.needsDescriptions
                             })),
                             createdAt: new Date()
                         }
                     };
                 } else {
-                    extractedGrid = { shape: usable[0]!.shape!, deductions: usable[0]!.deductions, notes: usable[0]!.notes };
+                    // Rows the source left undescribed get proposed descriptions, written for the
+                    // assignment the details proposal just described.
+                    const described = await describeRows(usable[0]!.shape!, usable[0]!.needsDescriptions, {
+                        title: proposal.title || draft.title,
+                        task: proposal.task || draft.task,
+                        audience: proposal.audience || draft.audience,
+                        purpose: proposal.purpose || draft.purpose
+                    });
+                    extractedGrid = {
+                        shape: described.shape,
+                        deductions: usable[0]!.deductions,
+                        notes: [...usable[0]!.notes, ...described.notes]
+                    };
                 }
             }
 
@@ -1077,9 +1138,11 @@ router.post(
             ?? (selected.approved
                 ? { ...selected.approved, status: 'draft', version: selected.approved.version + 1 }
                 : seedRubricForLens({ lens, actorUserId: globalUser.userId }));
+        // Descriptions are proposed only now, for the version staff chose, not for every one held.
+        const described = await describeRows(chosen.shape, chosen.needsDescriptions ?? [], base);
         const draft: WritingRubricDefinition = {
-            ...withGrid(base, chosen.shape, chosen.deductions),
-            gridSource: { kind: 'uploaded', label: pending.sourceLabel, notes: chosen.notes }
+            ...withGrid(base, described.shape, chosen.deductions),
+            gridSource: { kind: 'uploaded', label: pending.sourceLabel, notes: [...chosen.notes, ...described.notes] }
         };
         if (selected.approved) {
             try {
@@ -1151,8 +1214,17 @@ router.post(
         } catch (error) {
             return res.status(400).json({ success: false, error: safeError(error) });
         }
+        // Descriptions EngE-AI wrote reach students only after staff say they have read them.
+        const proposedCells = countProposedCells(selected.draft.criteria);
+        if (proposedCells > 0 && req.body?.acknowledgeProposed !== true) {
+            return res.status(409).json({
+                success: false,
+                error: `${proposedCells} rating ${proposedCells === 1 ? 'description was' : 'descriptions were'} suggested by EngE-AI. Review them, then confirm to approve.`
+            });
+        }
 
-        const approved = approveRubricDraft(selected.draft, globalUser.userId);
+        // Approval is that review, so the suggestion markers end here.
+        const approved = approveRubricDraft(withProposalsAccepted(selected.draft), globalUser.userId);
         const updated = await mongo.approveWritingRubricDraft(
             courseId(req),
             assignment.id,

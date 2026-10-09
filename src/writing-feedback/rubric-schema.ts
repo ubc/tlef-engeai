@@ -75,7 +75,8 @@ const rubricCell = z.object({
     // the column. Optional: a hand-authored grid may carry none, and the level's own
     // label stands in wherever a cell has not been named.
     label: z.string().trim().max(60).optional(),
-    descriptor: z.string().trim().max(MAX_CELL_DESCRIPTOR).optional()
+    descriptor: z.string().trim().max(MAX_CELL_DESCRIPTOR).optional(),
+    origin: z.enum(['source', 'proposed']).optional()
 });
 
 /** Instructor-editable rubric payload required before a draft can be saved or approved. */
@@ -348,7 +349,8 @@ function withCellNamesResolved(rubric: WritingRubricDefinition): WritingRubricDe
         criteria: (rubric.criteria ?? []).map((criterion) => (criterion.cells
             ? {
                 ...criterion,
-                cells: Object.fromEntries(Object.entries(criterion.cells).map(([levelId, cell]) => [
+                // Who wrote a descriptor is not what it says, so `origin` is left out here.
+                cells: Object.fromEntries(Object.entries(criterion.cells).map(([levelId, { origin: _origin, ...cell }]) => [
                     levelId,
                     { ...cell, label: cell.label?.trim() || levelLabels.get(levelId) }
                 ]))

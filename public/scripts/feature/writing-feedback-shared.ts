@@ -87,6 +87,7 @@ export interface RubricCell {
     max: number;
     label?: string;
     descriptor?: string;
+    origin?: 'source' | 'proposed'; // copied from staff material, or written by EngE-AI; absent once staff edit it
 }
 
 /** One instructor-visible criterion in an approved or draft rubric definition. */
@@ -309,7 +310,11 @@ export interface AutofillSourcesResponse {
 }
 
 /** Where a fill should take the graded grid from; `keep` leaves it as it is. */
-export type RubricSourceChoice = 'keep' | 'canvas' | 'default' | { sourceId: string };
+export type RubricSourceChoice =
+    | 'keep'
+    | 'canvas'
+    | 'default'
+    | { sourceId: string; scale?: 'suggested' | 'four_level' | 'three_level_met' | 'ubc_percent_bands' };
 
 /** POST /assignments/:assignmentId/rubric-draft/fill */
 export interface FillResponse {

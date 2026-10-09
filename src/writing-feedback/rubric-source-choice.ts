@@ -24,12 +24,13 @@ import { rubricGridSource, selectRubric, storedGridSource, type StoredGridSource
 import { seedRubricForLens } from './rubric-seed';
 import { gradedLensFor } from './staff-final-assessment';
 import { rubricContentEquals } from './rubric-schema';
+import { parseScaleChoice, type ScaleChoice } from './rubric-scale-presets';
 
 /**
  * Where a fill should take the graded grid from. `keep` leaves the grid as it is; `{ sourceId }`
  * names an uploaded file or paste holding the rubric.
  */
-export type RubricSourceChoice = 'keep' | 'canvas' | 'default' | { sourceId: string };
+export type RubricSourceChoice = 'keep' | 'canvas' | 'default' | { sourceId: string; scale?: ScaleChoice };
 
 /** Refusal messages staff can read and act on. Each is also a safe error prefix for routes. */
 export const RUBRIC_SOURCE_ERRORS = {
@@ -69,7 +70,7 @@ export function parseRubricSourceChoice(value: unknown): RubricSourceChoice {
     if (value === 'keep' || value === 'canvas' || value === 'default') return value;
     const sourceId = (value as { sourceId?: unknown })?.sourceId;
     if (typeof value === 'object' && typeof sourceId === 'string' && sourceId.length > 0 && sourceId.length <= 64) {
-        return { sourceId };
+        return { sourceId, scale: parseScaleChoice((value as { scale?: unknown }).scale) };
     }
     throw new Error(RUBRIC_SOURCE_ERRORS.invalid);
 }

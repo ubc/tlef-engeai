@@ -634,12 +634,15 @@ function optionalControlValue(form: HTMLFormElement, name: string): string | und
  * @param form - Rubric editor form
  * @param index - Criterion row position
  * @param levelIds - Level ids in the column order the grid rendered
+ * @param prior - The row's cells before this read, whose `origin` survives only while the
+ *        description is unchanged: an edited description is staff's own
  * @returns Bands keyed by level id, or undefined when the row carries none
  */
 function readCellControls(
     form: HTMLFormElement,
     index: number,
-    levelIds: string[]
+    levelIds: string[],
+    prior?: Record<string, RubricCell>
 ): Record<string, RubricCell> | undefined {
     const cells: Record<string, RubricCell> = {};
     levelIds.forEach((levelId, column) => {
@@ -647,10 +650,13 @@ function readCellControls(
         if (!band) return;
         const label = optionalControlValue(form, `criterion.${index}.cell.${column}.label`)?.trim();
         const descriptor = optionalControlValue(form, `criterion.${index}.cell.${column}.descriptor`);
+        const before = prior?.[levelId];
+        const origin = before?.origin && descriptor && before.descriptor === descriptor ? before.origin : undefined;
         cells[levelId] = {
             ...band,
             ...(label ? { label } : {}),
-            ...(descriptor ? { descriptor } : {})
+            ...(descriptor ? { descriptor } : {}),
+            ...(origin ? { origin } : {})
         };
     });
     return Object.keys(cells).length ? cells : undefined;
@@ -688,7 +694,7 @@ function syncStructuredValues(form: HTMLFormElement, working: RubricDefinition):
             ? criterion.points
             : (rawPoints ? Number(rawPoints) : undefined);
         const cellsRendered = form.elements.namedItem(`criterion.${index}.cell.0.band`) !== null;
-        const cells = cellsRendered ? readCellControls(form, index, levelIds) : criterion.cells;
+        const cells = cellsRendered ? readCellControls(form, index, levelIds, criterion.cells) : criterion.cells;
         // Only 'staff' is stored: absent is the model default, and writing it out would
         // put a value on every criterion of every rubric that has never needed one.
         const rawAssessedBy = optionalControlValue(form, `criterion.${index}.assessedBy`);
@@ -1331,8 +1337,8 @@ function renderGridNotices(
             'info',
             createText('p', `This grid was copied from ${gridState.uploaded.sourceLabel}`, 'wf-owed__title'),
             createText('p', notes.length
-                ? 'Compare it with your file before approving. Things to check:'
-                : 'Compare it with your file before approving.'),
+                ? 'Compare it with your material before approving. Things to check:'
+                : 'Compare it with your material before approving.'),
             ...(notes.length ? [(() => {
                 const list = document.createElement('ul');
                 notes.forEach((note) => list.append(createText('li', note)));
@@ -2388,6 +2394,16 @@ async function approveEveryRubric(context: RubricPageContext): Promise<void> {
     if (pending.some((section) => section.approvedVersion !== undefined)) {
         lines.push("Feedback already released to Canvas isn't affected.");
     }
+    // Read from the forms, so a suggestion staff have just rewritten no longer counts.
+    const suggested = pending.reduce((total, section) => {
+        const snapshot = detachedRubric(section.working);
+        syncStructuredValues(section.form, snapshot);
+        return total + snapshot.criteria.reduce((sum, criterion) => sum
+            + Object.values(criterion.cells ?? {}).filter((cell) => cell.origin === 'proposed').length, 0);
+    }, 0);
+    if (suggested > 0) {
+        lines.push(`${suggested} rating ${suggested === 1 ? 'description was' : 'descriptions were'} suggested by EngE-AI (marked "Suggested"). Approving confirms you have read ${suggested === 1 ? 'it' : 'them'}.`);
+    }
     const confirmLabel = firstApproval ? 'Approve rubric' : 'Approve changes';
     const confirmation = await showConfirmModal(
         firstApproval ? 'Approve this rubric?' : 'Approve these changes?',
@@ -2401,7 +2417,8 @@ async function approveEveryRubric(context: RubricPageContext): Promise<void> {
     for (const section of pending) {
         await jsonRequest(
             `/assignments/${encodeURIComponent(context.assignment.id)}/rubric-draft/approve${rubricLensQuery(section.lens)}`,
-            'POST'
+            'POST',
+            suggested > 0 ? { acknowledgeProposed: true } : undefined
         );
     }
     state.panelDirty = false;

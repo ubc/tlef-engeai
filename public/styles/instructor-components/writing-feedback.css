@@ -1312,7 +1312,10 @@
 }
 
 .wf-sources__label {
+    flex: 1 1 0;
+    min-width: 0;
     font-weight: 600;
+    overflow-wrap: anywhere;
 }
 
 .wf-sources__meta {
@@ -1425,6 +1428,30 @@
     border-radius: 4px;
     background: #fff;
     font: inherit;
+}
+
+/* "If it has no rating levels, use:" sits under the file dropdown, aligned with it. */
+.wf-sources__scale-label {
+    flex: 1 1 100%;
+    margin: 4px 0 0 24px;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+/* A rating description EngE-AI suggested, until staff change it */
+.wf-grid-cell--proposed .wf-grid-text {
+    background: #fff8e1;
+    border-style: dashed;
+}
+
+.wf-grid-suggested {
+    display: inline-block;
+    margin-top: 4px;
+    padding: 1px 6px;
+    border: 1px solid #c9a227;
+    border-radius: 999px;
+    color: #6b5300;
+    font-size: 11px;
 }
 
 /* Rubric versions found in one file, waiting for staff to choose */
