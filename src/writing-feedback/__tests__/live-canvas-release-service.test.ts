@@ -122,6 +122,21 @@ describe('LiveCanvasReleaseService', () => {
 
     afterEach(() => jest.restoreAllMocks());
 
+    it('posts the total when canvas grades by rubric but the grid has no canvas ids', async () => {
+        const { service, client } = harness({
+            get: jest.fn(async (path: string) => (path.includes('/submissions/')
+                ? { assignment_id: 88, user_id: 42, attempt: 2 }
+                : { id: 88, rubric: liveCanvasRubric(), use_rubric_for_grading: true }))
+        });
+        const releaseInput = input('submission-rubric-grades-unmapped');
+        await service.preview(releaseInput);
+        const released = await service.release(releaseInput);
+
+        expect((client.put as jest.Mock).mock.calls.some(([, body]) => body && 'rubric_assessment' in body)).toBe(false);
+        expect(canvas.postGrades).toHaveBeenCalled();
+        expect(released.status).toBe('released');
+    });
+
     it('preflights without writing and retains the Canvas posting policy', async () => {
         const { service, client } = harness();
         const preview = await service.preview(input('submission-preview'));

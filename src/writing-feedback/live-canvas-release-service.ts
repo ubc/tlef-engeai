@@ -286,7 +286,11 @@ export class LiveCanvasReleaseService implements CanvasReleaseService {
 
         // When the Canvas rubric grades the assignment, the assessment above already set the
         // grade. Posting a total as well would overwrite it with a number Canvas did not derive.
-        if (prepared.useRubricForGrading) return this.finishRubricOnlyRelease(fingerprint);
+        // With no assessment written (a grid that never came from Canvas), the total is the
+        // only grade the student will get.
+        if (prepared.useRubricForGrading && scored.rubricAssessmentWritten) {
+            return this.finishRubricOnlyRelease(fingerprint);
+        }
         return this.writeGrade(fingerprint, prepared);
     }
 
