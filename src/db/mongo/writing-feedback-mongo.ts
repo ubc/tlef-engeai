@@ -461,6 +461,9 @@ export async function createCanvasWritingAssignment(
  * @param assignmentId - Assignment receiving the draft
  * @param draft - Validated staff-authored rubric draft
  * @param lens - Feedback lens the draft belongs to; defaults to `'linguistic'`
+ * @param gridSource - When the draft's grid now comes from somewhere else, the lens's new
+ *        provenance (`rubricSource` for the writing lens, `technicalRubricSource` otherwise),
+ *        written in the same update so the two never disagree
  * @returns Updated assignment, or `null` when the scoped assignment is absent
  */
 export async function saveWritingRubricDraft(
@@ -468,12 +471,14 @@ export async function saveWritingRubricDraft(
     courseId: string,
     assignmentId: string,
     draft: WritingRubricDefinition,
-    lens: WritingFeedbackLens = 'linguistic'
+    lens: WritingFeedbackLens = 'linguistic',
+    gridSource?: 'canvas' | 'internal_profile' | 'builtin' | 'uploaded'
 ): Promise<WritingAssignment | null> {
     const fields = rubricFieldPaths(lens);
+    const sourceField = lens === 'linguistic' ? 'rubricSource' : 'technicalRubricSource';
     const updated = await assignments(ctx).findOneAndUpdate(
         { id: assignmentId, courseId },
-        { $set: { [fields.draft]: draft, updatedAt: new Date() } },
+        { $set: { [fields.draft]: draft, updatedAt: new Date(), ...(gridSource ? { [sourceField]: gridSource } : {}) } },
         { returnDocument: 'after' }
     );
     return updated ? normalizeWritingAssignment(updated) : null;

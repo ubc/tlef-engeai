@@ -68,7 +68,7 @@ export function gridSourceFor(assignment: WritingAssignment, lens: WritingFeedba
 export interface AutofillMergeRules {
     /** Whether a criterion the draft does not have may be appended. */
     mayAddRows: boolean;
-    /** Whether an existing row's own description and weight may be rewritten. */
+    /** Whether an existing row's own description may be rewritten. Its points never are. */
     mayWriteRow: boolean;
     /** Whether per-level bands and descriptors may be rewritten. */
     mayWriteCells: boolean;
@@ -184,18 +184,14 @@ export function mergeAutofill(
     const criteria = draft.criteria.map((criterion) => {
         const match = proposed.get(criterion.id);
         if (!match) return criterion;
-        // The weight this row will actually carry after this merge: the model's
-        // proposed points only where rows are writable, otherwise the row's own.
-        // Cell bands are always reconciled against this value, never the model's.
-        const nextPoints = rules.mayWriteRow && match.points !== undefined ? match.points : criterion.points;
         return {
             ...criterion,
-            // The row's own text and weight move together: where rows are fixed, the
-            // description belongs to whoever authored the row, not to the model.
+            // Where rows are writable the model may reword the description, but never the
+            // weight: a model reading a rubric with more criteria than this grid squeezes
+            // its weights onto the wrong rows. Points come from the rubric source or staff.
             ...(rules.mayWriteRow && match.description ? { description: match.description } : {}),
-            ...(rules.mayWriteRow && match.points !== undefined ? { points: match.points } : {}),
             ...(rules.mayWriteCells && match.cells
-                ? { cells: reconcileProposedCells(match.cells, nextPoints, draft.levels, criterion.cells) }
+                ? { cells: reconcileProposedCells(match.cells, criterion.points, draft.levels, criterion.cells) }
                 : {})
         };
     });

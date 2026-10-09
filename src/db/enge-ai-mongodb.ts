@@ -339,14 +339,16 @@ export class EngEAI_MongoDB {
      * @param assignmentId - Assignment receiving the draft
      * @param draft - Validated rubric draft
      * @param lens - Feedback lens the draft belongs to; defaults to `'linguistic'`
+     * @param gridSource - The lens's new grid provenance, when the draft's grid changed source
      * @returns Updated assignment or `null`
      */
     public saveWritingRubricDraft = async (
         courseId: string,
         assignmentId: string,
         draft: WritingRubricDefinition,
-        lens?: WritingFeedbackLens
-    ) => WritingFeedbackMongo.saveWritingRubricDraft(this.ctx(), courseId, assignmentId, draft, lens);
+        lens?: WritingFeedbackLens,
+        gridSource?: 'canvas' | 'internal_profile' | 'builtin' | 'uploaded'
+    ) => WritingFeedbackMongo.saveWritingRubricDraft(this.ctx(), courseId, assignmentId, draft, lens, gridSource);
 
     /**
      * applyLabReportRubricRouting — moves an imported Canvas grid onto the technical lens.

@@ -1,11 +1,12 @@
 // public/scripts/feature/writing-feedback-sources.ts
 /**
- * Writing Feedback sources — the assignment material "Fill these in for me" reads
+ * Writing Feedback sources — the material a fill reads, and where the marking grid comes from
  *
  * Lists an assignment's instructions, its Canvas description when that differs, and every
  * file or paste staff added, each with a checkbox. Staff upload files or paste text here;
  * a paste keeps the clipboard's HTML so a table copied from Word or Google Docs arrives with
- * its rows and columns. Ticks are remembered per assignment while the workspace is open.
+ * its rows and columns. Below the list, staff choose where the graded marking grid comes
+ * from. Ticks and the choice are remembered per assignment while the workspace is open.
  *
  * @author: EngE-AI Team
  * @date: 2026-10-08
@@ -18,6 +19,8 @@ import { assertNotWritingFeedbackDemoMode } from './writing-feedback-demo-mode.j
 import {
     AutofillSource,
     AutofillSourcesResponse,
+    GradedGridState,
+    RubricSourceChoice,
     chip,
     createButton,
     createText,
@@ -35,8 +38,32 @@ export interface SourcesPanel {
     canFill(): boolean;
     /** Why a fill cannot run now, for the fill button's tooltip; empty when it can. */
     blockedReason(): string;
-    /** Runs `listener` whenever the list or the ticks change. */
+    /** Runs `listener` whenever the list, the ticks, or the grid choice change. */
     onChange(listener: () => void): void;
+    /** The grid source staff chose; the source the grid already has means keep it. */
+    rubricChoice(): RubricSourceChoice;
+    /** The graded grid's current source, once loaded. */
+    rubricState(): GradedGridState | undefined;
+    /** One line for the step header, e.g. "2 sources · Grid: from Canvas". */
+    summary(): string;
+    /** How many sources the assignment has, or undefined until the list has loaded. */
+    sourceCount(): number | undefined;
+}
+
+/** The grid choice staff made, per assignment, while the workspace is open. */
+const rubricChoiceByAssignment = new Map<string, RubricSourceChoice>();
+
+/** The choice that leaves a grid's current source as it is. */
+function choiceForCurrent(current: GradedGridState['current']): RubricSourceChoice {
+    if (current === 'canvas') return 'canvas';
+    if (current === 'builtin') return 'default';
+    return 'keep';
+}
+
+function gridSourceText(current: GradedGridState['current']): string {
+    if (current === 'canvas') return 'from Canvas';
+    if (current === 'uploaded') return 'from your material';
+    return "EngE-AI's default";
 }
 
 /** File types the server accepts as source material. */
@@ -70,13 +97,13 @@ export function renderSourcesPanel(assignmentId: string, canEdit: boolean): Sour
     section.className = 'wf-sources';
     const headingId = `wf-sources-heading-${assignmentId}`;
     section.setAttribute('aria-labelledby', headingId);
-    const heading = createText('h3', 'Assignment material', 'wf-sources__heading');
+    const heading = createText('h3', 'Sources', 'wf-sources__heading');
     heading.id = headingId;
     const intro = createText(
         'p',
         canEdit
-            ? '"Fill these in for me" reads the sources you tick. Add the files that hold your instructions or rubric, or paste them in.'
-            : '"Fill these in for me" reads these sources.',
+            ? 'Filling in the assignment reads the sources you tick. Add the files that hold your instructions or rubric, or paste them in.'
+            : 'Filling in the assignment reads these sources.',
         'wf-help-text'
     );
     const list = document.createElement('ul');
@@ -87,6 +114,10 @@ export function renderSourcesPanel(assignmentId: string, canEdit: boolean): Sour
     status.setAttribute('role', 'status');
     status.setAttribute('aria-live', 'polite');
     section.append(heading, intro, list, total);
+
+    let gridState: GradedGridState | undefined;
+    const rubricField = document.createElement('fieldset');
+    rubricField.className = 'wf-sources__rubric';
 
     const selected = (): AutofillSource[] => (sources ?? []).filter((source) => !unticked.has(source.id));
     const selectedCharacters = (): number => selected().reduce((sum, source) => sum + source.characterCount, 0);
@@ -174,10 +205,64 @@ export function renderSourcesPanel(assignmentId: string, canEdit: boolean): Sour
         return item;
     };
 
+    const renderRubricChoice = (): void => {
+        if (!gridState) return;
+        const state = gridState;
+        const chosen = rubricChoiceByAssignment.get(assignmentId) ?? choiceForCurrent(state.current);
+        const options: Array<{ value: RubricSourceChoice; label: string }> = [];
+        if (state.canvas) {
+            options.push({ value: 'canvas', label: `The Canvas rubric (${state.canvas.criteria} criteria, ${formatCount(state.canvas.points)} points)` });
+        }
+        options.push({
+            value: 'default',
+            label: state.lens === 'technical'
+                ? "EngE-AI's default lab rubric (the APSC 182 evaluation form)"
+                : "EngE-AI's default rubric (Organization, Content, Interpersonal Positioning)"
+        });
+        // A grid from uploaded material has no source to re-seed from here, so keeping it is
+        // offered explicitly rather than by re-choosing its source.
+        if (state.current === 'uploaded') options.unshift({ value: 'keep', label: 'Keep the current grid (from your material)' });
+
+        const legend = createText(
+            'legend',
+            state.lens === 'technical' ? 'Where should the technical marking grid come from?' : 'Where should the marking grid come from?',
+            'wf-sources__heading'
+        );
+        const name = `wf-rubric-source-${assignmentId}`;
+        const radios = options.map((option) => {
+            const row = document.createElement('label');
+            row.className = 'wf-sources__choice';
+            const radio = document.createElement('input');
+            radio.type = 'radio';
+            radio.name = name;
+            radio.value = option.value;
+            radio.checked = option.value === chosen;
+            radio.disabled = !canEdit;
+            radio.addEventListener('change', () => {
+                if (!radio.checked) return;
+                rubricChoiceByAssignment.set(assignmentId, option.value);
+                notify();
+            });
+            const current = option.value === choiceForCurrent(state.current) ? ' (current)' : '';
+            row.append(radio, createText('span', `${option.label}${current}`));
+            return row;
+        });
+        const hint = createText(
+            'p',
+            options.length > 1
+                ? 'Choosing a different source replaces the grid when you fill in the assignment.'
+                : "This assignment had no rubric in Canvas when it was imported, so EngE-AI's default is the only grid available here.",
+            'wf-help-text'
+        );
+        rubricField.replaceChildren(legend, ...radios, hint);
+    };
+
     const load = async (): Promise<void> => {
         const response = await request<AutofillSourcesResponse>(`/assignments/${encodeURIComponent(assignmentId)}/autofill-sources`);
         sources = response.sources;
         maxCharacters = response.maxCharacters;
+        gridState = response.rubric;
+        renderRubricChoice();
         // A tick for a source that no longer exists would only ever be stale.
         [...unticked].forEach((id) => { if (!sources!.some((source) => source.id === id)) unticked.delete(id); });
         list.replaceChildren(...sources.map(renderItem));
@@ -195,7 +280,7 @@ export function renderSourcesPanel(assignmentId: string, canEdit: boolean): Sour
     };
 
     if (canEdit) section.append(renderAddControls(addMaterial, status));
-    section.append(status);
+    section.append(status, rubricField);
 
     void load().catch((error: unknown) => {
         sources = [];
@@ -208,7 +293,18 @@ export function renderSourcesPanel(assignmentId: string, canEdit: boolean): Sour
         selectedIds: () => selected().map((source) => source.id),
         canFill: () => blockedReason() === '',
         blockedReason,
-        onChange: (listener) => { listeners.push(listener); }
+        onChange: (listener) => { listeners.push(listener); },
+        rubricChoice: () => {
+            if (!gridState) return 'keep';
+            return rubricChoiceByAssignment.get(assignmentId) ?? choiceForCurrent(gridState.current);
+        },
+        rubricState: () => gridState,
+        sourceCount: () => sources?.length,
+        summary: () => {
+            if (!sources || !gridState) return '';
+            const count = `${sources.length} ${sources.length === 1 ? 'source' : 'sources'}`;
+            return `${count} · Grid: ${gridSourceText(gridState.current)}`;
+        }
     };
 }
 

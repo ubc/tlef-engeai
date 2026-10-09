@@ -286,10 +286,28 @@ export interface AutofillSource {
     hasTables: boolean;
 }
 
+/** Where the graded grid comes from. Mirrors GradedGridState in src/writing-feedback/rubric-source-choice.ts. */
+export interface GradedGridState {
+    lens: WritingFeedbackLens; // the lens that carries the grade
+    current: 'builtin' | 'canvas' | 'uploaded';
+    canvas?: { criteria: number; points: number }; // the imported Canvas rubric, when there is one
+    replaceNeedsConfirmation: boolean; // an approved grid or staff edits would be set aside
+}
+
 /** GET /assignments/:assignmentId/autofill-sources */
 export interface AutofillSourcesResponse {
     sources: AutofillSource[];
     maxCharacters: number; // most characters one fill may read
+    rubric: GradedGridState;
+}
+
+/** Where a fill should take the graded grid from; `keep` leaves it as it is. */
+export type RubricSourceChoice = 'keep' | 'canvas' | 'default';
+
+/** POST /assignments/:assignmentId/rubric-draft/fill */
+export interface FillResponse {
+    assignment: Assignment;
+    grid: 'unchanged' | 'applied' | 'needs_confirmation';
 }
 
 export interface WritingGlossaryEntry {

@@ -51,6 +51,8 @@ import {
 import {
     Assignment,
     DISCLOSURE_TRANSITION_TIMEOUT_MS,
+    FillResponse,
+    RubricSourceChoice,
     assignmentOriginText,
     CanvasRubricRefusal,
     gridSeededFromCanvas,
@@ -1167,13 +1169,16 @@ function shouldFillMissingDraftOnFirstOpen(
 async function fillRubricDraftFromInstructions(
     assignmentId: string,
     lens: WritingFeedbackLens,
-    sourceIds?: string[]
-): Promise<Assignment> {
-    // Without `sourceIds` the server reads every source, which is what a first-open fill wants.
-    return jsonRequest<Assignment>(
+    sourceIds?: string[],
+    grid?: { rubricFrom: RubricSourceChoice; replaceGrid: boolean }
+): Promise<FillResponse> {
+    // Without `sourceIds` the server reads every source, which is what a first-open fill
+    // wants; without `grid` it keeps the grid's source.
+    const body = { ...(sourceIds ? { sourceIds } : {}), ...(grid ?? {}) };
+    return jsonRequest<FillResponse>(
         `/assignments/${encodeURIComponent(assignmentId)}/rubric-draft/fill${rubricLensQuery(lens)}`,
         'POST',
-        sourceIds ? { sourceIds } : undefined
+        Object.keys(body).length ? body : undefined
     );
 }
 
@@ -1201,7 +1206,67 @@ function announceDetailsStatus(status: HTMLElement, message: string, tone: 'info
     window.requestAnimationFrame(() => { status.textContent = message; });
 }
 
-async function fillRubricsFromInstructions(context: RubricPageContext, status: HTMLElement, sourceIds: string[]): Promise<void> {
+/**
+ * renderMaterialStep - the body of step 1: the sources, the grid choice, and the fill button
+ *
+ * @param sources - The source panel, which also holds the grid choice
+ * @param canEdit - Whether this staff member may fill the rubric
+ * @param notice - A message carried over from the previous render, e.g. a first-open fill
+ * @param onFill - Runs the fill, reporting progress into the status line
+ * @returns Detached step body
+ */
+function renderMaterialStep(
+    sources: SourcesPanel,
+    canEdit: boolean,
+    notice: { message: string; tone: 'success' | 'error' } | undefined,
+    onFill: (status: HTMLElement) => Promise<void>
+): HTMLDivElement {
+    const body = document.createElement('div');
+    body.className = 'wf-step-body';
+    const status = createText('p', notice?.message ?? '', 'wf-rubric-details-status');
+    status.setAttribute('role', 'status');
+    status.setAttribute('aria-live', 'polite');
+    status.setAttribute('aria-atomic', 'true');
+    if (notice) status.dataset.tone = notice.tone;
+    body.append(sources.element);
+
+    if (canEdit) {
+        const fillButton = createButton('Fill in the assignment and grid', 'primary', async () => onFill(status), !sources.canFill());
+        const updateFillButton = (): void => {
+            // A running fill owns the button until it settles; it is re-enabled from here after.
+            if (fillButton.getAttribute('aria-busy') === 'true') return;
+            fillButton.disabled = !sources.canFill();
+            fillButton.title = sources.blockedReason();
+        };
+        sources.onChange(updateFillButton);
+        updateFillButton();
+        const row = document.createElement('div');
+        row.className = 'wf-button-row';
+        row.append(fillButton);
+        body.append(row);
+    }
+    body.append(status);
+    return body;
+}
+
+/** Plain-words name for a grid source, for the replace confirmation and the result message. */
+function gridChoiceName(choice: Exclude<RubricSourceChoice, 'keep'>, lens: WritingFeedbackLens): string {
+    if (choice === 'canvas') return 'the Canvas rubric';
+    return lens === 'technical' ? "EngE-AI's default lab rubric" : "EngE-AI's default rubric";
+}
+
+/**
+ * fillFromMaterial - fills the assignment details from the ticked sources and, when staff
+ * chose a different grid source, replaces the graded grid.
+ *
+ * Replacing a grid that has an approved version or staff edits is confirmed first. Choosing
+ * to keep the grid still fills the details; closing the dialog cancels the whole fill.
+ *
+ * @param context - The rubric page being filled
+ * @param status - The step's status line
+ * @param sources - The source panel holding the ticks and the grid choice
+ */
+async function fillFromMaterial(context: RubricPageContext, status: HTMLElement, sources: SourcesPanel): Promise<void> {
     const targets = new Set<WritingFeedbackLens>(
         context.sections.filter((section) => section.canEdit).map((section) => section.lens)
     );
@@ -1212,20 +1277,48 @@ async function fillRubricsFromInstructions(context: RubricPageContext, status: H
         throw new Error('You do not have permission to edit this rubric.');
     }
 
+    // Step 1: what the graded grid should become, confirmed when it sets something aside.
+    const gridState = sources.rubricState();
+    const currentChoice = gridState?.current === 'canvas' ? 'canvas' : gridState?.current === 'builtin' ? 'default' : 'keep';
+    let rubricFrom = sources.rubricChoice();
+    let replaceGrid = false;
+    if (gridState && rubricFrom !== 'keep' && rubricFrom !== currentChoice && gridState.replaceNeedsConfirmation) {
+        const confirmLabel = 'Replace the grid';
+        const keepLabel = 'Keep my grid';
+        const confirmation = await showConfirmModal(
+            'Replace the marking grid?',
+            `This replaces your current marking grid with ${gridChoiceName(rubricFrom, gridState.lens)}. `
+                + 'Your approved rubric stays in effect until you approve the new one.',
+            confirmLabel,
+            keepLabel
+        );
+        // The modal resolves to its own slugified button label.
+        const slug = (label: string): string => label.toLowerCase().replace(/\s+/g, '-');
+        if (confirmation.action === slug(confirmLabel)) replaceGrid = true;
+        else if (confirmation.action === slug(keepLabel)) rubricFrom = 'keep';
+        else return;
+    }
+
+    // Step 2: fill each editable lens; only the graded one takes the grid choice.
     announceDetailsStatus(status, 'Reading the assignment material…');
+    let gridOutcome: FillResponse['grid'] = 'unchanged';
     try {
         const orderedTargets = [...targets].sort((left, right) => {
             if (left === right) return 0;
             return left === 'technical' ? -1 : 1;
         });
         for (const lens of orderedTargets) {
-            await fillRubricDraftFromInstructions(context.assignment.id, lens, sourceIds);
+            const grid = gridState && lens === gridState.lens ? { rubricFrom, replaceGrid } : undefined;
+            const result = await fillRubricDraftFromInstructions(context.assignment.id, lens, sources.selectedIds(), grid);
+            if (grid) gridOutcome = result.grid;
         }
         state.panelDirty = false;
         state.assignments = await request<Assignment[]>('/assignments');
         // The toast is the whole report for an explicit fill. No pending notice:
         // the reopened page would raise the same sentence as a banner beside it.
-        showSuccessToast('Filled from the assignment material. Review before approving.');
+        showSuccessToast(gridOutcome === 'applied' && rubricFrom !== 'keep' && gridState
+            ? `Filled in the assignment and replaced the grid with ${gridChoiceName(rubricFrom, gridState.lens)}. Review before approving.`
+            : 'Filled in the assignment from your material. Review before approving.');
         await openRubricPage(context.assignment.id);
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Could not read the assignment material. Fill the rubric in by hand.';
@@ -1511,21 +1604,14 @@ function renderRubricPage(
 
     const step1Body = document.createElement('div');
     step1Body.className = 'wf-step-body';
-    const sources = renderSourcesPanel(assignment.id, linguisticData.permissions.canEdit);
     const detailsForm = renderAssignmentDetails(step1Body, writingSource, {
         canEdit: linguisticData.permissions.canEdit,
         isLabReport,
         labContext: technicalSource?.labContext ?? '',
-        sources,
-        notice,
         onInput: () => {
             if (linguisticData.permissions.canEdit) state.panelDirty = true;
             if (linguisticData.permissions.canEdit) rubricAutosave?.markDirty();
             refreshProgress();
-        },
-        onFillFromInstructions: async (status) => {
-            if (!context) throw new Error('The rubric page is still loading.');
-            await fillRubricsFromInstructions(context, status, sources.selectedIds());
         }
     });
 
@@ -1539,16 +1625,32 @@ function renderRubricPage(
     const describedComplete = (): boolean =>
         describeDetails(readDetailsNow()).complete && describeProfile(readProfileNow(), readDetailsNow()).complete;
 
-    const step1Open = !describedComplete();
+    // The material step opens for an assignment still waiting to be described; once the
+    // description is complete it stays closed, so an approved rubric never looks unfinished.
+    const materialOpen = !describedComplete();
+    const sources = renderSourcesPanel(assignment.id, linguisticData.permissions.canEdit);
+    const materialBody = renderMaterialStep(sources, linguisticData.permissions.canEdit, notice, async (status) => {
+        if (!context) throw new Error('The rubric page is still loading.');
+        await fillFromMaterial(context, status, sources);
+    });
+    const materialMeta = createText('span', '', 'wf-step-meta');
+    const materialStep = document.createElement('div');
+    materialStep.className = 'wf-step';
+    // The token is aria-hidden, so the ordinal is carried as text in the heading.
+    const materialHeader = disclosureHeader(
+        [stepToken(1), createText('h2', '1. Gather the assignment material', 'wf-step-title'), materialMeta],
+        materialBody, 'wf-step-material-body', materialOpen, 'wf-step-header'
+    );
+    materialStep.append(materialHeader, materialBody);
+    root.append(materialStep);
 
     const step1Meta = createText('span', '', 'wf-step-meta');
     const step1 = document.createElement('div');
     step1.className = 'wf-step';
-    // The token is aria-hidden, so the ordinal is carried as text in the heading.
-    const step1Title = createText('h2', '1. Describe the assignment', 'wf-step-title');
+    const step1Title = createText('h2', '2. Describe the assignment', 'wf-step-title');
     const step1Header = disclosureHeader(
-        [stepToken(1), step1Title, step1Meta],
-        step1Body, 'wf-step-1-body', step1Open, 'wf-step-header'
+        [stepToken(2), step1Title, step1Meta],
+        step1Body, 'wf-step-1-body', false, 'wf-step-header'
     );
     step1.append(step1Header, step1Body);
     root.append(step1);
@@ -1639,23 +1741,23 @@ function renderRubricPage(
 
     // Open the first of the two that is unfinished; when both are done they close
     // and Step 3 carries the page, which is the resting state of a finished rubric.
-    const step2Open = !step1Open && !describeAllGrids(pageContext.sections).complete;
+    const step2Open = !materialOpen && !describeAllGrids(pageContext.sections).complete;
 
     const step2Meta = createText('span', '', 'wf-step-meta');
     const step2 = document.createElement('div');
     step2.className = 'wf-step';
-    const step2Title = createText('h2', isLabReport ? '2. Build the marking grids' : '2. Build the marking grid', 'wf-step-title');
+    const step2Title = createText('h2', isLabReport ? '3. Build the marking grids' : '3. Build the marking grid', 'wf-step-title');
     const step2Header = disclosureHeader(
-        [stepToken(2), step2Title, step2Meta],
+        [stepToken(3), step2Title, step2Meta],
         step2Body, 'wf-step-2-body', step2Open, 'wf-step-header'
     );
     step2.append(step2Header, step2Body);
     root.append(step2);
 
-    // Steps 1 and 2 are the accordion; opening one closes the other so the page
+    // Steps 1 to 3 are the accordion; opening one closes the others so the page
     // never becomes the wall of simultaneously open boxes this redesign replaced.
-    // Step 3 is not part of it -- its actions must never be a click away.
-    linkAccordion([step1Header, step2Header]);
+    // Step 4 is not part of it -- its actions must never be a click away.
+    linkAccordion([materialHeader, step1Header, step2Header]);
 
     // Step 3 is not a disclosure. It is the terminus, it is short, and its actions
     // must never be a click away, so its body is always rendered. The header is
@@ -1664,7 +1766,7 @@ function renderRubricPage(
     step3.className = 'wf-step wf-step--terminal';
     const step3Header = document.createElement('div');
     step3Header.className = 'wf-step-header wf-step-header--static';
-    step3Header.append(stepToken(3), createText('h2', '3. Approve it', 'wf-step-title'));
+    step3Header.append(stepToken(4), createText('h2', '4. Approve it', 'wf-step-title'));
 
     const step3Body = document.createElement('div');
     step3Body.className = 'wf-step-body';
@@ -1908,9 +2010,17 @@ function renderRubricPage(
         const gridNow = describeAllGrids(pageContext.sections);
         const describedDone = detailsNow.complete && profileNow.complete;
 
+        // Material is optional -- a description can be typed by hand -- so the step counts as
+        // done once there is any, or once the description it feeds is complete.
+        const sourceCount = sources.sourceCount();
+        const materialDone = describedDone || (sourceCount ?? 0) > 0;
         stripMount.replaceChildren(renderProgressStrip([
             {
-                ordinal: 1, label: 'Describe the assignment', state: describedDone ? 'done' : 'current',
+                ordinal: 1, label: 'Gather the material', state: materialDone ? 'done' : 'current',
+                detail: sourceCount === undefined ? 'Loading…' : (sources.summary() || 'No material yet')
+            },
+            {
+                ordinal: 2, label: 'Describe the assignment', state: describedDone ? 'done' : (materialDone ? 'current' : 'pending'),
                 // Named when the description itself is done, because the remaining work is
                 // then in a card the reader has to open to see.
                 detail: describedDone
@@ -1918,7 +2028,7 @@ function renderRubricPage(
                     : (detailsNow.complete ? 'Writing profile: incomplete' : 'Incomplete')
             },
             {
-                ordinal: 2, label: isLabReport ? 'Build the marking grids' : 'Build the marking grid',
+                ordinal: 3, label: isLabReport ? 'Build the marking grids' : 'Build the marking grid',
                 state: gridNow.complete ? 'done' : (describedDone ? 'current' : 'pending'),
                 detail: gridNow.complete
                     ? `${gridNow.criteria} criteria · ${gridNow.levels} levels · ${gridNow.totalPoints} points`
@@ -1934,13 +2044,13 @@ function renderRubricPage(
                 const ready = describedDone && gridNow.complete;
                 if (sections.length && !waiting && !unapproved) {
                     return {
-                        ordinal: 3, label: 'Approve it', state: 'done' as const,
+                        ordinal: 4, label: 'Approve it', state: 'done' as const,
                         detail: sections.length === 1 ? `Approved v${sections[0].approvedVersion}` : 'Both rubrics approved'
                     };
                 }
                 const owed = ready ? '' : ' — some things still owed';
                 return {
-                    ordinal: 3, label: 'Approve it',
+                    ordinal: 4, label: 'Approve it',
                     state: ready ? 'current' as const : 'pending' as const,
                     detail: `${waiting && !unapproved ? 'Unapproved changes' : 'Ready to approve'}${owed}`
                 };
@@ -1952,6 +2062,7 @@ function renderRubricPage(
         step1Meta.replaceChildren(describedDone
             ? chip('All fields completed', 'green')
             : chip('Incomplete', 'amber'));
+        materialMeta.textContent = sources.summary();
         step2Meta.textContent = gridNow.complete
             ? `${gridNow.criteria} criteria · ${gridNow.levels} levels · ${gridNow.totalPoints} points`
             : `${gridNow.emptyCells} ${gridNow.emptyCells === 1 ? 'box' : 'boxes'} still empty`;
@@ -1960,6 +2071,7 @@ function renderRubricPage(
         refreshIcons();
     };
     refreshProgress();
+    sources.onChange(() => refreshProgress());
 
     if (notice) setWorkspaceMessage(notice.message, notice.tone);
     refreshIcons();
@@ -2173,11 +2285,7 @@ interface AssignmentDetailsOptions {
     isLabReport: boolean;
     /** Current lab handout text, which lives on the technical rubric only. */
     labContext: string;
-    /** The source list, shown above the details and read by the fill button. */
-    sources: SourcesPanel;
-    notice?: { message: string; tone: 'success' | 'error' };
     onInput: () => void;
-    onFillFromInstructions: (status: HTMLElement) => Promise<void>;
 }
 
 const firstOpenAutofillAttempts = new Set<string>();
@@ -2231,31 +2339,6 @@ function renderAssignmentDetails(
 ): HTMLFormElement {
     const section = document.createElement('section');
     section.className = 'wf-rubric-details';
-
-    const headingRow = document.createElement('div');
-    headingRow.className = 'wf-rubric-heading-row';
-    const fillStatus = createText('p', options.notice?.message ?? '', 'wf-rubric-details-status');
-    fillStatus.setAttribute('role', 'status');
-    fillStatus.setAttribute('aria-live', 'polite');
-    fillStatus.setAttribute('aria-atomic', 'true');
-    if (options.notice) fillStatus.dataset.tone = options.notice.tone;
-    if (options.canEdit) {
-        const fillButton = createButton(
-            'Fill these in for me',
-            'outline',
-            async () => options.onFillFromInstructions(fillStatus),
-            !options.sources.canFill()
-        );
-        const updateFillButton = (): void => {
-            // A running fill owns the button until it settles; it is re-enabled from here after.
-            if (fillButton.getAttribute('aria-busy') === 'true') return;
-            fillButton.disabled = !options.sources.canFill();
-            fillButton.title = options.sources.blockedReason();
-        };
-        options.sources.onChange(updateFillButton);
-        updateFillButton();
-        headingRow.append(fillButton);
-    }
 
     const form = document.createElement('form');
     form.className = 'wf-rubric-details-form';
@@ -2386,7 +2469,7 @@ function renderAssignmentDetails(
     }
 
     form.append(grid);
-    section.append(options.sources.element, headingRow, fillStatus, form);
+    section.append(form);
     container.append(section);
     return form;
 }

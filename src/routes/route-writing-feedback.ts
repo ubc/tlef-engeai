@@ -57,7 +57,7 @@ import {
 import { requireCompleteSflProfile } from '../writing-feedback/sfl-analysis';
 import { listCriterionLibrary } from '../writing-feedback/criterion-library';
 import { isCourseStaff } from '../utils/course-staff';
-import { parseLens, selectRubric } from '../writing-feedback/rubric-lens';
+import { parseLens, selectRubric, storedGridSource } from '../writing-feedback/rubric-lens';
 import { seedRubricForLens } from '../writing-feedback/rubric-seed';
 import {
     AssignmentTypeService,
@@ -73,8 +73,18 @@ import {
     proposeRubricFromInstructions,
     type RubricGridSource
 } from '../writing-feedback/rubric-autofill';
-import type { WritingFeedbackLens, WritingRubricDefinition } from '../writing-feedback/contracts';
+import type { WritingAssignment, WritingFeedbackLens, WritingRubricDefinition } from '../writing-feedback/contracts';
 import { RELEASE_REFUSAL_PREFIXES } from '../writing-feedback/release-refusals';
+import {
+    RUBRIC_SOURCE_ERRORS,
+    gradedGridState,
+    isSourceChange,
+    parseRubricSourceChoice,
+    seedGrid,
+    storedSourceFor,
+    type RubricSourceChoice
+} from '../writing-feedback/rubric-source-choice';
+import { gradedLensFor } from '../writing-feedback/staff-final-assessment';
 import {
     AUTOFILL_SOURCE_ERRORS,
     MAX_AUTOFILL_SOURCE_CHARS,
@@ -99,6 +109,8 @@ const sourceMaterialUpload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: 10 * 1024 * 1024, fieldSize: 2 * 1024 * 1024, files: 1, fields: 4 }
 });
+/** Shown when switching the grid's source would bring back a criterion an approved version retired. */
+const GRID_REUSES_RETIRED_IDS = 'This grid uses a criterion or level name that an earlier approved version of this rubric removed, so it cannot replace the current grid. Edit the grid by hand instead.';
 /** Shown when an uploaded file is valid in type but the parser cannot read it. */
 const SOURCE_FILE_UNREADABLE = 'This file could not be read. Check that it opens, or paste its text instead.';
 const MAX_TEXT_CHARS = 30000;
@@ -778,7 +790,9 @@ function requestedSourceIds(body: unknown): string[] | undefined {
 /**
  * Lists the material "Fill these in for me" can read for an assignment: its instructions,
  * the Canvas description when it differs from them, and every uploaded file or paste, each
- * with its text, plus the character limit one fill may read.
+ * with its text, plus the character limit one fill may read. Also reports the graded grid's
+ * current source, the imported Canvas rubric's size, and whether replacing the grid needs
+ * staff to confirm first.
  */
 router.get(
     '/:courseId/writing-feedback/assignments/:assignmentId/autofill-sources',
@@ -789,18 +803,32 @@ router.get(
         const materials = await mongo.listWritingSourceMaterials(courseId(req), assignment.id);
         res.json({
             success: true,
-            data: { sources: listAutofillSources(assignment, materials), maxCharacters: MAX_AUTOFILL_SOURCE_CHARS }
+            data: {
+                sources: listAutofillSources(assignment, materials),
+                maxCharacters: MAX_AUTOFILL_SOURCE_CHARS,
+                rubric: gradedGridState(assignment)
+            }
         });
     })
 );
 
 /**
- * Proposes a rubric draft from the assignment material and merges it into the
- * current draft. The body's `sourceIds` names which sources to read (see the
- * `autofill-sources` route); without it every source is read. How much of the grid the proposal may overwrite depends on where
- * the grid came from — an instructor's imported rubric and the department's APSC
- * 182 evaluation form both outrank anything a model proposes. Never touches the
- * approved rubric; approval stays the gate that lets a rubric reach the model.
+ * Fills the assignment details from the assignment material and, when asked, replaces the
+ * graded grid with the Canvas rubric or EngE-AI's default.
+ *
+ * Body:
+ * - `sourceIds` names which sources to read (see the `autofill-sources` route); without it
+ *   every source is read.
+ * - `rubricFrom` is `keep` (the default), `canvas`, or `default`. Only the lens that carries
+ *   the grade takes a source other than `keep`.
+ * - `replaceGrid: true` confirms replacing a grid that has an approved version or staff
+ *   edits. Without it such a grid is kept, the details are still filled, and the answer's
+ *   `grid` is `needs_confirmation`.
+ *
+ * How much of the grid the model's proposal may then reword depends on where the grid comes
+ * from; it never changes points. Never touches the approved rubric; approval stays the gate
+ * that lets a rubric reach the model. Answers `{ assignment, grid }`, where `grid` is
+ * `unchanged`, `applied`, or `needs_confirmation`.
  */
 router.post(
     '/:courseId/writing-feedback/assignments/:assignmentId/rubric-draft/fill',
@@ -817,7 +845,21 @@ router.post(
         if (lens === 'technical' && !assignment.isLabReport) {
             return res.status(409).json({ success: false, error: 'Mark this assignment as a lab report before editing its technical rubric' });
         }
-        // Step 1: the material this fill reads, refused before any model call when unusable.
+        // Step 1: the grid source asked for, refused before any model call when unusable.
+        let rubricFrom: RubricSourceChoice;
+        try {
+            rubricFrom = parseRubricSourceChoice(req.body?.rubricFrom);
+        } catch (error) {
+            return res.status(400).json({ success: false, error: error instanceof Error ? error.message : RUBRIC_SOURCE_ERRORS.invalid });
+        }
+        if (rubricFrom !== 'keep' && lens !== gradedLensFor(assignment)) {
+            return res.status(400).json({ success: false, error: RUBRIC_SOURCE_ERRORS.notGraded });
+        }
+        if (rubricFrom === 'canvas' && !assignment.canvasRubricImport?.shape.criteria.length) {
+            return res.status(409).json({ success: false, error: RUBRIC_SOURCE_ERRORS.noCanvas });
+        }
+
+        // Step 2: the material this fill reads, refused before any model call when unusable.
         let material: string;
         try {
             const sourceIds = requestedSourceIds(req.body);
@@ -837,14 +879,39 @@ router.post(
         // (matching the version computation the sibling PUT handler uses above) rather
         // than discarding an instructor's approved grid for a freshly seeded one. Only
         // an assignment with neither a draft nor an approval falls back to the seed.
-        const draft: WritingRubricDefinition = selected.draft
+        let draft: WritingRubricDefinition = selected.draft
             ?? (selected.approved
                 ? { ...selected.approved, status: 'draft', version: selected.approved.version + 1 }
                 : seedRubricForLens({ lens, actorUserId: globalUser.userId }));
 
+        // Step 3: replace the grid when a new source was chosen and, where that would set aside
+        // an approved grid or staff edits, staff confirmed it.
+        const target = isSourceChange(rubricFrom, storedGridSource(assignment, lens)) ? rubricFrom : undefined;
+        let gridOutcome: 'unchanged' | 'applied' | 'needs_confirmation' = 'unchanged';
+        let newGridSource: ReturnType<typeof storedSourceFor> | undefined;
+        let gridAssignment = assignment;
+        if (target && req.body?.replaceGrid !== true && gradedGridState(assignment).replaceNeedsConfirmation) {
+            gridOutcome = 'needs_confirmation';
+        } else if (target) {
+            draft = { ...draft, ...seedGrid(assignment, lens, target) };
+            if (selected.approved) {
+                try {
+                    assertRetiredIdsNotReused([selected.approved, ...(selected.history ?? [])], draft);
+                } catch {
+                    return res.status(409).json({ success: false, error: GRID_REUSES_RETIRED_IDS });
+                }
+            }
+            newGridSource = storedSourceFor(lens, target);
+            gridAssignment = lens === 'linguistic'
+                ? { ...assignment, rubricSource: newGridSource as WritingAssignment['rubricSource'] }
+                : { ...assignment, technicalRubricSource: newGridSource as WritingAssignment['technicalRubricSource'] };
+            gridOutcome = 'applied';
+        }
+
         // The grid source decides how much of the proposal the merge may apply — see
-        // `gridSourceFor` for why the lens is checked before `rubricSource`.
-        const source: RubricGridSource = gridSourceFor(assignment, lens);
+        // `gridSourceFor` for why the lens is checked before `rubricSource`. A replaced grid is
+        // merged under its new source's rules.
+        const source: RubricGridSource = gridSourceFor(gridAssignment, lens);
 
         try {
             const proposal = await proposeRubricFromInstructions(material, draft);
@@ -857,8 +924,8 @@ router.post(
                 throw new Error('Auto-fill response was not usable');
             }
 
-            const saved = await mongo.saveWritingRubricDraft(courseId(req), assignment.id, merged, lens);
-            res.json({ success: true, data: saved });
+            const saved = await mongo.saveWritingRubricDraft(courseId(req), assignment.id, merged, lens, newGridSource);
+            res.json({ success: true, data: { assignment: saved, grid: gridOutcome } });
         } catch {
             // Model errors and responses can carry the prompt body, which includes the
             // instructions. Never log or return them; staff see a fixed, generic message.

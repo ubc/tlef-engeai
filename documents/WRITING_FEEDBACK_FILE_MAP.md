@@ -53,6 +53,7 @@ Line counts are a rough guide to reading cost, not a target.
 | `lab-report-profile.ts` | 177 | Builds the editable lab-report technical rubric template. | `lab-report-profile.test.ts` | the technical rubric template changes |
 | `staff-final-assessment.ts` | 106 | Builds and validates the staff-final rubric assessment and its total. | `staff-final-assessment.test.ts` | grading maths change |
 | `assignment-type.ts` | 129 | Records the one-time writing / lab report choice and seeds the technical rubric (D-123). | `assignment-type.test.ts` | the assignment type flow changes |
+| `rubric-source-choice.ts` | 160 | Reports where the graded grid comes from, re-seeds it from Canvas or the default, and says when replacing it needs confirmation. | `rubric-source-choice.test.ts` | the grid-source choice or its confirmation rule changes |
 | `autofill-sources.ts` | 146 | Lists, selects, and labels the material "Fill these in for me" reads, within the 60,000-character limit. | `autofill-sources.test.ts` | which sources auto-fill offers or reads changes |
 | `source-material-extraction.ts` | 203 | Turns instructor files and pastes into text, keeping Word and HTML tables as markdown tables. | `source-material-extraction.test.ts` | accepted material types, table handling, or material limits change |
 

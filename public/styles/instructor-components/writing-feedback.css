@@ -1371,6 +1371,33 @@
     gap: 12px;
 }
 
+.wf-sources__rubric {
+    margin: 14px 0 0;
+    padding: 12px 0 0;
+    border: 0;
+    border-top: 1px solid var(--border-color);
+}
+
+/* Floated so the fieldset's top border runs above the question rather than through it. */
+.wf-sources__rubric legend {
+    float: left;
+    width: 100%;
+    margin: 0 0 6px;
+    padding: 0;
+}
+
+.wf-sources__rubric legend + * {
+    clear: both;
+}
+
+.wf-sources__choice {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 4px 0;
+    cursor: pointer;
+}
+
 .wf-rubric-details .wf-rubric-details-form {
     padding: 0;
 }
