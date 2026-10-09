@@ -25,6 +25,7 @@ import type {
     WritingFeedbackLens,
     WritingFeedbackRun,
     WritingGlossaryEntry,
+    WritingSourceMaterial,
     WritingJob,
     WritingPendingReplacement,
     WritingRelease,
@@ -44,6 +45,7 @@ const RUNS = 'writing-feedback-runs';
 const RELEASES = 'writing-releases';
 const JOBS = 'writing-jobs';
 const GLOSSARY = 'writing-glossary-entries';
+const SOURCE_MATERIALS = 'writing-source-materials';
 /** Reserved for a future Canvas OAuth integration; no token is written by the MVP. */
 const CANVAS_CONNECTIONS = 'canvas-connections';
 const CANVAS_ASSIGNMENT_INDEX = 'writing_canvas_assignment_unique';
@@ -58,6 +60,7 @@ function runs(ctx: MongoDalContext): Collection<WritingFeedbackRun> { return ctx
 function releases(ctx: MongoDalContext): Collection<WritingRelease> { return ctx.db.collection(RELEASES); }
 function jobs(ctx: MongoDalContext): Collection<WritingJob> { return ctx.db.collection(JOBS); }
 function glossary(ctx: MongoDalContext): Collection<WritingGlossaryEntry> { return ctx.db.collection(GLOSSARY); }
+function sourceMaterials(ctx: MongoDalContext): Collection<WritingSourceMaterial> { return ctx.db.collection(SOURCE_MATERIALS); }
 
 let indexesEnsured = false;
 
@@ -353,6 +356,7 @@ export async function deleteWritingAssignment(
     const result = await assignments(ctx).deleteOne({ id: assignmentId, courseId });
     if (result.deletedCount !== 1) return { deleted: false, blockedByWork: false };
     await submissions(ctx).deleteMany({ courseId, assignmentId });
+    await sourceMaterials(ctx).deleteMany({ courseId, assignmentId });
     if (submissionIds.length) {
         await Promise.all([
             runs(ctx).deleteMany({ submissionId: { $in: submissionIds } }),
@@ -1759,4 +1763,81 @@ export async function failWritingJob(ctx: MongoDalContext, job: WritingJob, sani
             $unset: { leaseUntil: '' }
         }
     );
+}
+
+let sourceMaterialIndexEnsured = false;
+
+/** Creates the course/assignment lookup index once per process. */
+async function ensureSourceMaterialIndex(ctx: MongoDalContext): Promise<void> {
+    if (sourceMaterialIndexEnsured) return;
+    await sourceMaterials(ctx).createIndex({ courseId: 1, assignmentId: 1, addedAt: 1 });
+    sourceMaterialIndexEnsured = true;
+}
+
+/**
+ * listWritingSourceMaterials — the instructor material held for one assignment, oldest first.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param assignmentId - Assignment the material belongs to
+ * @returns Materials with their extracted text, in the order they were added
+ */
+export async function listWritingSourceMaterials(
+    ctx: MongoDalContext,
+    courseId: string,
+    assignmentId: string
+): Promise<WritingSourceMaterial[]> {
+    await ensureSourceMaterialIndex(ctx);
+    return sourceMaterials(ctx)
+        .find({ courseId, assignmentId }, { projection: { _id: 0 } })
+        .sort({ addedAt: 1 })
+        .toArray();
+}
+
+/**
+ * addWritingSourceMaterial — stores one extracted file or paste for an assignment.
+ *
+ * The per-assignment cap is checked before the insert, so two additions racing past the
+ * last free slot can both succeed; the cap bounds storage and prompt size, not correctness.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param input - Extracted material, its owner, and the staff member adding it
+ * @param maxPerAssignment - Most materials one assignment may hold
+ * @returns The stored material, or `null` when the assignment already holds the maximum
+ */
+export async function addWritingSourceMaterial(
+    ctx: MongoDalContext,
+    input: Omit<WritingSourceMaterial, 'id' | 'addedAt' | 'characterCount'>,
+    maxPerAssignment: number
+): Promise<WritingSourceMaterial | null> {
+    await ensureSourceMaterialIndex(ctx);
+    const held = await sourceMaterials(ctx).countDocuments({ courseId: input.courseId, assignmentId: input.assignmentId });
+    if (held >= maxPerAssignment) return null;
+    const material: WritingSourceMaterial = {
+        ...input,
+        id: randomUUID(),
+        characterCount: input.text.length,
+        addedAt: new Date()
+    };
+    await sourceMaterials(ctx).insertOne({ ...material });
+    return material;
+}
+
+/**
+ * deleteWritingSourceMaterial — removes one material from an assignment.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param assignmentId - Assignment the material belongs to
+ * @param materialId - Material to remove
+ * @returns Whether a material in that course and assignment was removed
+ */
+export async function deleteWritingSourceMaterial(
+    ctx: MongoDalContext,
+    courseId: string,
+    assignmentId: string,
+    materialId: string
+): Promise<boolean> {
+    const result = await sourceMaterials(ctx).deleteOne({ id: materialId, courseId, assignmentId });
+    return result.deletedCount === 1;
 }

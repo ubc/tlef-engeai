@@ -466,6 +466,27 @@ export interface CanvasImportedRubric {
  * and `constraints` from it; until that exists this is reference material for staff, and
  * nothing reads it automatically.
  */
+/**
+ * Instructor-supplied assignment material: an uploaded file or pasted text, kept as extracted
+ * text only. Instructor material, never student work, and never sent to the course RAG index.
+ */
+export interface WritingSourceMaterial {
+    id: string;
+    courseId: string;
+    assignmentId: string;
+    kind: 'file' | 'paste';
+    /** Sanitized basename of an uploaded file, for display only. */
+    fileName?: string;
+    /** Extracted text. Tables are kept as markdown tables wherever the source had real ones. */
+    text: string;
+    /** Whether `text` holds tables whose rows and columns came from the source's own structure. */
+    hasTables: boolean;
+    characterCount: number;
+    addedAt: Date;
+    /** Internal user id of the staff member who added it; never a PUID. */
+    addedBy: string;
+}
+
 export interface CanvasAssignmentDetails {
     /** Canvas `description` — rich-editor HTML, stored as delivered. */
     descriptionHtml?: string;

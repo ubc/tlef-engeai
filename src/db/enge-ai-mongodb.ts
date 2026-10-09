@@ -81,6 +81,7 @@ import type {
     WritingFeedbackLens,
     WritingFeedbackRun,
     WritingGlossaryEntry,
+    WritingSourceMaterial,
     WritingJob,
     WritingRelease,
     WritingRubricDefinition,
@@ -603,6 +604,40 @@ export class EngEAI_MongoDB {
         lens: WritingFeedbackLens,
         approvedVersion: number
     ) => WritingFeedbackMongo.countFeedbackStaleOnApproval(this.ctx(), courseId, assignmentId, lens, approvedVersion);
+
+    /**
+     * listWritingSourceMaterials — the instructor material held for one assignment, oldest first.
+     *
+     * @param courseId - Owning course id
+     * @param assignmentId - Assignment the material belongs to
+     * @returns Materials with their extracted text
+     */
+    public listWritingSourceMaterials = async (courseId: string, assignmentId: string): Promise<WritingSourceMaterial[]> =>
+        WritingFeedbackMongo.listWritingSourceMaterials(this.ctx(), courseId, assignmentId);
+
+    /**
+     * addWritingSourceMaterial — stores one extracted file or paste for an assignment.
+     *
+     * @param input - Extracted material, its owner, and the staff member adding it
+     * @param maxPerAssignment - Most materials one assignment may hold
+     * @returns The stored material, or `null` when the assignment already holds the maximum
+     */
+    public addWritingSourceMaterial = async (
+        input: Omit<WritingSourceMaterial, 'id' | 'addedAt' | 'characterCount'>,
+        maxPerAssignment: number
+    ): Promise<WritingSourceMaterial | null> =>
+        WritingFeedbackMongo.addWritingSourceMaterial(this.ctx(), input, maxPerAssignment);
+
+    /**
+     * deleteWritingSourceMaterial — removes one material from an assignment.
+     *
+     * @param courseId - Owning course id
+     * @param assignmentId - Assignment the material belongs to
+     * @param materialId - Material to remove
+     * @returns Whether it was removed
+     */
+    public deleteWritingSourceMaterial = async (courseId: string, assignmentId: string, materialId: string): Promise<boolean> =>
+        WritingFeedbackMongo.deleteWritingSourceMaterial(this.ctx(), courseId, assignmentId, materialId);
 
     /**
      * listWritingGlossaryEntries — lists reusable Writing Feedback glossary definitions.

@@ -75,9 +75,25 @@ import {
 } from '../writing-feedback/rubric-autofill';
 import type { WritingFeedbackLens, WritingRubricDefinition } from '../writing-feedback/contracts';
 import { RELEASE_REFUSAL_PREFIXES } from '../writing-feedback/release-refusals';
+import {
+    MAX_SOURCE_MATERIALS,
+    SOURCE_MATERIAL_ERRORS,
+    extractPastedSource,
+    extractSourceFile
+} from '../writing-feedback/source-material-extraction';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+/**
+ * Source material arrives as multipart for both files and pastes: HTML copied from Word can
+ * run to megabytes, past the app-wide JSON body limit, and this keeps its own limit.
+ */
+const sourceMaterialUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024, fieldSize: 2 * 1024 * 1024, files: 1, fields: 4 }
+});
+/** Shown when an uploaded file is valid in type but the parser cannot read it. */
+const SOURCE_FILE_UNREADABLE = 'This file could not be read. Check that it opens, or paste its text instead.';
 const MAX_TEXT_CHARS = 30000;
 
 function courseId(req: Request): string { return String(req.params.courseId); }
@@ -157,6 +173,7 @@ function safeError(error: unknown): string {
         'The summary can only be redrafted before approval', 'The summary changed since you opened it',
         'Summary edits failed validation', 'The summary could not be updated from your annotations',
         'This assignment is not linked to Canvas', DUPLICATE_STUDENT_SUBMISSION, 'decision must be',
+        ...Object.values(SOURCE_MATERIAL_ERRORS), SOURCE_FILE_UNREADABLE,
         REVIEW_WHILE_GENERATING_MESSAGE, APPROVE_WHILE_GENERATING_MESSAGE,
         ...Object.values(REPLACEMENT_ERRORS),
         ...Object.values(BATCH_ERRORS),
@@ -278,6 +295,106 @@ router.post(
         } catch (error) {
             res.status(400).json({ success: false, error: safeError(error) });
         }
+    })
+);
+
+/**
+ * Accepts one source-material upload, answering multer's own limit errors in words staff can act on.
+ */
+function acceptSourceMaterial(req: Request, res: Response, next: NextFunction): void {
+    sourceMaterialUpload.single('file')(req, res, (error?: unknown) => {
+        if (error instanceof multer.MulterError) {
+            res.status(400).json({
+                success: false,
+                error: error.code === 'LIMIT_FILE_SIZE'
+                    ? 'This file is larger than 10 MB. Upload a smaller file, or paste the relevant part.'
+                    : 'This paste is too large. Paste only the instructions and the rubric, or upload the file instead.'
+            });
+            return;
+        }
+        next(error as Error | undefined);
+    });
+}
+
+/** A multipart text field, or undefined when absent or not text. */
+function optionalField(value: unknown): string | undefined {
+    return typeof value === 'string' ? value : undefined;
+}
+
+/**
+ * Lists the instructor material (uploaded files and pastes) held for an assignment, with the
+ * text extracted from each.
+ */
+router.get(
+    '/:courseId/writing-feedback/assignments/:assignmentId/source-materials',
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        const mongo = await EngEAI_MongoDB.getInstance();
+        const assignment = await mongo.getWritingAssignment(courseId(req), String(req.params.assignmentId));
+        if (!assignment) return res.status(404).json({ success: false, error: 'Writing assignment not found' });
+        const materials = await mongo.listWritingSourceMaterials(courseId(req), assignment.id);
+        res.json({ success: true, data: materials });
+    })
+);
+
+/**
+ * Adds one source material to an assignment: an uploaded `file`, or a paste sent as `text`
+ * with the clipboard's `html` when the browser supplied it. Tables are kept wherever the source
+ * had them. Material that is empty, too long, or over the per-assignment count is refused
+ * rather than cut. The text is instructor material; it is never logged or sent to the RAG index.
+ */
+router.post(
+    '/:courseId/writing-feedback/assignments/:assignmentId/source-materials',
+    acceptSourceMaterial,
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        try {
+            const mongo = await EngEAI_MongoDB.getInstance();
+            const assignment = await mongo.getWritingAssignment(courseId(req), String(req.params.assignmentId));
+            if (!assignment) return res.status(404).json({ success: false, error: 'Writing assignment not found' });
+
+            // Step 1: extract, keeping the parser's own failures out of the response.
+            let extracted: { text: string; hasTables: boolean; fileName?: string };
+            if (req.file) {
+                const file = req.file;
+                extracted = await extractSourceFile({ buffer: file.buffer, fileName: file.originalname })
+                    .catch((error: unknown) => {
+                        const known = Object.values(SOURCE_MATERIAL_ERRORS) as string[];
+                        throw error instanceof Error && known.includes(error.message) ? error : new Error(SOURCE_FILE_UNREADABLE);
+                    });
+            } else {
+                extracted = extractPastedSource({ text: optionalField(req.body?.text), html: optionalField(req.body?.html) });
+            }
+
+            // Step 2: store it, unless the assignment already holds the maximum.
+            const globalUser = (req.session as any).globalUser;
+            const material = await mongo.addWritingSourceMaterial({
+                courseId: courseId(req),
+                assignmentId: assignment.id,
+                kind: req.file ? 'file' : 'paste',
+                ...(extracted.fileName ? { fileName: extracted.fileName } : {}),
+                text: extracted.text,
+                hasTables: extracted.hasTables,
+                addedBy: globalUser.userId
+            }, MAX_SOURCE_MATERIALS);
+            if (!material) return res.status(409).json({ success: false, error: SOURCE_MATERIAL_ERRORS.tooMany });
+            res.status(201).json({ success: true, data: material });
+        } catch (error) {
+            res.status(400).json({ success: false, error: safeError(error) });
+        }
+    })
+);
+
+/** Removes one source material from an assignment. */
+router.delete(
+    '/:courseId/writing-feedback/assignments/:assignmentId/source-materials/:materialId',
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        const mongo = await EngEAI_MongoDB.getInstance();
+        const removed = await mongo.deleteWritingSourceMaterial(
+            courseId(req),
+            String(req.params.assignmentId),
+            String(req.params.materialId)
+        );
+        if (!removed) return res.status(404).json({ success: false, error: 'Source material not found' });
+        res.json({ success: true });
     })
 );
 

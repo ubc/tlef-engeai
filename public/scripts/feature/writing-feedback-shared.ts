@@ -262,6 +262,20 @@ export interface CourseMaterialMention {
 }
 
 /** Reusable course glossary entry returned by glossary endpoints. */
+/** Instructor-supplied assignment material, as extracted text. Mirrors src/writing-feedback/contracts.ts. */
+export interface WritingSourceMaterial {
+    id: string;
+    courseId: string;
+    assignmentId: string;
+    kind: 'file' | 'paste';
+    fileName?: string; // sanitized basename of an uploaded file, display only
+    text: string; // extracted text; tables kept as markdown tables where the source had them
+    hasTables: boolean; // whether the source's own table structure was kept
+    characterCount: number;
+    addedAt: string | Date;
+    addedBy: string; // internal user id, never a PUID
+}
+
 export interface WritingGlossaryEntry {
     id: string; // glossary entry id
     courseId: string; // owning course

@@ -217,6 +217,9 @@ Canvas endpoints report their integration mode honestly. `demo` with `integratio
 | GET | `/assignments` | Lists assignments with per-assignment `submissionCount`; an empty course stays empty until an explicit create/import action |
 | POST | `/assignments` | Creates a manual assignment from `{ title, dueAt?, instructions? }` with a neutral, unapproved rubric draft; any course staff |
 | POST | `/instructions/extract` | Multipart `file` extraction for assignment directions (TXT, DOCX, text-PDF, HTML/HTM, or Markdown); returns text for staff review before create; any course staff |
+| GET | `/assignments/:assignmentId/source-materials` | Lists the instructor material held for an assignment (uploaded files and pastes) with each one's extracted text; `404` for an assignment outside the course |
+| POST | `/assignments/:assignmentId/source-materials` | Adds one material as multipart: a `file` (DOCX, PDF, HTML/HTM, TXT, Markdown; 10 MB) or a paste as `text` plus the clipboard's `html` (2 MB per field). Word tables and pasted HTML tables are kept as markdown tables. Empty, unreadable, unsupported, or over-60,000-character material returns `400` with a staff-readable message, never cut; a sixth material returns `409` |
+| DELETE | `/assignments/:assignmentId/source-materials/:materialId` | Removes one material; `404` when it is not in that course and assignment |
 | GET | `/glossary?search=` | Lists course-scoped Writing Feedback glossary entries, optionally filtered by term/definition |
 | POST | `/glossary` | Creates a glossary entry from `{ term, definition }`; normalized term conflicts return `409` |
 | PUT | `/glossary/:entryId` | Version-checked glossary update from `{ term, definition, expectedVersion, confirmDefinitionChange: true }`; missing confirmation or stale version returns `409` |

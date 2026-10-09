@@ -53,6 +53,7 @@ Line counts are a rough guide to reading cost, not a target.
 | `lab-report-profile.ts` | 177 | Builds the editable lab-report technical rubric template. | `lab-report-profile.test.ts` | the technical rubric template changes |
 | `staff-final-assessment.ts` | 106 | Builds and validates the staff-final rubric assessment and its total. | `staff-final-assessment.test.ts` | grading maths change |
 | `assignment-type.ts` | 129 | Records the one-time writing / lab report choice and seeds the technical rubric (D-123). | `assignment-type.test.ts` | the assignment type flow changes |
+| `source-material-extraction.ts` | 203 | Turns instructor files and pastes into text, keeping Word and HTML tables as markdown tables. | `source-material-extraction.test.ts` | accepted material types, table handling, or material limits change |
 
 ### Review
 

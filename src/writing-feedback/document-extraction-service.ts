@@ -41,10 +41,15 @@ export class LocalDocumentExtractionService implements DocumentExtractionService
      * Extracts text from one supported digital submission.
      *
      * @param input - In-memory file and untrusted original filename
+     * @param outputFormat - Plain text (the default) or the parser's markdown, which keeps
+     *        headings and list structure that plain text flattens
      * @returns Extracted text with a sanitized basename
      * @throws Error for unsupported types or parser/filesystem failures
      */
-    async extract(input: { buffer: Buffer; fileName: string }): Promise<{ text: string; fileName: string }> {
+    async extract(
+        input: { buffer: Buffer; fileName: string },
+        outputFormat: 'text' | 'markdown' = 'text'
+    ): Promise<{ text: string; fileName: string }> {
         // Reject unsupported types before writing any untrusted payload to disk.
         const extension = extensionOf(input.fileName);
         if (!DIGITAL_TYPES.has(extension)) {
@@ -59,7 +64,7 @@ export class LocalDocumentExtractionService implements DocumentExtractionService
             if (PLAIN_TEXT_TYPES.has(extension)) {
                 return { text: await fs.promises.readFile(tempPath, 'utf8'), fileName: safeName };
             }
-            const parsed = await this.parser.parse({ filePath: tempPath }, 'text');
+            const parsed = await this.parser.parse({ filePath: tempPath }, outputFormat);
             return { text: parsed.content ?? '', fileName: safeName };
         } finally {
             // Cleanup is best-effort so unlink failures never mask the extraction result/error.
