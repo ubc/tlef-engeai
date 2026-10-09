@@ -16,7 +16,7 @@ import type {
 } from './contracts';
 import { computeReleaseFingerprint } from './canvas-release-service';
 import { planRubricWrite, rubricRefusalMessage, type RubricWritePlan } from './canvas-rubric-write';
-import { storedGridSource } from './rubric-lens';
+import { rubricGridSource } from './rubric-lens';
 import { gradedLensFor } from './staff-final-assessment';
 import { appLogger } from '../utils/logger';
 
@@ -216,7 +216,7 @@ export class LiveCanvasReleaseService implements CanvasReleaseService {
             rubric: input.gradedRubric,
             // The import's ids describe the Canvas rubric, so they apply only while the graded
             // grid is still that rubric. A grid from anywhere else releases as a total alone.
-            ids: storedGridSource(input.assignment, gradedLensFor(input.assignment)) === 'canvas'
+            ids: rubricGridSource(input.gradedRubric, input.assignment, gradedLensFor(input.assignment)) === 'canvas'
                 ? input.assignment.canvasRubricImport?.ids
                 : undefined,
             liveCanvasCriterionIds: (liveAssignment.rubric ?? []).map((row) => String(row.id))

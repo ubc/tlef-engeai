@@ -19,8 +19,8 @@ import {
     gridMatchesSeed,
     isSourceChange,
     parseRubricSourceChoice,
-    seedGrid,
-    storedSourceFor
+    gridSourceKind,
+    seedGrid
 } from '../rubric-source-choice';
 
 const canvasShape: ImportedRubricShape = {
@@ -108,7 +108,7 @@ describe('seedGrid and gridMatchesSeed', () => {
     });
 });
 
-describe('isSourceChange and storedSourceFor', () => {
+describe('isSourceChange and gridSourceKind', () => {
     it('counts only a choice naming a different source as a change', () => {
         expect(isSourceChange('keep', 'canvas')).toBe(false);
         expect(isSourceChange('canvas', 'canvas')).toBe(false);
@@ -117,9 +117,13 @@ describe('isSourceChange and storedSourceFor', () => {
         expect(isSourceChange('canvas', 'uploaded')).toBe(true);
     });
 
-    it('records the default grid in each lens\'s own vocabulary', () => {
-        expect(storedSourceFor('linguistic', 'default')).toBe('internal_profile');
-        expect(storedSourceFor('technical', 'default')).toBe('builtin');
-        expect(storedSourceFor('technical', 'canvas')).toBe('canvas');
+    it('records each choice as the source kind a rubric version keeps', () => {
+        expect(gridSourceKind('default')).toBe('builtin');
+        expect(gridSourceKind('canvas')).toBe('canvas');
+        expect(gridSourceKind({ sourceId: 'material-1' })).toBe('uploaded');
+    });
+
+    it('always counts building from material as a change, even from material', () => {
+        expect(isSourceChange({ sourceId: 'material-1' }, 'uploaded')).toBe(true);
     });
 });

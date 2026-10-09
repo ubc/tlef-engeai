@@ -158,6 +158,8 @@ export interface RubricDefinition {
     levels: RubricLevel[]; // complete ordinal scale and optional point mapping
     updatedAt: string; // server timestamp shown in rubric provenance/history
     labContext?: string; // instructor-approved lab handout context supplied to the technical lens
+    /** Where this version's grid came from; written by the server, never by the editor. */
+    gridSource?: { kind: 'builtin' | 'canvas' | 'uploaded'; label?: string; notes?: string[] };
 }
 
 /** Assignment summary used by the landing queue and current rubric context. */
@@ -292,6 +294,11 @@ export interface GradedGridState {
     current: 'builtin' | 'canvas' | 'uploaded';
     canvas?: { criteria: number; points: number }; // the imported Canvas rubric, when there is one
     replaceNeedsConfirmation: boolean; // an approved grid or staff edits would be set aside
+    uploaded?: { sourceLabel: string; notes: string[] }; // a grid built from staff material
+    pending?: { // rubric versions found in staff material, waiting for a choice
+        sourceLabel: string;
+        candidates: Array<{ title: string; criteria: string[]; levels: string[]; points: number; notes: string[] }>;
+    };
 }
 
 /** GET /assignments/:assignmentId/autofill-sources */
@@ -302,12 +309,13 @@ export interface AutofillSourcesResponse {
 }
 
 /** Where a fill should take the graded grid from; `keep` leaves it as it is. */
-export type RubricSourceChoice = 'keep' | 'canvas' | 'default';
+export type RubricSourceChoice = 'keep' | 'canvas' | 'default' | { sourceId: string };
 
 /** POST /assignments/:assignmentId/rubric-draft/fill */
 export interface FillResponse {
     assignment: Assignment;
-    grid: 'unchanged' | 'applied' | 'needs_confirmation';
+    grid: 'unchanged' | 'applied' | 'needs_confirmation' | 'needs_decision' | 'not_found' | 'refused' | 'failed';
+    gridMessage?: string; // why the grid was left alone, in words staff can act on
 }
 
 export interface WritingGlossaryEntry {

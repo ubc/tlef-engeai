@@ -44,25 +44,39 @@ export interface SourcesPanel {
     rubricChoice(): RubricSourceChoice;
     /** The graded grid's current source, once loaded. */
     rubricState(): GradedGridState | undefined;
+    /** The label of a source, for naming it in messages. */
+    materialLabel(sourceId: string): string | undefined;
     /** One line for the step header, e.g. "2 sources · Grid: from Canvas". */
     summary(): string;
     /** How many sources the assignment has, or undefined until the list has loaded. */
     sourceCount(): number | undefined;
 }
 
-/** The grid choice staff made, per assignment, while the workspace is open. */
-const rubricChoiceByAssignment = new Map<string, RubricSourceChoice>();
-
-/** The choice that leaves a grid's current source as it is. */
-function choiceForCurrent(current: GradedGridState['current']): RubricSourceChoice {
-    if (current === 'canvas') return 'canvas';
-    if (current === 'builtin') return 'default';
-    return 'keep';
+/** A grid choice as the radio group holds it: which option, and for material, which source. */
+interface GridChoice {
+    kind: 'keep' | 'canvas' | 'default' | 'material';
+    sourceId?: string;
 }
 
-function gridSourceText(current: GradedGridState['current']): string {
-    if (current === 'canvas') return 'from Canvas';
-    if (current === 'uploaded') return 'from your material';
+/** The grid choice staff made, per assignment, while the workspace is open. */
+const rubricChoiceByAssignment = new Map<string, GridChoice>();
+
+/** The choice that leaves a grid's current source as it is. */
+function choiceForCurrent(current: GradedGridState['current']): GridChoice {
+    if (current === 'canvas') return { kind: 'canvas' };
+    if (current === 'builtin') return { kind: 'default' };
+    return { kind: 'keep' };
+}
+
+/** The choice in the form the fill request takes. */
+function toRequestChoice(choice: GridChoice): RubricSourceChoice {
+    if (choice.kind === 'material') return choice.sourceId ? { sourceId: choice.sourceId } : 'keep';
+    return choice.kind;
+}
+
+function gridSourceText(state: GradedGridState): string {
+    if (state.current === 'canvas') return 'from Canvas';
+    if (state.current === 'uploaded') return `from ${state.uploaded?.sourceLabel ?? 'your material'}`;
     return "EngE-AI's default";
 }
 
@@ -208,20 +222,33 @@ export function renderSourcesPanel(assignmentId: string, canEdit: boolean): Sour
     const renderRubricChoice = (): void => {
         if (!gridState) return;
         const state = gridState;
-        const chosen = rubricChoiceByAssignment.get(assignmentId) ?? choiceForCurrent(state.current);
-        const options: Array<{ value: RubricSourceChoice; label: string }> = [];
+        const materials = (sources ?? []).filter((source) => source.kind === 'file' || source.kind === 'paste');
+        let chosen = rubricChoiceByAssignment.get(assignmentId) ?? choiceForCurrent(state.current);
+        // A chosen source that has since been removed is no choice at all.
+        if (chosen.kind === 'material' && !materials.some((source) => source.id === chosen.sourceId)) {
+            chosen = materials.length ? { kind: 'material', sourceId: materials[0]!.id } : choiceForCurrent(state.current);
+            rubricChoiceByAssignment.set(assignmentId, chosen);
+        }
+        const current = choiceForCurrent(state.current).kind;
+
+        const options: Array<{ kind: GridChoice['kind']; label: string; disabled?: boolean }> = [];
+        // A grid from material has no source to re-seed from here, so keeping it is offered
+        // explicitly rather than by re-choosing its source.
+        if (state.current === 'uploaded') options.push({ kind: 'keep', label: `Keep the current grid (${gridSourceText(state)})` });
         if (state.canvas) {
-            options.push({ value: 'canvas', label: `The Canvas rubric (${state.canvas.criteria} criteria, ${formatCount(state.canvas.points)} points)` });
+            options.push({ kind: 'canvas', label: `The Canvas rubric (${state.canvas.criteria} criteria, ${formatCount(state.canvas.points)} points)` });
         }
         options.push({
-            value: 'default',
+            kind: 'material',
+            label: materials.length ? 'A rubric in one of my sources:' : 'A rubric in one of my sources (upload or paste the rubric above first)',
+            disabled: materials.length === 0
+        });
+        options.push({
+            kind: 'default',
             label: state.lens === 'technical'
                 ? "EngE-AI's default lab rubric (the APSC 182 evaluation form)"
                 : "EngE-AI's default rubric (Organization, Content, Interpersonal Positioning)"
         });
-        // A grid from uploaded material has no source to re-seed from here, so keeping it is
-        // offered explicitly rather than by re-choosing its source.
-        if (state.current === 'uploaded') options.unshift({ value: 'keep', label: 'Keep the current grid (from your material)' });
 
         const legend = createText(
             'legend',
@@ -229,32 +256,51 @@ export function renderSourcesPanel(assignmentId: string, canEdit: boolean): Sour
             'wf-sources__heading'
         );
         const name = `wf-rubric-source-${assignmentId}`;
-        const radios = options.map((option) => {
+        const choose = (next: GridChoice): void => {
+            rubricChoiceByAssignment.set(assignmentId, next);
+            notify();
+        };
+        const rows = options.map((option) => {
             const row = document.createElement('label');
             row.className = 'wf-sources__choice';
             const radio = document.createElement('input');
             radio.type = 'radio';
             radio.name = name;
-            radio.value = option.value;
-            radio.checked = option.value === chosen;
-            radio.disabled = !canEdit;
-            radio.addEventListener('change', () => {
-                if (!radio.checked) return;
-                rubricChoiceByAssignment.set(assignmentId, option.value);
-                notify();
+            radio.value = option.kind;
+            radio.checked = option.kind === chosen.kind;
+            radio.disabled = !canEdit || Boolean(option.disabled);
+            const suffix = option.kind === current ? ' (current)' : '';
+            row.append(radio, createText('span', `${option.label}${suffix}`));
+            if (option.kind !== 'material' || !materials.length) {
+                radio.addEventListener('change', () => { if (radio.checked) choose({ kind: option.kind }); });
+                return row;
+            }
+            // The dropdown sits beside its own option, and choosing from it chooses the option.
+            const select = document.createElement('select');
+            select.className = 'wf-sources__material-select';
+            select.setAttribute('aria-label', 'Source holding the rubric');
+            select.disabled = !canEdit;
+            materials.forEach((source) => {
+                const item = document.createElement('option');
+                item.value = source.id;
+                item.textContent = source.label;
+                item.selected = chosen.kind === 'material' ? chosen.sourceId === source.id : source === materials[0];
+                select.append(item);
             });
-            const current = option.value === choiceForCurrent(state.current) ? ' (current)' : '';
-            row.append(radio, createText('span', `${option.label}${current}`));
+            radio.addEventListener('change', () => { if (radio.checked) choose({ kind: 'material', sourceId: select.value }); });
+            select.addEventListener('change', () => {
+                radio.checked = true;
+                choose({ kind: 'material', sourceId: select.value });
+            });
+            row.append(select);
             return row;
         });
         const hint = createText(
             'p',
-            options.length > 1
-                ? 'Choosing a different source replaces the grid when you fill in the assignment.'
-                : "This assignment had no rubric in Canvas when it was imported, so EngE-AI's default is the only grid available here.",
+            'Choosing a different source replaces the grid when you fill in the assignment. A rubric in your material is copied as written; check it in step 3.',
             'wf-help-text'
         );
-        rubricField.replaceChildren(legend, ...radios, hint);
+        rubricField.replaceChildren(legend, ...rows, hint);
     };
 
     const load = async (): Promise<void> => {
@@ -263,6 +309,7 @@ export function renderSourcesPanel(assignmentId: string, canEdit: boolean): Sour
         maxCharacters = response.maxCharacters;
         gridState = response.rubric;
         renderRubricChoice();
+        notify();
         // A tick for a source that no longer exists would only ever be stale.
         [...unticked].forEach((id) => { if (!sources!.some((source) => source.id === id)) unticked.delete(id); });
         list.replaceChildren(...sources.map(renderItem));
@@ -296,14 +343,17 @@ export function renderSourcesPanel(assignmentId: string, canEdit: boolean): Sour
         onChange: (listener) => { listeners.push(listener); },
         rubricChoice: () => {
             if (!gridState) return 'keep';
-            return rubricChoiceByAssignment.get(assignmentId) ?? choiceForCurrent(gridState.current);
+            return toRequestChoice(rubricChoiceByAssignment.get(assignmentId) ?? choiceForCurrent(gridState.current));
         },
+        materialLabel: (sourceId: string) => sources?.find((source) => source.id === sourceId)?.label,
         rubricState: () => gridState,
         sourceCount: () => sources?.length,
         summary: () => {
             if (!sources || !gridState) return '';
             const count = `${sources.length} ${sources.length === 1 ? 'source' : 'sources'}`;
-            return `${count} · Grid: ${gridSourceText(gridState.current)}`;
+            // The summary sits in a one-line header, so a long file name is shortened there.
+            const source = gridSourceText(gridState);
+            return `${count} · Grid: ${source.length > 48 ? `${source.slice(0, 47).trimEnd()}…` : source}`;
         }
     };
 }

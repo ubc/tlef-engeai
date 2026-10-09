@@ -42,6 +42,7 @@ Operational CLI migrations (OB-001, OB-002) are documented here but are **not** 
 
 ### Additive changes that need no migration
 
+- **2026-10-09 — Grid source on each rubric version.** Rubric versions gained an optional `gridSource`, and assignments an optional `pendingRubricExtraction`. Versions without `gridSource` read the assignment's `rubricSource` / `technicalRubricSource` as before (`rubricGridSource` in `src/writing-feedback/rubric-lens.ts`), so stored rubrics need no change.
 - **2026-10-08 — Writing rubric grid source `'uploaded'`.** `writing-assignments.rubricSource` and `technicalRubricSource` gained an `'uploaded'` value. Existing documents keep `'internal_profile'`, `'canvas'`, `'builtin'` or no value, all of which read exactly as before (`storedGridSource` in `src/writing-feedback/rubric-lens.ts`). Release now uses `canvasRubricImport.ids` only while the graded lens's source is `'canvas'`; wherever those ids describe the graded grid, that source is `'canvas'`, because import and lab-report routing write the two together. An assignment holding ids for a grid it no longer grades on (for example a lab report whose technical rubric predates routing) previously had its release refused as an unmapped rubric; it now releases a total alone.
 
 ---

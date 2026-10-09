@@ -57,7 +57,7 @@ import {
 import { requireCompleteSflProfile } from '../writing-feedback/sfl-analysis';
 import { listCriterionLibrary } from '../writing-feedback/criterion-library';
 import { isCourseStaff } from '../utils/course-staff';
-import { parseLens, selectRubric, storedGridSource } from '../writing-feedback/rubric-lens';
+import { parseLens, rubricGridSource, selectRubric, storedGridSource } from '../writing-feedback/rubric-lens';
 import { seedRubricForLens } from '../writing-feedback/rubric-seed';
 import {
     AssignmentTypeService,
@@ -68,24 +68,32 @@ import {
 import { mapCanvasRubric } from '../writing-feedback/canvas-rubric-mapping';
 import {
     autofillMergeRules,
-    gridSourceFor,
+    gridSourceForStored,
     mergeAutofill,
     proposeRubricFromInstructions,
     type RubricGridSource
 } from '../writing-feedback/rubric-autofill';
-import type { WritingAssignment, WritingFeedbackLens, WritingRubricDefinition } from '../writing-feedback/contracts';
+import type { ImportedRubricShape, WritingFeedbackLens, WritingRubricDefinition } from '../writing-feedback/contracts';
 import { RELEASE_REFUSAL_PREFIXES } from '../writing-feedback/release-refusals';
 import {
     RUBRIC_SOURCE_ERRORS,
     gradedGridState,
     isSourceChange,
     parseRubricSourceChoice,
+    gridSourceKind,
     seedGrid,
-    storedSourceFor,
+    withGrid,
     type RubricSourceChoice
 } from '../writing-feedback/rubric-source-choice';
+import {
+    convertExtractedRubric,
+    extractRubricsFromMaterial,
+    type ExtractedRubricRefusal
+} from '../writing-feedback/source-rubric-extraction';
+import type { RubricProvenanceUpdate } from '../db/mongo/writing-feedback-mongo';
 import { gradedLensFor } from '../writing-feedback/staff-final-assessment';
 import {
+    type AutofillSource,
     AUTOFILL_SOURCE_ERRORS,
     MAX_AUTOFILL_SOURCE_CHARS,
     composeAutofillMaterial,
@@ -109,6 +117,21 @@ const sourceMaterialUpload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: 10 * 1024 * 1024, fieldSize: 2 * 1024 * 1024, files: 1, fields: 4 }
 });
+/** What a fill did to the graded grid, as the rubric page reports it. */
+type FillGridOutcome = 'unchanged' | 'applied' | 'needs_confirmation' | 'needs_decision' | 'not_found' | 'refused' | 'failed';
+
+/** Why a rubric found in staff material could not become a grid, in words staff can act on. */
+function extractedRubricRefusalMessage(refusal: ExtractedRubricRefusal | undefined, label: string): string {
+    switch (refusal) {
+        case 'too_many_criteria':
+            return `The rubric in ${label} has more than 10 criteria, more than a marking grid can hold. The grid is unchanged.`;
+        case 'too_many_levels':
+            return `The rubric in ${label} has more than 8 levels, more than a marking grid can hold. The grid is unchanged.`;
+        default:
+            return `The rubric in ${label} has no criteria to build a grid from. The grid is unchanged.`;
+    }
+}
+
 /** Shown when switching the grid's source would bring back a criterion an approved version retired. */
 const GRID_REUSES_RETIRED_IDS = 'This grid uses a criterion or level name that an earlier approved version of this rubric removed, so it cannot replace the current grid. Edit the grid by hand instead.';
 /** Shown when an uploaded file is valid in type but the parser cannot read it. */
@@ -759,7 +782,13 @@ router.put(
         const globalUser = (req.session as any).globalUser;
         const version = selected.draft?.version
             ?? (currentApproved ? currentApproved.version + 1 : 1);
-        const draft = buildRubricDraft(parsed.data, version, globalUser.userId);
+        // Where the grid came from is the server's to record, not the editor's, so a draft saved
+        // from the page keeps the source of the version it was edited from.
+        const keptSource = (selected.draft ?? currentApproved)?.gridSource;
+        const draft = {
+            ...buildRubricDraft(parsed.data, version, globalUser.userId),
+            ...(keptSource ? { gridSource: keptSource } : {})
+        };
 
         // A draft that says the same as the approved rubric is no change at all -- staff who
         // undo their own edits land here. Storing it would leave the page reporting unapproved
@@ -861,9 +890,10 @@ router.post(
 
         // Step 2: the material this fill reads, refused before any model call when unusable.
         let material: string;
+        let sources: AutofillSource[];
         try {
             const sourceIds = requestedSourceIds(req.body);
-            const sources = listAutofillSources(assignment, await mongo.listWritingSourceMaterials(courseId(req), assignment.id));
+            sources = listAutofillSources(assignment, await mongo.listWritingSourceMaterials(courseId(req), assignment.id));
             material = composeAutofillMaterial(selectAutofillSources(sources, sourceIds));
         } catch (error) {
             const known = Object.values(AUTOFILL_SOURCE_ERRORS) as string[];
@@ -883,39 +913,113 @@ router.post(
             ?? (selected.approved
                 ? { ...selected.approved, status: 'draft', version: selected.approved.version + 1 }
                 : seedRubricForLens({ lens, actorUserId: globalUser.userId }));
-
-        // Step 3: replace the grid when a new source was chosen and, where that would set aside
-        // an approved grid or staff edits, staff confirmed it.
-        const target = isSourceChange(rubricFrom, storedGridSource(assignment, lens)) ? rubricFrom : undefined;
-        let gridOutcome: 'unchanged' | 'applied' | 'needs_confirmation' = 'unchanged';
-        let newGridSource: ReturnType<typeof storedSourceFor> | undefined;
-        let gridAssignment = assignment;
-        if (target && req.body?.replaceGrid !== true && gradedGridState(assignment).replaceNeedsConfirmation) {
-            gridOutcome = 'needs_confirmation';
-        } else if (target) {
-            draft = { ...draft, ...seedGrid(assignment, lens, target) };
-            if (selected.approved) {
-                try {
-                    assertRetiredIdsNotReused([selected.approved, ...(selected.history ?? [])], draft);
-                } catch {
-                    return res.status(409).json({ success: false, error: GRID_REUSES_RETIRED_IDS });
-                }
+        const retiredIdsOk = (candidate: WritingRubricDefinition): boolean => {
+            if (!selected.approved) return true;
+            try {
+                assertRetiredIdsNotReused([selected.approved, ...(selected.history ?? [])], candidate);
+                return true;
+            } catch {
+                return false;
             }
-            newGridSource = storedSourceFor(lens, target);
-            gridAssignment = lens === 'linguistic'
-                ? { ...assignment, rubricSource: newGridSource as WritingAssignment['rubricSource'] }
-                : { ...assignment, technicalRubricSource: newGridSource as WritingAssignment['technicalRubricSource'] };
+        };
+
+        // Step 3: what is to happen to the grid. A replacement that would set aside an approved
+        // grid or staff edits waits for staff to confirm, and then no rubric is extracted.
+        const target = isSourceChange(rubricFrom, storedGridSource(assignment, lens)) ? rubricFrom : undefined;
+        const rubricMaterial = target && typeof target === 'object'
+            ? sources.find((source) => source.id === target.sourceId && (source.kind === 'file' || source.kind === 'paste'))
+            : undefined;
+        if (target && typeof target === 'object' && !rubricMaterial) {
+            return res.status(409).json({ success: false, error: RUBRIC_SOURCE_ERRORS.sourceGone });
+        }
+        const awaitingConfirmation = Boolean(target)
+            && req.body?.replaceGrid !== true
+            && gradedGridState(assignment).replaceNeedsConfirmation;
+
+        let gridOutcome: FillGridOutcome = awaitingConfirmation ? 'needs_confirmation' : 'unchanged';
+        let gridMessage: string | undefined;
+        let provenance: RubricProvenanceUpdate = {};
+        // Canvas and the default are known before any model call, so the details proposal can
+        // word the new grid; a rubric from material is only known once extraction returns. The
+        // source is recorded on the draft itself, so discarding the draft takes it away again.
+        if (target && typeof target !== 'object' && !awaitingConfirmation) {
+            const seeded: WritingRubricDefinition = {
+                ...withGrid(draft, seedGrid(assignment, lens, target)),
+                gridSource: { kind: gridSourceKind(target) }
+            };
+            if (!retiredIdsOk(seeded)) return res.status(409).json({ success: false, error: GRID_REUSES_RETIRED_IDS });
+            draft = seeded;
+            provenance = { pendingRubricExtraction: null };
             gridOutcome = 'applied';
         }
 
-        // The grid source decides how much of the proposal the merge may apply — see
-        // `gridSourceFor` for why the lens is checked before `rubricSource`. A replaced grid is
-        // merged under its new source's rules.
-        const source: RubricGridSource = gridSourceFor(gridAssignment, lens);
-
         try {
-            const proposal = await proposeRubricFromInstructions(material, draft);
-            const merged = mergeAutofill(draft, proposal, autofillMergeRules(source));
+            // Step 4: the model work, run together: the details always; the rubric when one is
+            // to be built from material. A failed extraction leaves the grid alone, not the fill.
+            let extractionFailed = false;
+            const [proposal, extracted] = await Promise.all([
+                proposeRubricFromInstructions(material, draft),
+                rubricMaterial && !awaitingConfirmation
+                    ? extractRubricsFromMaterial(rubricMaterial.text).catch(() => { extractionFailed = true; return undefined; })
+                    : Promise.resolve(undefined)
+            ]);
+
+            // Step 5: the rubric from material, if any, becomes the grid or is held for a choice.
+            let extractedGrid: { shape: ImportedRubricShape; deductions: string[]; notes: string[] } | undefined;
+            if (rubricMaterial && !awaitingConfirmation) {
+                const label = rubricMaterial.label;
+                const converted = (extracted ?? []).map(convertExtractedRubric);
+                const usable = converted.filter((candidate) => candidate.shape);
+                if (extractionFailed) {
+                    gridOutcome = 'failed';
+                    gridMessage = `The rubric in ${label} could not be read. The marking grid is unchanged.`;
+                } else if (converted.length === 0) {
+                    gridOutcome = 'not_found';
+                    gridMessage = `No rubric was found in ${label}. The marking grid is unchanged.`;
+                } else if (usable.length === 0) {
+                    gridOutcome = 'refused';
+                    gridMessage = extractedRubricRefusalMessage(converted[0]!.refusal, label);
+                } else if (usable.length > 1) {
+                    gridOutcome = 'needs_decision';
+                    provenance = {
+                        pendingRubricExtraction: {
+                            lens,
+                            sourceLabel: label,
+                            candidates: usable.map((candidate) => ({
+                                title: candidate.title, shape: candidate.shape!, notes: candidate.notes, deductions: candidate.deductions
+                            })),
+                            createdAt: new Date()
+                        }
+                    };
+                } else {
+                    extractedGrid = { shape: usable[0]!.shape!, deductions: usable[0]!.deductions, notes: usable[0]!.notes };
+                }
+            }
+
+            // Step 6: the details, merged under the rules of the source the grid will have.
+            const mergeSource: RubricGridSource = gridSourceForStored(
+                extractedGrid ? 'uploaded' : rubricGridSource(draft, assignment, lens),
+                assignment,
+                lens
+            );
+            let merged = mergeAutofill(draft, proposal, autofillMergeRules(mergeSource));
+            if (extractedGrid && rubricMaterial) {
+                const withExtracted: WritingRubricDefinition = {
+                    ...withGrid(merged, extractedGrid.shape, extractedGrid.deductions),
+                    gridSource: { kind: 'uploaded', label: rubricMaterial.label, notes: extractedGrid.notes }
+                };
+                if (!retiredIdsOk(withExtracted)) {
+                    gridOutcome = 'failed';
+                    gridMessage = GRID_REUSES_RETIRED_IDS;
+                } else if (!writingRubricDraftInputSchema.safeParse(withExtracted).success) {
+                    gridOutcome = 'failed';
+                    gridMessage = `The rubric in ${rubricMaterial.label} could not be turned into a marking grid. The grid is unchanged.`;
+                } else {
+                    merged = withExtracted;
+                    gridOutcome = 'applied';
+                    provenance = { pendingRubricExtraction: null };
+                }
+            }
 
             // Reuse the same validation the PUT path enforces (band ordering, cells keyed
             // to real levels) rather than writing a second one; a proposal that would leave
@@ -924,8 +1028,8 @@ router.post(
                 throw new Error('Auto-fill response was not usable');
             }
 
-            const saved = await mongo.saveWritingRubricDraft(courseId(req), assignment.id, merged, lens, newGridSource);
-            res.json({ success: true, data: { assignment: saved, grid: gridOutcome } });
+            const saved = await mongo.saveWritingRubricDraft(courseId(req), assignment.id, merged, lens, provenance);
+            res.json({ success: true, data: { assignment: saved, grid: gridOutcome, ...(gridMessage ? { gridMessage } : {}) } });
         } catch {
             // Model errors and responses can carry the prompt body, which includes the
             // instructions. Never log or return them; staff see a fixed, generic message.
@@ -945,6 +1049,59 @@ router.delete(
         }
         const mongo = await EngEAI_MongoDB.getInstance();
         const updated = await mongo.discardWritingRubricDraft(courseId(req), String(req.params.assignmentId), lens);
+        if (!updated) return res.status(404).json({ success: false, error: 'Writing assignment not found' });
+        res.json({ success: true, data: updated });
+    })
+);
+
+/**
+ * Finishes a held extraction: replaces the graded grid with the version staff chose from the
+ * rubrics found in their material, and records the source. Never touches the approved rubric.
+ */
+router.post(
+    '/:courseId/writing-feedback/assignments/:assignmentId/rubric-draft/from-extraction',
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        const mongo = await EngEAI_MongoDB.getInstance();
+        const assignment = await mongo.getWritingAssignment(courseId(req), String(req.params.assignmentId));
+        if (!assignment) return res.status(404).json({ success: false, error: 'Writing assignment not found' });
+        const pending = assignment.pendingRubricExtraction;
+        if (!pending) return res.status(409).json({ success: false, error: RUBRIC_SOURCE_ERRORS.noPending });
+        const index = req.body?.candidateIndex;
+        const chosen = Number.isInteger(index) ? pending.candidates[index as number] : undefined;
+        if (!chosen) return res.status(400).json({ success: false, error: 'candidateIndex must name one of the held versions' });
+
+        const lens = pending.lens;
+        const selected = selectRubric(assignment, lens);
+        const globalUser = (req.session as any).globalUser;
+        const base: WritingRubricDefinition = selected.draft
+            ?? (selected.approved
+                ? { ...selected.approved, status: 'draft', version: selected.approved.version + 1 }
+                : seedRubricForLens({ lens, actorUserId: globalUser.userId }));
+        const draft: WritingRubricDefinition = {
+            ...withGrid(base, chosen.shape, chosen.deductions),
+            gridSource: { kind: 'uploaded', label: pending.sourceLabel, notes: chosen.notes }
+        };
+        if (selected.approved) {
+            try {
+                assertRetiredIdsNotReused([selected.approved, ...(selected.history ?? [])], draft);
+            } catch {
+                return res.status(409).json({ success: false, error: GRID_REUSES_RETIRED_IDS });
+            }
+        }
+        if (!writingRubricDraftInputSchema.safeParse(draft).success) {
+            return res.status(409).json({ success: false, error: `This version of the rubric in ${pending.sourceLabel} could not be turned into a marking grid.` });
+        }
+        const saved = await mongo.saveWritingRubricDraft(courseId(req), assignment.id, draft, lens, { pendingRubricExtraction: null });
+        res.json({ success: true, data: saved });
+    })
+);
+
+/** Drops held rubric versions, leaving the grid as it is. */
+router.delete(
+    '/:courseId/writing-feedback/assignments/:assignmentId/rubric-draft/pending-extraction',
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        const mongo = await EngEAI_MongoDB.getInstance();
+        const updated = await mongo.clearPendingRubricExtraction(courseId(req), String(req.params.assignmentId));
         if (!updated) return res.status(404).json({ success: false, error: 'Writing assignment not found' });
         res.json({ success: true, data: updated });
     })

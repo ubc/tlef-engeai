@@ -449,6 +449,32 @@ export async function createCanvasWritingAssignment(
     }
 }
 
+/** Held rubric versions to write with a draft: a value sets them, `null` removes them. */
+export interface RubricProvenanceUpdate {
+    pendingRubricExtraction?: WritingAssignment['pendingRubricExtraction'] | null;
+}
+
+/**
+ * clearPendingRubricExtraction — drops held rubric versions without touching any rubric.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param assignmentId - Assignment holding the versions
+ * @returns Updated assignment, or `null` when the scoped assignment is absent
+ */
+export async function clearPendingRubricExtraction(
+    ctx: MongoDalContext,
+    courseId: string,
+    assignmentId: string
+): Promise<WritingAssignment | null> {
+    const updated = await assignments(ctx).findOneAndUpdate(
+        { id: assignmentId, courseId },
+        { $unset: { pendingRubricExtraction: '' }, $set: { updatedAt: new Date() } },
+        { returnDocument: 'after' }
+    );
+    return updated ? normalizeWritingAssignment(updated) : null;
+}
+
 /**
  * saveWritingRubricDraft — replaces only the editable draft for one lens on an assignment.
  *
@@ -461,9 +487,8 @@ export async function createCanvasWritingAssignment(
  * @param assignmentId - Assignment receiving the draft
  * @param draft - Validated staff-authored rubric draft
  * @param lens - Feedback lens the draft belongs to; defaults to `'linguistic'`
- * @param gridSource - When the draft's grid now comes from somewhere else, the lens's new
- *        provenance (`rubricSource` for the writing lens, `technicalRubricSource` otherwise),
- *        written in the same update so the two never disagree
+ * @param provenance - Rubric versions held for staff to choose between, written in the same
+ *        update; `null` removes them, `undefined` leaves them as they are
  * @returns Updated assignment, or `null` when the scoped assignment is absent
  */
 export async function saveWritingRubricDraft(
@@ -472,13 +497,16 @@ export async function saveWritingRubricDraft(
     assignmentId: string,
     draft: WritingRubricDefinition,
     lens: WritingFeedbackLens = 'linguistic',
-    gridSource?: 'canvas' | 'internal_profile' | 'builtin' | 'uploaded'
+    provenance: RubricProvenanceUpdate = {}
 ): Promise<WritingAssignment | null> {
     const fields = rubricFieldPaths(lens);
-    const sourceField = lens === 'linguistic' ? 'rubricSource' : 'technicalRubricSource';
+    const set: Record<string, unknown> = { [fields.draft]: draft, updatedAt: new Date() };
+    const unset: Record<string, ''> = {};
+    if (provenance.pendingRubricExtraction === null) unset.pendingRubricExtraction = '';
+    else if (provenance.pendingRubricExtraction !== undefined) set.pendingRubricExtraction = provenance.pendingRubricExtraction;
     const updated = await assignments(ctx).findOneAndUpdate(
         { id: assignmentId, courseId },
-        { $set: { [fields.draft]: draft, updatedAt: new Date(), ...(gridSource ? { [sourceField]: gridSource } : {}) } },
+        { $set: set, ...(Object.keys(unset).length ? { $unset: unset } : {}) },
         { returnDocument: 'after' }
     );
     return updated ? normalizeWritingAssignment(updated) : null;

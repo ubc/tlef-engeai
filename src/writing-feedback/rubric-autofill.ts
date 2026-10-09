@@ -57,7 +57,23 @@ export type RubricGridSource = 'canvas' | 'uploaded' | 'apsc182' | 'metafunction
  * @returns The grid source row that decides `autofillMergeRules`
  */
 export function gridSourceFor(assignment: WritingAssignment, lens: WritingFeedbackLens): RubricGridSource {
-    const stored = storedGridSource(assignment, lens);
+    return gridSourceForStored(storedGridSource(assignment, lens), assignment, lens);
+}
+
+/**
+ * gridSourceForStored - the merge-table row for a grid whose source is already known, such as
+ * one a fill is about to give it. See {@link gridSourceFor} for the rules.
+ *
+ * @param stored - Where the grid comes from
+ * @param assignment - Assignment the grid belongs to (lab-report state decides the writing lens)
+ * @param lens - Lens the grid belongs to
+ * @returns The grid source row that decides `autofillMergeRules`
+ */
+export function gridSourceForStored(
+    stored: ReturnType<typeof storedGridSource>,
+    assignment: WritingAssignment,
+    lens: WritingFeedbackLens
+): RubricGridSource {
     if (stored === 'uploaded') return 'uploaded';
     if (lens === 'technical') return stored === 'canvas' ? 'canvas' : 'apsc182';
     if (assignment.isLabReport) return 'metafunctions';

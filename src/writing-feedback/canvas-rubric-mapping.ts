@@ -73,7 +73,7 @@ export const CANVAS_IMPORT_PLACEHOLDERS = {
  * `_1234`) does not satisfy, so the visible name is the better source. `fallbackIndex` covers
  * text that slugifies to nothing at all — CJK names, or a row called "1".
  */
-function slugify(text: string, fallbackIndex: number): string {
+export function slugify(text: string, fallbackIndex: number): string {
     const slug = text
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '_')
@@ -86,7 +86,7 @@ function slugify(text: string, fallbackIndex: number): string {
 }
 
 /** Makes ids unique within one rubric, since the schema rejects duplicates. */
-function uniqueSlug(candidate: string, taken: Set<string>): string {
+export function uniqueSlug(candidate: string, taken: Set<string>): string {
     if (!taken.has(candidate)) {
         taken.add(candidate);
         return candidate;

@@ -1398,6 +1398,49 @@
     cursor: pointer;
 }
 
+/* A fieldset will not shrink below its content by default, and a long file name would
+   otherwise push the whole panel wider than the page. */
+.wf-sources__rubric {
+    min-width: 0;
+}
+
+.wf-sources__choice {
+    flex-wrap: wrap;
+}
+
+/* The label text shares the radio's line and wraps beside it; only the dropdown drops below. */
+.wf-sources__choice > span {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.wf-sources__material-select {
+    flex: 1 1 100%;
+    min-width: 0;
+    max-width: calc(100% - 24px);
+    margin-left: 24px;
+    text-overflow: ellipsis;
+    padding: 3px 6px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: #fff;
+    font: inherit;
+}
+
+/* Rubric versions found in one file, waiting for staff to choose */
+.wf-extraction-versions {
+    margin: 10px 0;
+    padding-left: 20px;
+}
+
+.wf-extraction-versions > li {
+    margin: 0 0 12px;
+}
+
+.wf-extraction-versions .wf-button {
+    margin-top: 6px;
+}
+
 .wf-rubric-details .wf-rubric-details-form {
     padding: 0;
 }

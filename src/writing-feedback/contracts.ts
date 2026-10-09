@@ -184,6 +184,17 @@ export interface WritingRubricDefinition {
     labContext?: string;
     /** Staff-approved genre/register profile required by the V2 linguistic pipeline. */
     sflContext?: WritingSflContextProfile;
+    /**
+     * Where this version's grid came from, set when a fill chose its source. Kept on the version
+     * rather than the assignment so a discarded draft takes its source with it and an approval
+     * carries it forward. Absent on older versions, where the assignment's `rubricSource` /
+     * `technicalRubricSource` answer instead.
+     */
+    gridSource?: {
+        kind: 'builtin' | 'canvas' | 'uploaded';
+        label?: string; // the source's name, for a grid built from staff material
+        notes?: string[]; // what extraction asked staff to check
+    };
 }
 
 /** Course-scoped assignment whose current approved rubric governs all downstream artifacts. */
@@ -229,6 +240,16 @@ export interface WritingAssignment {
      * not be represented as a grid, so the built-in profile seeded the draft instead.
      */
     canvasRubricRefusal?: CanvasRubricRefusal;
+    /**
+     * Rubrics extraction found in staff material, held until staff choose one, when the material
+     * held more than one (for example a draft and a final version of the same rubric).
+     */
+    pendingRubricExtraction?: {
+        lens: WritingFeedbackLens;
+        sourceLabel: string;
+        candidates: Array<{ title: string; shape: ImportedRubricShape; notes: string[]; deductions: string[] }>;
+        createdAt: Date;
+    };
     /**
      * Set when the imported Canvas rubric seeded the draft but some of its descriptions were
      * longer than the grid allows and were shortened. Written at creation only.

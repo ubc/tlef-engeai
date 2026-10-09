@@ -17,9 +17,11 @@ import request from 'supertest';
 const mongo = {
     getWritingAssignment: jest.fn(),
     listWritingSourceMaterials: jest.fn(),
-    saveWritingRubricDraft: jest.fn()
+    saveWritingRubricDraft: jest.fn(),
+    clearPendingRubricExtraction: jest.fn()
 };
 const proposeRubricFromInstructions = jest.fn();
+const extractRubricsFromMaterial = jest.fn();
 
 jest.mock('../../db/enge-ai-mongodb', () => ({
     EngEAI_MongoDB: { getInstance: jest.fn(async () => mongo) }
@@ -38,13 +40,19 @@ jest.mock('../../writing-feedback/rubric-autofill', () => ({
     proposeRubricFromInstructions: (...args: unknown[]) => proposeRubricFromInstructions(...args),
     // The proposal is irrelevant here. The details come from a valid staffed rubric, as a real
     // proposal would fill them; the grid is whatever the route handed over.
-    mergeAutofill: (draft: { criteria: unknown; levels: unknown; version: number; status: string }) => ({
+    mergeAutofill: (draft: { criteria: unknown; levels: unknown; version: number; status: string; gridSource?: unknown }) => ({
         ...jest.requireActual('../../writing-feedback/__tests__/helpers/staffed-rubric').buildStaffedWritingRubric('user-1'),
         criteria: draft.criteria,
         levels: draft.levels,
         version: draft.version,
-        status: draft.status
+        status: draft.status,
+        ...(draft.gridSource ? { gridSource: draft.gridSource } : {})
     })
+}));
+
+jest.mock('../../writing-feedback/source-rubric-extraction', () => ({
+    ...jest.requireActual('../../writing-feedback/source-rubric-extraction'),
+    extractRubricsFromMaterial: (...args: unknown[]) => extractRubricsFromMaterial(...args)
 }));
 
 // Imported after the mocks so the router binds to them.
@@ -168,10 +176,10 @@ describe('auto-fill source routes', () => {
 
             expect(response.status).toBe(200);
             expect(response.body.data.grid).toBe('applied');
-            const [, , saved, lens, gridSource] = mongo.saveWritingRubricDraft.mock.calls[0];
+            const [, , saved, lens] = mongo.saveWritingRubricDraft.mock.calls[0];
             expect(saved.criteria.map((criterion: { id: string }) => criterion.id)).toEqual(['thesis', 'evidence']);
             expect(lens).toBe('linguistic');
-            expect(gridSource).toBe('canvas');
+            expect(saved.gridSource).toEqual({ kind: 'canvas' });
         });
 
         it('keeps an approved grid until staff confirm, still filling the details', async () => {
@@ -182,9 +190,9 @@ describe('auto-fill source routes', () => {
 
             expect(response.body.data.grid).toBe('needs_confirmation');
             expect(proposeRubricFromInstructions).toHaveBeenCalledTimes(1);
-            const [, , saved, , gridSource] = mongo.saveWritingRubricDraft.mock.calls[0];
+            const [, , saved] = mongo.saveWritingRubricDraft.mock.calls[0];
             expect(saved.criteria.map((criterion: { id: string }) => criterion.id)).not.toContain('thesis');
-            expect(gridSource).toBeUndefined();
+            expect(saved.gridSource).toBeUndefined();
         });
 
         it('replaces an approved grid once staff confirm', async () => {
@@ -194,7 +202,7 @@ describe('auto-fill source routes', () => {
             const response = await request(app()).post(`${ASSIGNMENT}/rubric-draft/fill`).send({ rubricFrom: 'canvas', replaceGrid: true });
 
             expect(response.body.data.grid).toBe('applied');
-            expect(mongo.saveWritingRubricDraft.mock.calls[0][4]).toBe('canvas');
+            expect(mongo.saveWritingRubricDraft.mock.calls[0][2].gridSource).toEqual({ kind: 'canvas' });
         });
 
         it('treats choosing the source the grid already has as keeping it', async () => {
@@ -202,7 +210,7 @@ describe('auto-fill source routes', () => {
             const response = await request(app()).post(`${ASSIGNMENT}/rubric-draft/fill`).send({ rubricFrom: 'canvas' });
 
             expect(response.body.data.grid).toBe('unchanged');
-            expect(mongo.saveWritingRubricDraft.mock.calls[0][4]).toBeUndefined();
+            expect(mongo.saveWritingRubricDraft.mock.calls[0][2].gridSource).toBeUndefined();
         });
 
         it('refuses Canvas when no rubric was imported, before any model call', async () => {
@@ -226,6 +234,118 @@ describe('auto-fill source routes', () => {
             const response = await request(app()).post(`${ASSIGNMENT}/rubric-draft/fill`).send({ rubricFrom: 'upload' });
 
             expect(response.status).toBe(400);
+        });
+    });
+
+    describe('building the grid from a rubric in staff material', () => {
+        const reported = (title: string) => ({
+            title, shape: 'grid', notes: ['A model note.'],
+            levels: [{ label: 'Weak' }, { label: 'Strong' }],
+            criteria: [
+                { label: 'Thesis', weight: { value: 10, unit: 'points' }, ratings: [{ levelLabel: 'Weak', descriptor: 'No thesis' }, { levelLabel: 'Strong', descriptor: 'Clear thesis' }] },
+                { label: 'Evidence', weight: { value: 20, unit: 'points' }, ratings: [{ levelLabel: 'Weak', descriptor: 'None' }, { levelLabel: 'Strong', descriptor: 'Plenty' }] }
+            ],
+            deductions: ['Subtract 1 point for each day late.']
+        });
+
+        function fresh() {
+            return buildDefaultWritingAssignment('course-1', 'assignment-1', 'Essay', 'Write a memo.');
+        }
+
+        it('replaces an untouched grid with the one rubric found, recording where it came from', async () => {
+            mongo.getWritingAssignment.mockResolvedValue(fresh());
+            extractRubricsFromMaterial.mockResolvedValue([reported('Essay rubric')]);
+            const response = await request(app()).post(`${ASSIGNMENT}/rubric-draft/fill`).send({ rubricFrom: { sourceId: 'material-1' } });
+
+            expect(response.body.data.grid).toBe('applied');
+            expect(extractRubricsFromMaterial.mock.calls[0][0]).toBe('| Criterion | Points |');
+            const [, , saved, , provenance] = mongo.saveWritingRubricDraft.mock.calls[0];
+            expect(saved.criteria.map((criterion: { label: string; points: number }) => [criterion.label, criterion.points]))
+                .toEqual([['Thesis', 10], ['Evidence', 20]]);
+            expect(saved.constraints).toContain('Subtract 1 point for each day late.');
+            expect(saved.gridSource).toEqual({ kind: 'uploaded', label: 'rubric.docx', notes: ['A model note.'] });
+            expect(provenance).toEqual({ pendingRubricExtraction: null });
+        });
+
+        it('holds several versions for staff to choose between, leaving the grid alone', async () => {
+            mongo.getWritingAssignment.mockResolvedValue(fresh());
+            extractRubricsFromMaterial.mockResolvedValue([reported('Draft rubric'), reported('Final rubric')]);
+            const response = await request(app()).post(`${ASSIGNMENT}/rubric-draft/fill`).send({ rubricFrom: { sourceId: 'material-1' } });
+
+            expect(response.body.data.grid).toBe('needs_decision');
+            const [, , saved, , provenance] = mongo.saveWritingRubricDraft.mock.calls[0];
+            expect(saved.criteria.map((criterion: { id: string }) => criterion.id)).not.toContain('thesis');
+            expect(saved.gridSource).toBeUndefined();
+            expect(provenance.pendingRubricExtraction.candidates.map((candidate: { title: string }) => candidate.title))
+                .toEqual(['Draft rubric', 'Final rubric']);
+        });
+
+        it.each([
+            ['no rubric is found', async () => [], 'not_found', /^No rubric was found in rubric.docx/],
+            ['extraction fails', async () => { throw new Error('model down'); }, 'failed', /^The rubric in rubric.docx could not be read/]
+        ])('still fills the details when %s', async (_name, extraction, outcome, message) => {
+            mongo.getWritingAssignment.mockResolvedValue(fresh());
+            extractRubricsFromMaterial.mockImplementation(extraction);
+            const response = await request(app()).post(`${ASSIGNMENT}/rubric-draft/fill`).send({ rubricFrom: { sourceId: 'material-1' } });
+
+            expect(response.status).toBe(200);
+            expect(response.body.data.grid).toBe(outcome);
+            expect(response.body.data.gridMessage).toMatch(message);
+            expect(mongo.saveWritingRubricDraft.mock.calls[0][2].gridSource).toBeUndefined();
+        });
+
+        it('extracts nothing while replacing an approved grid waits for confirmation', async () => {
+            const approved = fresh();
+            approved.rubric = { ...approved.rubric, status: 'approved' };
+            mongo.getWritingAssignment.mockResolvedValue(approved);
+            const response = await request(app()).post(`${ASSIGNMENT}/rubric-draft/fill`).send({ rubricFrom: { sourceId: 'material-1' } });
+
+            expect(response.body.data.grid).toBe('needs_confirmation');
+            expect(extractRubricsFromMaterial).not.toHaveBeenCalled();
+        });
+
+        it('refuses a source that is not an upload or paste, before any model call', async () => {
+            mongo.getWritingAssignment.mockResolvedValue(fresh());
+            const response = await request(app()).post(`${ASSIGNMENT}/rubric-draft/fill`).send({ rubricFrom: { sourceId: 'instructions' } });
+
+            expect(response.status).toBe(409);
+            expect(proposeRubricFromInstructions).not.toHaveBeenCalled();
+        });
+
+        it('applies the held version staff choose', async () => {
+            const { convertExtractedRubric } = jest.requireActual('../../writing-feedback/source-rubric-extraction');
+            const converted = convertExtractedRubric(reported('Final rubric'));
+            mongo.getWritingAssignment.mockResolvedValue({
+                ...buildDefaultWritingAssignment('course-1', 'assignment-1', 'Essay', 'Write a memo.'),
+                rubric: { ...jest.requireActual('../../writing-feedback/__tests__/helpers/staffed-rubric').buildStaffedWritingRubric('user-1'), status: 'draft' },
+                pendingRubricExtraction: {
+                    lens: 'linguistic', sourceLabel: 'rubric.docx', createdAt: new Date(),
+                    candidates: [{ title: 'Final rubric', shape: converted.shape, notes: converted.notes, deductions: converted.deductions }]
+                }
+            });
+            const response = await request(app()).post(`${ASSIGNMENT}/rubric-draft/from-extraction`).send({ candidateIndex: 0 });
+
+            expect(response.status).toBe(200);
+            const [, , saved, lens, provenance] = mongo.saveWritingRubricDraft.mock.calls[0];
+            expect(saved.criteria.map((criterion: { label: string }) => criterion.label)).toEqual(['Thesis', 'Evidence']);
+            expect(lens).toBe('linguistic');
+            expect(saved.gridSource).toMatchObject({ kind: 'uploaded', label: 'rubric.docx' });
+            expect(provenance.pendingRubricExtraction).toBeNull();
+        });
+
+        it('refuses to finish an extraction that is not waiting', async () => {
+            mongo.getWritingAssignment.mockResolvedValue(fresh());
+            const response = await request(app()).post(`${ASSIGNMENT}/rubric-draft/from-extraction`).send({ candidateIndex: 0 });
+
+            expect(response.status).toBe(409);
+        });
+
+        it('drops held versions on request', async () => {
+            mongo.clearPendingRubricExtraction.mockResolvedValue({ id: 'assignment-1' });
+            const response = await request(app()).delete(`${ASSIGNMENT}/rubric-draft/pending-extraction`);
+
+            expect(response.status).toBe(200);
+            expect(mongo.clearPendingRubricExtraction).toHaveBeenCalledWith('course-1', 'assignment-1');
         });
     });
 });

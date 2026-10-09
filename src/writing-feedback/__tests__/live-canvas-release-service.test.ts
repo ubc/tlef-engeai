@@ -356,6 +356,18 @@ describe('canvas rubric assessment', () => {
         expect(released.status).toBe('released');
     });
 
+    it('releases a total alone when the approved version records a source other than canvas', async () => {
+        // The assignment still says canvas -- an older field -- but the graded version itself
+        // was built from staff material, and its own record is the one that counts.
+        const { service, client } = harness();
+        const releaseInput = input('submission-version-source');
+        const graded = { ...releaseInput.gradedRubric, gridSource: { kind: 'uploaded' as const, label: 'rubric.docx' } };
+        await service.preview({ ...releaseInput, gradedRubric: graded });
+        await service.release({ ...releaseInput, gradedRubric: graded });
+
+        expect(rubricAssessmentPut(client)).toBeUndefined();
+    });
+
     it('fills the canvas rubric for a lab report graded on a canvas-seeded technical grid', async () => {
         assignment.rubricSource = 'internal_profile';
         assignment.isLabReport = true;

@@ -339,7 +339,7 @@ export class EngEAI_MongoDB {
      * @param assignmentId - Assignment receiving the draft
      * @param draft - Validated rubric draft
      * @param lens - Feedback lens the draft belongs to; defaults to `'linguistic'`
-     * @param gridSource - The lens's new grid provenance, when the draft's grid changed source
+     * @param provenance - Rubric versions held for a choice; `null` removes them
      * @returns Updated assignment or `null`
      */
     public saveWritingRubricDraft = async (
@@ -347,8 +347,18 @@ export class EngEAI_MongoDB {
         assignmentId: string,
         draft: WritingRubricDefinition,
         lens?: WritingFeedbackLens,
-        gridSource?: 'canvas' | 'internal_profile' | 'builtin' | 'uploaded'
-    ) => WritingFeedbackMongo.saveWritingRubricDraft(this.ctx(), courseId, assignmentId, draft, lens, gridSource);
+        provenance?: WritingFeedbackMongo.RubricProvenanceUpdate
+    ) => WritingFeedbackMongo.saveWritingRubricDraft(this.ctx(), courseId, assignmentId, draft, lens, provenance);
+
+    /**
+     * clearPendingRubricExtraction — drops held rubric versions without touching any rubric.
+     *
+     * @param courseId - Owning course id
+     * @param assignmentId - Assignment holding the versions
+     * @returns Updated assignment or `null`
+     */
+    public clearPendingRubricExtraction = async (courseId: string, assignmentId: string) =>
+        WritingFeedbackMongo.clearPendingRubricExtraction(this.ctx(), courseId, assignmentId);
 
     /**
      * applyLabReportRubricRouting — moves an imported Canvas grid onto the technical lens.

@@ -18,7 +18,7 @@ import { buildLabReportRubric } from '../lab-report-profile';
 import type { WritingAssignment } from '../contracts';
 
 const assignment = (over: Partial<WritingAssignment>): WritingAssignment =>
-    ({ isLabReport: false, rubricSource: 'internal_profile', ...over } as WritingAssignment);
+    ({ isLabReport: false, rubricSource: 'internal_profile', rubric: buildDefaultWritingRubric('user-1'), ...over } as WritingAssignment);
 
 describe('gridSourceFor', () => {
     it('reports canvas for a Canvas-seeded technical rubric', () => {
@@ -67,6 +67,18 @@ describe('gridSourceFor with uploaded material', () => {
         expect(gridSourceFor(
             assignment({ isLabReport: true, technicalRubricSource: 'uploaded' }), 'technical'
         )).toBe('uploaded');
+    });
+});
+
+describe('gridSourceFor reads the version staff are working on', () => {
+    it('prefers the draft\'s own source over the assignment\'s', () => {
+        const rubric = { ...buildDefaultWritingRubric('user-1'), gridSource: { kind: 'uploaded' as const, label: 'rubric.docx' } };
+        expect(gridSourceFor(assignment({ rubricSource: 'canvas', rubric }), 'linguistic')).toBe('uploaded');
+    });
+
+    it('falls back to the assignment\'s source once a switched draft is discarded', () => {
+        const approved = { ...buildDefaultWritingRubric('user-1'), status: 'approved' as const };
+        expect(gridSourceFor(assignment({ rubricSource: 'canvas', rubric: approved }), 'linguistic')).toBe('canvas');
     });
 });
 
