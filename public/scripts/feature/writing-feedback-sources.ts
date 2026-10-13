@@ -21,10 +21,10 @@ import {
     AutofillSourcesResponse,
     GradedGridState,
     RubricSourceChoice,
-    chip,
     createButton,
     createText,
     jsonRequest,
+    refreshIcons,
     request,
     textAreaControl
 } from './writing-feedback-shared.js';
@@ -46,7 +46,7 @@ export interface SourcesPanel {
     rubricState(): GradedGridState | undefined;
     /** The label of a source, for naming it in messages. */
     materialLabel(sourceId: string): string | undefined;
-    /** One line for the step header, e.g. "2 sources · Grid: from Canvas". */
+    /** One line for the step header, e.g. "2 sources". */
     summary(): string;
     /** How many sources the assignment has, or undefined until the list has loaded. */
     sourceCount(): number | undefined;
@@ -93,6 +93,17 @@ function gridSourceText(state: GradedGridState): string {
 /** File types the server accepts as source material. */
 const ACCEPTED_FILES = '.docx,.pdf,.html,.htm,.txt,.md,.markdown';
 
+/** Longest text one file or paste may hold. Mirrors MAX_SOURCE_MATERIAL_CHARS on the server. */
+const MAX_MATERIAL_CHARACTERS = 60000;
+
+/** The feather icon beside each kind of source. */
+const SOURCE_ICONS: Record<AutofillSource['kind'], string> = {
+    instructions: 'book-open',
+    canvas_description: 'book-open',
+    file: 'file-text',
+    paste: 'clipboard'
+};
+
 /**
  * Sources staff have unticked, per assignment. Tracking the unticked ones rather than the
  * ticked ones means a newly added source starts ticked.
@@ -107,7 +118,7 @@ function formatCount(count: number): string {
  * renderSourcesPanel - builds the source list for one assignment and loads it.
  *
  * @param assignmentId - Assignment whose sources are listed
- * @param canEdit - Whether this staff member may add and remove sources
+ * @param canEdit - Whether this staff member may add and delete sources
  * @returns The panel element and the selection the fill button reads
  */
 export function renderSourcesPanel(assignmentId: string, canEdit: boolean): SourcesPanel {
@@ -121,15 +132,15 @@ export function renderSourcesPanel(assignmentId: string, canEdit: boolean): Sour
     section.className = 'wf-sources';
     const headingId = `wf-sources-heading-${assignmentId}`;
     section.setAttribute('aria-labelledby', headingId);
-    const heading = createText('h3', 'Sources', 'wf-sources__heading');
-    heading.id = headingId;
-    const intro = createText(
-        'p',
+    // Staff who cannot change the ticks are told what the sources are for instead.
+    const heading = createText(
+        'h3',
         canEdit
-            ? 'Filling in the assignment reads the sources you tick. Add the files that hold your instructions or rubric, or paste them in.'
-            : 'Filling in the assignment reads these sources.',
-        'wf-help-text'
+            ? 'Select sources to extract assignment instructions and rubric:'
+            : 'Sources used to extract assignment instructions and rubric:',
+        'wf-sources__heading'
     );
+    heading.id = headingId;
     const list = document.createElement('ul');
     list.className = 'wf-sources__list';
     const total = createText('p', '', 'wf-sources__total');
@@ -137,7 +148,7 @@ export function renderSourcesPanel(assignmentId: string, canEdit: boolean): Sour
     const status = createText('p', '', 'wf-help-text');
     status.setAttribute('role', 'status');
     status.setAttribute('aria-live', 'polite');
-    section.append(heading, intro, list, total);
+    section.append(heading, list);
 
     let gridState: GradedGridState | undefined;
     const rubricField = document.createElement('fieldset');
@@ -150,8 +161,8 @@ export function renderSourcesPanel(assignmentId: string, canEdit: boolean): Sour
     const blockedReason = (): string => {
         if (!sources) return 'The assignment material is still loading.';
         if (sources.length === 0) return 'Add the assignment instructions, or upload or paste the assignment material, first.';
-        if (selected().length === 0) return 'Tick at least one source to fill from.';
-        if (selectedCharacters() > maxCharacters) return 'The ticked sources are too long to read at once. Untick one or more.';
+        if (selected().length === 0) return 'Selected at least one source to extract from.';
+        if (selectedCharacters() > maxCharacters) return 'The selected sources are too long to read at once. Unselect one or more.';
         return '';
     };
 
@@ -160,16 +171,21 @@ export function renderSourcesPanel(assignmentId: string, canEdit: boolean): Sour
             total.textContent = '';
             return;
         }
+        // Counts matter only once the ticked sources are too long; then each card shows its own,
+        // so staff can see which to untick.
         const over = selectedCharacters() > maxCharacters;
-        total.dataset.tone = over ? 'error' : 'info';
+        section.classList.toggle('wf-sources--over', over);
+        total.dataset.tone = 'error';
         total.textContent = over
-            ? `Ticked: ${formatCount(selectedCharacters())} of ${formatCount(maxCharacters)} characters. That is more than one fill can read; untick a source.`
-            : `Ticked: ${formatCount(selectedCharacters())} of ${formatCount(maxCharacters)} characters.`;
+            ? `You have exceeded the character limit (${formatCount(selectedCharacters())} of max ${formatCount(maxCharacters)} characters). Please unselect a source.`
+            : '';
     };
 
     const renderItem = (source: AutofillSource): HTMLLIElement => {
         const item = document.createElement('li');
         item.className = 'wf-sources__item';
+        const isMaterial = source.kind === 'file' || source.kind === 'paste';
+        const editable = canEdit && isMaterial;
 
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
@@ -182,51 +198,142 @@ export function renderSourcesPanel(assignmentId: string, canEdit: boolean): Sour
             renderTotal();
             notify();
         });
+        const icon = document.createElement('i');
+        icon.className = 'wf-sources__icon';
+        icon.setAttribute('data-feather', SOURCE_ICONS[source.kind]);
+        icon.setAttribute('aria-hidden', 'true');
+
+        const body = document.createElement('div');
+        body.className = 'wf-sources__body';
         const label = document.createElement('label');
         label.htmlFor = checkbox.id;
         label.className = 'wf-sources__label';
         label.textContent = source.label;
-
         const meta = document.createElement('span');
         meta.className = 'wf-sources__meta';
-        meta.append(createText('span', `${formatCount(source.characterCount)} characters`));
-        // Only an upload or paste can carry real table structure, so only those are labelled.
-        if (source.kind === 'file' || source.kind === 'paste') {
-            meta.append(source.hasTables ? chip('Tables kept', 'green') : chip('No tables', 'neutral'));
-        }
+        meta.append(createText('span', `${formatCount(source.characterCount)} characters`, 'wf-sources__chars'));
+        body.append(label, meta);
 
-        // Native disclosure: staff check what was extracted, especially a rubric table.
-        const preview = document.createElement('details');
-        preview.className = 'wf-sources__preview';
-        const summary = createText('summary', 'Show text');
-        const text = createText('pre', source.text, 'wf-sources__text');
-        preview.append(summary, text);
+        const actions = document.createElement('div');
+        actions.className = 'wf-sources__actions';
+        const panel = document.createElement('div');
+        panel.className = 'wf-sources__panel';
+        panel.id = `wf-source-panel-${assignmentId}-${source.id}`;
+        panel.hidden = true;
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'wf-button wf-button--outline wf-sources__toggle';
+        const toggleText = editable ? 'View or edit' : 'View text';
+        toggle.textContent = toggleText;
+        toggle.setAttribute('aria-expanded', 'false');
+        toggle.setAttribute('aria-controls', panel.id);
+        // Every row has the same button, so the source's name tells them apart when heard.
+        toggle.setAttribute('aria-label', `${toggleText}: ${source.label}`);
+        const setOpen = (open: boolean): void => {
+            if (open && !panel.hasChildNodes()) panel.append(editable ? renderEditor(source, () => setOpen(false)) : renderReadOnly(source));
+            panel.hidden = !open;
+            toggle.setAttribute('aria-expanded', String(open));
+            toggle.textContent = open ? 'Close' : toggleText;
+            if (open) {
+                // Open at the start of the text: a textarea's caret starts after the value set on
+                // it, so focusing it would otherwise scroll to the end.
+                const box = panel.querySelector<HTMLTextAreaElement>('textarea');
+                box?.setSelectionRange(0, 0);
+                box?.focus({ preventScroll: true });
+                if (box) box.scrollTop = 0;
+            }
+        };
+        toggle.addEventListener('click', () => setOpen(panel.hidden));
+        actions.append(toggle);
 
-        item.append(checkbox, label, meta);
-        if (canEdit && (source.kind === 'file' || source.kind === 'paste')) {
-            const remove = createButton('Remove', 'quiet', async () => {
+        if (editable) {
+            const remove = createButton('Delete', 'quiet', async () => {
                 const confirmation = await showConfirmModal(
-                    'Remove this source?',
+                    'Delete this source?',
                     'EngE-AI will stop reading it. The assignment details and rubric stay as they are.',
-                    'Remove',
+                    'Delete',
                     'Cancel',
                     'danger'
                 );
-                if (confirmation.action !== 'remove') return;
+                if (confirmation.action !== 'delete') return;
                 await jsonRequest(
                     `/assignments/${encodeURIComponent(assignmentId)}/source-materials/${encodeURIComponent(source.id)}`,
                     'DELETE'
                 );
                 unticked.delete(source.id);
                 await load();
-                status.textContent = `Removed ${source.label}.`;
             });
-            // Every row's button reads "Remove", so the source's name tells them apart when heard.
-            remove.setAttribute('aria-label', `Remove ${source.label}`);
-            item.append(remove);
+            remove.setAttribute('aria-label', `Delete ${source.label}`);
+            actions.append(remove);
         }
-        item.append(preview);
+
+        const card = document.createElement('div');
+        card.className = 'wf-sources__card';
+        card.append(checkbox, icon, body, actions);
+        item.append(card, panel);
         return item;
+    };
+
+    /** The text of a source staff cannot change here: the instructions or a Canvas description. */
+    const renderReadOnly = (source: AutofillSource): HTMLElement => {
+        const text = createText('pre', source.text, 'wf-sources__text');
+        text.tabIndex = 0; // scrollable, so keyboard users can reach it
+        text.setAttribute('aria-label', `Text of ${source.label}`);
+        return text;
+    };
+
+    /** The text of a file or paste, editable, saved as a whole when staff choose Save. */
+    const renderEditor = (source: AutofillSource, close: () => void): HTMLElement => {
+        const editor = document.createElement('div');
+        editor.className = 'wf-sources__editor';
+        const box = textAreaControl(source.text, 14);
+        box.className = 'wf-sources__text wf-sources__text--editable';
+        box.setAttribute('aria-label', `Text of ${source.label}`);
+        box.spellcheck = false;
+        const hintId = `wf-source-hint-${assignmentId}-${source.id}`;
+        const hint = createText(
+            'p',
+            'This is the text EngE-AI reads. Fix anything that came out wrong, such as a heading split across lines or a jumbled table. Tables are written one row per line, with cells separated by |.',
+            'wf-help-text'
+        );
+        hint.id = hintId;
+        box.setAttribute('aria-describedby', hintId);
+        const count = createText('span', '', 'wf-sources__count');
+        const renderCount = (): void => {
+            // Shown only once the text is too long to save.
+            const length = box.value.trim().length;
+            count.dataset.tone = 'error';
+            count.textContent = length > MAX_MATERIAL_CHARACTERS
+                ? `${formatCount(length)} of ${formatCount(MAX_MATERIAL_CHARACTERS)} characters. Shorten the text to save it.`
+                : '';
+        };
+        box.addEventListener('input', renderCount);
+        renderCount();
+
+        const save = createButton('Save changes', 'secondary', async () => {
+            assertNotWritingFeedbackDemoMode();
+            if (box.value === source.text) {
+                close();
+                return;
+            }
+            const body = new FormData();
+            body.append('text', box.value);
+            await request(
+                `/assignments/${encodeURIComponent(assignmentId)}/source-materials/${encodeURIComponent(source.id)}`,
+                { method: 'PATCH', body }
+            );
+            await load();
+        });
+        const cancel = createButton('Cancel', 'quiet', async () => {
+            box.value = source.text;
+            renderCount();
+            close();
+        });
+        const row = document.createElement('div');
+        row.className = 'wf-sources__editor-actions';
+        row.append(save, cancel, count);
+        editor.append(hint, box, row);
+        return editor;
     };
 
     const renderRubricChoice = (): void => {
@@ -239,7 +346,6 @@ export function renderSourcesPanel(assignmentId: string, canEdit: boolean): Sour
             chosen = materials.length ? { kind: 'material', sourceId: materials[0]!.id } : choiceForCurrent(state.current);
             rubricChoiceByAssignment.set(assignmentId, chosen);
         }
-        const current = choiceForCurrent(state.current).kind;
 
         const options: Array<{ kind: GridChoice['kind']; label: string; disabled?: boolean }> = [];
         // A grid from material has no source to re-seed from here, so keeping it is offered
@@ -262,7 +368,7 @@ export function renderSourcesPanel(assignmentId: string, canEdit: boolean): Sour
 
         const legend = createText(
             'legend',
-            state.lens === 'technical' ? 'Where should the technical marking grid come from?' : 'Where should the marking grid come from?',
+            state.lens === 'technical' ? 'Which technical rubric grid should be used?' : 'Which rubric grid should be used?',
             'wf-sources__heading'
         );
         const name = `wf-rubric-source-${assignmentId}`;
@@ -279,8 +385,7 @@ export function renderSourcesPanel(assignmentId: string, canEdit: boolean): Sour
             radio.value = option.kind;
             radio.checked = option.kind === chosen.kind;
             radio.disabled = !canEdit || Boolean(option.disabled);
-            const suffix = option.kind === current ? ' (current)' : '';
-            row.append(radio, createText('span', `${option.label}${suffix}`));
+            row.append(radio, createText('span', option.label));
             if (option.kind !== 'material' || !materials.length) {
                 radio.addEventListener('change', () => { if (radio.checked) choose({ kind: option.kind }); });
                 return row;
@@ -323,12 +428,7 @@ export function renderSourcesPanel(assignmentId: string, canEdit: boolean): Sour
             row.append(select, scaleLabel, scale);
             return row;
         });
-        const hint = createText(
-            'p',
-            'Choosing a different source replaces the grid when you fill in the assignment. A rubric in your material is copied as written; check it in step 3.',
-            'wf-help-text'
-        );
-        rubricField.replaceChildren(legend, ...rows, hint);
+        rubricField.replaceChildren(legend, ...rows);
     };
 
     const load = async (): Promise<void> => {
@@ -342,19 +442,26 @@ export function renderSourcesPanel(assignmentId: string, canEdit: boolean): Sour
         [...unticked].forEach((id) => { if (!sources!.some((source) => source.id === id)) unticked.delete(id); });
         list.replaceChildren(...sources.map(renderItem));
         if (sources.length === 0) list.append(createText('li', 'No assignment material yet.', 'wf-muted-note'));
+        refreshIcons();
         renderTotal();
         notify();
     };
 
-    const addMaterial = async (body: FormData, description: string): Promise<void> => {
+    /**
+     * Stores one file or paste and reloads the list; the new card is the confirmation. A file
+     * shows its progress, since the upload starts from the picker with no button to show it
+     * working; a paste's button already shows that.
+     */
+    const addMaterial = async (body: FormData, description: string, announce: boolean): Promise<void> => {
         assertNotWritingFeedbackDemoMode();
-        status.textContent = `Reading ${description}…`;
+        status.textContent = announce ? `Reading ${description}…` : '';
         await request(`/assignments/${encodeURIComponent(assignmentId)}/source-materials`, { method: 'POST', body });
         await load();
-        status.textContent = `Added ${description}. Check its text below, then fill.`;
+        status.textContent = '';
     };
 
-    if (canEdit) section.append(renderAddControls(addMaterial, status));
+    if (canEdit) section.append(renderAddControls(addMaterial, status, total));
+    else section.append(total);
     section.append(status, rubricField);
 
     void load().catch((error: unknown) => {
@@ -377,56 +484,72 @@ export function renderSourcesPanel(assignmentId: string, canEdit: boolean): Sour
         rubricState: () => gridState,
         sourceCount: () => sources?.length,
         summary: () => {
-            if (!sources || !gridState) return '';
-            const count = `${sources.length} ${sources.length === 1 ? 'source' : 'sources'}`;
-            // The summary sits in a one-line header, so a long file name is shortened there.
-            const source = gridSourceText(gridState);
-            return `${count} · Grid: ${source.length > 48 ? `${source.slice(0, 47).trimEnd()}…` : source}`;
+            if (!sources) return '';
+            return `${sources.length} ${sources.length === 1 ? 'source' : 'sources'}`;
         }
     };
 }
 
 /**
- * renderAddControls - the upload control and the paste box.
+ * renderAddControls - the row of add actions, with the ticked total at its end.
  *
- * A file uploads as soon as it is chosen. A paste keeps the clipboard's HTML only while the
- * box holds exactly what was pasted into it empty; typing or a second paste drops it, because
- * the HTML would no longer match what staff see.
+ * "Upload a file" opens the file picker and uploads as soon as a file is chosen. "Paste text"
+ * opens a paste box below the row. A paste keeps the clipboard's HTML only while the box holds
+ * exactly what was pasted into it empty; typing or a second paste drops it, because the HTML
+ * would no longer match what staff see.
  */
 function renderAddControls(
-    addMaterial: (body: FormData, description: string) => Promise<void>,
-    status: HTMLElement
+    addMaterial: (body: FormData, description: string, announce: boolean) => Promise<void>,
+    status: HTMLElement,
+    total: HTMLElement
 ): HTMLElement {
     const controls = document.createElement('div');
     controls.className = 'wf-sources__add';
 
+    // The picker itself stays out of sight; the button is the control staff use.
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
     fileInput.accept = ACCEPTED_FILES;
-    fileInput.id = `wf-sources-file-${crypto.randomUUID()}`;
-    const fileLabel = document.createElement('label');
-    fileLabel.htmlFor = fileInput.id;
-    fileLabel.textContent = 'Upload a file';
-    const fileHint = createText('small', 'Word, PDF, HTML, or text. Word files keep their tables; PDFs do not, so paste a PDF\'s table if it comes out jumbled.', 'wf-help-text');
+    fileInput.hidden = true;
     fileInput.addEventListener('change', () => {
         const file = fileInput.files?.[0];
         if (!file) return;
         const body = new FormData();
         body.append('file', file);
-        void addMaterial(body, file.name)
+        void addMaterial(body, file.name, true)
             .catch((error: unknown) => { status.textContent = error instanceof Error ? error.message : 'The file could not be added.'; })
             .finally(() => { fileInput.value = ''; });
     });
-    const fileField = document.createElement('div');
-    fileField.className = 'wf-field';
-    fileField.append(fileLabel, fileInput, fileHint);
+    const upload = createButton('Upload a file', 'outline', async () => { fileInput.click(); }, false, 'upload');
+
+    const pasteArea = document.createElement('div');
+    pasteArea.className = 'wf-sources__paste';
+    pasteArea.id = `wf-sources-paste-area-${crypto.randomUUID()}`;
+    pasteArea.hidden = true;
+    const pasteToggle = createButton('Paste text', 'outline', async () => {
+        const open = pasteArea.hidden;
+        pasteArea.hidden = !open;
+        pasteToggle.setAttribute('aria-expanded', String(open));
+        if (open) pasteBox.focus();
+    }, false, 'clipboard');
+    pasteToggle.setAttribute('aria-expanded', 'false');
+    pasteToggle.setAttribute('aria-controls', pasteArea.id);
+
+    const buttons = document.createElement('div');
+    buttons.className = 'wf-sources__add-buttons';
+    buttons.append(upload, pasteToggle, fileInput);
+    const row = document.createElement('div');
+    row.className = 'wf-sources__add-row';
+    row.append(buttons, total);
+    const fileHint = createText(
+        'p',
+        'Upload a Word, PDF, HTML, or text file. Word files are preferable if possible.',
+        'wf-help-text'
+    );
 
     const pasteBox = textAreaControl('', 6);
-    pasteBox.id = `wf-sources-paste-${crypto.randomUUID()}`;
-    pasteBox.placeholder = 'Paste instructions or a rubric here. Tables copied from Word or Google Docs keep their rows and columns.';
-    const pasteLabel = document.createElement('label');
-    pasteLabel.htmlFor = pasteBox.id;
-    pasteLabel.textContent = 'Or paste text';
+    pasteBox.setAttribute('aria-label', 'Text to add');
+    pasteBox.placeholder = 'Paste assignment instructions or details here.';
     let pastedHtml: string | undefined;
     pasteBox.addEventListener('paste', (event: ClipboardEvent) => {
         const html = event.clipboardData?.getData('text/html');
@@ -435,23 +558,30 @@ function renderAddControls(
     pasteBox.addEventListener('input', (event: Event) => {
         if ((event as InputEvent).inputType !== 'insertFromPaste') pastedHtml = undefined;
     });
-    const addPaste = createButton('Add pasted text', 'outline', async () => {
+    const closePaste = (): void => {
+        pasteBox.value = '';
+        pastedHtml = undefined;
+        pasteArea.hidden = true;
+        pasteToggle.setAttribute('aria-expanded', 'false');
+    };
+    const addPaste = createButton('Add pasted text', 'secondary', async () => {
         const text = pasteBox.value.trim();
         if (!text) throw new Error('Paste some text first.');
         const body = new FormData();
         body.append('text', text);
         if (pastedHtml) body.append('html', pastedHtml);
-        await addMaterial(body, 'the pasted text');
-        pasteBox.value = '';
-        pastedHtml = undefined;
+        await addMaterial(body, 'the pasted text', false);
+        closePaste();
+    });
+    const cancelPaste = createButton('Cancel', 'quiet', async () => {
+        closePaste();
+        pasteToggle.focus();
     });
     const pasteActions = document.createElement('div');
     pasteActions.className = 'wf-inline-field-actions';
-    pasteActions.append(addPaste);
-    const pasteField = document.createElement('div');
-    pasteField.className = 'wf-field';
-    pasteField.append(pasteLabel, pasteBox, pasteActions);
+    pasteActions.append(addPaste, cancelPaste);
+    pasteArea.append(pasteBox, pasteActions);
 
-    controls.append(fileField, pasteField);
+    controls.append(row, fileHint, pasteArea);
     return controls;
 }

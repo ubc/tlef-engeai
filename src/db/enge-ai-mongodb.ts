@@ -641,6 +641,23 @@ export class EngEAI_MongoDB {
         WritingFeedbackMongo.addWritingSourceMaterial(this.ctx(), input, maxPerAssignment);
 
     /**
+     * updateWritingSourceMaterialText — replaces one material's text with staff's corrected text.
+     *
+     * @param courseId - Owning course id
+     * @param assignmentId - Assignment the material belongs to
+     * @param materialId - Material to correct
+     * @param edit - The corrected text, whether it holds tables, and the staff member correcting it
+     * @returns The updated material, or `null` when it is not there
+     */
+    public updateWritingSourceMaterialText = async (
+        courseId: string,
+        assignmentId: string,
+        materialId: string,
+        edit: { text: string; hasTables: boolean; editedBy: string }
+    ): Promise<WritingSourceMaterial | null> =>
+        WritingFeedbackMongo.updateWritingSourceMaterialText(this.ctx(), courseId, assignmentId, materialId, edit);
+
+    /**
      * deleteWritingSourceMaterial — removes one material from an assignment.
      *
      * @param courseId - Owning course id

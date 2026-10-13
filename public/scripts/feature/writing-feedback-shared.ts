@@ -288,6 +288,7 @@ export interface AutofillSource {
     text: string;
     characterCount: number;
     hasTables: boolean;
+    edited?: boolean; // staff corrected a file's or paste's text by hand
 }
 
 /** Where the graded grid comes from. Mirrors GradedGridState in src/writing-feedback/rubric-source-choice.ts. */

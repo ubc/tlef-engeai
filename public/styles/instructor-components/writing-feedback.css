@@ -1278,76 +1278,129 @@
     color: var(--color-eng-red);
 }
 
-/* Assignment material: the sources "Fill these in for me" reads */
-.wf-sources {
-    margin: 0 0 16px;
-    padding: 12px 14px;
-    background: var(--background-2);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
+/* Step 1's status line sits under the extract button and takes no room until it has something to say. */
+.wf-material-status {
+    margin: 10px 0 0;
 }
 
+.wf-material-status:empty {
+    min-height: 0;
+    margin: 0;
+}
+
+/* Assignment material: the sources the extract button reads */
+.wf-sources {
+    margin: 0 0 16px;
+}
+
+/* Styled as a step 2 field label (.wf-rubric-details .wf-field label), which is what each of these introduces. */
 .wf-sources__heading {
-    margin: 0 0 4px;
+    margin: 0 0 6px;
+    color: var(--text-primary);
     font-size: 15px;
+    font-weight: 600;
 }
 
 .wf-sources__list {
     list-style: none;
-    margin: 10px 0;
+    display: grid;
+    gap: 8px;
+    margin: 10px 0 12px;
     padding: 0;
 }
 
+/* One card per source: tick, icon, name over its details, then the actions. */
 .wf-sources__item {
+    background: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.wf-sources__card {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 6px 10px;
-    padding: 8px 0;
-    border-top: 1px solid var(--border-color);
+    gap: 8px 10px;
+    padding: 10px 12px;
 }
 
-.wf-sources__item:first-child {
-    border-top: 0;
+.wf-sources__icon {
+    width: 18px;
+    height: 18px;
+    flex: none;
+    color: var(--text-secondary);
 }
 
-/* Takes the rest of the checkbox's line, at least wide enough that a long file name wraps
-   between words; the character count and Remove drop below it when there is no room. */
-.wf-sources__label {
+/* Takes the rest of the line, at least wide enough that a long file name wraps between
+   words; the actions drop below it when there is no room. */
+.wf-sources__body {
     flex: 1 1 14rem;
     min-width: 0;
+    display: grid;
+    gap: 2px;
+}
+
+.wf-sources__label {
     font-weight: 600;
     overflow-wrap: break-word;
 }
 
 .wf-sources__meta {
-    display: inline-flex;
+    display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
+    gap: 4px 8px;
     color: var(--text-secondary);
     font-size: 12px;
 }
 
-.wf-sources__item .wf-button--quiet {
+/* A source's length is shown only while the ticked sources are over the limit. */
+.wf-sources:not(.wf-sources--over) .wf-sources__chars {
+    display: none;
+}
+
+.wf-sources__actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     margin-left: auto;
 }
 
-.wf-sources__preview {
-    flex-basis: 100%;
-    font-size: 12px;
+.wf-sources__panel {
+    padding: 0 12px 12px;
+    border-top: 1px solid var(--border-color);
+}
+
+.wf-sources__editor {
+    display: grid;
+    gap: 6px;
+}
+
+.wf-sources__editor .wf-help-text {
+    margin: 10px 0 0;
 }
 
 .wf-sources__text {
-    max-height: 240px;
+    max-height: 320px;
     overflow: auto;
-    margin: 6px 0 0;
+    margin: 10px 0 0;
     padding: 8px;
     white-space: pre-wrap;
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    font-size: 12px;
+    line-height: 1.5;
     background: #fff;
     border: 1px solid var(--border-color);
     border-radius: 6px;
     scrollbar-gutter: stable;
     scrollbar-color: rgba(0, 0, 0, 0.22) transparent;
+}
+
+.wf-sources__text--editable {
+    width: 100%;
+    box-sizing: border-box;
+    margin: 0;
+    resize: vertical;
 }
 
 .wf-sources__text::-webkit-scrollbar,
@@ -1360,20 +1413,70 @@
     border-radius: 4px;
 }
 
+.wf-sources__editor-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.wf-sources__count {
+    margin-left: auto;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.wf-sources__count[data-tone="error"],
+.wf-sources__total[data-tone="error"] {
+    color: var(--color-eng-red);
+}
+
+.wf-sources__total:empty {
+    display: none;
+}
+
 .wf-sources__total {
     margin: 0 0 10px;
     color: var(--text-secondary);
     font-size: 12px;
 }
 
-.wf-sources__total[data-tone="error"] {
-    color: var(--color-eng-red);
+/* Upload and paste on the left, the ticked total on the right. */
+.wf-sources__add-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
 }
 
-.wf-sources__add {
+.wf-sources__add-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.wf-sources__add-row .wf-sources__total {
+    margin: 0 0 0 auto;
+}
+
+.wf-sources__add > .wf-help-text {
+    margin: 6px 0 0;
+}
+
+/* Closed until staff choose "Paste text"; the display rule would otherwise override `hidden`. */
+.wf-sources__paste[hidden] {
+    display: none;
+}
+
+.wf-sources__paste {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-    gap: 12px;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+.wf-sources__paste textarea {
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .wf-sources__rubric {
@@ -1400,6 +1503,7 @@
     align-items: baseline;
     gap: 8px;
     padding: 4px 0;
+    font-size: 14px;
     cursor: pointer;
 }
 
@@ -1723,7 +1827,7 @@
 
 .wf-steps {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 0;
     margin: 0 0 28px;
     padding: 0;
@@ -1744,6 +1848,22 @@
 
 .wf-steps__item:last-child {
     border-right: 0;
+}
+
+/* Four cells side by side get too narrow for their labels before the phone layout takes over,
+   so in between they sit two by two. */
+@media (max-width: 1100px) {
+    .wf-steps {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .wf-steps__item:nth-child(2n) {
+        border-right: 0;
+    }
+
+    .wf-steps__item:nth-child(-n + 2) {
+        border-bottom: 1px solid var(--border-color);
+    }
 }
 
 .wf-steps__item[data-state="current"] {
@@ -3944,7 +4064,7 @@ mark.wf-anchor.is-filtered-out,
         flex-wrap: wrap;
     }
 
-    /* The three-cell strip becomes three rows; the grid keeps its own
+    /* The four-cell strip becomes four rows; the grid keeps its own
        overflow-x, so the page itself still never scrolls sideways. */
     .wf-steps {
         grid-template-columns: minmax(0, 1fr);

@@ -149,6 +149,21 @@ export function assertUsableSourceText(extracted: ExtractedSourceText): Extracte
 }
 
 /**
+ * editedSourceText - staff's corrected text for a material, held to the same limits as new material.
+ *
+ * The text is taken as written apart from whitespace normalization. Whether it holds tables is
+ * read from the text itself, since a correction can add, fix, or remove a markdown table.
+ *
+ * @param text - The full corrected text
+ * @returns Usable text and whether it holds markdown tables
+ * @throws Error with a staff-readable {@link SOURCE_MATERIAL_ERRORS} message
+ */
+export function editedSourceText(text: string): ExtractedSourceText {
+    const normalized = normalizeSourceText(text);
+    return assertUsableSourceText({ text: normalized, hasTables: MARKDOWN_TABLE_SEPARATOR.test(normalized) });
+}
+
+/**
  * extractSourceFile - an uploaded file as source text, keeping tables where the format has them.
  *
  * Word files go through HTML so their tables survive; HTML files are read directly; PDFs use

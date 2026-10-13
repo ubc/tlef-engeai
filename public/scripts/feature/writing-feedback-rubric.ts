@@ -1236,7 +1236,7 @@ function renderMaterialStep(
 ): HTMLDivElement {
     const body = document.createElement('div');
     body.className = 'wf-step-body';
-    const status = createText('p', notice?.message ?? '', 'wf-rubric-details-status');
+    const status = createText('p', notice?.message ?? '', 'wf-rubric-details-status wf-material-status');
     status.setAttribute('role', 'status');
     status.setAttribute('aria-live', 'polite');
     status.setAttribute('aria-atomic', 'true');
@@ -1244,7 +1244,7 @@ function renderMaterialStep(
     body.append(sources.element);
 
     if (canEdit) {
-        const fillButton = createButton('Fill in the assignment and grid', 'primary', async () => onFill(status), !sources.canFill());
+        const fillButton = createButton('Extract assignment details and rubric', 'primary', async () => onFill(status), !sources.canFill());
         const updateFillButton = (): void => {
             // A running fill owns the button until it settles; it is re-enabled from here after.
             if (fillButton.getAttribute('aria-busy') === 'true') return;
@@ -1331,7 +1331,7 @@ function renderGridNotices(
         notices.push(callout(
             'layers',
             createText('p', `${pending.sourceLabel} holds more than one version of the rubric`, 'wf-owed__title'),
-            createText('p', 'Choose the one to build the marking grid from. The grid below stays as it is until you do.'),
+            createText('p', 'Choose the one to build the rubric grid from. The grid below stays as it is until you do.'),
             choices,
             actions
         ));
@@ -1379,18 +1379,18 @@ function fillResultMessage(
         case 'applied':
             return {
                 message: typeof rubricFrom === 'object'
-                    ? `Filled in the assignment and built the grid from ${source}. Check the grid in step 3 before approving.`
-                    : `Filled in the assignment and replaced the grid with ${source}. Review before approving.`,
+                    ? `Extracted the assignment details and built the grid from ${source}. Check the grid in step 3 before approving.`
+                    : `Extracted the assignment details and replaced the grid with ${source}. Review before approving.`,
                 tone: 'success'
             };
         case 'needs_decision':
-            return { message: `Filled in the assignment. ${source.replace(/^the rubric in /, '')} holds more than one version of the rubric; choose one in step 3.`, tone: 'success' };
+            return { message: `Extracted the assignment details. ${source.replace(/^the rubric in /, '')} holds more than one version of the rubric; choose one in step 3.`, tone: 'success' };
         case 'not_found':
         case 'refused':
         case 'failed':
-            return { message: `Filled in the assignment. ${result.gridMessage ?? 'The marking grid is unchanged.'}`, tone: 'error' };
+            return { message: `Extracted the assignment details. ${result.gridMessage ?? 'The rubric grid is unchanged.'}`, tone: 'error' };
         default:
-            return { message: 'Filled in the assignment from your material. Review before approving.', tone: 'success' };
+            return { message: 'Extracted the assignment details from your material. Review before approving.', tone: 'success' };
     }
 }
 
@@ -1427,8 +1427,8 @@ async function fillFromMaterial(context: RubricPageContext, status: HTMLElement,
         const confirmLabel = 'Replace the grid';
         const keepLabel = 'Keep my grid';
         const confirmation = await showConfirmModal(
-            'Replace the marking grid?',
-            `This replaces your current marking grid with ${escapeForModal(gridChoiceName(rubricFrom, gridState.lens, sources))}. `
+            'Replace the rubric grid?',
+            `This replaces your current rubric grid with ${escapeForModal(gridChoiceName(rubricFrom, gridState.lens, sources))}. `
                 + 'Your approved rubric stays in effect until you approve the new one.',
             confirmLabel,
             keepLabel
@@ -1781,7 +1781,7 @@ function renderRubricPage(
     materialStep.className = 'wf-step';
     // The token is aria-hidden, so the ordinal is carried as text in the heading.
     const materialHeader = disclosureHeader(
-        [stepToken(1), createText('h2', '1. Gather the assignment material', 'wf-step-title'), materialMeta],
+        [stepToken(1), createText('h2', '1. Add your instructions and rubric', 'wf-step-title'), materialMeta],
         materialBody, 'wf-step-material-body', materialOpen, 'wf-step-header'
     );
     materialStep.append(materialHeader, materialBody);
@@ -1790,7 +1790,7 @@ function renderRubricPage(
     const step1Meta = createText('span', '', 'wf-step-meta');
     const step1 = document.createElement('div');
     step1.className = 'wf-step';
-    const step1Title = createText('h2', '2. Describe the assignment', 'wf-step-title');
+    const step1Title = createText('h2', '2. Review the assignment details', 'wf-step-title');
     const step1Header = disclosureHeader(
         [stepToken(2), step1Title, step1Meta],
         step1Body, 'wf-step-1-body', false, 'wf-step-header'
@@ -1907,7 +1907,7 @@ function renderRubricPage(
     const step2Meta = createText('span', '', 'wf-step-meta');
     const step2 = document.createElement('div');
     step2.className = 'wf-step';
-    const step2Title = createText('h2', isLabReport ? '3. Build the marking grids' : '3. Build the marking grid', 'wf-step-title');
+    const step2Title = createText('h2', isLabReport ? '3. Review the rubric grids' : '3. Review the rubric grid', 'wf-step-title');
     const step2Header = disclosureHeader(
         [stepToken(3), step2Title, step2Meta],
         step2Body, 'wf-step-2-body', step2Open, 'wf-step-header'
@@ -2177,11 +2177,11 @@ function renderRubricPage(
         const materialDone = describedDone || (sourceCount ?? 0) > 0;
         stripMount.replaceChildren(renderProgressStrip([
             {
-                ordinal: 1, label: 'Gather the material', state: materialDone ? 'done' : 'current',
+                ordinal: 1, label: 'Add instructions and rubric', state: materialDone ? 'done' : 'current',
                 detail: sourceCount === undefined ? 'Loading…' : (sources.summary() || 'No material yet')
             },
             {
-                ordinal: 2, label: 'Describe the assignment', state: describedDone ? 'done' : (materialDone ? 'current' : 'pending'),
+                ordinal: 2, label: 'Review the assignment details', state: describedDone ? 'done' : (materialDone ? 'current' : 'pending'),
                 // Named when the description itself is done, because the remaining work is
                 // then in a card the reader has to open to see.
                 detail: describedDone
@@ -2189,7 +2189,7 @@ function renderRubricPage(
                     : (detailsNow.complete ? 'Writing profile: incomplete' : 'Incomplete')
             },
             {
-                ordinal: 3, label: isLabReport ? 'Build the marking grids' : 'Build the marking grid',
+                ordinal: 3, label: isLabReport ? 'Review the rubric grids' : 'Review the rubric grid',
                 state: gridNow.complete ? 'done' : (describedDone ? 'current' : 'pending'),
                 detail: gridNow.complete
                     ? `${gridNow.criteria} criteria · ${gridNow.levels} levels · ${gridNow.totalPoints} points`
@@ -2851,7 +2851,7 @@ function canvasShortenedNotice(): HTMLElement {
 function canvasRefusalReason(refusal: CanvasRubricRefusal): string {
     switch (refusal) {
         case 'too_few_ratings':
-            return 'Its criteria offer one rating each, and a marking grid needs at least two to compare against.';
+            return 'Its criteria offer one rating each, and a rubric grid needs at least two to compare against.';
         case 'too_many_criteria':
             return `It has more than ${MAX_CRITERIA} criteria, which is more than a grid here can hold.`;
         case 'too_many_levels':

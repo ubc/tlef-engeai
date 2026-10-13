@@ -110,6 +110,7 @@ import {
 import {
     MAX_SOURCE_MATERIALS,
     SOURCE_MATERIAL_ERRORS,
+    editedSourceText,
     extractPastedSource,
     extractSourceFile
 } from '../writing-feedback/source-material-extraction';
@@ -145,7 +146,7 @@ async function describeRows(
                 : [`This rubric gives no ${missing} descriptions. Write them in the grid before approving.`]
         };
     } catch {
-        return { shape, notes: [`EngE-AI could not suggest ${missing} descriptions this time. Write them in the grid, or fill in the assignment again.`] };
+        return { shape, notes: [`EngE-AI could not suggest ${missing} descriptions this time. Write them in the grid, or extract the assignment details again.`] };
     }
 }
 
@@ -172,9 +173,9 @@ type FillGridOutcome = 'unchanged' | 'applied' | 'needs_confirmation' | 'needs_d
 function extractedRubricRefusalMessage(refusal: ExtractedRubricRefusal | undefined, label: string): string {
     switch (refusal) {
         case 'too_many_criteria':
-            return `The rubric in ${label} has more than 10 criteria, more than a marking grid can hold. The grid is unchanged.`;
+            return `The rubric in ${label} has more than 10 criteria, more than a rubric grid can hold. The grid is unchanged.`;
         case 'too_many_levels':
-            return `The rubric in ${label} has more than 8 levels, more than a marking grid can hold. The grid is unchanged.`;
+            return `The rubric in ${label} has more than 8 levels, more than a rubric grid can hold. The grid is unchanged.`;
         default:
             return `The rubric in ${label} has no criteria to build a grid from. The grid is unchanged.`;
     }
@@ -470,6 +471,46 @@ router.post(
         } catch (error) {
             res.status(400).json({ success: false, error: safeError(error) });
         }
+    })
+);
+
+/**
+ * Replaces one source material's text with staff's corrections, sent as a multipart `text`
+ * field so a full-length correction is not cut off by the JSON body limit. The corrected text
+ * is held to the same limits as new material. Like all material text, it is never logged.
+ */
+router.patch(
+    '/:courseId/writing-feedback/assignments/:assignmentId/source-materials/:materialId',
+    (req: Request, res: Response, next: NextFunction) => {
+        sourceMaterialUpload.none()(req, res, (error?: unknown) => {
+            if (error instanceof multer.MulterError) {
+                res.status(400).json({ success: false, error: SOURCE_MATERIAL_ERRORS.tooLong });
+                return;
+            }
+            next(error as Error | undefined);
+        });
+    },
+    asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        const text = optionalField(req.body?.text) ?? '';
+        if (!text.trim()) {
+            return res.status(400).json({ success: false, error: 'The text cannot be empty. To stop using this material, remove it instead.' });
+        }
+        let edited: { text: string; hasTables: boolean };
+        try {
+            edited = editedSourceText(text);
+        } catch (error) {
+            return res.status(400).json({ success: false, error: safeError(error) });
+        }
+        const mongo = await EngEAI_MongoDB.getInstance();
+        const globalUser = (req.session as any).globalUser;
+        const material = await mongo.updateWritingSourceMaterialText(
+            courseId(req),
+            String(req.params.assignmentId),
+            String(req.params.materialId),
+            { ...edited, editedBy: globalUser.userId }
+        );
+        if (!material) return res.status(404).json({ success: false, error: 'Source material not found' });
+        res.json({ success: true, data: material });
     })
 );
 
@@ -1024,10 +1065,10 @@ router.post(
                 const usable = converted.filter((candidate) => candidate.shape);
                 if (extractionFailed) {
                     gridOutcome = 'failed';
-                    gridMessage = `The rubric in ${label} could not be read. The marking grid is unchanged.`;
+                    gridMessage = `The rubric in ${label} could not be read. The rubric grid is unchanged.`;
                 } else if (converted.length === 0) {
                     gridOutcome = 'not_found';
-                    gridMessage = `No rubric was found in ${label}. The marking grid is unchanged.`;
+                    gridMessage = `No rubric was found in ${label}. The rubric grid is unchanged.`;
                 } else if (usable.length === 0) {
                     gridOutcome = 'refused';
                     gridMessage = extractedRubricRefusalMessage(converted[0]!.refusal, label);
@@ -1085,7 +1126,7 @@ router.post(
                     gridMessage = GRID_REUSES_RETIRED_IDS;
                 } else if (!writingRubricDraftInputSchema.safeParse(withExtracted).success) {
                     gridOutcome = 'failed';
-                    gridMessage = `The rubric in ${rubricMaterial.label} could not be turned into a marking grid. The grid is unchanged.`;
+                    gridMessage = `The rubric in ${rubricMaterial.label} could not be turned into a rubric grid. The grid is unchanged.`;
                 } else {
                     merged = withExtracted;
                     gridOutcome = 'applied';
@@ -1166,7 +1207,7 @@ router.post(
             }
         }
         if (!writingRubricDraftInputSchema.safeParse(draft).success) {
-            return res.status(409).json({ success: false, error: `This version of the rubric in ${pending.sourceLabel} could not be turned into a marking grid.` });
+            return res.status(409).json({ success: false, error: `This version of the rubric in ${pending.sourceLabel} could not be turned into a rubric grid.` });
         }
         const saved = await mongo.saveWritingRubricDraft(courseId(req), assignment.id, draft, lens, { pendingRubricExtraction: null });
         res.json({ success: true, data: saved });

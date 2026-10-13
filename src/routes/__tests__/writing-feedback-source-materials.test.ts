@@ -8,7 +8,7 @@
  *
  * @author: EngE-AI Team
  * @version: 1.0.0
- * @description: HTTP coverage for listing, adding, and removing assignment source materials.
+ * @description: HTTP coverage for listing, adding, correcting, and removing assignment source materials.
  */
 
 import fs from 'fs';
@@ -20,7 +20,8 @@ const mongo = {
     getWritingAssignment: jest.fn(),
     listWritingSourceMaterials: jest.fn(),
     addWritingSourceMaterial: jest.fn(),
-    deleteWritingSourceMaterial: jest.fn()
+    deleteWritingSourceMaterial: jest.fn(),
+    updateWritingSourceMaterialText: jest.fn()
 };
 
 jest.mock('../../db/enge-ai-mongodb', () => ({
@@ -135,5 +136,36 @@ describe('source-material routes', () => {
         expect((await request(app()).delete(`${BASE}/material-1`)).status).toBe(200);
         expect((await request(app()).delete(`${BASE}/material-2`)).status).toBe(404);
         expect(mongo.deleteWritingSourceMaterial).toHaveBeenCalledWith('course-1', 'assignment-1', 'material-1');
+    });
+
+    it('saves corrected text, reading its tables from the text itself', async () => {
+        mongo.updateWritingSourceMaterialText.mockImplementation(async (_c, _a, id: string, edit: object) => ({ id, ...edit }));
+        const text = 'Rubric\n\n| Criterion | Points |\n| --- | --- |\n| Clarity | 5 |  \n\n\n\nEnd';
+        const response = await request(app()).patch(`${BASE}/material-1`).field('text', text);
+
+        expect(response.status).toBe(200);
+        expect(mongo.updateWritingSourceMaterialText).toHaveBeenCalledWith('course-1', 'assignment-1', 'material-1', {
+            text: 'Rubric\n\n| Criterion | Points |\n| --- | --- |\n| Clarity | 5 |\n\nEnd',
+            hasTables: true,
+            editedBy: 'user-1'
+        });
+    });
+
+    it('refuses empty or over-long corrections without touching the material', async () => {
+        const empty = await request(app()).patch(`${BASE}/material-1`).field('text', '   ');
+        const long = await request(app()).patch(`${BASE}/material-1`).field('text', 'a'.repeat(60001));
+
+        expect(empty.status).toBe(400);
+        expect(empty.body.error).toMatch(/^The text cannot be empty/);
+        expect(long.status).toBe(400);
+        expect(long.body.error).toMatch(/^This material is longer than 60,000 characters/);
+        expect(mongo.updateWritingSourceMaterialText).not.toHaveBeenCalled();
+    });
+
+    it('answers 404 when correcting a material that is not there', async () => {
+        mongo.updateWritingSourceMaterialText.mockResolvedValue(null);
+        const response = await request(app()).patch(`${BASE}/material-9`).field('text', 'Write a memo.');
+
+        expect(response.status).toBe(404);
     });
 });

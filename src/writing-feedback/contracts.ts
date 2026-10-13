@@ -518,6 +518,10 @@ export interface WritingSourceMaterial {
     addedAt: Date;
     /** Internal user id of the staff member who added it; never a PUID. */
     addedBy: string;
+    /** When staff last corrected the text by hand, if they have. */
+    editedAt?: Date;
+    /** Internal user id of the staff member who last corrected it; never a PUID. */
+    editedBy?: string;
 }
 
 export interface CanvasAssignmentDetails {

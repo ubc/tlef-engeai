@@ -26,9 +26,9 @@ export const CANVAS_DESCRIPTION_SOURCE_ID = 'canvas_description';
 /** Refusal messages staff can read and act on. Each is also a safe error prefix for routes. */
 export const AUTOFILL_SOURCE_ERRORS = {
     none: 'Add the assignment instructions, or upload or paste the assignment material, first',
-    noneSelected: 'Select at least one source to fill from',
+    noneSelected: 'Select at least one source to extract from',
     unknown: 'One of the selected sources no longer exists. Reload the page and try again.',
-    tooLong: `The selected sources are longer than ${MAX_AUTOFILL_SOURCE_CHARS.toLocaleString('en-US')} characters together. Untick one or more before filling.`
+    tooLong: `The selected sources are longer than ${MAX_AUTOFILL_SOURCE_CHARS.toLocaleString('en-US')} characters together. Unselect one or more.`
 } as const;
 
 /** One piece of material auto-fill can read. */
@@ -39,6 +39,8 @@ export interface AutofillSource {
     text: string;
     characterCount: number;
     hasTables: boolean;
+    /** Whether staff corrected a file's or paste's text by hand. */
+    edited?: boolean;
 }
 
 function sameText(left: string, right: string): boolean {
@@ -95,7 +97,8 @@ export function listAutofillSources(
             label: material.kind === 'file' ? material.fileName || 'Uploaded file' : `Pasted text ${pasteNumber}`,
             text: material.text,
             characterCount: material.characterCount,
-            hasTables: material.hasTables
+            hasTables: material.hasTables,
+            ...(material.editedAt ? { edited: true } : {})
         });
     });
     return sources;

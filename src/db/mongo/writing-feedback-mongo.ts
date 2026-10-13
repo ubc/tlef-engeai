@@ -1857,6 +1857,38 @@ export async function addWritingSourceMaterial(
 }
 
 /**
+ * updateWritingSourceMaterialText — replaces one material's text with staff's corrected text.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param assignmentId - Assignment the material belongs to
+ * @param materialId - Material to correct
+ * @param edit - The corrected text, whether it holds tables, and the staff member correcting it
+ * @returns The updated material, or `null` when that course and assignment hold no such material
+ */
+export async function updateWritingSourceMaterialText(
+    ctx: MongoDalContext,
+    courseId: string,
+    assignmentId: string,
+    materialId: string,
+    edit: { text: string; hasTables: boolean; editedBy: string }
+): Promise<WritingSourceMaterial | null> {
+    return sourceMaterials(ctx).findOneAndUpdate(
+        { id: materialId, courseId, assignmentId },
+        {
+            $set: {
+                text: edit.text,
+                hasTables: edit.hasTables,
+                characterCount: edit.text.length,
+                editedAt: new Date(),
+                editedBy: edit.editedBy
+            }
+        },
+        { returnDocument: 'after', projection: { _id: 0 } }
+    );
+}
+
+/**
  * deleteWritingSourceMaterial — removes one material from an assignment.
  *
  * @param ctx - Connected Mongo data-layer context
