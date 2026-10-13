@@ -50,6 +50,11 @@ export interface SourcesPanel {
     summary(): string;
     /** How many sources the assignment has, or undefined until the list has loaded. */
     sourceCount(): number | undefined;
+    /**
+     * Locks or unlocks the panel while an extraction runs. Text can still be viewed; nothing
+     * that would change what the running extraction reads can be used.
+     */
+    setBusy(busy: boolean): void;
 }
 
 /** A grid choice as the radio group holds it: which option, and for material, which source. */
@@ -483,6 +488,25 @@ export function renderSourcesPanel(assignmentId: string, canEdit: boolean): Sour
         materialLabel: (sourceId: string) => sources?.find((source) => source.id === sourceId)?.label,
         rubricState: () => gridState,
         sourceCount: () => sources?.length,
+        setBusy: (busy: boolean) => {
+            section.classList.toggle('wf-sources--busy', busy);
+            section.setAttribute('aria-busy', String(busy));
+            const controls = section.querySelectorAll<HTMLInputElement | HTMLButtonElement | HTMLSelectElement | HTMLTextAreaElement>(
+                'input, button, select, textarea'
+            );
+            controls.forEach((control) => {
+                if (control.classList.contains('wf-sources__toggle')) return;
+                if (busy) {
+                    // Remember controls that were already disabled, so unlocking leaves them so.
+                    if (control.disabled) return;
+                    control.disabled = true;
+                    control.dataset.busyLocked = 'true';
+                } else if (control.dataset.busyLocked) {
+                    control.disabled = false;
+                    delete control.dataset.busyLocked;
+                }
+            });
+        },
         summary: () => {
             if (!sources) return '';
             return `${sources.length} ${sources.length === 1 ? 'source' : 'sources'}`;

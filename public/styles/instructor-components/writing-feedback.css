@@ -1288,6 +1288,30 @@
     margin: 0;
 }
 
+/* A small spinner inside a busy button, drawn in the button's own text colour. */
+.wf-spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    margin-right: 8px;
+    vertical-align: -2px;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: wf-spin 0.8s linear infinite;
+}
+
+@keyframes wf-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Held still under reduced motion; the "Extracting…" label still says what is happening. */
+@media (prefers-reduced-motion: reduce) {
+    .wf-spinner {
+        animation: none;
+    }
+}
+
 /* Assignment material: the sources the extract button reads */
 .wf-sources {
     margin: 0 0 16px;

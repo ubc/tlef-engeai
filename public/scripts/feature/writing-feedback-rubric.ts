@@ -83,7 +83,6 @@ import {
     refreshIcons,
     request,
     scrollingAncestor,
-    setWorkspaceMessage,
     setQueryState,
     returnToAssignment,
     setView,
@@ -1232,7 +1231,7 @@ function renderMaterialStep(
     sources: SourcesPanel,
     canEdit: boolean,
     notice: { message: string; tone: 'success' | 'error' } | undefined,
-    onFill: (status: HTMLElement) => Promise<void>
+    onFill: (status: HTMLElement, button: HTMLButtonElement) => Promise<void>
 ): HTMLDivElement {
     const body = document.createElement('div');
     body.className = 'wf-step-body';
@@ -1244,7 +1243,7 @@ function renderMaterialStep(
     body.append(sources.element);
 
     if (canEdit) {
-        const fillButton = createButton('Extract assignment details and rubric', 'primary', async () => onFill(status), !sources.canFill());
+        const fillButton = createButton('Extract assignment details and rubric', 'primary', async (button) => onFill(status, button), !sources.canFill());
         const updateFillButton = (): void => {
             // A running fill owns the button until it settles; it is re-enabled from here after.
             if (fillButton.getAttribute('aria-busy') === 'true') return;
@@ -1404,8 +1403,14 @@ function fillResultMessage(
  * @param context - The rubric page being filled
  * @param status - The step's status line
  * @param sources - The source panel holding the ticks and the grid choice
+ * @param button - The extract button, which shows a spinner while the extraction runs
  */
-async function fillFromMaterial(context: RubricPageContext, status: HTMLElement, sources: SourcesPanel): Promise<void> {
+async function fillFromMaterial(
+    context: RubricPageContext,
+    status: HTMLElement,
+    sources: SourcesPanel,
+    button: HTMLButtonElement
+): Promise<void> {
     const targets = new Set<WritingFeedbackLens>(
         context.sections.filter((section) => section.canEdit).map((section) => section.lens)
     );
@@ -1440,10 +1445,23 @@ async function fillFromMaterial(context: RubricPageContext, status: HTMLElement,
         else return;
     }
 
-    // Step 2: fill each editable lens; only the graded one takes the grid choice.
-    announceDetailsStatus(status, typeof rubricFrom === 'object'
-        ? 'Reading the assignment material and copying the rubric… this can take up to a minute.'
-        : 'Reading the assignment material…');
+    // Step 2: show the extraction running. The messages follow elapsed time only, since the
+    // server reports nothing until it finishes; they never claim a stage it may not be in.
+    const copiesRubric = typeof rubricFrom === 'object';
+    showExtractingButton(button);
+    sources.setBusy(true);
+    announceDetailsStatus(status, copiesRubric
+        ? 'Reading your material and extracting the rubric…'
+        : 'Reading your material…');
+    const slowTimer = window.setTimeout(() => announceDetailsStatus(status, copiesRubric
+        ? 'Still working. Extracting a rubric can take up to a minute.'
+        : 'Still working. Longer material takes a little more time.'), 15_000);
+    const verySlowTimer = window.setTimeout(() => announceDetailsStatus(
+        status,
+        'Please keep this page open until it finishes.'
+    ), 60_000);
+
+    // Step 3: fill each editable lens; only the graded one takes the grid choice.
     let gridResult: FillResponse | undefined;
     try {
         const orderedTargets = [...targets].sort((left, right) => {
@@ -1470,7 +1488,24 @@ async function fillFromMaterial(context: RubricPageContext, status: HTMLElement,
         // after both are gone.
         announceDetailsStatus(status, message, 'error');
         throw error;
+    } finally {
+        window.clearTimeout(slowTimer);
+        window.clearTimeout(verySlowTimer);
+        // A successful fill reopens the page, which builds a fresh panel; this one matters
+        // only when the fill failed and the page stays.
+        sources.setBusy(false);
     }
+}
+
+/**
+ * showExtractingButton - a spinner and "Extracting…" in place of the generic busy label.
+ * The shared button runner restores the original label when the action settles.
+ */
+function showExtractingButton(button: HTMLButtonElement): void {
+    const spinner = document.createElement('span');
+    spinner.className = 'wf-spinner';
+    spinner.setAttribute('aria-hidden', 'true');
+    button.replaceChildren(spinner, document.createTextNode('Extracting…'));
 }
 
 /**
@@ -1770,11 +1805,13 @@ function renderRubricPage(
 
     // The material step opens for an assignment still waiting to be described; once the
     // description is complete it stays closed, so an approved rubric never looks unfinished.
-    const materialOpen = !describedComplete();
+    // A problem carried over from the last fill sits under the extract button, so step 1 opens to show it.
+    const materialNotice = notice?.tone === 'error' ? notice : undefined;
+    const materialOpen = !describedComplete() || Boolean(materialNotice);
     const sources = renderSourcesPanel(assignment.id, linguisticData.permissions.canEdit);
-    const materialBody = renderMaterialStep(sources, linguisticData.permissions.canEdit, notice, async (status) => {
+    const materialBody = renderMaterialStep(sources, linguisticData.permissions.canEdit, materialNotice, async (status, button) => {
         if (!context) throw new Error('The rubric page is still loading.');
-        await fillFromMaterial(context, status, sources);
+        await fillFromMaterial(context, status, sources, button);
     });
     const materialMeta = createText('span', '', 'wf-step-meta');
     const materialStep = document.createElement('div');
@@ -2234,7 +2271,8 @@ function renderRubricPage(
     refreshProgress();
     sources.onChange(() => refreshProgress());
 
-    if (notice) setWorkspaceMessage(notice.message, notice.tone);
+    // A success needs no action, so it is a toast rather than a banner that stays on the page.
+    if (notice?.tone === 'success') showSuccessToast(notice.message);
     refreshIcons();
 }
 
