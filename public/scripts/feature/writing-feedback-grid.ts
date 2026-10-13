@@ -20,7 +20,7 @@
  * @description: Renders and edits one rubric as a single criteria-by-levels table.
  */
 
-import { showConfirmModal } from '../ui/modal-overlay.js';
+import { showConfirmModal, showInfoModal } from '../ui/modal-overlay.js';
 import {
     RubricCell,
     RubricCriterion,
@@ -446,8 +446,39 @@ function authorshipControl(
         group.append(option);
     });
 
-    wrapper.append(caption, group);
+    const head = document.createElement('div');
+    head.className = 'wf-grid-authorship__head';
+    head.append(caption, authorshipHelpButton());
+    wrapper.append(head, group);
     return wrapper;
+}
+
+/**
+ * authorshipHelpButton - the small info button beside "Feedback written by".
+ *
+ * Explains, before staff choose, what EngE-AI can and cannot see in a submission, so a
+ * formatting row goes to course staff whatever its name. Available on read-only grids too,
+ * since it only explains.
+ */
+function authorshipHelpButton(): HTMLButtonElement {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'wf-grid-authorship__help';
+    button.setAttribute('aria-label', 'What EngE-AI can assess');
+    button.title = 'What EngE-AI can assess';
+    button.innerHTML = '<i data-feather="info" aria-hidden="true"></i>';
+    button.addEventListener('click', () => {
+        void showInfoModal(
+            'What EngE-AI can assess',
+            '<p>EngE-AI reads only the text of a submission. It can draft feedback on what the writing says '
+            + 'and how it says it, such as content, organization, and language.</p>'
+            + '<p>It cannot see formatting: fonts, spacing, margins, page layout, or how headings and references '
+            + 'are set out on the page. For a criterion about formatting, choose <strong>Course staff</strong>. '
+            + 'Staff then check it themselves and enter the feedback and score on the rubric.</p>'
+            + '<p>Whoever writes it, all feedback is reviewed by course staff before students see it.</p>'
+        );
+    });
+    return button;
 }
 
 /** Resolved action of the formatting warning's confirm button (a slug of its label). */

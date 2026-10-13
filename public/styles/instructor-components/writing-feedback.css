@@ -1504,10 +1504,9 @@
 }
 
 .wf-sources__rubric {
-    margin: 14px 0 0;
-    padding: 12px 0 0;
+    margin: 18px 0 0;
+    padding: 0;
     border: 0;
-    border-top: 1px solid var(--border-color);
 }
 
 /* Floated so the fieldset's top border runs above the question rather than through it. */
@@ -2459,6 +2458,39 @@
     gap: 4px;
     margin-top: 10px;
     padding-inline: var(--wf-cell-inset);
+}
+
+.wf-grid-authorship__head {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* 24px is the smallest comfortable target; the icon inside stays small beside an 11px caption. */
+.wf-grid-authorship__help {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.wf-grid-authorship__help:hover,
+.wf-grid-authorship__help:focus-visible {
+    background: var(--background-2);
+    color: var(--text-primary);
+}
+
+.wf-grid-authorship__help svg,
+.wf-grid-authorship__help .feather {
+    width: 14px;
+    height: 14px;
 }
 
 .wf-grid-authorship__label {
