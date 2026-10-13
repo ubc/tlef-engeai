@@ -176,3 +176,31 @@ export function renderGlobalRevisionEditor(
     );
     return editor;
 }
+
+/**
+ * renderRewriteGoal - read-only view of the goal the student gets with rewrite feedback.
+ *
+ * Uses the rewrite editor's own field pattern (label over a read-only textarea), so it
+ * reads as part of the block staff approve.
+ *
+ * @param goal - From rewriteGoalFor
+ * @returns Field-styled block matching the rewrite editor
+ */
+export function renderRewriteGoal(goal: { goal: string; action?: string; guidedQuestion?: string }): HTMLElement {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'wf-field wf-field--wide';
+    const label = document.createElement('label');
+    label.htmlFor = 'wf-global-rewrite-goal';
+    label.textContent = 'Rewrite goal';
+    const text = document.createElement('textarea');
+    text.id = 'wf-global-rewrite-goal';
+    text.readOnly = true;
+    text.rows = 3;
+    text.value = [
+        goal.goal,
+        ...(goal.action ? [`Next step: ${goal.action}`] : []),
+        ...(goal.guidedQuestion ? [`Ask yourself: ${goal.guidedQuestion}`] : [])
+    ].join('\n');
+    wrapper.append(label, text, createText('small', 'Sent with the rewrite feedback.'));
+    return wrapper;
+}

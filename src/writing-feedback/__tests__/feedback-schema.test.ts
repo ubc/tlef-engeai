@@ -51,7 +51,7 @@ function feedbackFor(
             questionScope: 'whole'
         }],
         internalFlags: [],
-        globalRevision: { diagnosisStatement: 'The text fits the genre.', whatToKeep: [], rewriteDirection: 'Keep the stages.', guidedQuestion: 'What does a reader need to know first?' }
+        globalRevision: { diagnosisStatement: 'The text fits the genre.', whatToKeep: [], rewriteDirection: 'Keep the stages.', guidedQuestion: 'What does a reader need to know first?', rewriteGoal: { skillTag: 'descriptive_report', goal: 'Rewrite as a report.', action: 'Start with a definition.', guidedQuestion: 'Which types will your reader need to tell apart?', questionScope: 'whole' } }
     };
 }
 

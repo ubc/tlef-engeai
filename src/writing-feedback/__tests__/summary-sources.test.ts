@@ -232,7 +232,7 @@ describe('applySummaryToResult', () => {
 
 describe('buildRedraftRun', () => {
     it('keeps the gate decision and rewrite block, so a redraft never flips the mode', () => {
-        const globalRevision = { diagnosisStatement: 'It explains.', whatToKeep: ['Sound'], rewriteDirection: 'Classify.' };
+        const globalRevision = { diagnosisStatement: 'It explains.', whatToKeep: ['Sound'], rewriteDirection: 'Classify.', rewriteGoal: { skillTag: 'descriptive_report', goal: 'Rewrite as a report.', action: 'Start with a definition.', guidedQuestion: 'Which types will your reader need?', questionScope: 'whole' as const } };
         const previous = run({ gateDecision: 'global_revision' });
         previous.result = { ...previous.result, gateDecision: 'global_revision', globalRevision };
         const built = buildRedraftRun(previous, {

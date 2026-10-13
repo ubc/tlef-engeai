@@ -7,7 +7,7 @@
  *
  * @author: @rdschrs
  * @date: 2026-07-18
- * @version: 1.0.0
+ * @version: 1.1.0
  * @description: Enforces rubric-driven output, exact evidence, and safe numeric mapping.
  */
 
@@ -15,7 +15,6 @@ import { z } from 'zod';
 import { modelAssessedCriteria } from './criterion-assessment';
 import type {
     CourseMaterialMention,
-    FeedbackMode,
     TextDiagnosis,
     WritingFeedbackResult,
     WritingGlossarySnapshot,
@@ -91,7 +90,10 @@ const globalRevisionSchema = z.object({
     rewriteDirection: z.string().min(1).max(1500),
     // Required (D-153): one question about the whole submission.
     guidedQuestion: z.string().min(1).max(400),
-    supportingExcerptIds: z.array(z.string().trim().min(1).max(40)).max(3).nullish()
+    supportingExcerptIds: z.array(z.string().trim().min(1).max(40)).max(3).nullish(),
+    // Required: every run carries the rewrite goal, so staff can switch to rewrite feedback
+    // on any submission without a new model call.
+    rewriteGoal: revisionGoalSchema
 });
 
 /** Why a schema cannot be built for a rubric the model is asked nothing about. */
@@ -426,19 +428,15 @@ function words(text: string): string {
  * guardStrengths - removes praise for language that shows the genre failure.
  *
  * @param result - Writer output, mutated in place
+ * Strengths are stored once for both modes: rewrite feedback never prints them (it prints
+ * `globalRevision.whatToKeep`), so they are not narrowed to transferable ones here.
+ *
  * @param diagnosis - Validated diagnosis
- * @param mode - Gate decision the strengths will be read under
  * @returns Staff flags to append to internal flags
  */
-export function guardStrengths(result: WritingFeedbackResult, diagnosis: TextDiagnosis, mode: FeedbackMode): string[] {
+export function guardStrengths(result: WritingFeedbackResult, diagnosis: TextDiagnosis): string[] {
     const contradicting = diagnosis.contradictingFeatures.map((feature) => words(feature.quote)).filter(Boolean);
     const before = result.strengths.length;
     result.strengths = result.strengths.filter((strength) => !contradicting.some((quote) => words(strength).includes(quote)));
-    const flags = result.strengths.length < before ? [STRENGTH_DROPPED_FLAG] : [];
-    if (mode === 'global_revision') {
-        const transferable = diagnosis.transferableStrengths.map((strength) => strength.text);
-        const kept = result.strengths.filter((strength) => transferable.some((text) => words(text) === words(strength)));
-        result.strengths = (kept.length ? kept : transferable).slice(0, 2);
-    }
-    return flags;
+    return result.strengths.length < before ? [STRENGTH_DROPPED_FLAG] : [];
 }

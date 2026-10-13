@@ -6,7 +6,7 @@
  *
  * @author: @rdschrs
  * @date: 2026-09-28
- * @version: 1.0.0
+ * @version: 1.1.0
  * @description: Fixed inputs and expected behaviour for the live Writing Feedback eval.
  */
 
@@ -100,7 +100,8 @@ export const EVAL_FIXTURES: EvalFixture[] = [
         id: 'dr-missing-classification',
         materials: 'lecture-notes',
         text: 'Volcanoes. A volcano is an opening in the Earth\'s crust through which molten rock, ash and gases escape. Volcanoes are found in many parts of the world, especially along the edges of tectonic plates. They can be very dangerous for people who live near them. Many volcanoes are famous, like Mount Fuji in Japan. Scientists study volcanoes to predict eruptions.',
-        expect: { mode: 'global_revision', stageStatuses: { identify: 'present', classify: 'missing' } }
+        // Two of three required stages fail: under 75%, so standard feedback naming the gap.
+        expect: { mode: 'standard', stageStatuses: { identify: 'present', classify: 'missing' }, firstGoalAddressesStage: 'classify' }
     },
     {
         id: 'dr-good',
@@ -125,5 +126,11 @@ export const EVAL_FIXTURES: EvalFixture[] = [
         materials: 'none',
         text: 'How Sound Works. Sound happens when an object vibrates. First, the vibrating object pushes on the air particles next to it. Then these particles bump into the particles beside them, and the vibration travels outward as a wave. After that, the wave reaches our ear and makes the eardrum vibrate. Finally, the brain turns these vibrations into what we hear.',
         expect: { mode: 'global_revision', flags: ['no_genre_material'] }
+    },
+    {
+        id: 'dr-mostly-missing',
+        materials: 'lecture-notes',
+        text: 'Batteries. Batteries are in a lot of things we use every day. My phone battery always runs out too fast. Some people say you should not charge your phone overnight. I think batteries will get better in the future because companies are working on it.',
+        expect: { mode: 'global_revision' }
     }
 ];

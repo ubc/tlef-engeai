@@ -217,6 +217,7 @@ export interface GlobalRevision {
     rewriteDirection: string;
     guidedQuestion?: string; // whole-submission Socratic question; required on new runs (D-153)
     supportingExcerptIds?: string[];
+    rewriteGoal?: { skillTag: string; goal: string; action?: string; guidedQuestion?: string; questionScope?: 'whole' | 'part' }; // required on new runs; absent before 2026-10-13
 }
 
 /** One coverage row on the rubric page. */

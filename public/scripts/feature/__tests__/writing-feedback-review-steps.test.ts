@@ -51,4 +51,13 @@ describe('needsModeRedraft', () => {
         expect(needsModeRedraft({ gateDecision: 'standard' }, 'standard')).toBe(false);
         expect(needsModeRedraft({}, 'standard')).toBe(false);
     });
+
+    it('does not redraft a new rewrite-gated run: its standard content is already stored', () => {
+        const run = { gateDecision: 'global_revision' as const, result: { globalRevision: { rewriteGoal: { goal: 'g' } } } };
+        expect(needsModeRedraft(run, 'standard')).toBe(false);
+    });
+
+    it('still redrafts a legacy rewrite-gated run with no rewrite goal', () => {
+        expect(needsModeRedraft({ gateDecision: 'global_revision', result: { globalRevision: {} } }, 'standard')).toBe(true);
+    });
 });

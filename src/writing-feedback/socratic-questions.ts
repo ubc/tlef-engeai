@@ -7,7 +7,7 @@
  *
  * @author: @rdschrs
  * @date: 2026-10-05
- * @version: 1.0.0
+ * @version: 1.1.0
  * @description: Pure question validation plus a one-retry generation gate.
  */
 
@@ -59,6 +59,28 @@ export function validateSocraticQuestions(
         if (!question) problems.push('globalRevision has no guidedQuestion.');
         else problems.push(...questionProblems('globalRevision', question));
     }
+    return problems;
+}
+
+/**
+ * validateRewriteGoal - the rules a new run's rewrite goal must meet.
+ *
+ * The rewrite goal is about the whole submission, so its question must be scoped `whole`.
+ *
+ * @param goal - `globalRevision.rewriteGoal` as parsed from the model
+ * @returns Problems for the corrective retry; empty when valid. Never contains student text.
+ */
+export function validateRewriteGoal(
+    goal?: { action?: string | null; guidedQuestion?: string | null; questionScope?: string | null } | null
+): string[] {
+    if (!goal) return ['globalRevision has no rewriteGoal.'];
+    const label = 'globalRevision.rewriteGoal';
+    const problems: string[] = [];
+    if (!goal.action?.trim()) problems.push(`${label} has no action.`);
+    const question = goal.guidedQuestion?.trim();
+    if (!question) problems.push(`${label} has no guidedQuestion.`);
+    else problems.push(...questionProblems(label, question));
+    if (goal.questionScope !== 'whole') problems.push(`${label} needs questionScope "whole".`);
     return problems;
 }
 

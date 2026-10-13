@@ -35,3 +35,14 @@ describe('clearing the rewrite question', () => {
         expect(view.globalRevision?.guidedQuestion).toBe('What does your reader need first?');
     });
 });
+
+describe('rewrite goal under staff edits (2026-10-13)', () => {
+    const rewriteGoal = { skillTag: 'descriptive_report', goal: 'Rewrite as a report.', action: 'Start with a definition.', guidedQuestion: 'Which types will your reader need?', questionScope: 'whole' };
+    const withGoal = { ...run, result: { ...run.result, globalRevision: { ...run.result.globalRevision!, rewriteGoal } } } as unknown as WritingFeedbackRun;
+
+    it('keeps the model rewrite goal when staff edit the rest of the block', () => {
+        const view = resolveStudentView(withGoal, withEdit({ diagnosisStatement: 'STAFF', whatToKeep: [], rewriteDirection: 'r2' }), []);
+        expect(view.globalRevision?.diagnosisStatement).toBe('STAFF');
+        expect(view.globalRevision?.rewriteGoal).toEqual(rewriteGoal);
+    });
+});

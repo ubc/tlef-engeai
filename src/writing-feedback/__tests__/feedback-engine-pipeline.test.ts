@@ -57,7 +57,8 @@ function writer(criteria: Array<{ id: string }>, levelId: string, excerptId: str
         strengths: ['Clear sequencing: "First, the vibrating object pushes on the air particles next to it."'],
         revisionGoals: goals ?? [{ skillTag: 'identify', goal: 'Define sound formally.', action: 'Name the class sound belongs to.', guidedQuestion: 'What group of things does sound belong to?', questionScope: 'whole' }],
         internalFlags: [],
-        globalRevision: { diagnosisStatement: 'The text explains a process.', whatToKeep: ['Sound'], rewriteDirection: 'Classify the types of sound.', guidedQuestion: 'What should your reader learn about sound first?', supportingExcerptIds: null }
+        globalRevision: { diagnosisStatement: 'The text explains a process.', whatToKeep: ['Sound'], rewriteDirection: 'Classify the types of sound.', guidedQuestion: 'What should your reader learn about sound first?', supportingExcerptIds: null,
+            rewriteGoal: { skillTag: 'descriptive_report', goal: 'Rewrite as a report.', action: 'Start with what sound is.', guidedQuestion: 'Which kinds of sound will your reader need to tell apart?', questionScope: 'whole' } }
     };
 }
 
@@ -123,6 +124,19 @@ describe('RubricWritingFeedbackEngine pipeline', () => {
         expect(generated.revisionGoals.some((goal) => goal.questionScope === 'whole')).toBe(true);
         expect(generated.revisionGoals.every((goal) => goal.guidedQuestion?.endsWith('?'))).toBe(true);
         expect(generated.globalRevision?.guidedQuestion).toMatch(/\?$/);
+        expect(generated.globalRevision?.rewriteGoal?.questionScope).toBe('whole');
+        expect(generated.globalRevision?.rewriteGoal?.action).toBeTruthy();
+    });
+
+    it('sends the same writer system prompt whatever the gate decides', async () => {
+        const writerPrompt = async (fit: 'fits' | 'mismatch') => {
+            const send = fakeLlm(fit, () => null);
+            await new RubricWritingFeedbackEngine({ sendStructuredConversation: send } as unknown as LLMModule, new InMemoryMaterialRetriever())
+                .generate({ assignment, verifiedText: text });
+            const call = send.mock.calls.find((entry) => entry[2].structuredOutputName === 'writing_feedback_v2')!;
+            return call[0][0].content;
+        };
+        expect(await writerPrompt('mismatch')).toBe(await writerPrompt('fits'));
     });
 
     it('runs diagnosis first and gates a mismatch to global revision', async () => {
@@ -136,9 +150,15 @@ describe('RubricWritingFeedbackEngine pipeline', () => {
         expect(names).toEqual(['text_diagnosis', 'sfl_analysis', 'writing_feedback_v2']);
         expect(generated.gateDecision).toBe('global_revision');
         expect(generated.runTrace?.gateDecision).toBe('global_revision');
+        // The gate no longer shapes the writer: standard goals are stored on a rewrite-gated run.
+        expect(generated.revisionGoals.length).toBeGreaterThanOrEqual(1);
+        expect(generated.globalRevision?.rewriteGoal).toBeDefined();
         expect(generated.runTrace?.textDiagnosis?.realizedGenre).toBe('explanation');
         expect(generated.runTrace?.contrastExcerpts?.length).toBeGreaterThan(0);
-        expect(generated.strengths).toEqual(['Sound is a strong entity to classify.']);
+        // Strengths are no longer narrowed to transferable ones on a rewrite-gated run (rewrite
+        // feedback prints whatToKeep); the contradicting-feature guard still drops praise of
+        // the explanation's sequencing.
+        expect(generated.strengths).toEqual([]);
     });
 
     it('gives the analyzer the genre excerpts and the diagnosis', async () => {

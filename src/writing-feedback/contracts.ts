@@ -7,7 +7,7 @@
  *
  * @author: @rdschrs
  * @date: 2026-07-22
- * @version: 1.0.0
+ * @version: 1.1.0
  * @description: Owns the staff-only Writing Feedback domain and port contracts.
  */
 
@@ -153,6 +153,8 @@ export interface GlobalRevision {
     /** Whole-submission Socratic question. Required on new runs (D-153). */
     guidedQuestion?: string;
     supportingExcerptIds?: string[];
+    /** The one goal the student gets in rewrite mode. Required on new runs; absent on runs stored before 2026-10-13. */
+    rewriteGoal?: RevisionGoal;
 }
 
 /** What a retrieval need is about; also the coverage row type. */

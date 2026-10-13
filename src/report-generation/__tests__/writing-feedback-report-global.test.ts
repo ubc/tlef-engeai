@@ -134,3 +134,23 @@ describe('rewrite question (D-153)', () => {
         expect(text).not.toContain('Ask yourself');
     });
 });
+
+describe('rewrite goal from the rewrite block (2026-10-13)', () => {
+    const rewriteGoal = { skillTag: 'descriptive_report', goal: 'REWRITEGOALMARKER rewrite as a report.', action: 'Start with a definition.', guidedQuestion: 'Which types will your reader need?', questionScope: 'whole' as const };
+
+    it('prints the stored rewrite goal when staff force rewrite on a standard run', async () => {
+        const standardRun = { ...feedback({ skillTag: 'theme', goal: 'STANDARDGOALMARKER improve theme.', action: 'Move the entity.' }), gateDecision: 'standard' as const };
+        const text = searchableText(await service.render({ assignment, submission, feedback: standardRun, mode: 'global_revision', globalRevision: { ...globalRevision, rewriteGoal } }));
+        expect(text).toContain('REWRITEGOALMARKER');
+        expect(text).not.toContain('STANDARDGOALMARKER');
+    });
+
+    it('prints the standard goals, not the rewrite goal, when staff switch a rewrite-gated run to standard', async () => {
+        const gatedRun = { ...feedback({ skillTag: 'classify', goal: 'STANDARDGOALMARKER add the types.', action: 'Name the three types.' }), gateDecision: 'global_revision' as const };
+        const text = searchableText(await service.render({ assignment, submission, feedback: gatedRun, mode: 'standard', globalRevision: { ...globalRevision, rewriteGoal } }));
+        expect(text).toContain('STANDARDGOALMARKER');
+        expect(text).toContain('EXPLANATIONMARKER');
+        expect(text).not.toContain('REWRITEGOALMARKER');
+        expect(text).not.toContain('What to do next: rewrite');
+    });
+});

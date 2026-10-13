@@ -205,4 +205,10 @@ describe('whole-text diagnosis on the review page', () => {
         expect(source).toContain('renderGlobalRevisionEditor(');
         expect(source).toContain('setGlobalRevision(');
     });
+
+    it('shows the rewrite goal staff approve beside the rewrite block, and swaps it with the goals', () => {
+        expect(source).toContain('renderRewriteGoal(rewriteGoal)');
+        expect(source).toContain('rewriteGoalFor(run)');
+        expect(source).toContain('goalsSection.hidden = next === \'global_revision\'');
+    });
 });

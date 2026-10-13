@@ -124,3 +124,29 @@ describe('socraticQuestions check (D-153)', () => {
         )).socraticQuestions.status).toBe('fail');
     });
 });
+
+describe('bothModes', () => {
+    const goals = [{ skillTag: 'identify', goal: 'Define sound.', action: 'Name its class.', guidedQuestion: 'What group of things does sound belong to?', questionScope: 'whole' }];
+    const block = { diagnosisStatement: 'd', whatToKeep: [], rewriteDirection: 'r', guidedQuestion: 'What does your reader need first?' };
+    const rewriteGoal = { skillTag: 'descriptive_report', goal: 'Rewrite.', action: 'Start with a definition.', guidedQuestion: 'Which types will your reader need?', questionScope: 'whole' };
+
+    it('passes when standard goals and a complete rewrite block are stored', () => {
+        const checks = byName({ verifiedText: text, result: { gateDecision: 'standard', revisionGoals: goals, globalRevision: { ...block, rewriteGoal } } });
+        expect(checks.bothModes.status).toBe('pass');
+    });
+
+    it('fails a run without a rewrite goal, whatever its gate decision', () => {
+        const checks = byName({ verifiedText: text, result: { gateDecision: 'standard', revisionGoals: goals, globalRevision: block } });
+        expect(checks.bothModes.status).toBe('fail');
+    });
+
+    it('skips technical-lens output, which has no gate and no rewrite mode', () => {
+        const checks = byName({ verifiedText: text, result: { revisionGoals: goals } });
+        expect(checks.bothModes.status).toBe('skip');
+    });
+
+    it('fails a run with no standard goals', () => {
+        const checks = byName({ verifiedText: text, result: { gateDecision: 'global_revision', revisionGoals: [], globalRevision: { ...block, rewriteGoal } } });
+        expect(checks.bothModes.status).toBe('fail');
+    });
+});

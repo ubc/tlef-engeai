@@ -25,13 +25,14 @@
  *
  * @author: @rdschrs
  * @date: 2026-07-22
- * @version: 1.0.0
+ * @version: 1.1.0
  * @description: Renders student-safe summary and interactive annotated PDF sections.
  */
 
 import { randomUUID } from 'crypto';
 import PDFDocument from 'pdfkit';
 import { renderRubricGrid } from './rubric-grid-renderer';
+import { resolveRewriteGoal } from '../writing-feedback/feedback-gate';
 import type {
     WritingFeedbackPdfService,
     WritingFeedbackResult,
@@ -269,12 +270,11 @@ function renderGlobalRevisionSections(
     body(doc).text(globalRevision.rewriteDirection.trim(), { lineGap: 3 });
     const blockQuestion = globalRevision.guidedQuestion?.trim();
     if (blockQuestion) body(doc).text(`Ask yourself: ${blockQuestion}`, { lineGap: 3 });
-    // Only a rewrite-gated run's writer produced a rewrite goal; a standard run's first goal
-    // is about local revision, which rewrite feedback deliberately withholds. The goal's own
-    // question is left off when the block already asks one, so the student reads it once.
-    if (feedback.gateDecision === 'global_revision') {
-        renderRevisionGoals(doc, feedback.revisionGoals.slice(0, 1).map((goal) => (blockQuestion ? { ...goal, guidedQuestion: undefined } : goal)));
-    }
+    // The rewrite goal comes from the rewrite block on new runs, or from a legacy rewrite-gated
+    // run's first goal; a standard goal is never shown as one. Its question is left off when
+    // the block already asks one, so the student reads it once.
+    const rewriteGoal = resolveRewriteGoal(feedback, globalRevision);
+    if (rewriteGoal) renderRevisionGoals(doc, [blockQuestion ? { ...rewriteGoal, guidedQuestion: undefined } : rewriteGoal]);
     if (finalAssessment) {
         const gradedRubric = finalAssessment.lens === 'technical'
             ? technicalRubric ?? assignment.technicalRubric

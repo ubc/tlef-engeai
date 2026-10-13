@@ -75,15 +75,15 @@ describe('guardStrengths', () => {
 
     it('drops a strength quoting a contradicting feature and flags it', () => {
         const draft = { ...result([]), strengths: ['Clear sequencing in "First, the object pushes the air."', 'Accurate terms.'] };
-        const flags = guardStrengths(draft, diagnosis, 'standard');
+        const flags = guardStrengths(draft, diagnosis);
         expect(draft.strengths).toEqual(['Accurate terms.']);
         expect(flags).toEqual([STRENGTH_DROPPED_FLAG]);
     });
 
-    it('in global mode keeps only transferable strengths, falling back to the diagnosis', () => {
-        const draft = { ...result([]), strengths: ['Good use of temporal markers.'] };
-        guardStrengths(draft, diagnosis, 'global_revision');
-        expect(draft.strengths).toEqual(['Sound is an excellent entity to classify.']);
+    it('never replaces strengths with transferable ones; the mode is applied at display', () => {
+        const draft = { ...result([]), strengths: ['Accurate terms.'] };
+        guardStrengths(draft, diagnosis);
+        expect(draft.strengths).toEqual(['Accurate terms.']);
     });
 });
 
@@ -101,7 +101,10 @@ describe('buildFeedbackSchema', () => {
         strengths: [],
         revisionGoals: [{ skillTag: 'identify', goal: 'g', action: 'Add a class word.', guidedQuestion: 'What group does it belong to?', questionScope: 'whole' }],
         internalFlags: [],
-        globalRevision: { diagnosisStatement: 'd', whatToKeep: [], rewriteDirection: 'r', guidedQuestion: 'What does the genre ask?', supportingExcerptIds: null }
+        globalRevision: {
+            diagnosisStatement: 'd', whatToKeep: [], rewriteDirection: 'r', guidedQuestion: 'What does the genre ask?', supportingExcerptIds: null,
+            rewriteGoal: { skillTag: 'descriptive_report', goal: 'Rewrite as a report.', action: 'Start with a definition.', guidedQuestion: 'What should your reader learn first?', questionScope: 'whole' }
+        }
     };
 
     it('accepts a goal with an action, a question and a scope', () => {
@@ -114,6 +117,12 @@ describe('buildFeedbackSchema', () => {
 
     it('rejects a goal without an action', () => {
         expect(schema.safeParse({ ...base, revisionGoals: [{ skillTag: 's', goal: 'g', guidedQuestion: 'q' }] }).success).toBe(false);
+    });
+
+    it('requires a rewrite goal in the global block', () => {
+        const { rewriteGoal, ...withoutGoal } = base.globalRevision;
+        void rewriteGoal;
+        expect(schema.safeParse({ ...base, globalRevision: withoutGoal }).success).toBe(false);
     });
 
     it('requires the global block', () => {

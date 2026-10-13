@@ -8,7 +8,7 @@
  *
  * @author: @rdschrs
  * @date: 2026-08-24
- * @version: 1.0.0
+ * @version: 1.1.0
  * @description: Owns the Writing Feedback V2 SFL rule/source allowlists.
  */
 
@@ -24,7 +24,7 @@ import {
 export const SFL_ANALYZER_PROMPT_VERSION = 'sfl-analyzer-v3.0.0';
 
 /** Feedback-writer prompt contract version stamped on V2 linguistic feedback runs. */
-export const SFL_WRITER_PROMPT_VERSION = 'sfl-feedback-writer-v3.2.0';
+export const SFL_WRITER_PROMPT_VERSION = 'sfl-feedback-writer-v4.0.0';
 
 /** Whole-text diagnosis prompt contract version (recorded in every run trace). */
 export const TEXT_DIAGNOSIS_PROMPT_VERSION = 'text-diagnosis-v1.0.0';

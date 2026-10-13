@@ -71,8 +71,8 @@ import { describeApprovalBlocker, type GradeProgress } from './writing-feedback-
 import { changedLenses, decideNextAction, needsModeRedraft, stepBarState, type ReviewStep } from './writing-feedback-review-steps.js';
 import { SummaryEditor, seedSummaryText, type SummaryBaseline } from './writing-feedback-summary-editor.js';
 import { fingerprintAnnotations } from './writing-feedback-annotation-fingerprint.js';
-import { diagnosisBannerView, resolvedMode } from './writing-feedback-diagnosis-model.js';
-import { renderDiagnosisBanner, renderGlobalRevisionEditor } from './writing-feedback-diagnosis.js';
+import { diagnosisBannerView, resolvedMode, rewriteGoalFor } from './writing-feedback-diagnosis-model.js';
+import { renderDiagnosisBanner, renderGlobalRevisionEditor, renderRewriteGoal } from './writing-feedback-diagnosis.js';
 
 function latestReview(submission: Submission): ReviewRevision | undefined {
     return submission.reviews?.[submission.reviews.length - 1];
@@ -1610,6 +1610,9 @@ function renderSummaryLens(input: {
         const seed = globalSeed ?? edit?.globalRevision ?? run.result.globalRevision ?? { diagnosisStatement: '', whatToKeep: [], rewriteDirection: '' };
         editor.seedGlobalRevision('linguistic', seed);
         globalSection.append(renderGlobalRevisionEditor(seed, true, (draft) => editor.setGlobalRevision('linguistic', draft)));
+        // The goal the student gets with rewrite feedback, shown so staff approve exactly it.
+        const rewriteGoal = rewriteGoalFor(run);
+        if (rewriteGoal) globalSection.append(renderRewriteGoal(rewriteGoal));
         element.append(globalSection);
         setMode = (next) => {
             globalSection.hidden = next !== 'global_revision';

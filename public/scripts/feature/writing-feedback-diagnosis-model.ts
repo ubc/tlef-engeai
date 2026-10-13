@@ -34,6 +34,20 @@ export function resolvedMode(run: FeedbackRun | null, override?: FeedbackMode): 
 }
 
 /**
+ * rewriteGoalFor - the rewrite goal the student receives in rewrite mode.
+ *
+ * Mirrors the server's `resolveRewriteGoal`: the stored rewrite goal, else a legacy
+ * rewrite-gated run's first goal; a standard run's goal is never shown as one.
+ *
+ * @param run - Latest writing-lens run
+ * @returns The rewrite goal, or undefined
+ */
+export function rewriteGoalFor(run: FeedbackRun): FeedbackRun['result']['revisionGoals'][number] | undefined {
+    if (run.result.globalRevision?.rewriteGoal) return run.result.globalRevision.rewriteGoal;
+    return (run.gateDecision ?? run.result.gateDecision) === 'global_revision' ? run.result.revisionGoals[0] : undefined;
+}
+
+/**
  * diagnosisBannerView - staff-facing banner content.
  *
  * @param run - Latest linguistic run

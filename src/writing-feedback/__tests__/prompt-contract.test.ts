@@ -38,46 +38,55 @@ describe('analyzer prompt', () => {
 
 describe('writer prompt', () => {
     it('states the pedagogy before the constraints', () => {
-        const prompt = buildWritingFeedbackSystemPrompt(assignment, 'standard');
+        const prompt = buildWritingFeedbackSystemPrompt(assignment);
         expect(prompt.indexOf('Pedagogy')).toBeGreaterThan(-1);
         expect(prompt.indexOf('Pedagogy')).toBeLessThan(prompt.indexOf('Constraints'));
     });
 
     it('keeps the non-negotiable invariants', () => {
-        const prompt = buildWritingFeedbackSystemPrompt(assignment, 'standard');
+        const prompt = buildWritingFeedbackSystemPrompt(assignment);
         expect(prompt).toMatch(/copied exactly/);
         expect(prompt).toMatch(/Do not write or rewrite sentences/);
         expect(prompt).toMatch(/supportingExcerptId/);
         expect(prompt).toMatch(/action/);
     });
 
-    it('switches method in global mode', () => {
-        const standard = buildWritingFeedbackSystemPrompt(assignment, 'standard');
-        const global = buildWritingFeedbackSystemPrompt(assignment, 'global_revision');
-        expect(global).toContain('This text needs a rewrite');
-        expect(standard).not.toContain('This text needs a rewrite');
-        expect(global).toContain('<worked_example_global>');
+    it('asks for standard feedback and the rewrite block in every run, never naming the mode', () => {
+        const prompt = buildWritingFeedbackSystemPrompt(assignment);
+        expect(prompt).not.toContain('This text needs a rewrite');
+        expect(prompt).toContain('Always fill globalRevision');
+        expect(prompt).toContain('globalRevision.rewriteGoal');
+        expect(prompt).toContain('<worked_example_global>');
+        expect(prompt).not.toMatch(/student will see only the rewrite/i);
+    });
+
+    it('says the rewrite goal does not count toward the whole-submission question', () => {
+        expect(buildWritingFeedbackSystemPrompt(assignment)).toMatch(/at least one of these revision goals has questionScope "whole"; the rewrite goal does not count/i);
+    });
+
+    it('points the first goal at a weak or missing section', () => {
+        expect(buildWritingFeedbackSystemPrompt(assignment)).toMatch(/weak or missing, your first revision goal addresses it/);
     });
 
 it('writes for the student in plain language, not in SFL terms', () => {
-        const prompt = buildWritingFeedbackSystemPrompt(assignment, 'standard');
+        const prompt = buildWritingFeedbackSystemPrompt(assignment);
         expect(prompt).not.toMatch(/light SFL terms/);
         expect(prompt).toContain('<student_reader>');
         expect(prompt).toMatch(/Never copy them\. Translate/);
     });
 
     it('offers the approved stage labels as known terms', () => {
-        const prompt = buildWritingFeedbackSystemPrompt(assignment, 'standard');
+        const prompt = buildWritingFeedbackSystemPrompt(assignment);
         expect(prompt).toMatch(/Known course terms you may use:.*"General statement"/);
     });
 
     it('shows an abstract comment as one to avoid', () => {
-        const prompt = buildWritingFeedbackSystemPrompt(assignment, 'standard');
+        const prompt = buildWritingFeedbackSystemPrompt(assignment);
         expect(prompt).toMatch(/Abstract annotation \(avoid\)/);
     });
 
     it('names the weakest stage first on a partial fit', () => {
-        expect(buildWritingFeedbackSystemPrompt(assignment, 'standard')).toMatch(/first revision goal.*weakest stage/i);
+        expect(buildWritingFeedbackSystemPrompt(assignment)).toMatch(/first revision goal.*weakest stage/i);
     });
 });
 
@@ -86,7 +95,7 @@ describe('Socratic questions in the writer prompt (D-153)', () => {
         const prompt = buildWritingFeedbackSystemPrompt(buildEvalAssignment());
         expect(prompt).toContain('every revision goal has exactly one guidedQuestion and a questionScope');
         expect(prompt).not.toContain('Add a guidedQuestion only when it genuinely helps');
-        const global = buildWritingFeedbackSystemPrompt(buildEvalAssignment(), 'global_revision');
-        expect(global).toContain('globalRevision.guidedQuestion');
+        expect(prompt).toContain('globalRevision.guidedQuestion');
+        expect(prompt).toContain('globalRevision.rewriteGoal');
     });
 });

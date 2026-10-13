@@ -8,6 +8,7 @@ import {
     readAgainLabel,
     releaseHeldBack,
     resolvedMode,
+    rewriteGoalFor,
     showReadAgain,
     splitHeldBack
 } from '../writing-feedback-diagnosis-model';
@@ -114,5 +115,21 @@ describe('splitHeldBack on a standard run switched to rewrite mode', () => {
         const split = splitHeldBack(seeds, 'global_revision');
         expect(split.heldBack.map((item) => item.id)).toEqual(['s1']);
         expect(split.visible.map((item) => item.id)).toEqual(['s2', 'st']);
+    });
+});
+
+describe('rewriteGoalFor', () => {
+    const goal = { skillTag: 'descriptive_report', goal: 'REWRITE', action: 'a', guidedQuestion: 'q?', questionScope: 'whole' as const };
+
+    it('reads the stored rewrite goal on any run', () => {
+        const stored = { gateDecision: 'standard', result: { revisionGoals: [{ skillTag: 's', goal: 'STANDARD' }], globalRevision: { diagnosisStatement: 'd', whatToKeep: [], rewriteDirection: 'r', rewriteGoal: goal } } } as unknown as FeedbackRun;
+        expect(rewriteGoalFor(stored)?.goal).toBe('REWRITE');
+    });
+
+    it('falls back to the first goal only on a legacy rewrite-gated run', () => {
+        const legacy = { gateDecision: 'global_revision', result: { revisionGoals: [{ skillTag: 's', goal: 'FIRST' }] } } as unknown as FeedbackRun;
+        const standard = { gateDecision: 'standard', result: { revisionGoals: [{ skillTag: 's', goal: 'FIRST' }] } } as unknown as FeedbackRun;
+        expect(rewriteGoalFor(legacy)?.goal).toBe('FIRST');
+        expect(rewriteGoalFor(standard)).toBeUndefined();
     });
 });

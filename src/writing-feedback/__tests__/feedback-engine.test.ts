@@ -230,7 +230,8 @@ describe('RubricWritingFeedbackEngine generic rubric contract', () => {
                 questionScope: 'whole'
             }],
             internalFlags: [],
-            courseMaterialMentions: [mention]
+            courseMaterialMentions: [mention],
+            globalRevision: { diagnosisStatement: 'd', whatToKeep: [], rewriteDirection: 'r', guidedQuestion: 'What does the reader need first?', rewriteGoal: { skillTag: 'genre', goal: 'Rewrite as the target genre.', action: 'Write the first stage first.', guidedQuestion: 'Which section should your reader meet first?', questionScope: 'whole' } }
         };
         const sendStructuredConversation = routedLlm(assignment, analysis, writerResult);
         const llm = { sendStructuredConversation } as unknown as LLMModule;
@@ -295,7 +296,8 @@ describe('RubricWritingFeedbackEngine generic rubric contract', () => {
             })),
             strengths: [],
             revisionGoals: [],
-            internalFlags: []
+            internalFlags: [],
+            globalRevision: { diagnosisStatement: 'd', whatToKeep: [], rewriteDirection: 'r', guidedQuestion: 'What does the reader need first?', rewriteGoal: { skillTag: 'genre', goal: 'Rewrite as the target genre.', action: 'Write the first stage first.', guidedQuestion: 'Which section should your reader meet first?', questionScope: 'whole' } }
         };
         const sendStructuredConversation = routedLlm(assignment, analysis, writerResult);
         const llm = { sendStructuredConversation } as unknown as LLMModule;
@@ -370,7 +372,7 @@ describe('staff-assessed criteria are withheld from generation', () => {
             strengths: [],
             revisionGoals: [{ skillTag: 'x', goal: 'Revise.', action: 'Start with the weakest passage.', guidedQuestion: 'Which passage?', questionScope: 'whole' }],
             internalFlags: [],
-            globalRevision: { diagnosisStatement: 'd', whatToKeep: [], rewriteDirection: 'r', guidedQuestion: 'What does the reader need first?' }
+globalRevision: { diagnosisStatement: 'd', whatToKeep: [], rewriteDirection: 'r', guidedQuestion: 'What does the reader need first?', rewriteGoal: { skillTag: 'genre', goal: 'Rewrite as the target genre.', action: 'Write the first stage first.', guidedQuestion: 'Which section should your reader meet first?', questionScope: 'whole' } }
         };
 
         expect(schema.safeParse(result).success).toBe(true);
