@@ -323,6 +323,7 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    padding-bottom: var(--course-summary-fab-clearance, 0px);
 }
 
 .system-prompt-panel.hidden,

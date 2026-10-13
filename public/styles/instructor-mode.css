@@ -646,6 +646,14 @@ body {
     display: none;
 }
 
+/*
+ * While the button is showing, scrolling views add this to their bottom padding so their last
+ * content can scroll clear of it: button size + bottom offset + a small gap.
+ */
+body:has(.course-summary-summon-fab:not(.course-summary-fab-hidden)) {
+    --course-summary-fab-clearance: calc(3.25rem + 1.25rem + 0.75rem);
+}
+
 /* Hide instructor sidebar during onboarding */
 .onboarding-active .instructor-sidebar {
     display: none;
@@ -671,6 +679,11 @@ body {
  * used while a modal is open anyway, so it steps aside until the modal closes.
  */
 body:has(.modal-overlay.show, .upload-modal-overlay.show) .course-summary-summon-fab {
+    display: none;
+}
+
+/* Hidden on the chat page, where it would cover the message composer and send button */
+body:has(#chat-footer) .course-summary-summon-fab {
     display: none;
 }
 

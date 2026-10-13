@@ -172,10 +172,10 @@
     min-height: fit-content;
 }
 
-.chat-title { 
-    font-weight: 450; 
-    color: var(--text-primary); 
-    margin-right: auto; 
+.chat-title {
+    font-weight: 450;
+    color: var(--text-primary);
+    margin: 0 auto 0 0; /* also clears the default h1 margin on #chat-title */
     font-size: 0.9rem;
     min-width: 0;
     overflow: hidden;
@@ -203,7 +203,11 @@
 .message-area {
     flex-grow: 1;
     width: 100%; 
-    padding: 0 max(16px, calc((100% - 900px) / 2)) 160px;
+    /* Same width and side gutter as .chat-footer-content so bubbles line up with the composer.
+       The right side subtracts the scrollbar width (set by ChatManager) but keeps 8px for the bubble tail. */
+    padding: 0 max(8px, calc(max(16px, (100% - 820px) / 2) - var(--message-area-scrollbar-width, 0px))) 160px max(16px, calc((100% - 820px) / 2));
+    margin: 0;
+    list-style: none;
     display: flex;
     flex-direction: column;
     gap: 1rem;
@@ -232,14 +236,41 @@
 
 .message {
     font-size: 0.85rem;
-    padding: 0.5rem 3rem;
-    border-radius: 12px;
     max-width: 100%;
     line-height: 1.5;
     overflow-wrap: anywhere;
     word-break: break-word;
     overflow-x: visible;
     position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+.message .message-heading {
+    margin: 0 0 4px;
+    padding: 0 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    line-height: 1.3;
+    color: var(--text-secondary);
+}
+
+/* Bubble with a small tail on the top corner nearest the heading */
+.message .message-bubble {
+    position: relative;
+    max-width: 100%;
+    min-width: 0;
+    padding: 0.6rem 1rem;
+    border-radius: 16px;
+}
+
+.message .message-bubble::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    width: 12px;
+    height: 12px;
+    background: inherit;
 }
 
 .message .message-content { 
@@ -247,8 +278,9 @@
     line-height: 1.5;
 }
 
-.message .message-timestamp { 
+.message .message-actions { 
     margin-top: 4px; 
+    padding: 0 4px;
     font-size: 0.7rem;
     display: flex;
     align-items: center;
@@ -256,27 +288,43 @@
     gap: 5px;
 }
 
-.message .message-timestamp .feather {
+.message .message-actions .feather {
     width: 12px;
     height: 12px;
 }
 
-.message.user-message .message-timestamp {
-    color: #ffffff;
+.user-message { 
+    align-self: flex-end; 
+    align-items: flex-end;
+    max-width: 80%;
 }
 
-.user-message { 
+.user-message .message-bubble {
     background-color: #346c09; 
     color: white; 
-    align-self: flex-end; 
-    border-bottom-right-radius: 4px; 
-    margin: 0 3rem;
+    border-top-right-radius: 0;
+}
+
+.user-message .message-bubble::before {
+    right: -6px;
+    clip-path: polygon(0 0, 100% 0, 0 100%);
 }
 
 .bot-message { 
-    margin: 15px 0 0 0;
+    align-self: flex-start; 
+    align-items: flex-start;
+    max-width: 100%;
     color: var(--text-primary); 
-    align-self: stretch; 
+}
+
+.bot-message .message-bubble {
+    background-color: var(--bot-message-bg, #f1f1f1);
+    border-top-left-radius: 0;
+}
+
+.bot-message .message-bubble::before {
+    left: -6px;
+    clip-path: polygon(0 0, 100% 0, 100% 100%);
 }
 
 /* ======== MESSAGE ACTIONS STYLES ========== */
@@ -327,18 +375,17 @@
     height: 18px; 
 }
 
-/* ======== TIMESTAMP ACTIONS STYLES ========== */
+/* ======== MESSAGE FOOTER ACTIONS STYLES ========== */
 
-.message .message-timestamp .timestamp-actions {
+.message .message-actions .message-action-group {
     display: inline-flex;
     align-items: center;
-    margin-left: 5px;
     color: inherit;
     font-size: inherit;
     gap: 5px;
 }
 
-.message .message-timestamp .timestamp-action-btn {
+.message .message-actions .message-action-btn {
     background: transparent;
     border: none;
     padding: 0;
@@ -351,31 +398,31 @@
     align-items: center;
 }
 
-.message .message-timestamp .timestamp-action-btn:hover,
-.message .message-timestamp .timestamp-action-btn:focus {
+.message .message-actions .message-action-btn:hover,
+.message .message-actions .message-action-btn:focus {
     color: var(--color-eng-red);
     outline: none;
 }
 
-.message.user-message .message-timestamp .pin-action-btn:hover,
-.message.user-message .message-timestamp .pin-action-btn:focus {
+.message.user-message .message-actions .pin-action-btn:hover,
+.message.user-message .message-actions .pin-action-btn:focus {
     color: var(--color-eng-red);
 }
 
-.message .message-timestamp .timestamp-action-btn + .timestamp-action-btn {
+.message .message-actions .message-action-btn + .message-action-btn {
     margin-left: 10px;
 }
 
-.message .message-timestamp .timestamp-action-btn .feather { 
+.message .message-actions .message-action-btn .feather { 
     width: 12px; 
     height: 12px; 
 }
 
-.message .message-timestamp .timestamp-action-btn .pinned { 
+.message .message-actions .message-action-btn .pinned { 
     color: var(--pinned-color); 
 }
 
-.message .message-timestamp .timestamp-action-label {
+.message .message-actions .message-action-label {
     font-size: 0.7rem;
 }
 
@@ -443,9 +490,11 @@
 .conversation-mode-wrap {
     position: relative;
     flex: 0 0 auto;
+    display: flex; /* no line box around the trigger, so it centres level with the send button */
 }
 
 .conversation-mode-trigger{
+    font-family: inherit;
     display: inline-flex;
     align-items: center;
     gap: 0.25rem;
@@ -526,6 +575,7 @@
     gap: 0.1rem;
     width: 100%;
     text-align: left;
+    font-family: inherit;
     border: none;
     background: transparent;
     border-radius: 8px;
@@ -632,19 +682,25 @@
     align-items: center;
     gap: 0.5rem;
     margin-left: auto;
+    min-height: 28px; /* keeps the composer's height from when the send button was a 28px circle */
 }
 
 .send-btn {
     background-color: var(--color-chbe-green);
     color: white;
-    border: none;
+    /* Same font, line height, padding and border width as .conversation-mode-trigger so the heights match */
+    border: 1px solid transparent;
     border-radius: 9999px;
-    width: 28px;
-    height: 28px;
-    flex: 0 0 28px;
+    padding: 0.3rem 0.85rem;
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
     justify-content: center;
+    font-family: inherit;
+    font-size: 0.7rem;
+    font-weight: 600;
+    line-height: normal;
+    white-space: nowrap;
     cursor: pointer;
     transition: background-color 0.2s ease, transform 0.1s ease, box-shadow 0.2s ease;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
@@ -656,11 +712,6 @@
 
 .send-btn:active { 
     transform: scale(0.98); 
-}
-
-.send-btn .feather { 
-    width: 18px; 
-    height: 18px; 
 }
 
 .disclaimer { 
@@ -1146,10 +1197,6 @@
 
 
 @media (max-width: 768px) {
-    .message-area {
-        padding: 0 10px 160px 10px;
-    }
-
     .chat-header {
         border: none;
         border-radius: 0;
@@ -1157,8 +1204,12 @@
         padding: 0.5rem 0.5rem;
     }
 
-    .message {
-        padding: 0.5rem 1rem;
+    .message .message-bubble {
+        padding: 0.5rem 0.75rem;
+    }
+
+    .user-message {
+        max-width: 90%;
     }
 
     .mobile-header-bar .icon-btn .feather {

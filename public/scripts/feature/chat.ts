@@ -177,6 +177,8 @@ export class ChatManager {
     // Incremental update tracking
     private domMessageIds: Set<string> = new Set(); // Track which messages are in DOM
     private lastRenderedMessageCount: number = 0; // Track last rendered count for active chat
+    private messageAreaResizeObserver: ResizeObserver | null = null;
+    private observedMessageArea: HTMLElement | null = null;
     
     // Streaming configuration
     private readonly STREAM_DELAY_MS = 15; // Delay between words (milliseconds) - adjust for faster/slower streaming
@@ -550,6 +552,15 @@ export class ChatManager {
     }
 
     /**
+     * Moves focus to the chat title (`#chat-title`, the page's h1) so keyboard and screen
+     * reader users land on the newly opened chat instead of staying on the button that
+     * created it. Call after the chat window has been loaded and rendered.
+     */
+    public focusChatTitle(): void {
+        document.getElementById('chat-title')?.focus();
+    }
+
+    /**
      * Create a new chat
      */
     public async createNewChat(): Promise<{ success: boolean; error?: string; chat?: Chat }> {
@@ -920,6 +931,31 @@ export class ChatManager {
     }
 
     /**
+     * Exposes the message area's scrollbar width as `--message-area-scrollbar-width`.
+     * The composer is centred on the full width, but a classic (always-visible) scrollbar
+     * narrows the message area, so the CSS subtracts this from the right padding to keep
+     * message bubbles aligned with the composer. Overlay scrollbars measure 0.
+     */
+    private trackMessageAreaScrollbarWidth(messageAreaEl: HTMLElement): void {
+        if (this.observedMessageArea === messageAreaEl) return;
+
+        // The chat window component is re-inserted when navigating, so drop the old element's observer
+        this.messageAreaResizeObserver?.disconnect();
+        this.observedMessageArea = messageAreaEl;
+
+        const update = () => {
+            const scrollbarWidth = messageAreaEl.offsetWidth - messageAreaEl.clientWidth;
+            messageAreaEl.style.setProperty('--message-area-scrollbar-width', `${scrollbarWidth}px`);
+        };
+        update();
+
+        if (typeof ResizeObserver !== 'undefined') {
+            this.messageAreaResizeObserver = new ResizeObserver(update);
+            this.messageAreaResizeObserver.observe(messageAreaEl);
+        }
+    }
+
+    /**
      * Render active chat (Full render - for initial load or when switching chats)
      */
     public renderActiveChat(): void {
@@ -930,6 +966,7 @@ export class ChatManager {
         if (!activeChat || !chatTitleEl || !messageAreaEl) return;
 
         this.ensureChatHeaderStructure();
+        this.trackMessageAreaScrollbarWidth(messageAreaEl);
 
         chatTitleEl.textContent = activeChat.itemTitle;
 
@@ -972,6 +1009,7 @@ export class ChatManager {
         }
 
         this.ensureChatHeaderStructure();
+        this.trackMessageAreaScrollbarWidth(messageAreaEl);
 
         chatTitleEl.textContent = activeChat.itemTitle;
 
@@ -1465,7 +1503,7 @@ export class ChatManager {
         const messageAreaEl = document.getElementById('message-area');
         if (messageAreaEl) {
             messageAreaEl.innerHTML = `
-                <div style="text-align: center; padding: 2rem; color: #525252;">
+                <li style="text-align: center; padding: 2rem; color: #525252;">
                     <div class="spinner" style="
                         width: 40px;
                         height: 40px;
@@ -1482,7 +1520,7 @@ export class ChatManager {
                             100% { transform: rotate(360deg); }
                         }
                     </style>
-                </div>
+                </li>
             `;
         }
     }
@@ -1494,7 +1532,7 @@ export class ChatManager {
         const messageAreaEl = document.getElementById('message-area');
         if (messageAreaEl) {
             messageAreaEl.innerHTML = `
-                <div style="text-align: center; padding: 2rem; color: #dc3545;">
+                <li style="text-align: center; padding: 2rem; color: #dc3545;">
                     <p>⚠️ Failed to load conversation</p>
                     <button onclick="window.location.reload()" style="
                         background: #007bff;
@@ -1505,7 +1543,7 @@ export class ChatManager {
                         cursor: pointer;
                         margin-top: 1rem;
                     ">Retry</button>
-                </div>
+                </li>
             `;
         }
     }
@@ -2332,7 +2370,7 @@ export class ChatManager {
         onTogglePin: () => void,
         ctas?: PathwayCta[]
     ): HTMLElement {
-        const messageWrapper = document.createElement('div');
+        const messageWrapper = document.createElement('li');
         messageWrapper.classList.add('message', `${sender}-message`);
         messageWrapper.id = `msg-${messageId}`;
         
@@ -2349,37 +2387,44 @@ export class ChatManager {
             // User messages don't have artefacts
             renderLatexInElement(text, contentEl);
         }
-        
-        messageWrapper.appendChild(contentEl);
 
-        const timeEl = document.createElement('div');
-        timeEl.className = 'message-timestamp';
-        
-        const clockIcon = document.createElement('i');
-        clockIcon.setAttribute('data-feather', 'clock');
-        clockIcon.classList.add('timestamp-clock');
-        const timeTextEl = document.createElement('span');
-        timeTextEl.className = 'timestamp-text';
-        timeTextEl.textContent = this.formatFullTimestamp(timestamp);
-        timeEl.appendChild(clockIcon);
-        timeEl.appendChild(timeTextEl);
+        const heading = document.createElement('h2');
+        heading.className = 'message-heading';
+        heading.appendChild(document.createTextNode(`${sender === 'user' ? 'You' : 'EngE-AI'} (${this.formatFullTimestamp(timestamp)})`));
+        messageWrapper.appendChild(heading);
+
+        // Bubble wraps the content so its tail isn't clipped by .message-content's overflow (needed for LaTeX)
+        const bubbleEl = document.createElement('div');
+        bubbleEl.className = 'message-bubble';
+        bubbleEl.appendChild(contentEl);
+        messageWrapper.appendChild(bubbleEl);
+
+        const actionsEl = document.createElement('div');
+        actionsEl.className = 'message-actions';
 
         const actionsInline = document.createElement('span');
-        actionsInline.className = 'timestamp-actions';
+        actionsInline.className = 'message-action-group';
 
         const pinBtn = document.createElement('button');
         pinBtn.type = 'button';
-        pinBtn.className = 'timestamp-action-btn pin-action-btn';
-        pinBtn.title = isPinned ? 'Unpin this message' : 'Pin this message';
-        pinBtn.setAttribute('aria-label', pinBtn.title);
+        pinBtn.className = 'message-action-btn pin-action-btn';
+        // pinBtn.title = isPinned ? 'Unpin this message' : 'Pin this message';
+        // pinBtn.setAttribute('aria-label', pinBtn.title);
         const pinIconEl = document.createElement('i');
         pinIconEl.setAttribute('data-feather', 'map-pin');
+        pinIconEl.setAttribute('aria-hidden', 'true');
         if (isPinned) {
             pinIconEl.classList.add('pinned');
         }
         const pinLabelEl = document.createElement('span');
-        pinLabelEl.textContent = isPinned ? 'Unpin' : 'Pin';
-        pinLabelEl.className = 'timestamp-action-label';
+        const pinLabelElVisuallyHidden = document.createElement('span');
+        pinLabelElVisuallyHidden.className = 'visually-hidden';
+
+        pinLabelEl.appendChild(document.createTextNode(isPinned ? 'Unpin' : 'Pin'));
+        pinLabelEl.appendChild(pinLabelElVisuallyHidden);
+        const visuallyHiddenText = document.createTextNode(` (${sender === 'user' ? 'You' : 'EngE-AI'} | ${this.formatFullTimestamp(timestamp)})`);
+        pinLabelElVisuallyHidden.appendChild(visuallyHiddenText);
+        pinLabelEl.className = 'message-action-label';
         pinLabelEl.style.marginLeft = '4px';
         pinBtn.appendChild(pinIconEl);
         pinBtn.appendChild(pinLabelEl);
@@ -2392,15 +2437,21 @@ export class ChatManager {
         if (sender === 'bot') {
             const flagBtn = document.createElement('button');
             flagBtn.type = 'button';
-            flagBtn.className = 'timestamp-action-btn flag-action-btn';
-            flagBtn.title = 'Flag this message';
-            flagBtn.setAttribute('aria-label', 'Flag this message');
+            flagBtn.className = 'message-action-btn flag-action-btn';
+            // flagBtn.title = 'Flag this message';
+            // flagBtn.setAttribute('aria-label', 'Flag this message');
             flagBtn.style.marginLeft = '6px';
             const flagIconEl = document.createElement('i');
             flagIconEl.setAttribute('data-feather', 'flag');
+            flagIconEl.setAttribute('aria-hidden', 'true');
             const flagLabelEl = document.createElement('span');
-            flagLabelEl.textContent = 'Flag';
-            flagLabelEl.className = 'timestamp-action-label';
+            const flagLabelElVisuallyHidden = document.createElement('span');
+            flagLabelElVisuallyHidden.className = 'visually-hidden';
+
+            flagLabelEl.appendChild(document.createTextNode('Flag'));
+            flagLabelEl.appendChild(flagLabelElVisuallyHidden);
+            flagLabelElVisuallyHidden.appendChild(document.createTextNode(` (EngE-AI | ${this.formatFullTimestamp(timestamp)})`));
+            flagLabelEl.className = 'message-action-label';
             flagLabelEl.style.marginLeft = '4px';
             flagBtn.appendChild(flagIconEl);
             flagBtn.appendChild(flagLabelEl);
@@ -2411,8 +2462,8 @@ export class ChatManager {
             actionsInline.appendChild(flagBtn);
         }
 
-        timeEl.appendChild(actionsInline);
-        messageWrapper.appendChild(timeEl);
+        actionsEl.appendChild(actionsInline);
+        messageWrapper.appendChild(actionsEl);
 
         return messageWrapper;
     }

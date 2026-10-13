@@ -1422,7 +1422,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 navigateToChat(courseId, newChatId);
                             }
                         }
-                        loadChatWindow();
+                        void loadChatWindow().then(() => chatManager?.focusChatTitle());
                         
                         //START DEBUG LOG : DEBUG-CODE(015)
                         console.log('🆕 New chat created from sidebar, loading chat window');
@@ -1665,6 +1665,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                         
                         // Re-bind message events after creating new chat
                         chatManager.rebindMessageEvents();
+
+                        chatManager.focusChatTitle();
                     }
                 }
             });
@@ -1676,7 +1678,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <div class="error-message">
                     <h2>Welcome to Instructor Chat</h2>
                     <p>Click the button below to start a new chat session.</p>
-                    <button class="welcome-add-btn" onclick="if(window.chatManager) { window.chatManager.createNewChat().then(async result => { if(result.success) { await window.loadChatWindow(); window.chatManager.renderChatList(); } }); }">
+                    <button class="welcome-add-btn" onclick="if(window.chatManager) { window.chatManager.createNewChat().then(async result => { if(result.success) { await window.loadChatWindow(); window.chatManager.renderChatList(); window.chatManager.focusChatTitle(); } }); }">
                         Start New Chat
                     </button>
                 </div>

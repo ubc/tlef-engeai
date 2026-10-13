@@ -366,6 +366,7 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
                         }
                         await loadComponent('chat-window');
                         chatManager.rebindMessageEvents();
+                        chatManager.focusChatTitle();
                     } finally {
                         isNavigating = false;
                     }
@@ -547,7 +548,7 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
             const result = await chatManager.createNewChat();
             if (result.success) {
                 chatManager.renderChatList();
-                loadComponent('chat-window');
+                void loadComponent('chat-window').then(() => chatManager.focusChatTitle());
                 chatManager.rebindMessageEvents();
             } else {
                 console.error('[STUDENT-MODE] ❌ Error creating new chat:', result.error);

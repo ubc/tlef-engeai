@@ -8,16 +8,16 @@
                 <button id="hamburger-btn" class="mobile-hamburger-btn icon-btn" title="Open menu" aria-label="Open menu">
                     <i data-feather="menu"></i>
                 </button>
-                <div id="chat-title" class="chat-title"></div>
+                <h1 id="chat-title" class="chat-title" tabindex="-1"></h1>
                 <div class="chat-actions">
                 <button id="toggle-artefact-btn" class="icon-btn" title="Toggle Artefact (Whiteboard)" style="display:none"><i data-feather="monitor"></i></button>
                 <button id="delete-chat-btn" class="icon-btn" title="Delete this chat"><i data-feather="trash-2"></i></button>
                 </div>
             </div>
         </header>
-        <div id="message-area" class="message-area">
+        <ul id="message-area" class="message-area" role="list">
             <!-- Messages will be injected here -->
-        </div>
+        </ul>
 
         <footer id="chat-footer" class="chat-footer">
             <div class="chat-footer-content">
@@ -43,7 +43,7 @@
                                     </button>
                                     <div id="conversation-mode-popover" class="conversation-mode-popover" role="listbox"></div>
                                 </div>
-                                <button id="send-btn" class="send-btn"><i data-feather="arrow-up"></i></button>
+                                <button type="button" id="send-btn" class="send-btn">Send message</button>
                             </div>
                         </div>
                     </div>
