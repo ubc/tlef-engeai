@@ -1311,11 +1311,13 @@
     border-top: 0;
 }
 
+/* Takes the rest of the checkbox's line, at least wide enough that a long file name wraps
+   between words; the character count and Remove drop below it when there is no room. */
 .wf-sources__label {
-    flex: 1 1 0;
+    flex: 1 1 14rem;
     min-width: 0;
     font-weight: 600;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
 }
 
 .wf-sources__meta {
