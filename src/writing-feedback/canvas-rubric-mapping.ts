@@ -35,6 +35,7 @@ import type {
 import type { ImportedRubricShape } from './rubric-seed';
 import { spaceBandsEvenly } from './rubric-bands';
 import { defaultFormattingCriteriaToStaff } from './criterion-assessment';
+import { MAX_CELL_DESCRIPTOR, MAX_CRITERION_DESCRIPTION } from './rubric-schema';
 
 export type { CanvasRubricIdMap, CanvasRubricRefusal };
 
@@ -47,7 +48,6 @@ const MAX_CRITERIA = 10;
 const MAX_CRITERION_LABEL = 80;
 const MAX_LEVEL_LABEL = 60;
 const MAX_TEXT = 1200;
-const MAX_DESCRIPTOR = 400;
 const MAX_POINTS = 1000;
 
 /**
@@ -73,7 +73,7 @@ export const CANVAS_IMPORT_PLACEHOLDERS = {
  * `_1234`) does not satisfy, so the visible name is the better source. `fallbackIndex` covers
  * text that slugifies to nothing at all — CJK names, or a row called "1".
  */
-function slugify(text: string, fallbackIndex: number): string {
+export function slugify(text: string, fallbackIndex: number): string {
     const slug = text
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '_')
@@ -86,7 +86,7 @@ function slugify(text: string, fallbackIndex: number): string {
 }
 
 /** Makes ids unique within one rubric, since the schema rejects duplicates. */
-function uniqueSlug(candidate: string, taken: Set<string>): string {
+export function uniqueSlug(candidate: string, taken: Set<string>): string {
     if (!taken.has(candidate)) {
         taken.add(candidate);
         return candidate;
@@ -123,6 +123,26 @@ export interface CanvasRubricMapping {
     /** Canvas's own ids for the mapped grid. Present exactly when `shape` is. */
     ids?: CanvasRubricIdMap;
     refusal?: CanvasRubricRefusal;
+    /** True when the grid holds Canvas text cut to fit a field cap; set only alongside `shape`. */
+    shortened?: boolean;
+}
+
+/** Canvas text after the whitespace collapsing every mapped field applies. */
+function collapsed(value: string | undefined): string {
+    return (value ?? '').trim().replace(/\s+/g, ' ');
+}
+
+/**
+ * exceedsFieldCaps - whether mapping these rows cuts any Canvas description to fit.
+ *
+ * @param rows - Rows being mapped
+ * @param widest - Row whose ratings become the shared levels
+ * @returns True when a criterion, level, or cell description is longer than its cap
+ */
+function exceedsFieldCaps(rows: CanvasRubricRow[], widest: CanvasRubricRow): boolean {
+    return rows.some((row) => collapsed(row.description).length > MAX_CRITERION_DESCRIPTION
+        || row.ratings.some((rating) => collapsed(rating.description).length > MAX_CELL_DESCRIPTOR))
+        || widest.ratings.some((rating) => collapsed(rating.description).length > MAX_TEXT);
 }
 
 /**
@@ -132,7 +152,8 @@ export interface CanvasRubricMapping {
  * instructor a rubric that is not theirs, with nothing saying so.
  *
  * @param rubric - Rubric read from Canvas, unmodified
- * @returns The seedable grid, or a refusal naming what put it out of contract
+ * @returns The seedable grid, or a refusal naming what put it out of contract, and whether
+ *          any Canvas description had to be shortened to fit
  */
 export function mapCanvasRubric(rubric: CanvasImportedRubric | null | undefined): CanvasRubricMapping {
     const rows = (rubric?.rows ?? []).filter((row) => row.ratings.length > 0);
@@ -146,7 +167,11 @@ export function mapCanvasRubric(rubric: CanvasImportedRubric | null | undefined)
     if (columnCount > MAX_LEVELS) return { shape: null, refusal: 'too_many_levels' };
 
     const shape = buildShape(rows, widest);
-    return { shape, ids: buildIdMap(rows, shape) };
+    return {
+        shape,
+        ids: buildIdMap(rows, shape),
+        ...(exceedsFieldCaps(rows, widest) ? { shortened: true } : {})
+    };
 }
 
 /**
@@ -213,7 +238,7 @@ function buildShape(rows: CanvasRubricRow[], widest: CanvasRubricRow): ImportedR
         return {
             id: uniqueSlug(slugify(row.label || `criterion_${rowIndex + 1}`, rowIndex), criterionIds),
             label,
-            description: boundedText(row.description, MAX_TEXT, CANVAS_IMPORT_PLACEHOLDERS.criterionDescription),
+            description: boundedText(row.description, MAX_CRITERION_DESCRIPTION, CANVAS_IMPORT_PLACEHOLDERS.criterionDescription),
             // Canvas's per-criterion weight now has a home: the grid model carries row points.
             ...(pointsOrUndefined(row.points) !== undefined ? { points: pointsOrUndefined(row.points) } : {}),
             cells: buildCells(row, levels)
@@ -261,7 +286,7 @@ function buildCells(row: CanvasRubricRow, levels: WritingRubricLevel[]): Record<
         // Only a descriptor Canvas actually supplied. `descriptor` is optional, and the grid
         // already prompts "Enter a description" on a cell that has none — which is the honest
         // state here. Falling back to the rating name would just repeat the column header.
-        const descriptor = (rating.description ?? '').trim().replace(/\s+/g, ' ').slice(0, MAX_DESCRIPTOR);
+        const descriptor = (rating.description ?? '').trim().replace(/\s+/g, ' ').slice(0, MAX_CELL_DESCRIPTOR);
         // Canvas names a rating per row, so the name is the cell's, not the column's. The
         // grid falls back to the level's own label wherever a row left its rating unnamed.
         const ratingLabel = (rating.label ?? '').trim().replace(/\s+/g, ' ').slice(0, MAX_LEVEL_LABEL);

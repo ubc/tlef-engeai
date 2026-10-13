@@ -26,6 +26,7 @@ import { showSuccessToast } from '../ui/toast-notification.js';
 import { AutosaveSignedOutError, createAutosave } from './writing-feedback-autosave.js';
 import type { Autosave } from './writing-feedback-autosave.js';
 import { ensureAssignmentTypeChosen } from './writing-feedback-assignment-type.js';
+import { renderSourcesPanel, type SourcesPanel } from './writing-feedback-sources.js';
 import {
     MIN_RATINGS_PER_CRITERION,
     deriveGenreState,
@@ -50,8 +51,12 @@ import {
 import {
     Assignment,
     DISCLOSURE_TRANSITION_TIMEOUT_MS,
+    FillResponse,
+    GradedGridState,
+    RubricSourceChoice,
     assignmentOriginText,
     CanvasRubricRefusal,
+    gridSeededFromCanvas,
     RubricCell,
     RubricCriterion,
     RubricDefinition,
@@ -78,7 +83,6 @@ import {
     refreshIcons,
     request,
     scrollingAncestor,
-    setWorkspaceMessage,
     setQueryState,
     returnToAssignment,
     setView,
@@ -629,12 +633,15 @@ function optionalControlValue(form: HTMLFormElement, name: string): string | und
  * @param form - Rubric editor form
  * @param index - Criterion row position
  * @param levelIds - Level ids in the column order the grid rendered
+ * @param prior - The row's cells before this read, whose `origin` survives only while the
+ *        description is unchanged: an edited description is staff's own
  * @returns Bands keyed by level id, or undefined when the row carries none
  */
 function readCellControls(
     form: HTMLFormElement,
     index: number,
-    levelIds: string[]
+    levelIds: string[],
+    prior?: Record<string, RubricCell>
 ): Record<string, RubricCell> | undefined {
     const cells: Record<string, RubricCell> = {};
     levelIds.forEach((levelId, column) => {
@@ -642,10 +649,13 @@ function readCellControls(
         if (!band) return;
         const label = optionalControlValue(form, `criterion.${index}.cell.${column}.label`)?.trim();
         const descriptor = optionalControlValue(form, `criterion.${index}.cell.${column}.descriptor`);
+        const before = prior?.[levelId];
+        const origin = before?.origin && descriptor && before.descriptor === descriptor ? before.origin : undefined;
         cells[levelId] = {
             ...band,
             ...(label ? { label } : {}),
-            ...(descriptor ? { descriptor } : {})
+            ...(descriptor ? { descriptor } : {}),
+            ...(origin ? { origin } : {})
         };
     });
     return Object.keys(cells).length ? cells : undefined;
@@ -683,17 +693,23 @@ function syncStructuredValues(form: HTMLFormElement, working: RubricDefinition):
             ? criterion.points
             : (rawPoints ? Number(rawPoints) : undefined);
         const cellsRendered = form.elements.namedItem(`criterion.${index}.cell.0.band`) !== null;
-        const cells = cellsRendered ? readCellControls(form, index, levelIds) : criterion.cells;
+        const cells = cellsRendered ? readCellControls(form, index, levelIds, criterion.cells) : criterion.cells;
         // Only 'staff' is stored: absent is the model default, and writing it out would
         // put a value on every criterion of every rubric that has never needed one.
         const rawAssessedBy = optionalControlValue(form, `criterion.${index}.assessedBy`);
         const assessedBy = rawAssessedBy === undefined
             ? criterion.assessedBy
             : (rawAssessedBy === 'staff' ? 'staff' as const : undefined);
+        const description = optionalControlValue(form, `criterion.${index}.description`) ?? criterion.description;
+        // A suggested description stays marked only while it reads as EngE-AI wrote it.
+        const descriptionOrigin = criterion.descriptionOrigin && description === criterion.description
+            ? criterion.descriptionOrigin
+            : undefined;
         return {
             id: criterion.id,
             label: optionalControlValue(form, `criterion.${index}.label`) ?? criterion.label,
-            description: optionalControlValue(form, `criterion.${index}.description`) ?? criterion.description,
+            description,
+            ...(descriptionOrigin ? { descriptionOrigin } : {}),
             ...(functionTag ? { functionTag } : {}),
             ...(sflDimension ? { sflDimension } : {}),
             ...(points !== undefined ? { points } : {}),
@@ -1164,11 +1180,17 @@ function shouldFillMissingDraftOnFirstOpen(
 
 async function fillRubricDraftFromInstructions(
     assignmentId: string,
-    lens: WritingFeedbackLens
-): Promise<Assignment> {
-    return jsonRequest<Assignment>(
+    lens: WritingFeedbackLens,
+    sourceIds?: string[],
+    grid?: { rubricFrom: RubricSourceChoice; replaceGrid: boolean }
+): Promise<FillResponse> {
+    // Without `sourceIds` the server reads every source, which is what a first-open fill
+    // wants; without `grid` it keeps the grid's source.
+    const body = { ...(sourceIds ? { sourceIds } : {}), ...(grid ?? {}) };
+    return jsonRequest<FillResponse>(
         `/assignments/${encodeURIComponent(assignmentId)}/rubric-draft/fill${rubricLensQuery(lens)}`,
-        'POST'
+        'POST',
+        Object.keys(body).length ? body : undefined
     );
 }
 
@@ -1196,10 +1218,199 @@ function announceDetailsStatus(status: HTMLElement, message: string, tone: 'info
     window.requestAnimationFrame(() => { status.textContent = message; });
 }
 
-async function fillRubricsFromInstructions(context: RubricPageContext, status: HTMLElement): Promise<void> {
-    if (!context.assignment.instructions?.trim()) {
-        throw new Error('Add the assignment instructions first');
+/**
+ * renderMaterialStep - the body of step 1: the sources, the grid choice, and the fill button
+ *
+ * @param sources - The source panel, which also holds the grid choice
+ * @param canEdit - Whether this staff member may fill the rubric
+ * @param notice - A message carried over from the previous render, e.g. a first-open fill
+ * @param onFill - Runs the fill, reporting progress into the status line
+ * @returns Detached step body
+ */
+function renderMaterialStep(
+    sources: SourcesPanel,
+    canEdit: boolean,
+    notice: { message: string; tone: 'success' | 'error' } | undefined,
+    onFill: (status: HTMLElement, button: HTMLButtonElement) => Promise<void>
+): HTMLDivElement {
+    const body = document.createElement('div');
+    body.className = 'wf-step-body';
+    const status = createText('p', notice?.message ?? '', 'wf-rubric-details-status wf-material-status');
+    status.setAttribute('role', 'status');
+    status.setAttribute('aria-live', 'polite');
+    status.setAttribute('aria-atomic', 'true');
+    if (notice) status.dataset.tone = notice.tone;
+    body.append(sources.element);
+
+    if (canEdit) {
+        const fillButton = createButton('Extract assignment details and rubric', 'primary', async (button) => onFill(status, button), !sources.canFill());
+        const updateFillButton = (): void => {
+            // A running fill owns the button until it settles; it is re-enabled from here after.
+            if (fillButton.getAttribute('aria-busy') === 'true') return;
+            fillButton.disabled = !sources.canFill();
+            fillButton.title = sources.blockedReason();
+        };
+        sources.onChange(updateFillButton);
+        updateFillButton();
+        const row = document.createElement('div');
+        row.className = 'wf-button-row';
+        row.append(fillButton);
+        body.append(row);
     }
+    body.append(status);
+    return body;
+}
+
+/** A callout in the house style, with a decorative icon and a body. */
+function callout(icon: string, ...children: HTMLElement[]): HTMLElement {
+    const box = document.createElement('div');
+    box.className = 'wf-owed';
+    const glyph = document.createElement('i');
+    glyph.dataset.feather = icon;
+    glyph.className = 'wf-owed__icon';
+    glyph.setAttribute('aria-hidden', 'true');
+    const body = document.createElement('div');
+    body.className = 'wf-owed__body';
+    body.append(...children);
+    box.append(glyph, body);
+    return box;
+}
+
+/**
+ * renderGridNotices - what extraction left for staff in step 3
+ *
+ * Versions waiting for a choice are always shown, since the grid stays as it was until staff
+ * choose. Notes on a grid built from material are shown only while that grid is an unapproved
+ * draft; once approved, staff have already checked it.
+ *
+ * @param assignmentId - Assignment the grid belongs to
+ * @param gridState - The graded grid's state, once loaded
+ * @param gradedHasDraft - Whether the graded lens holds an unapproved draft
+ * @param canEdit - Whether this staff member may change the grid
+ * @returns Callouts to show above the grid, possibly none
+ */
+function renderGridNotices(
+    assignmentId: string,
+    gridState: GradedGridState | undefined,
+    gradedHasDraft: boolean,
+    canEdit: boolean
+): HTMLElement[] {
+    if (!gridState) return [];
+    const notices: HTMLElement[] = [];
+    const base = `/assignments/${encodeURIComponent(assignmentId)}/rubric-draft`;
+
+    if (gridState.pending) {
+        const pending = gridState.pending;
+        const choices = document.createElement('ol');
+        choices.className = 'wf-extraction-versions';
+        pending.candidates.forEach((candidate, index) => {
+            const item = document.createElement('li');
+            item.append(
+                createText('p', `${candidate.title} — ${candidate.criteria.length} criteria, ${candidate.points} points`, 'wf-owed__title'),
+                createText('p', `Levels: ${candidate.levels.join(', ')}. Criteria: ${candidate.criteria.join('; ')}.`, 'wf-help-text'),
+                ...candidate.notes.map((note) => createText('p', note, 'wf-help-text'))
+            );
+            if (canEdit) {
+                item.append(createButton('Use this version', 'outline', async () => {
+                    await jsonRequest(`${base}/from-extraction`, 'POST', { candidateIndex: index });
+                    pendingRubricNotice = { message: `Built the grid from ${pending.sourceLabel}. Check it before approving.`, tone: 'success' };
+                    await openRubricPage(assignmentId);
+                }));
+            }
+            choices.append(item);
+        });
+        const actions = document.createElement('div');
+        actions.className = 'wf-button-row';
+        if (canEdit) {
+            actions.append(createButton('Keep the current grid', 'quiet', async () => {
+                await jsonRequest(`${base}/pending-extraction`, 'DELETE');
+                await openRubricPage(assignmentId);
+            }));
+        }
+        notices.push(callout(
+            'layers',
+            createText('p', `${pending.sourceLabel} holds more than one version of the rubric`, 'wf-owed__title'),
+            createText('p', 'Choose the one to build the rubric grid from. The grid below stays as it is until you do.'),
+            choices,
+            actions
+        ));
+    }
+
+    if (gridState.uploaded && gradedHasDraft) {
+        const notes = gridState.uploaded.notes;
+        notices.push(callout(
+            'info',
+            createText('p', `This grid was copied from ${gridState.uploaded.sourceLabel}`, 'wf-owed__title'),
+            createText('p', notes.length
+                ? 'Compare it with your material before approving. Things to check:'
+                : 'Compare it with your material before approving.'),
+            ...(notes.length ? [(() => {
+                const list = document.createElement('ul');
+                notes.forEach((note) => list.append(createText('li', note)));
+                return list;
+            })()] : [])
+        ));
+    }
+    return notices;
+}
+
+/** Text made safe for showConfirmModal, which renders its message as HTML. */
+function escapeForModal(text: string): string {
+    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/** Plain-words name for a grid source, for the replace confirmation and the result message. */
+function gridChoiceName(choice: Exclude<RubricSourceChoice, 'keep'>, lens: WritingFeedbackLens, sources: SourcesPanel): string {
+    if (typeof choice === 'object') return `the rubric in ${sources.materialLabel(choice.sourceId) ?? 'your material'}`;
+    if (choice === 'canvas') return 'the Canvas rubric';
+    return lens === 'technical' ? "EngE-AI's default lab rubric" : "EngE-AI's default rubric";
+}
+
+/** What to tell staff once a fill has finished, given what happened to the grid. */
+function fillResultMessage(
+    result: FillResponse,
+    rubricFrom: RubricSourceChoice,
+    gridState: GradedGridState | undefined,
+    sources: SourcesPanel
+): { message: string; tone: 'success' | 'error' } {
+    const source = rubricFrom !== 'keep' && gridState ? gridChoiceName(rubricFrom, gridState.lens, sources) : '';
+    switch (result.grid) {
+        case 'applied':
+            return {
+                message: typeof rubricFrom === 'object'
+                    ? `Extracted the assignment details and built the grid from ${source}. Check the grid in step 3 before approving.`
+                    : `Extracted the assignment details and replaced the grid with ${source}. Review before approving.`,
+                tone: 'success'
+            };
+        case 'needs_decision':
+            return { message: `Extracted the assignment details. ${source.replace(/^the rubric in /, '')} holds more than one version of the rubric; choose one in step 3.`, tone: 'success' };
+        case 'not_found':
+        case 'refused':
+        case 'failed':
+            return { message: `Extracted the assignment details. ${result.gridMessage ?? 'The rubric grid is unchanged.'}`, tone: 'error' };
+        default:
+            return { message: 'Extracted the assignment details from your material. Review before approving.', tone: 'success' };
+    }
+}
+
+/**
+ * fillFromMaterial - fills the assignment details from the ticked sources and, when staff
+ * chose a different grid source, replaces the graded grid.
+ *
+ * Replacing a grid that has an approved version or staff edits is confirmed first. Choosing
+ * to keep the grid still fills the details; closing the dialog cancels the whole fill.
+ *
+ * @param context - The rubric page being filled
+ * @param status - The step's status line
+ * @param sources - The source panel holding the ticks and the grid choice
+ * @param button - The extract button, which shows a spinner while the extraction runs
+ */
+async function fillFromMaterial(
+    context: RubricPageContext,
+    status: HTMLElement,
+    sources: SourcesPanel,
+    button: HTMLButtonElement
+): Promise<void> {
     const targets = new Set<WritingFeedbackLens>(
         context.sections.filter((section) => section.canEdit).map((section) => section.lens)
     );
@@ -1210,29 +1421,91 @@ async function fillRubricsFromInstructions(context: RubricPageContext, status: H
         throw new Error('You do not have permission to edit this rubric.');
     }
 
-    announceDetailsStatus(status, 'Reading the instructions…');
+    // Step 1: what the graded grid should become, confirmed when it sets something aside.
+    const gridState = sources.rubricState();
+    const currentChoice = gridState?.current === 'canvas' ? 'canvas' : gridState?.current === 'builtin' ? 'default' : 'keep';
+    let rubricFrom = sources.rubricChoice();
+    let replaceGrid = false;
+    // Building from material always replaces the grid, even one already built from material.
+    const changesGrid = rubricFrom !== 'keep' && (typeof rubricFrom === 'object' || rubricFrom !== currentChoice);
+    if (gridState && rubricFrom !== 'keep' && changesGrid && gridState.replaceNeedsConfirmation) {
+        const confirmLabel = 'Replace the grid';
+        const keepLabel = 'Keep my grid';
+        const confirmation = await showConfirmModal(
+            'Replace the rubric grid?',
+            `This replaces your current rubric grid with ${escapeForModal(gridChoiceName(rubricFrom, gridState.lens, sources))}. `
+                + 'Your approved rubric stays in effect until you approve the new one.',
+            confirmLabel,
+            keepLabel
+        );
+        // The modal resolves to its own slugified button label.
+        const slug = (label: string): string => label.toLowerCase().replace(/\s+/g, '-');
+        if (confirmation.action === slug(confirmLabel)) replaceGrid = true;
+        else if (confirmation.action === slug(keepLabel)) rubricFrom = 'keep';
+        else return;
+    }
+
+    // Step 2: show the extraction running. The messages follow elapsed time only, since the
+    // server reports nothing until it finishes; they never claim a stage it may not be in.
+    const copiesRubric = typeof rubricFrom === 'object';
+    showExtractingButton(button);
+    sources.setBusy(true);
+    announceDetailsStatus(status, copiesRubric
+        ? 'Reading your material and extracting the rubric…'
+        : 'Reading your material…');
+    const slowTimer = window.setTimeout(() => announceDetailsStatus(status, copiesRubric
+        ? 'Still working. Extracting a rubric can take up to a minute.'
+        : 'Still working. Longer material takes a little more time.'), 15_000);
+    const verySlowTimer = window.setTimeout(() => announceDetailsStatus(
+        status,
+        'Please keep this page open until it finishes.'
+    ), 60_000);
+
+    // Step 3: fill each editable lens; only the graded one takes the grid choice.
+    let gridResult: FillResponse | undefined;
     try {
         const orderedTargets = [...targets].sort((left, right) => {
             if (left === right) return 0;
             return left === 'technical' ? -1 : 1;
         });
         for (const lens of orderedTargets) {
-            await fillRubricDraftFromInstructions(context.assignment.id, lens);
+            const grid = gridState && lens === gridState.lens ? { rubricFrom, replaceGrid } : undefined;
+            const result = await fillRubricDraftFromInstructions(context.assignment.id, lens, sources.selectedIds(), grid);
+            if (grid) gridResult = result;
         }
         state.panelDirty = false;
         state.assignments = await request<Assignment[]>('/assignments');
-        // The toast is the whole report for an explicit fill. No pending notice:
-        // the reopened page would raise the same sentence as a banner beside it.
-        showSuccessToast('Filled from the instructions. Review before approving.');
+        const outcome = fillResultMessage(gridResult ?? { assignment: context.assignment, grid: 'unchanged' }, rubricFrom, gridState, sources);
+        // A full success is reported by the toast alone. A grid left alone stays on the reopened
+        // page, beside the button, because staff need to act on it.
+        if (outcome.tone === 'success') showSuccessToast(outcome.message);
+        else pendingRubricNotice = outcome;
         await openRubricPage(context.assignment.id);
     } catch (error) {
-        const message = error instanceof Error ? error.message : 'Could not read the instructions. Fill the rubric in by hand.';
+        const message = error instanceof Error ? error.message : 'Could not read the assignment material. Fill the rubric in by hand.';
         // The status line sits beside the control that failed, and the caller
         // reports the same error in a modal; a third copy in the banner persists
         // after both are gone.
         announceDetailsStatus(status, message, 'error');
         throw error;
+    } finally {
+        window.clearTimeout(slowTimer);
+        window.clearTimeout(verySlowTimer);
+        // A successful fill reopens the page, which builds a fresh panel; this one matters
+        // only when the fill failed and the page stays.
+        sources.setBusy(false);
     }
+}
+
+/**
+ * showExtractingButton - a spinner and "Extracting…" in place of the generic busy label.
+ * The shared button runner restores the original label when the action settles.
+ */
+function showExtractingButton(button: HTMLButtonElement): void {
+    const spinner = document.createElement('span');
+    spinner.className = 'wf-spinner';
+    spinner.setAttribute('aria-hidden', 'true');
+    button.replaceChildren(spinner, document.createTextNode('Extracting…'));
 }
 
 /**
@@ -1269,11 +1542,11 @@ export async function openRubricPage(assignmentId: string): Promise<void> {
             technicalData = assignment.isLabReport
                 ? await request<RubricResponse>(`/assignments/${encodeURIComponent(assignmentId)}/rubric?lens=technical`)
                 : undefined;
-            pendingRubricNotice = { message: 'Filled from the instructions. Review before approving.', tone: 'success' };
+            pendingRubricNotice = { message: 'Filled from the assignment material. Review before approving.', tone: 'success' };
         }
     } catch (error) {
         pendingRubricNotice = {
-            message: error instanceof Error ? error.message : 'Could not read the instructions. Fill the rubric in by hand.',
+            message: error instanceof Error ? error.message : 'Could not read the assignment material. Fill the rubric in by hand.',
             tone: 'error'
         };
     }
@@ -1513,16 +1786,10 @@ function renderRubricPage(
         canEdit: linguisticData.permissions.canEdit,
         isLabReport,
         labContext: technicalSource?.labContext ?? '',
-        hasInstructions: Boolean(assignment.instructions?.trim()),
-        notice,
         onInput: () => {
             if (linguisticData.permissions.canEdit) state.panelDirty = true;
             if (linguisticData.permissions.canEdit) rubricAutosave?.markDirty();
             refreshProgress();
-        },
-        onFillFromInstructions: async (status) => {
-            if (!context) throw new Error('The rubric page is still loading.');
-            await fillRubricsFromInstructions(context, status);
         }
     });
 
@@ -1536,16 +1803,34 @@ function renderRubricPage(
     const describedComplete = (): boolean =>
         describeDetails(readDetailsNow()).complete && describeProfile(readProfileNow(), readDetailsNow()).complete;
 
-    const step1Open = !describedComplete();
+    // The material step opens for an assignment still waiting to be described; once the
+    // description is complete it stays closed, so an approved rubric never looks unfinished.
+    // A problem carried over from the last fill sits under the extract button, so step 1 opens to show it.
+    const materialNotice = notice?.tone === 'error' ? notice : undefined;
+    const materialOpen = !describedComplete() || Boolean(materialNotice);
+    const sources = renderSourcesPanel(assignment.id, linguisticData.permissions.canEdit);
+    const materialBody = renderMaterialStep(sources, linguisticData.permissions.canEdit, materialNotice, async (status, button) => {
+        if (!context) throw new Error('The rubric page is still loading.');
+        await fillFromMaterial(context, status, sources, button);
+    });
+    const materialMeta = createText('span', '', 'wf-step-meta');
+    const materialStep = document.createElement('div');
+    materialStep.className = 'wf-step';
+    // The token is aria-hidden, so the ordinal is carried as text in the heading.
+    const materialHeader = disclosureHeader(
+        [stepToken(1), createText('h2', '1. Add your instructions and rubric', 'wf-step-title'), materialMeta],
+        materialBody, 'wf-step-material-body', materialOpen, 'wf-step-header'
+    );
+    materialStep.append(materialHeader, materialBody);
+    root.append(materialStep);
 
     const step1Meta = createText('span', '', 'wf-step-meta');
     const step1 = document.createElement('div');
     step1.className = 'wf-step';
-    // The token is aria-hidden, so the ordinal is carried as text in the heading.
-    const step1Title = createText('h2', '1. Describe the assignment', 'wf-step-title');
+    const step1Title = createText('h2', '2. Review the assignment details', 'wf-step-title');
     const step1Header = disclosureHeader(
-        [stepToken(1), step1Title, step1Meta],
-        step1Body, 'wf-step-1-body', step1Open, 'wf-step-header'
+        [stepToken(2), step1Title, step1Meta],
+        step1Body, 'wf-step-1-body', false, 'wf-step-header'
     );
     step1.append(step1Header, step1Body);
     root.append(step1);
@@ -1564,6 +1849,24 @@ function renderRubricPage(
 
     const step2Body = document.createElement('div');
     step2Body.className = 'wf-step-body';
+    // What extraction left for staff: notes on a grid built from their material, or versions to
+    // choose between. Filled once the source list has loaded, and redrawn as it changes.
+    const gridNotices = document.createElement('div');
+    step2Body.append(gridNotices);
+    let openedForPending = false;
+    sources.onChange(() => {
+        const gridState = sources.rubricState();
+        const gradedData = gridState?.lens === 'technical' ? technicalData : linguisticData;
+        gridNotices.replaceChildren(...renderGridNotices(assignment.id, gridState, Boolean(gradedData?.draft), linguisticData.permissions.canEdit));
+        refreshIcons();
+        // Versions waiting for a choice are the next thing staff must do, so the step holding
+        // them opens once, as soon as they are known.
+        if (gridState?.pending && !openedForPending) {
+            openedForPending = true;
+            if (step2Header.getAttribute('aria-expanded') !== 'true') step2Header.click();
+            window.setTimeout(() => gridNotices.scrollIntoView({ behavior: 'smooth', block: 'start' }), DISCLOSURE_TRANSITION_TIMEOUT_MS);
+        }
+    });
 
     // An imported assignment whose Canvas rubric was out of contract was seeded from
     // the built-in profile instead. Staff met that silently until now. The callout is
@@ -1598,10 +1901,17 @@ function renderRubricPage(
         }
         : undefined;
 
+    // A Canvas rubric that did seed the grid may still have had descriptions cut to fit.
+    // The note sits on whichever grid that rubric seeded, until that grid is approved.
+    const shortenedNoticeFor = (lens: 'linguistic' | 'technical', approved: boolean): (() => HTMLElement) | undefined =>
+        (assignment.canvasRubricShortened && gridSeededFromCanvas(assignment, lens) && !approved
+            ? canvasShortenedNotice
+            : undefined);
+
     // The heading names the rubric (D-066) and the plain-English line explains it. A lab
     // report shows two grids at once, so the name is what tells them apart.
     step2Body.append(renderRubricSection(pageContext, linguisticData, 'linguistic', {
-        notice: canvasRefusalNotice,
+        notice: canvasRefusalNotice ?? shortenedNoticeFor('linguistic', Boolean(linguisticData.approved)),
         heading: isLabReport ? 'Writing rubric' : 'Rubric',
         subtitle: isLabReport
             ? 'How they wrote it — structure, clarity, and how the writing speaks to its reader'
@@ -1618,6 +1928,7 @@ function renderRubricPage(
             step2Body.append(renderMissingTechnicalRubric(assignment));
         } else {
             step2Body.append(renderRubricSection(pageContext, technicalData, 'technical', {
+                notice: shortenedNoticeFor('technical', Boolean(technicalData.approved)),
                 heading: 'Technical rubric',
                 subtitle: 'The experiment itself — whether the reasoning holds together and the data supports the claims',
                 errorLabel: 'the technical rubric',
@@ -1628,23 +1939,23 @@ function renderRubricPage(
 
     // Open the first of the two that is unfinished; when both are done they close
     // and Step 3 carries the page, which is the resting state of a finished rubric.
-    const step2Open = !step1Open && !describeAllGrids(pageContext.sections).complete;
+    const step2Open = !materialOpen && !describeAllGrids(pageContext.sections).complete;
 
     const step2Meta = createText('span', '', 'wf-step-meta');
     const step2 = document.createElement('div');
     step2.className = 'wf-step';
-    const step2Title = createText('h2', isLabReport ? '2. Build the marking grids' : '2. Build the marking grid', 'wf-step-title');
+    const step2Title = createText('h2', isLabReport ? '3. Review the rubric grids' : '3. Review the rubric grid', 'wf-step-title');
     const step2Header = disclosureHeader(
-        [stepToken(2), step2Title, step2Meta],
+        [stepToken(3), step2Title, step2Meta],
         step2Body, 'wf-step-2-body', step2Open, 'wf-step-header'
     );
     step2.append(step2Header, step2Body);
     root.append(step2);
 
-    // Steps 1 and 2 are the accordion; opening one closes the other so the page
+    // Steps 1 to 3 are the accordion; opening one closes the others so the page
     // never becomes the wall of simultaneously open boxes this redesign replaced.
-    // Step 3 is not part of it -- its actions must never be a click away.
-    linkAccordion([step1Header, step2Header]);
+    // Step 4 is not part of it -- its actions must never be a click away.
+    linkAccordion([materialHeader, step1Header, step2Header]);
 
     // Step 3 is not a disclosure. It is the terminus, it is short, and its actions
     // must never be a click away, so its body is always rendered. The header is
@@ -1653,7 +1964,7 @@ function renderRubricPage(
     step3.className = 'wf-step wf-step--terminal';
     const step3Header = document.createElement('div');
     step3Header.className = 'wf-step-header wf-step-header--static';
-    step3Header.append(stepToken(3), createText('h2', '3. Approve it', 'wf-step-title'));
+    step3Header.append(stepToken(4), createText('h2', '4. Approve it', 'wf-step-title'));
 
     const step3Body = document.createElement('div');
     step3Body.className = 'wf-step-body';
@@ -1897,9 +2208,17 @@ function renderRubricPage(
         const gridNow = describeAllGrids(pageContext.sections);
         const describedDone = detailsNow.complete && profileNow.complete;
 
+        // Material is optional -- a description can be typed by hand -- so the step counts as
+        // done once there is any, or once the description it feeds is complete.
+        const sourceCount = sources.sourceCount();
+        const materialDone = describedDone || (sourceCount ?? 0) > 0;
         stripMount.replaceChildren(renderProgressStrip([
             {
-                ordinal: 1, label: 'Describe the assignment', state: describedDone ? 'done' : 'current',
+                ordinal: 1, label: 'Add instructions and rubric', state: materialDone ? 'done' : 'current',
+                detail: sourceCount === undefined ? 'Loading…' : (sources.summary() || 'No material yet')
+            },
+            {
+                ordinal: 2, label: 'Review the assignment details', state: describedDone ? 'done' : (materialDone ? 'current' : 'pending'),
                 // Named when the description itself is done, because the remaining work is
                 // then in a card the reader has to open to see.
                 detail: describedDone
@@ -1907,7 +2226,7 @@ function renderRubricPage(
                     : (detailsNow.complete ? 'Writing profile: incomplete' : 'Incomplete')
             },
             {
-                ordinal: 2, label: isLabReport ? 'Build the marking grids' : 'Build the marking grid',
+                ordinal: 3, label: isLabReport ? 'Review the rubric grids' : 'Review the rubric grid',
                 state: gridNow.complete ? 'done' : (describedDone ? 'current' : 'pending'),
                 detail: gridNow.complete
                     ? `${gridNow.criteria} criteria · ${gridNow.levels} levels · ${gridNow.totalPoints} points`
@@ -1923,13 +2242,13 @@ function renderRubricPage(
                 const ready = describedDone && gridNow.complete;
                 if (sections.length && !waiting && !unapproved) {
                     return {
-                        ordinal: 3, label: 'Approve it', state: 'done' as const,
+                        ordinal: 4, label: 'Approve it', state: 'done' as const,
                         detail: sections.length === 1 ? `Approved v${sections[0].approvedVersion}` : 'Both rubrics approved'
                     };
                 }
                 const owed = ready ? '' : ' — some things still owed';
                 return {
-                    ordinal: 3, label: 'Approve it',
+                    ordinal: 4, label: 'Approve it',
                     state: ready ? 'current' as const : 'pending' as const,
                     detail: `${waiting && !unapproved ? 'Unapproved changes' : 'Ready to approve'}${owed}`
                 };
@@ -1941,6 +2260,7 @@ function renderRubricPage(
         step1Meta.replaceChildren(describedDone
             ? chip('All fields completed', 'green')
             : chip('Incomplete', 'amber'));
+        materialMeta.textContent = sources.summary();
         step2Meta.textContent = gridNow.complete
             ? `${gridNow.criteria} criteria · ${gridNow.levels} levels · ${gridNow.totalPoints} points`
             : `${gridNow.emptyCells} ${gridNow.emptyCells === 1 ? 'box' : 'boxes'} still empty`;
@@ -1949,8 +2269,10 @@ function renderRubricPage(
         refreshIcons();
     };
     refreshProgress();
+    sources.onChange(() => refreshProgress());
 
-    if (notice) setWorkspaceMessage(notice.message, notice.tone);
+    // A success needs no action, so it is a toast rather than a banner that stays on the page.
+    if (notice?.tone === 'success') showSuccessToast(notice.message);
     refreshIcons();
 }
 
@@ -2116,6 +2438,17 @@ async function approveEveryRubric(context: RubricPageContext): Promise<void> {
     if (pending.some((section) => section.approvedVersion !== undefined)) {
         lines.push("Feedback already released to Canvas isn't affected.");
     }
+    // Read from the forms, so a suggestion staff have just rewritten no longer counts.
+    const suggested = pending.reduce((total, section) => {
+        const snapshot = detachedRubric(section.working);
+        syncStructuredValues(section.form, snapshot);
+        return total + snapshot.criteria.reduce((sum, criterion) => sum
+            + (criterion.descriptionOrigin === 'proposed' ? 1 : 0)
+            + Object.values(criterion.cells ?? {}).filter((cell) => cell.origin === 'proposed').length, 0);
+    }, 0);
+    if (suggested > 0) {
+        lines.push(`${suggested} ${suggested === 1 ? 'description was' : 'descriptions were'} suggested by EngE-AI (marked "Suggested"). Approving confirms you have read ${suggested === 1 ? 'it' : 'them'}.`);
+    }
     const confirmLabel = firstApproval ? 'Approve rubric' : 'Approve changes';
     const confirmation = await showConfirmModal(
         firstApproval ? 'Approve this rubric?' : 'Approve these changes?',
@@ -2129,7 +2462,8 @@ async function approveEveryRubric(context: RubricPageContext): Promise<void> {
     for (const section of pending) {
         await jsonRequest(
             `/assignments/${encodeURIComponent(context.assignment.id)}/rubric-draft/approve${rubricLensQuery(section.lens)}`,
-            'POST'
+            'POST',
+            suggested > 0 ? { acknowledgeProposed: true } : undefined
         );
     }
     state.panelDirty = false;
@@ -2162,10 +2496,7 @@ interface AssignmentDetailsOptions {
     isLabReport: boolean;
     /** Current lab handout text, which lives on the technical rubric only. */
     labContext: string;
-    hasInstructions: boolean;
-    notice?: { message: string; tone: 'success' | 'error' };
     onInput: () => void;
-    onFillFromInstructions: (status: HTMLElement) => Promise<void>;
 }
 
 const firstOpenAutofillAttempts = new Set<string>();
@@ -2219,24 +2550,6 @@ function renderAssignmentDetails(
 ): HTMLFormElement {
     const section = document.createElement('section');
     section.className = 'wf-rubric-details';
-
-    const headingRow = document.createElement('div');
-    headingRow.className = 'wf-rubric-heading-row';
-    const fillStatus = createText('p', options.notice?.message ?? '', 'wf-rubric-details-status');
-    fillStatus.setAttribute('role', 'status');
-    fillStatus.setAttribute('aria-live', 'polite');
-    fillStatus.setAttribute('aria-atomic', 'true');
-    if (options.notice) fillStatus.dataset.tone = options.notice.tone;
-    if (options.canEdit) {
-        const fillButton = createButton(
-            'Fill these in for me',
-            'outline',
-            async () => options.onFillFromInstructions(fillStatus),
-            !options.hasInstructions
-        );
-        if (!options.hasInstructions) fillButton.title = 'Add the assignment instructions first';
-        headingRow.append(fillButton);
-    }
 
     const form = document.createElement('form');
     form.className = 'wf-rubric-details-form';
@@ -2367,7 +2680,7 @@ function renderAssignmentDetails(
     }
 
     form.append(grid);
-    section.append(headingRow, fillStatus, form);
+    section.append(form);
     container.append(section);
     return form;
 }
@@ -2550,10 +2863,33 @@ async function autosaveAssignmentRubrics(context: RubricPageContext): Promise<vo
  * @param refusal - Reason recorded at import
  * @returns One sentence naming what put the rubric out of contract
  */
+/**
+ * canvasShortenedNotice - tells staff the imported Canvas rubric lost text to the grid's limits.
+ *
+ * @returns Callout built fresh for each redraw of the grid it sits above
+ */
+function canvasShortenedNotice(): HTMLElement {
+    const shortened = document.createElement('div');
+    shortened.className = 'wf-owed';
+    // Decorative: the sentences beside it carry the message.
+    const icon = document.createElement('i');
+    icon.dataset.feather = 'info';
+    icon.className = 'wf-owed__icon';
+    icon.setAttribute('aria-hidden', 'true');
+    const body = document.createElement('div');
+    body.className = 'wf-owed__body';
+    body.append(
+        createText('p', 'Some Canvas rubric text was shortened', 'wf-owed__title'),
+        createText('p', 'A few descriptions in the Canvas rubric were longer than EngE-AI allows (800 characters per rating, 2,000 per criterion), so their ends were cut. Compare the grid below with the rubric in Canvas before approving.')
+    );
+    shortened.append(icon, body);
+    return shortened;
+}
+
 function canvasRefusalReason(refusal: CanvasRubricRefusal): string {
     switch (refusal) {
         case 'too_few_ratings':
-            return 'Its criteria offer one rating each, and a marking grid needs at least two to compare against.';
+            return 'Its criteria offer one rating each, and a rubric grid needs at least two to compare against.';
         case 'too_many_criteria':
             return `It has more than ${MAX_CRITERIA} criteria, which is more than a grid here can hold.`;
         case 'too_many_levels':

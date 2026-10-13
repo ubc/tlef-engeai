@@ -87,6 +87,7 @@ export interface RubricCell {
     max: number;
     label?: string;
     descriptor?: string;
+    origin?: 'source' | 'proposed'; // copied from staff material, or written by EngE-AI; absent once staff edit it
 }
 
 /** One instructor-visible criterion in an approved or draft rubric definition. */
@@ -94,6 +95,7 @@ export interface RubricCriterion {
     id: WritingCriterionId; // stable key used to join rubric criteria to model feedback
     label: string; // student-facing criterion name editable by authorized staff
     description: string; // assignment-specific expectations supplied to generation
+    descriptionOrigin?: 'proposed'; // written by EngE-AI because staff material gave none; absent once edited
     functionTag?: WfFunctionTag; // optional SFL communicative-function filter tag
     sflDimension?: string; // optional instructor-authored linguistic lens
     points?: number; // maximum points this criterion contributes
@@ -108,6 +110,19 @@ export interface RubricCriterion {
  * Canvas import; a parity test pins the two.
  */
 export const FORMATTING_CRITERION_PATTERN = /\b(?:format(?:s|ted|ting)?|layouts?|fonts?|margins?|spacing|typograph(?:y|ic|ical))\b/i;
+
+/**
+ * gridSeededFromCanvas - whether one lens's grid came from the imported Canvas rubric.
+ *
+ * @param assignment - Assignment whose grid provenance is read
+ * @param lens - Lens whose grid is asked about
+ * @returns True when that lens's grid was seeded from Canvas
+ */
+export function gridSeededFromCanvas(assignment: Assignment, lens: 'linguistic' | 'technical'): boolean {
+    return lens === 'linguistic'
+        ? assignment.rubricSource === 'canvas'
+        : assignment.technicalRubricSource === 'canvas';
+}
 
 /**
  * looksLikeFormattingCriterion - whether a criterion label names document formatting.
@@ -145,6 +160,8 @@ export interface RubricDefinition {
     levels: RubricLevel[]; // complete ordinal scale and optional point mapping
     updatedAt: string; // server timestamp shown in rubric provenance/history
     labContext?: string; // instructor-approved lab handout context supplied to the technical lens
+    /** Where this version's grid came from; written by the server, never by the editor. */
+    gridSource?: { kind: 'builtin' | 'canvas' | 'uploaded'; label?: string; notes?: string[] };
 }
 
 /** Assignment summary used by the landing queue and current rubric context. */
@@ -153,9 +170,10 @@ export interface Assignment {
     title: string; // queue and review heading
     canvasAssignmentId?: string; // external key retained only for Canvas-linked intake/release
     canvasRubricRefusal?: CanvasRubricRefusal; // why an imported Canvas rubric could not seed this grid
-    rubricSource: 'internal_profile' | 'canvas'; // provenance label for the WRITING lens; import never implies approval
+    canvasRubricShortened?: boolean; // the imported Canvas rubric had descriptions cut to fit the grid
+    rubricSource: 'internal_profile' | 'canvas' | 'uploaded'; // provenance label for the WRITING lens; import never implies approval
     /** Where the technical grid came from. Split per lens so a Canvas technical rubric does not silence writing auto-fill. */
-    technicalRubricSource?: 'canvas' | 'builtin';
+    technicalRubricSource?: 'canvas' | 'builtin' | 'uploaded';
     /** The Canvas rubric as imported, kept unrouted until the lab-report flag decides which lens owns it. */
     canvasRubricImport?: { ids: CanvasRubricIdMap; importedAt: string | Date };
     instructions?: string; // instructor-approved assignment directions shown beside rubric setup
@@ -248,6 +266,65 @@ export interface CourseMaterialMention {
 }
 
 /** Reusable course glossary entry returned by glossary endpoints. */
+/** Instructor-supplied assignment material, as extracted text. Mirrors src/writing-feedback/contracts.ts. */
+export interface WritingSourceMaterial {
+    id: string;
+    courseId: string;
+    assignmentId: string;
+    kind: 'file' | 'paste';
+    fileName?: string; // sanitized basename of an uploaded file, display only
+    text: string; // extracted text; tables kept as markdown tables where the source had them
+    hasTables: boolean; // whether the source's own table structure was kept
+    characterCount: number;
+    addedAt: string | Date;
+    addedBy: string; // internal user id, never a PUID
+}
+
+/** One piece of material "Fill these in for me" can read. Mirrors src/writing-feedback/autofill-sources.ts. */
+export interface AutofillSource {
+    id: string; // 'instructions', 'canvas_description', or a source-material id
+    kind: 'instructions' | 'canvas_description' | 'file' | 'paste';
+    label: string;
+    text: string;
+    characterCount: number;
+    hasTables: boolean;
+    edited?: boolean; // staff corrected a file's or paste's text by hand
+}
+
+/** Where the graded grid comes from. Mirrors GradedGridState in src/writing-feedback/rubric-source-choice.ts. */
+export interface GradedGridState {
+    lens: WritingFeedbackLens; // the lens that carries the grade
+    current: 'builtin' | 'canvas' | 'uploaded';
+    canvas?: { criteria: number; points: number }; // the imported Canvas rubric, when there is one
+    replaceNeedsConfirmation: boolean; // an approved grid or staff edits would be set aside
+    uploaded?: { sourceLabel: string; notes: string[] }; // a grid built from staff material
+    pending?: { // rubric versions found in staff material, waiting for a choice
+        sourceLabel: string;
+        candidates: Array<{ title: string; criteria: string[]; levels: string[]; points: number; notes: string[] }>;
+    };
+}
+
+/** GET /assignments/:assignmentId/autofill-sources */
+export interface AutofillSourcesResponse {
+    sources: AutofillSource[];
+    maxCharacters: number; // most characters one fill may read
+    rubric: GradedGridState;
+}
+
+/** Where a fill should take the graded grid from; `keep` leaves it as it is. */
+export type RubricSourceChoice =
+    | 'keep'
+    | 'canvas'
+    | 'default'
+    | { sourceId: string; scale?: 'suggested' | 'four_level' | 'three_level_met' | 'ubc_percent_bands' };
+
+/** POST /assignments/:assignmentId/rubric-draft/fill */
+export interface FillResponse {
+    assignment: Assignment;
+    grid: 'unchanged' | 'applied' | 'needs_confirmation' | 'needs_decision' | 'not_found' | 'refused' | 'failed';
+    gridMessage?: string; // why the grid was left alone, in words staff can act on
+}
+
 export interface WritingGlossaryEntry {
     id: string; // glossary entry id
     courseId: string; // owning course

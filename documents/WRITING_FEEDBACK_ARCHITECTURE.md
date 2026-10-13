@@ -88,11 +88,25 @@ Rubric provenance is recorded per lens, because a lab report's two grids can com
 
 | Field | Lens | Values | Consequence |
 |---|---|---|---|
-| `rubricSource` | Writing | `internal_profile` \| `canvas` | A `canvas` writing rubric suppresses the metafunctions auto-fill, which assumes the built-in profile's criteria |
-| `technicalRubricSource` | Technical | `canvas` \| `builtin` | Absent means the technical grid was seeded from the built-in lab profile |
-| `canvasRubricImport` | Whichever lens the import seeded | `{ shape, ids, importedAt }` | `ids` are Canvas's own criterion/rating ids, and are the only way release can write points back into the instructor's Canvas rubric |
+| `rubricSource` | Writing | `internal_profile` \| `canvas` \| `uploaded` | A `canvas` or `uploaded` writing rubric is the instructor's own, so auto-fill never rewrites its rows or cells |
+| `technicalRubricSource` | Technical | `canvas` \| `builtin` \| `uploaded` | Absent means the technical grid was seeded from the built-in lab profile |
+| `canvasRubricImport` | Whichever lens the import seeded | `{ shape, ids, importedAt }` | `ids` are Canvas's own criterion/rating ids, and are the only way release can write points back into the instructor's Canvas rubric. Release uses them only while the graded lens's source is `canvas`; any other grid releases a total alone |
+
+Each rubric version can also record its own `gridSource` (`kind`, and for a grid from staff material its `label` and extraction `notes`); `rubricGridSource` prefers it over the assignment fields above, and `storedGridSource` (`rubric-lens.ts`) asks it of the draft, failing that the approved version. Release reads the graded, approved version's own source. When Canvas grades the assignment by its rubric (`use_rubric_for_grading`), release skips the total only after it has written the rubric assessment; otherwise it posts the total.
 
 On a lab report, an imported Canvas rubric goes to the *technical* lens: it is the grid the assignment is graded on, and the writing lens keeps the SFL-grounded profile that generation depends on.
+
+### Assignment material and rubrics from material
+
+Instructors who keep their instructions or rubric in their own documents add them in the rubric page's first step, "Gather the assignment material". The step lists the assignment's instructions, the Canvas description when it has changed since import, and every uploaded file or paste (`writing-source-materials`), each ticked or unticked, and asks where the graded grid should come from: the imported Canvas rubric, a rubric in one of the uploaded or pasted sources, or EngE-AI's default. One button fills both.
+
+- **Details.** The ticked sources (at most 60,000 characters together) go to the model under labelled headings; the details it proposes are merged into the draft. Filling the details never changes criterion points.
+- **Grid from Canvas or the default.** Re-seeded with no model work.
+- **Grid from material.** The model only copies the rubric out of the chosen source (`source-rubric-extraction.ts`); code turns that into a grid with fixed rules: percentages to points, sub-criteria flattened, levels ordered weakest first, deductions moved to the rules, and notes for anything doubtful. When the source holds several versions they are held (`pendingRubricExtraction`) for staff to choose in step 3. A rubric with no rating levels gets a scale preset (`rubric-scale-presets.ts`), and descriptions the source does not give, for ratings and for criteria, are proposed by the model (`rubric-cell-proposals.ts`) and marked `origin: 'proposed'` / `descriptionOrigin: 'proposed'`.
+- **Replacing a grid** that has an approved version or staff edits is confirmed first; the approved version keeps governing feedback until a new one is approved. The new grid's source is recorded on the draft (`gridSource`), so discarding the draft takes it away again.
+- **Approval** of a rubric still carrying suggested descriptions requires staff to confirm they have read them, and clears the markers.
+
+Source material is instructor material. It is stored as extracted text only, never sent to the course RAG index, and never logged; the prompts treat it as data and refuse instructions written inside it.
 
 Saving a draft never changes generation, PDF, or release behavior. Approval promotes a version; an approved version is never edited in place. Runs and releases remain attributable to the approved rubric/profile version that governed them. Model grading suggestions remain staff-only and are not persisted. Release requires a complete staff-final per-criterion assessment saved with the latest review revision; the server validates that assessment against the exact rubric version and computes the total grade from criterion points.
 
@@ -130,7 +144,7 @@ The interface also has non-domain states that must not be collapsed into submiss
 
 ## Collections and retention
 
-Global collections, all keyed by `courseId`, are `canvas-connections`, `writing-assignments`, `writing-submissions`, `writing-feedback-runs`, `writing-releases`, `writing-jobs`, and `writing-glossary-entries`. The data layer creates unique assignment mapping, course/assignment/student/attempt, queue, lease, release-fingerprint, release-by-submission, glossary term, and permitted retention indexes.
+Global collections, all keyed by `courseId`, are `canvas-connections`, `writing-assignments`, `writing-submissions`, `writing-feedback-runs`, `writing-releases`, `writing-jobs`, `writing-glossary-entries`, and `writing-source-materials` (instructor material as extracted text, deleted with its assignment). The data layer creates unique assignment mapping, course/assignment/student/attempt, queue, lease, release-fingerprint, release-by-submission, glossary term, and permitted retention indexes.
 
 `writing-assignments` stores assignment instructions, template provenance, the current rubric/profile, and an optional next-version draft. Empty course lists are not auto-seeded. Legacy missing level ranks are added only on detached read values. The Canvas mapping uses a partial unique index that excludes manual rows; startup repairs the former sparse index. Approved rubric/profile versions remain immutable assessment provenance, and repeated Canvas attempts remain idempotent.
 
@@ -142,7 +156,8 @@ Writing records store internal operational student identifiers only; PUIDs are n
 
 - RBAC runs before the feature gate; a capability flag is never an authorization substitute.
 - Staff review revisions append rather than replacing the model result.
-- Logs must exclude student text, generated feedback, prompt bodies, names, Canvas identifiers, OAuth tokens, and PUIDs.
+- Logs must exclude student text, generated feedback, prompt bodies, names, Canvas identifiers, OAuth tokens, and PUIDs. Instructor source material is kept out of logs too, since prompts carry it.
+- The attribute-check maintenance walk (migrate op A) deletes fields its allowlist does not name; `src/migrate/__tests__/writing-allowlists.test.ts` fails when a stored Writing Feedback field is missing from the allowlists.
 - Course-material retrieval must not send raw student text, evidence quotations, or generated feedback into RAG.
 - The student PDF excludes confidence, flags, model metadata, prompt versions, and internal notes.
 - Canvas OAuth release uses scoped staff credentials, redirect-safe upload, timeout reconciliation, and duplicate prevention. Uncertain comment or grade outcomes enter `reconciliation_required` rather than retrying automatically.

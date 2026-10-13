@@ -87,7 +87,15 @@ describe('mergeAutofill', () => {
     it('never adds a row when rows are locked', () => {
         const merged = mergeAutofill(draft(existing), proposal, autofillMergeRules('metafunctions'));
         expect(merged.criteria.map((c) => c.id)).toEqual(['organization']);
-        expect(merged.criteria[0].points).toBe(25);
+    });
+
+    it('rewrites a writable row\'s description but never its points', () => {
+        // A model reading a six-criterion rubric squeezed its weights onto the three
+        // built-in rows (100 points became 65). Points come from the rubric source or staff.
+        const weighted = [{ id: 'organization', label: 'Organization', description: 'old desc', points: 30 }];
+        const merged = mergeAutofill(draft(weighted), proposal, autofillMergeRules('metafunctions'));
+        expect(merged.criteria[0].description).toBe('new desc');
+        expect(merged.criteria[0].points).toBe(30);
     });
 
     it('adds a proposed row only when the rules permit it', () => {
@@ -140,7 +148,7 @@ describe('mergeAutofill', () => {
                 }
             ]
         };
-        const merged = mergeAutofill(draft(existing), badProposal, autofillMergeRules('metafunctions'));
+        const merged = mergeAutofill(draft([{ ...existing[0], points: 25 }]), badProposal, autofillMergeRules('metafunctions'));
         expect(merged.criteria[0].cells).toEqual({
             weak: { min: 0, max: 12, label: 'Weak', descriptor: 'W' },
             strong: { min: 13, max: 25, label: 'Strong', descriptor: 'S' }
@@ -148,18 +156,18 @@ describe('mergeAutofill', () => {
         expect(writingRubricDraftInputSchema.safeParse(merged).success).toBe(true);
     });
 
-    it('rescales a model band proposed on the wrong point total to the criterion\'s actual weight', () => {
+    it('rescales a model band proposed on the wrong point total to the criterion\'s own weight', () => {
         const wrongScaleProposal = {
             ...proposal,
             criteria: [
                 {
-                    id: 'organization', label: 'Organization', description: 'new desc', points: 30,
+                    id: 'organization', label: 'Organization', description: 'new desc', points: 80,
                     // The model assumed a 0-100 scale instead of the row's 30-point weight.
                     cells: { weak: { min: 0, max: 24 }, strong: { min: 25, max: 100 } }
                 }
             ]
         };
-        const merged = mergeAutofill(draft(existing), wrongScaleProposal, autofillMergeRules('metafunctions'));
+        const merged = mergeAutofill(draft([{ ...existing[0], points: 30 }]), wrongScaleProposal, autofillMergeRules('metafunctions'));
         expect(merged.criteria[0].cells).toEqual({
             weak: { min: 0, max: 15, label: 'Weak' },
             strong: { min: 16, max: 30, label: 'Strong' }
@@ -176,7 +184,7 @@ describe('mergeAutofill', () => {
                 }
             ]
         };
-        const merged = mergeAutofill(draft(existing), zeroedProposal, autofillMergeRules('metafunctions'));
+        const merged = mergeAutofill(draft([{ ...existing[0], points: 30 }]), zeroedProposal, autofillMergeRules('metafunctions'));
         expect(merged.criteria[0].cells).toEqual({
             weak: { min: 0, max: 15, label: 'Weak' },
             strong: { min: 16, max: 30, label: 'Strong' }

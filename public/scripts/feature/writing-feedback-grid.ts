@@ -20,7 +20,7 @@
  * @description: Renders and edits one rubric as a single criteria-by-levels table.
  */
 
-import { showConfirmModal } from '../ui/modal-overlay.js';
+import { showConfirmModal, showInfoModal } from '../ui/modal-overlay.js';
 import {
     RubricCell,
     RubricCriterion,
@@ -50,8 +50,9 @@ export const RUBRIC_SLUG = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
 const MAX_SLUG_LENGTH = 64;
 const MAX_CRITERION_LABEL = 80;
 const MAX_LEVEL_LABEL = 60;
-const MAX_DESCRIPTOR = 400;
-const MAX_TEXT = 1200;
+// Mirrors MAX_CELL_DESCRIPTOR and MAX_CRITERION_DESCRIPTION in src/writing-feedback/rubric-schema.ts.
+const MAX_DESCRIPTOR = 800;
+const MAX_TEXT = 2000;
 
 /* ------------------------------------------------------------------------- *
  * Band arithmetic
@@ -445,8 +446,39 @@ function authorshipControl(
         group.append(option);
     });
 
-    wrapper.append(caption, group);
+    const head = document.createElement('div');
+    head.className = 'wf-grid-authorship__head';
+    head.append(caption, authorshipHelpButton());
+    wrapper.append(head, group);
     return wrapper;
+}
+
+/**
+ * authorshipHelpButton - the small info button beside "Feedback written by".
+ *
+ * Explains, before staff choose, what EngE-AI can and cannot see in a submission, so a
+ * formatting row goes to course staff whatever its name. Available on read-only grids too,
+ * since it only explains.
+ */
+function authorshipHelpButton(): HTMLButtonElement {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'wf-grid-authorship__help';
+    button.setAttribute('aria-label', 'What EngE-AI can assess');
+    button.title = 'What EngE-AI can assess';
+    button.innerHTML = '<i data-feather="info" aria-hidden="true"></i>';
+    button.addEventListener('click', () => {
+        void showInfoModal(
+            'What EngE-AI can assess',
+            '<p>EngE-AI reads only the text of a submission. It can draft feedback on what the writing says '
+            + 'and how it says it, such as content, organization, and language.</p>'
+            + '<p>It cannot see formatting: fonts, spacing, margins, page layout, or how headings and references '
+            + 'are set out on the page. For a criterion about formatting, choose <strong>Course staff</strong>. '
+            + 'Staff then check it themselves and enter the feedback and score on the rubric.</p>'
+            + '<p>Whoever writes it, all feedback is reviewed by course staff before students see it.</p>'
+        );
+    });
+    return button;
 }
 
 /** Resolved action of the formatting warning's confirm button (a slug of its label). */
@@ -942,7 +974,24 @@ export function renderRubricGrid(
         description.className = 'wf-grid-text';
         autoGrow(description);
         description.addEventListener('input', onChange);
-        rowHead.append(bar, description, authorshipControl(criterion, rowIndex, gridId, canEdit, onChange));
+        rowHead.append(bar, description);
+        // A description EngE-AI wrote is labelled, as suggested cells are, until staff change it.
+        if (criterion.descriptionOrigin === 'proposed') {
+            const tag = document.createElement('span');
+            tag.className = 'wf-grid-suggested';
+            tag.textContent = 'Suggested';
+            tag.id = `${gridId}-suggested-description-${rowIndex}`;
+            description.setAttribute('aria-describedby', tag.id);
+            description.classList.add('wf-grid-text--proposed');
+            const original = criterion.description;
+            description.addEventListener('input', () => {
+                const unchanged = description.value === original;
+                description.classList.toggle('wf-grid-text--proposed', unchanged);
+                tag.hidden = !unchanged;
+            });
+            rowHead.append(tag);
+        }
+        rowHead.append(authorshipControl(criterion, rowIndex, gridId, canEdit, onChange));
 
         row.append(rowHead);
 
@@ -1068,6 +1117,24 @@ export function renderRubricGrid(
 
             // Points first, then the rating's name, then what earns it.
             cell.append(bandInput, ratingName, descriptor);
+
+            // A description EngE-AI wrote says so, in words as well as shading, until staff
+            // change it; the editor then stops carrying its origin.
+            if (band?.origin === 'proposed' && band.descriptor) {
+                const tag = document.createElement('span');
+                tag.className = 'wf-grid-suggested';
+                tag.textContent = 'Suggested';
+                tag.id = `${gridId}-suggested-${rowIndex}-${columnIndex}`;
+                descriptor.setAttribute('aria-describedby', tag.id);
+                cell.classList.add('wf-grid-cell--proposed');
+                cell.append(tag);
+                const original = band.descriptor;
+                descriptor.addEventListener('input', () => {
+                    const unchanged = descriptor.value === original;
+                    cell.classList.toggle('wf-grid-cell--proposed', unchanged);
+                    tag.hidden = !unchanged;
+                });
+            }
             row.append(cell);
         });
 

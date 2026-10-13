@@ -16,6 +16,8 @@ import type {
 } from './contracts';
 import { computeReleaseFingerprint } from './canvas-release-service';
 import { planRubricWrite, rubricRefusalMessage, type RubricWritePlan } from './canvas-rubric-write';
+import { rubricGridSource } from './rubric-lens';
+import { gradedLensFor } from './staff-final-assessment';
 import { appLogger } from '../utils/logger';
 
 type ApiClient = NonNullable<Parameters<typeof canvas.getCourses>[0]>;
@@ -212,7 +214,11 @@ export class LiveCanvasReleaseService implements CanvasReleaseService {
         const rubricPlan = planRubricWrite({
             assessment,
             rubric: input.gradedRubric,
-            ids: input.assignment.canvasRubricImport?.ids,
+            // The import's ids describe the Canvas rubric, so they apply only while the graded
+            // grid is still that rubric. A grid from anywhere else releases as a total alone.
+            ids: rubricGridSource(input.gradedRubric, input.assignment, gradedLensFor(input.assignment)) === 'canvas'
+                ? input.assignment.canvasRubricImport?.ids
+                : undefined,
             liveCanvasCriterionIds: (liveAssignment.rubric ?? []).map((row) => String(row.id))
         });
         // A rubric that was never imported from Canvas has nothing to fill, and that is a
@@ -286,7 +292,11 @@ export class LiveCanvasReleaseService implements CanvasReleaseService {
 
         // When the Canvas rubric grades the assignment, the assessment above already set the
         // grade. Posting a total as well would overwrite it with a number Canvas did not derive.
-        if (prepared.useRubricForGrading) return this.finishRubricOnlyRelease(fingerprint);
+        // With no assessment written (a grid that never came from Canvas), the total is the
+        // only grade the student will get.
+        if (prepared.useRubricForGrading && scored.rubricAssessmentWritten) {
+            return this.finishRubricOnlyRelease(fingerprint);
+        }
         return this.writeGrade(fingerprint, prepared);
     }
 

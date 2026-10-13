@@ -81,6 +81,7 @@ import type {
     WritingFeedbackLens,
     WritingFeedbackRun,
     WritingGlossaryEntry,
+    WritingSourceMaterial,
     WritingJob,
     WritingRelease,
     WritingRubricDefinition,
@@ -263,6 +264,7 @@ export class EngEAI_MongoDB {
      * @param canvasRubric - Canvas rubric grid seeding the draft, when one could be mapped
      * @param canvasRubricRefusal - Why the Canvas rubric could not seed the draft, when it could not
      * @param canvasRubricIds - Canvas criterion and rating ids for the mapped grid, retained for release write-back
+     * @param canvasRubricShortened - Whether the mapped grid holds Canvas descriptions cut to fit
      * @returns Newly created or concurrently existing assignment
      */
     public createCanvasWritingAssignment = async (
@@ -273,7 +275,8 @@ export class EngEAI_MongoDB {
         dueAt?: Date,
         canvasRubric?: ImportedRubricShape,
         canvasRubricRefusal?: CanvasRubricRefusal,
-        canvasRubricIds?: CanvasRubricIdMap
+        canvasRubricIds?: CanvasRubricIdMap,
+        canvasRubricShortened?: boolean
     ) => WritingFeedbackMongo.createCanvasWritingAssignment(
         this.ctx(),
         courseId,
@@ -283,7 +286,8 @@ export class EngEAI_MongoDB {
         dueAt,
         canvasRubric,
         canvasRubricRefusal,
-        canvasRubricIds
+        canvasRubricIds,
+        canvasRubricShortened
     );
 
     /**
@@ -335,14 +339,26 @@ export class EngEAI_MongoDB {
      * @param assignmentId - Assignment receiving the draft
      * @param draft - Validated rubric draft
      * @param lens - Feedback lens the draft belongs to; defaults to `'linguistic'`
+     * @param provenance - Rubric versions held for a choice; `null` removes them
      * @returns Updated assignment or `null`
      */
     public saveWritingRubricDraft = async (
         courseId: string,
         assignmentId: string,
         draft: WritingRubricDefinition,
-        lens?: WritingFeedbackLens
-    ) => WritingFeedbackMongo.saveWritingRubricDraft(this.ctx(), courseId, assignmentId, draft, lens);
+        lens?: WritingFeedbackLens,
+        provenance?: WritingFeedbackMongo.RubricProvenanceUpdate
+    ) => WritingFeedbackMongo.saveWritingRubricDraft(this.ctx(), courseId, assignmentId, draft, lens, provenance);
+
+    /**
+     * clearPendingRubricExtraction — drops held rubric versions without touching any rubric.
+     *
+     * @param courseId - Owning course id
+     * @param assignmentId - Assignment holding the versions
+     * @returns Updated assignment or `null`
+     */
+    public clearPendingRubricExtraction = async (courseId: string, assignmentId: string) =>
+        WritingFeedbackMongo.clearPendingRubricExtraction(this.ctx(), courseId, assignmentId);
 
     /**
      * applyLabReportRubricRouting — moves an imported Canvas grid onto the technical lens.
@@ -600,6 +616,57 @@ export class EngEAI_MongoDB {
         lens: WritingFeedbackLens,
         approvedVersion: number
     ) => WritingFeedbackMongo.countFeedbackStaleOnApproval(this.ctx(), courseId, assignmentId, lens, approvedVersion);
+
+    /**
+     * listWritingSourceMaterials — the instructor material held for one assignment, oldest first.
+     *
+     * @param courseId - Owning course id
+     * @param assignmentId - Assignment the material belongs to
+     * @returns Materials with their extracted text
+     */
+    public listWritingSourceMaterials = async (courseId: string, assignmentId: string): Promise<WritingSourceMaterial[]> =>
+        WritingFeedbackMongo.listWritingSourceMaterials(this.ctx(), courseId, assignmentId);
+
+    /**
+     * addWritingSourceMaterial — stores one extracted file or paste for an assignment.
+     *
+     * @param input - Extracted material, its owner, and the staff member adding it
+     * @param maxPerAssignment - Most materials one assignment may hold
+     * @returns The stored material, or `null` when the assignment already holds the maximum
+     */
+    public addWritingSourceMaterial = async (
+        input: Omit<WritingSourceMaterial, 'id' | 'addedAt' | 'characterCount'>,
+        maxPerAssignment: number
+    ): Promise<WritingSourceMaterial | null> =>
+        WritingFeedbackMongo.addWritingSourceMaterial(this.ctx(), input, maxPerAssignment);
+
+    /**
+     * updateWritingSourceMaterialText — replaces one material's text with staff's corrected text.
+     *
+     * @param courseId - Owning course id
+     * @param assignmentId - Assignment the material belongs to
+     * @param materialId - Material to correct
+     * @param edit - The corrected text, whether it holds tables, and the staff member correcting it
+     * @returns The updated material, or `null` when it is not there
+     */
+    public updateWritingSourceMaterialText = async (
+        courseId: string,
+        assignmentId: string,
+        materialId: string,
+        edit: { text: string; hasTables: boolean; editedBy: string }
+    ): Promise<WritingSourceMaterial | null> =>
+        WritingFeedbackMongo.updateWritingSourceMaterialText(this.ctx(), courseId, assignmentId, materialId, edit);
+
+    /**
+     * deleteWritingSourceMaterial — removes one material from an assignment.
+     *
+     * @param courseId - Owning course id
+     * @param assignmentId - Assignment the material belongs to
+     * @param materialId - Material to remove
+     * @returns Whether it was removed
+     */
+    public deleteWritingSourceMaterial = async (courseId: string, assignmentId: string, materialId: string): Promise<boolean> =>
+        WritingFeedbackMongo.deleteWritingSourceMaterial(this.ctx(), courseId, assignmentId, materialId);
 
     /**
      * listWritingGlossaryEntries — lists reusable Writing Feedback glossary definitions.

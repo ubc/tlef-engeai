@@ -7,10 +7,15 @@
  */
 
 import PDFDocument from 'pdfkit';
-import { renderRubricGrid } from '../rubric-grid-renderer';
+import { measureRubricGrid, renderRubricGrid } from '../rubric-grid-renderer';
 import type { StaffFinalAssessment, WritingRubricDefinition } from '../../writing-feedback/contracts';
 
-function rubricWith(levelCount: number, criterionCount: number): WritingRubricDefinition {
+/** Prose-like text of an exact length, so wrapping breaks on words as real descriptors do. */
+function prose(length: number): string {
+    return 'Supporting sentences develop the main idea in a logical order. '.repeat(Math.ceil(length / 60)).slice(0, length);
+}
+
+function rubricWith(levelCount: number, criterionCount: number, descriptorLength = 400): WritingRubricDefinition {
     return {
         version: 1, status: 'approved', title: 'Grid',
         task: 't', audience: 'a', purpose: 'p',
@@ -25,7 +30,7 @@ function rubricWith(levelCount: number, criterionCount: number): WritingRubricDe
             description: 'd', points: 20,
             cells: Object.fromEntries(Array.from({ length: levelCount }, (_, index) => [
                 `level_${index + 1}`,
-                { min: index * 5, max: index * 5 + 4, descriptor: 'D'.repeat(400) }
+                { min: index * 5, max: index * 5 + 4, descriptor: descriptorLength === 400 ? 'D'.repeat(400) : prose(descriptorLength) }
             ]))
         }))
     } as WritingRubricDefinition;
@@ -95,12 +100,14 @@ describe('renderRubricGrid', () => {
     });
 
     it.each([
-        ['a portrait grid started partway down a page', 4, 500],
-        ['a landscape grid', 5, 64]
-    ])('keeps every row of %s inside the page', (_name, levelCount, startY) => {
+        ['a portrait grid started partway down a page', 4, 500, 400],
+        ['a landscape grid', 5, 64, 400],
+        ['a portrait grid of the longest descriptors', 4, 500, 800],
+        ['the widest landscape grid of the longest descriptors', 8, 64, 800]
+    ])('keeps every row of %s inside the page', (_name, levelCount, startY, descriptorLength) => {
         // In a feedback PDF the grid follows the written feedback, so it rarely starts at the
         // top of a page. A row drawn past the bottom margin loses its cell text to new pages.
-        const rubric = rubricWith(levelCount, 6);
+        const rubric = rubricWith(levelCount, 6, descriptorLength);
         const doc = new PDFDocument({ size: 'LETTER', margin: 64, bufferPages: true });
         doc.y = startY;
         const overflowing: number[] = [];
@@ -112,6 +119,34 @@ describe('renderRubricGrid', () => {
         renderRubricGrid(doc, rubric, assessmentFor(rubric));
         doc.end();
         expect(overflowing).toEqual([]);
+    });
+
+    it.each([
+        ['portrait', 4],
+        ['landscape', 8]
+    ])('gives every %s cell of the longest descriptors room for all its text', (_name, levelCount) => {
+        // Cell text is clipped to its row's measured height, so an under-measured row loses the
+        // end of a descriptor without any error. PDFKit's own measurement is the reference.
+        const rubric = rubricWith(levelCount, 3, 800);
+        const doc = new PDFDocument({ size: 'LETTER', margin: 64 });
+        const geometry = measureRubricGrid(rubric, {
+            portraitWidth: 612 - 128,
+            landscapeWidth: 792 - 128,
+            availableHeight: 792 - 128 - 60,
+            landscapeAvailableHeight: 612 - 128
+        }, (text, width, size, face) => (text
+            ? doc.font(face === 'bold' ? 'Helvetica-Bold' : 'Helvetica').fontSize(size).heightOfString(text, { width, lineGap: 1 })
+            : size + 1));
+        const textWidth = geometry.columnWidth - 8;
+        rubric.criteria.forEach((criterion, row) => {
+            rubric.levels.forEach((level) => {
+                const nameHeight = doc.font('Helvetica-Bold').fontSize(9).heightOfString(level.label, { width: textWidth });
+                const descriptorHeight = doc.font('Helvetica').fontSize(geometry.descriptorSizes[row])
+                    .heightOfString(criterion.cells![level.id]!.descriptor!, { width: textWidth, lineGap: 1 });
+                expect(nameHeight + descriptorHeight).toBeLessThanOrEqual(geometry.rowHeights[row] - 8);
+            });
+        });
+        doc.end();
     });
 
     it('marks the top level when the awarded points sit above every band', async () => {

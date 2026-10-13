@@ -122,6 +122,21 @@ describe('LiveCanvasReleaseService', () => {
 
     afterEach(() => jest.restoreAllMocks());
 
+    it('posts the total when canvas grades by rubric but the grid has no canvas ids', async () => {
+        const { service, client } = harness({
+            get: jest.fn(async (path: string) => (path.includes('/submissions/')
+                ? { assignment_id: 88, user_id: 42, attempt: 2 }
+                : { id: 88, rubric: liveCanvasRubric(), use_rubric_for_grading: true }))
+        });
+        const releaseInput = input('submission-rubric-grades-unmapped');
+        await service.preview(releaseInput);
+        const released = await service.release(releaseInput);
+
+        expect((client.put as jest.Mock).mock.calls.some(([, body]) => body && 'rubric_assessment' in body)).toBe(false);
+        expect(canvas.postGrades).toHaveBeenCalled();
+        expect(released.status).toBe('released');
+    });
+
     it('preflights without writing and retains the Canvas posting policy', async () => {
         const { service, client } = harness();
         const preview = await service.preview(input('submission-preview'));
@@ -285,6 +300,7 @@ function liveCanvasRubric() {
 
 describe('canvas rubric assessment', () => {
     beforeEach(() => {
+        assignment.rubricSource = 'canvas';
         assignment.canvasRubricImport = {
             shape: { criteria: assignment.rubric.criteria, levels: assignment.rubric.levels },
             ids: Object.fromEntries(assignment.rubric.criteria.map((criterion) => [
@@ -314,7 +330,54 @@ describe('canvas rubric assessment', () => {
 
     afterEach(() => {
         delete assignment.canvasRubricImport;
+        assignment.rubricSource = 'internal_profile';
+        delete assignment.isLabReport;
+        delete assignment.technicalRubricSource;
         jest.restoreAllMocks();
+    });
+
+    function rubricAssessmentPut(client: { put: jest.Mock }) {
+        return client.put.mock.calls.find(([, body]) => body && 'rubric_assessment' in body);
+    }
+
+    it('releases a total alone once the graded grid no longer comes from the canvas rubric', async () => {
+        assignment.rubricSource = 'uploaded';
+        const { service, client } = harness({
+            get: jest.fn(async (path: string) => (path.includes('/submissions/')
+                ? { assignment_id: 88, user_id: 42, attempt: 2 }
+                : { id: 88, rubric: [{ id: 'unrelated_canvas_row' }], use_rubric_for_grading: true }))
+        });
+        const releaseInput = input('submission-uploaded-grid');
+        await service.preview(releaseInput);
+        const released = await service.release(releaseInput);
+
+        expect(rubricAssessmentPut(client)).toBeUndefined();
+        expect(canvas.postGrades).toHaveBeenCalled();
+        expect(released.status).toBe('released');
+    });
+
+    it('releases a total alone when the approved version records a source other than canvas', async () => {
+        // The assignment still says canvas -- an older field -- but the graded version itself
+        // was built from staff material, and its own record is the one that counts.
+        const { service, client } = harness();
+        const releaseInput = input('submission-version-source');
+        const graded = { ...releaseInput.gradedRubric, gridSource: { kind: 'uploaded' as const, label: 'rubric.docx' } };
+        await service.preview({ ...releaseInput, gradedRubric: graded });
+        await service.release({ ...releaseInput, gradedRubric: graded });
+
+        expect(rubricAssessmentPut(client)).toBeUndefined();
+    });
+
+    it('fills the canvas rubric for a lab report graded on a canvas-seeded technical grid', async () => {
+        assignment.rubricSource = 'internal_profile';
+        assignment.isLabReport = true;
+        assignment.technicalRubricSource = 'canvas';
+        const { service, client } = harness();
+        const releaseInput = input('submission-lab-canvas');
+        await service.preview(releaseInput);
+        await service.release(releaseInput);
+
+        expect(rubricAssessmentPut(client)).toBeDefined();
     });
 
     it('writes the rubric assessment criterion by criterion, before the total grade', async () => {
