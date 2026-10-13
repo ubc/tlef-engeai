@@ -1868,11 +1868,17 @@ function renderRubricPage(
         }
     });
 
-    // An imported assignment whose Canvas rubric was out of contract was seeded from
-    // the built-in profile instead. Staff met that silently until now. The callout is
-    // built per redraw inside the grid, immediately above the buttons that edit it.
+    // An imported assignment whose Canvas rubric was out of contract was seeded from the
+    // built-in profile instead, and staff need to know the import failed. The note matters
+    // only while that default is still the grid: once staff build one from their material or
+    // switch to Canvas, it no longer describes what they see. A Canvas assignment with no
+    // rubric at all gets no note; step 1 already shows the default as the grid in use.
+    // The callout is built per redraw inside the grid, immediately above the buttons that edit it.
     const refusal = assignment.canvasRubricRefusal;
-    const canvasRefusalNotice = refusal && !linguisticData.approved
+    const shownGrid = linguisticData.draft ?? linguisticData.approved;
+    const gridKind = shownGrid?.gridSource?.kind
+        ?? (assignment.rubricSource === 'canvas' ? 'canvas' : assignment.rubricSource === 'uploaded' ? 'uploaded' : 'builtin');
+    const canvasRefusalNotice = refusal && refusal !== 'no_rubric' && !linguisticData.approved && gridKind === 'builtin'
         ? (): HTMLElement => {
             const dropped = document.createElement('div');
             dropped.className = 'wf-owed';
@@ -1884,18 +1890,10 @@ function renderRubricPage(
             icon.setAttribute('aria-hidden', 'true');
             const body = document.createElement('div');
             body.className = 'wf-owed__body';
-            if (refusal === 'no_rubric') {
-                // Nothing failed here — Canvas simply had no rubric — so this reads as a
-                // note about the default grid rather than an import error.
-                body.append(
-                    createText('p', "Since this assignment does not have a rubric in Canvas, the rubric below is EngE-AI's default rubric. Please review it before approving.")
-                );
-            } else {
-                body.append(
-                    createText('p', "This assignment's Canvas rubric could not be imported", 'wf-owed__title'),
-                    createText('p', `${canvasRefusalReason(refusal)} The starting grid below is EngE-AI's default — replace it with your own before approving.`)
-                );
-            }
+            body.append(
+                createText('p', "This assignment's Canvas rubric could not be imported", 'wf-owed__title'),
+                createText('p', `${canvasRefusalReason(refusal)} The starting grid below is EngE-AI's default — replace it with your own before approving.`)
+            );
             dropped.append(icon, body);
             return dropped;
         }
