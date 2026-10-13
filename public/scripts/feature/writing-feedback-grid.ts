@@ -755,19 +755,7 @@ export function renderRubricGrid(
             'wf-grid-band-hint'
         );
         bandHint.id = `${gridId}-band-hint`;
-
-        // The reason behind the per-row choice, stated once. Repeating it on every row
-        // would crowd the grid, and without it the control says what it does but never
-        // why an instructor would reach for it.
-        const authorshipHint = createText(
-            'p',
-            'The AI only receives the text of a submission. For a criterion that depends on how '
-            + 'the document looks \u2014 font, spacing, margins, the file itself \u2014 choose '
-            + '"Course staff" and write that feedback yourself during review.',
-            'wf-grid-band-hint'
-        );
-        authorshipHint.id = `${gridId}-authorship-hint`;
-        container.append(bandHint, authorshipHint);
+        container.append(bandHint);
     }
 
     /* Table --------------------------------------------------------------- */
