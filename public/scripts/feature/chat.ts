@@ -23,7 +23,8 @@ import {
 import { ConversationModePicker } from "./conversation-mode-picker.js";
 import { RenderChat } from "./render-chat.js";
 import { showDeleteConfirmationModal, showSimpleErrorModal } from "../ui/modal-overlay.js";
-import { getCourseIdFromURL, navigateToStudentScenarios } from "../utils/url-parser.js";
+import { getCourseIdFromURL, navigateToStudentScenarios, buildInstructorURL, buildStudentURL } from "../utils/url-parser.js";
+import { bindSpaLink } from "../utils/spa-link.js";
 import {
     clearChatDraftPrefill,
     peekChatDraftPrefill,
@@ -1637,7 +1638,7 @@ export class ChatManager {
         chatListEl?.addEventListener('click', async (e) => {
             const target = e.target as HTMLElement;
             const li = target.closest('.chat-item') as HTMLLIElement | null;
-            if (li && !((target as HTMLElement).closest('button'))) {
+            if (li && !((target as HTMLElement).closest('button, a'))) {
                 const chatId = li.dataset.chatId || null;
                 if (chatId) {
                     // This now triggers lazy loading if needed
@@ -2188,9 +2189,14 @@ export class ChatManager {
         li.style.justifyContent = 'space-between';
         li.style.alignItems = 'center';
 
-        const titleSpan = document.createElement('span');
-        titleSpan.className = 'chat-title';
+        // The title is a link to the chat so keyboard and screen reader users can open it
+        const isActive = metadata.id === this.activeChatId;
+        const titleSpan = document.createElement('a');
+        titleSpan.className = 'chat-title chat-item-link';
         titleSpan.textContent = metadata.itemTitle;
+        if (isActive) {
+            titleSpan.setAttribute('aria-current', 'page');
+        }
 
         // Add loading indicator if chat is not fully loaded
         const isLoaded = this.loadedChatIds.has(metadata.id);
@@ -2214,9 +2220,12 @@ export class ChatManager {
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'icon-btn';
         deleteBtn.style.padding = '0';
+        deleteBtn.type = 'button';
         deleteBtn.title = 'Delete chat';
+        deleteBtn.setAttribute('aria-label', `Delete chat: ${metadata.itemTitle || 'Untitled chat'}`);
         const trashIcon = document.createElement('i');
         trashIcon.setAttribute('data-feather', 'trash-2');
+        trashIcon.setAttribute('aria-hidden', 'true');
         deleteBtn.appendChild(trashIcon);
         deleteBtn.addEventListener('click', async (ev) => {
             ev.stopPropagation();
@@ -2255,16 +2264,27 @@ export class ChatManager {
         rightSide.style.gap = '6px';
         rightSide.appendChild(actions);
 
-        li.addEventListener('mouseenter', () => {
+        // Show the delete button on hover or while the row has keyboard focus. visibility:hidden
+        // also removes it from the tab order, so it must be visible before focus can reach it.
+        const showActions = () => {
             actions.style.visibility = 'visible';
             actions.style.opacity = '1';
-        });
-        li.addEventListener('mouseleave', () => {
+        };
+        const hideActions = () => {
             actions.style.opacity = '0';
             actions.style.visibility = 'hidden';
+        };
+        li.addEventListener('mouseenter', showActions);
+        li.addEventListener('mouseleave', () => {
+            if (!li.contains(document.activeElement)) hideActions();
+        });
+        li.addEventListener('focusin', showActions);
+        li.addEventListener('focusout', (e: FocusEvent) => {
+            // relatedTarget is where focus is going; stay visible when it moves within the row
+            if (!li.contains(e.relatedTarget as Node | null) && !li.matches(':hover')) hideActions();
         });
 
-        li.addEventListener('click', async () => {
+        const openChat = async () => {
             try {
                 // Wait for chat to be fully loaded
                 await this.setActiveChatId(metadata.id);
@@ -2285,6 +2305,18 @@ export class ChatManager {
                     error: error 
                 });
             }
+        };
+
+        const courseId = getCourseIdFromURL();
+        const chatHref = courseId
+            ? (this.config.isInstructor ? buildInstructorURL(courseId, 'chat', metadata.id) : buildStudentURL(courseId, 'chat', metadata.id))
+            : null;
+        bindSpaLink(titleSpan, chatHref, openChat);
+
+        // Mouse clicks elsewhere on the row; the link and delete button handle their own clicks
+        li.addEventListener('click', (e) => {
+            if ((e.target as HTMLElement).closest('a, button')) return;
+            void openChat();
         });
 
         li.appendChild(titleSpan);

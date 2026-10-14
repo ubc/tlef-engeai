@@ -247,7 +247,12 @@ body {
     background-color: var(--background-2);
     border: 1px solid var(--border-color);
     border-radius: 8px;
+    /* About and Course Selection are links, Student View and Log Out are buttons; same font for all */
+    font-family: inherit;
+    font-size: 0.8333rem;
     font-weight: 600;
+    line-height: normal;
+    text-decoration: none;
     cursor: pointer;
     color: #000000;
     overflow: hidden;
@@ -533,6 +538,8 @@ body {
     color: inherit;
     font-family: inherit;
     text-align: left;
+    text-decoration: none;
+    line-height: normal;
     cursor: pointer;
 }
 

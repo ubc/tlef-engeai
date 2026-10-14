@@ -25,8 +25,11 @@ import {
     getChatIdFromURL,
     navigateToStudentView,
     navigateToStudentChat,
-    isStudentOnboardingURL
+    isStudentOnboardingURL,
+    buildStudentURL
 } from '../utils/url-parser.js';
+import { bindSpaLink } from '../utils/spa-link.js';
+import { syncPageTitleFromURL } from '../utils/page-title.js';
 
 /**
  * checkAuthentication
@@ -100,6 +103,10 @@ const syncStudentSidebarToggleAccessibility = (): void => {
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
+    // Every in-app navigation fires popstate, so this keeps <title> in step with the view
+    syncPageTitleFromURL();
+    window.addEventListener('popstate', syncPageTitleFromURL);
+
     // Initialize the visible desktop sidebar control before this callback's first
     // await. Slow or failed startup requests must not leave the button inert.
     const studentSidebarEl = document.getElementById('student-sidebar');
@@ -311,7 +318,13 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
     // ponytail: mirror instructor menu-list-item.active; one helper for both tools
     const setStudentToolActive = (toolId: string | null) => {
         document.querySelectorAll('.student-tool-btn').forEach((btn) => {
-            btn.classList.toggle('active', toolId !== null && btn.id === toolId);
+            const isActive = toolId !== null && btn.id === toolId;
+            btn.classList.toggle('active', isActive);
+            if (isActive) {
+                btn.setAttribute('aria-current', 'page');
+            } else {
+                btn.removeAttribute('aria-current');
+            }
         });
     };
 
@@ -974,15 +987,12 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
         // console.log('[STUDENT-MODE] ✅ Logout button listener attached');
 
         // About button listener
-        const aboutBtn = document.getElementById('about-btn');
-        if (aboutBtn) {
-            aboutBtn.addEventListener('click', () => {
-                // console.log('[STUDENT-MODE] ℹ️ About button clicked');
-                setStudentToolActive(null);
-                navigateToStudentView('about');
-            });
-            // console.log('[STUDENT-MODE] ✅ About button listener attached');
-        }
+        const aboutLink = document.getElementById('about-btn');
+        const aboutCourseId = getCourseIdFromURL();
+        bindSpaLink(aboutLink, aboutCourseId ? buildStudentURL(aboutCourseId, 'about') : null, () => {
+            setStudentToolActive(null);
+            navigateToStudentView('about');
+        });
     };
 
     // --- STATE RESTORATION ---
@@ -1114,8 +1124,8 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
             return;
         }
 
-        profileBtn.addEventListener('click', () => {
-            // console.log('[STUDENT-MODE] 👤 Loading flag history component...');
+        const courseId = getCourseIdFromURL();
+        bindSpaLink(profileBtn, courseId ? buildStudentURL(courseId, 'flag-history') : null, () => {
             setStudentToolActive(null);
             navigateToStudentView('flag-history');
         });
@@ -1133,7 +1143,8 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
             return;
         }
 
-        practiceScenariosBtn.addEventListener('click', async () => {
+        const courseId = getCourseIdFromURL();
+        bindSpaLink(practiceScenariosBtn, courseId ? buildStudentURL(courseId, 'scenarios') : null, async () => {
             if (!scenarioGenerationEnabled) return;
             await clearSelectedChatForTool();
             setStudentToolActive('practice-scenarios-btn');
@@ -1206,8 +1217,8 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
             return;
         }
 
-        courseSelectionBtn.addEventListener('click', async () => {
-            // console.log('[STUDENT-MODE] 🔄 Course Selection button clicked - clearing state and redirecting');
+        // Plain clicks clear frontend state first; Ctrl/Cmd-click opens the link in a new tab as-is
+        bindSpaLink(courseSelectionBtn, '/course-selection', () => {
 
             // Clear all frontend state
             try {
