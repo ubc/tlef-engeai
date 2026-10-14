@@ -23,7 +23,7 @@
 
 import { showConfirmModal } from '../ui/modal-overlay.js';
 import { showSuccessToast } from '../ui/toast-notification.js';
-import { AutosaveSignedOutError, createAutosave } from './writing-feedback-autosave.js';
+import { AutosaveHeldError, AutosaveSignedOutError, createAutosave } from './writing-feedback-autosave.js';
 import type { Autosave } from './writing-feedback-autosave.js';
 import { ensureAssignmentTypeChosen } from './writing-feedback-assignment-type.js';
 import { renderSourcesPanel, type SourcesPanel } from './writing-feedback-sources.js';
@@ -2140,6 +2140,11 @@ function renderRubricPage(
                             ? 'Changes saved as a draft.'
                             : 'All changes saved.';
                         return;
+                    case 'held':
+                        // Nothing was sent, so the page still holds unsaved work and navigation
+                        // must keep asking. The next edit tries again.
+                        saveStatus.textContent = `Not saved yet: ${autosaveState.message ?? 'review the rubric.'}`;
+                        return;
                     case 'error':
                         // Autosave does not retry an ordinary failure on its own; the next edit does.
                         saveStatus.textContent = "Your latest changes haven't been saved yet. Making another change will try again.";
@@ -2775,16 +2780,17 @@ async function saveAssignmentRubrics(context: RubricPageContext): Promise<void> 
  * form, which is right for a button and wrong for something that fires while an instructor
  * is still typing; and {@link saveAssignmentRubrics} seeds a technical rubric when a lab
  * report is missing one, which a background write must never do. So this reads through the
- * non-throwing readers, validates by attempting the same collectors inside a try, and skips
- * the cycle silently when the form is not yet writable, leaving the last good stored draft
- * where it is.
+ * non-throwing readers, validates by attempting the same collectors inside a try, and holds
+ * the cycle when the form is not yet writable, leaving the last good stored draft where it
+ * is. A held cycle throws rather than resolving, so the page never reports it as saved.
  *
  * It writes only through the per-rubric draft route, which never touches the approved
  * rubric and reuses an existing draft version, so repeating it does not walk the version
  * number forward.
  *
  * @param context - Page context holding the details form and registered editors
- * @throws AutosaveSignedOutError when the session has expired; any other transport error
+ * @throws AutosaveHeldError naming what the real save would reject, when nothing was sent;
+ *         AutosaveSignedOutError when the session has expired; any other transport error
  *         as thrown, for the status line to report
  */
 async function autosaveAssignmentRubrics(context: RubricPageContext): Promise<void> {
@@ -2792,8 +2798,9 @@ async function autosaveAssignmentRubrics(context: RubricPageContext): Promise<vo
     const storedGenreId = context.sections
         .find((section) => section.lens === 'linguistic')?.working.sflContext?.genreId;
 
-    // Step 1: refuse the cycle silently on anything the real save would reject. A background
-    // write that stored a half-typed rubric would be worse than not writing at all.
+    // Step 1: hold the cycle on anything the real save would reject. A background write that
+    // stored a half-typed rubric would be worse than not writing at all -- but resolving here
+    // would read as saved, so the reason goes back to the status line instead.
     let pending: Array<{ section: RubricSectionHandle; structure: RubricStructureInput }>;
     let sflContext: SflContextProfile;
     try {
@@ -2805,8 +2812,8 @@ async function autosaveAssignmentRubrics(context: RubricPageContext): Promise<vo
                 section,
                 structure: collectRubricStructure(section.form, section.working, section.errorLabel)
             }));
-    } catch {
-        return;
+    } catch (error) {
+        throw new AutosaveHeldError(error instanceof Error ? error.message : 'Review the rubric.');
     }
 
     const labContext = rubricTextValue(context.detailsForm, 'labContext').slice(0, MAX_LAB_CONTEXT) || undefined;

@@ -331,6 +331,37 @@ function uniqueSlug(preferred: string, fallback: 'criterion' | 'level', taken: R
 }
 
 /**
+ * Description given to a rating staff add. The grid has no control for a level's own
+ * description -- each cell describes its rating -- but the schema requires one and the
+ * technical and redraft prompts send it to the model, so it points there.
+ */
+export const ADDED_RATING_DESCRIPTION = 'A rating added by staff. Each criterion describes what this rating means in its own cell.';
+
+/**
+ * newRatingLevel - the performance level "Add a rating" appends
+ *
+ * The grid edits neither a level's description nor its points, so both are filled here or
+ * no save or approval could ever accept the new column. Points continue the scale when every
+ * existing level carries them, because the schema takes points on every level or on none.
+ *
+ * @param id - Unused slug for the new level
+ * @param label - Name the column falls back to where a cell is unnamed
+ * @param levels - Levels already in the rubric
+ * @returns A level that validates alongside `levels`, ranked after them
+ */
+export function newRatingLevel(id: string, label: string, levels: ReadonlyArray<RubricLevel>): RubricLevel {
+    const points = levels.map((level) => level.points);
+    const scaled = points.length > 0 && points.every((value) => typeof value === 'number' && Number.isFinite(value));
+    return {
+        id,
+        label,
+        description: ADDED_RATING_DESCRIPTION,
+        rank: levels.length + 1,
+        ...(scaled ? { points: Math.max(...(points as number[])) + 1 } : {})
+    };
+}
+
+/**
  * escapeHtml - makes staff-authored text safe for a modal body
  *
  * `showConfirmModal` writes its message with innerHTML, so a label is escaped
@@ -657,7 +688,7 @@ export function renderRubricGrid(
                 syncFromForm();
                 const label = 'New rating';
                 const id = uniqueSlug(slugFromLabel(label), 'level', allIds());
-                draft.levels.push({ id, label, description: '', rank: draft.levels.length + 1 });
+                draft.levels.push(newRatingLevel(id, label, draft.levels));
                 pendingIds.add(id);
                 rememberPending();
                 onChange();

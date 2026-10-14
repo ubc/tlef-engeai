@@ -63,6 +63,17 @@ describe('rubric page autosave wiring', () => {
         expect(source).toMatch(/(?:status === 'saved'|case 'saved':)[\s\S]{0,300}state\.panelDirty = false/);
     });
 
+    it('holds a cycle it will not send instead of resolving it as saved', () => {
+        expect(autosavePath).toContain('throw new AutosaveHeldError(');
+        expect(autosavePath).not.toMatch(/catch\s*\{\s*return;\s*\}/);
+    });
+
+    it('says a held cycle is not saved and leaves the page dirty', () => {
+        const held = source.match(/case 'held':[\s\S]*?return;/)?.[0] ?? '';
+        expect(held).toContain('Not saved yet');
+        expect(held).not.toContain('panelDirty = false');
+    });
+
     it('flushes on page hide and on visibility change', () => {
         expect(source).toContain("'visibilitychange'");
         expect(source).toContain("'pagehide'");

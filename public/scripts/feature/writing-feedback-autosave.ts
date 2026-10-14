@@ -18,7 +18,7 @@
  */
 
 /** Where the loop is, in the words the status line uses. */
-export type AutosaveStatus = 'idle' | 'pending' | 'saving' | 'saved' | 'error' | 'stopped';
+export type AutosaveStatus = 'idle' | 'pending' | 'saving' | 'saved' | 'held' | 'error' | 'stopped';
 
 /** One observable step of the loop. `savedAt` is set only once a write has succeeded. */
 export interface AutosaveState {
@@ -32,6 +32,17 @@ export class AutosaveSignedOutError extends Error {
     constructor(message = 'Signed out') {
         super(message);
         this.name = 'AutosaveSignedOutError';
+    }
+}
+
+/**
+ * Thrown by a caller's `write` when the page is not in a state the server would accept, so
+ * nothing was sent. Reported as `held` with this message, never as `saved`.
+ */
+export class AutosaveHeldError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'AutosaveHeldError';
     }
 }
 
@@ -134,7 +145,9 @@ export function createAutosave(options: AutosaveOptions): Autosave {
             // write against the server that just refused this one.
             dirtySince = now();
             publish({
-                status: 'error',
+                // Held is not a failure of the write but a refusal to send one; the page words
+                // the two differently. Both leave the draft dirty and wait for the next edit.
+                status: error instanceof AutosaveHeldError ? 'held' : 'error',
                 ...(current.savedAt !== undefined ? { savedAt: current.savedAt } : {}),
                 message: error instanceof Error ? error.message : 'Could not save'
             });
