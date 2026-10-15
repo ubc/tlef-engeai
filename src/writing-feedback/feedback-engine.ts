@@ -612,7 +612,7 @@ export class RubricWritingFeedbackEngine implements WritingFeedbackEngine {
     /**
      * computeGenreGrounding - genre-pass retrieval plus its relevance verdicts.
      *
-     * Used by generation (diagnosis and analyzer knowledge) and by the coverage report.
+     * Used by generation for diagnosis and analyzer knowledge.
      * Reads only the approved profile; never student text.
      *
      * @param assignment - Assignment with an approved genre profile

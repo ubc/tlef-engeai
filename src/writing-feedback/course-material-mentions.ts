@@ -148,8 +148,8 @@ const LINKING: LanguageFunctionNeed = { key: 'cohesion', label: 'Linking ideas a
 const OBJECTIVE_STANCE: LanguageFunctionNeed = { key: 'stance', label: 'Objective stance', query: 'objective impersonal academic tone avoiding personal opinion' };
 
 /**
- * Language skills per founded genre (D-154). These double as coverage rows, so each one is
- * a skill that genre actually asks for; custom genres get the general `default` list.
+ * Language skills per founded genre (D-154). Each one is a skill that genre actually asks
+ * for, so retrieval searches only for what it needs; custom genres get the general `default` list.
  */
 export const GENRE_LANGUAGE_FUNCTIONS: Record<WritingFoundedGenreId | 'default', LanguageFunctionNeed[]> = {
     descriptive_report: [
@@ -215,7 +215,7 @@ export function isTeachableRequirement(requirement: string, stageLabels: string[
     return true;
 }
 
-/** First clause of a requirement, at most 60 characters, for a coverage label. */
+/** First clause of a requirement, at most 60 characters, for a need label. */
 function requirementLabel(requirement: string): string {
     const clause = requirement.split(/[.;:]/)[0].trim();
     return clause.length > 60 ? `${clause.slice(0, 59).trimEnd()}…` : clause;

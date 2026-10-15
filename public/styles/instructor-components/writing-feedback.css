@@ -2121,7 +2121,9 @@
 
 .wf-stage-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.75fr) auto auto;
+    /* Fixed Required and remove tracks keep every row aligned under the heading row,
+       including read-only rows that have no remove button. */
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.75fr) 72px 36px;
     /* Stretch, not start: an input and a one-row textarea do not resolve to the
        same natural height, so side by side they sat on mismatched baselines. */
     align-items: stretch;
@@ -2129,7 +2131,7 @@
 }
 
 /* 36px is the icon button's height, so all three controls share one row height. */
-.wf-stage-row input,
+.wf-stage-row input[type="text"],
 .wf-stage-row textarea {
     min-height: 36px;
 }
@@ -2138,74 +2140,48 @@
     resize: vertical;
 }
 
-/* The Required toggle sits beside its section so the choice reads per row. */
-.wf-stage-required {
-    display: inline-flex;
+/* Column headings for the section rows; they share the rows' grid tracks. */
+.wf-stage-head {
+    margin-bottom: 8px;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.wf-stage-head-required {
+    text-align: center;
+}
+
+/* The checkbox is centred under its heading and on the text boxes' midline; its visible
+   text appears only in the narrow layout. The selector outranks the details form's
+   question-label rule, whose baseline alignment, space-between and padding otherwise win. */
+.wf-field .wf-stage-row > label.wf-stage-required {
+    display: flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
+    padding: 0;
+    font-weight: 400;
     white-space: nowrap;
     color: var(--text-secondary);
     font-size: 0.9rem;
 }
 
-.wf-required-notice {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px 16px;
-    margin: 0 0 16px;
-    padding: 12px 16px;
-    border: 1px solid var(--color-ubc-blue);
-    border-radius: 8px;
-    color: var(--text-primary);
-}
-
-.wf-required-notice p {
+/* .wf-field input sizes every input as a text field; a checkbox keeps its native size. */
+.wf-field .wf-stage-required input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
     margin: 0;
-    flex: 1 1 280px;
-}
-
-/* Course-material coverage: a quiet list under the rubric steps. */
-.wf-coverage {
-    margin-top: 24px;
-    padding: 16px;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-}
-
-.wf-coverage-banner {
-    margin: 8px 0;
-    color: var(--text-secondary);
-}
-
-.wf-coverage-list {
-    list-style: none;
-    margin: 12px 0;
     padding: 0;
-    display: grid;
-    gap: 6px;
 }
 
-.wf-coverage-row {
-    display: grid;
-    grid-template-columns: 1.5rem minmax(0, 1fr) minmax(0, 1.5fr);
-    gap: 8px;
-    align-items: baseline;
-    overflow-wrap: anywhere;
-}
-
-.wf-coverage-mark {
-    font-weight: 700;
-    color: var(--color-chbe-green);
-}
-
-.wf-coverage-row--gap .wf-coverage-mark {
-    color: var(--color-eng-red);
-}
-
-.wf-coverage-detail {
-    color: var(--text-secondary);
+.wf-stage-required-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
 }
 
 /*
@@ -2230,12 +2206,21 @@
         grid-column: 1 / -1;
     }
 
-    .wf-coverage-row {
-        grid-template-columns: 1.5rem minmax(0, 1fr);
+    /* Rows stack here, so the column headings no longer line up with anything. */
+    .wf-stage-head {
+        display: none;
     }
 
-    .wf-coverage-detail {
-        grid-column: 2;
+    .wf-field .wf-stage-row > label.wf-stage-required {
+        justify-content: flex-start;
+    }
+
+    .wf-stage-required-text {
+        position: static;
+        width: auto;
+        height: auto;
+        overflow: visible;
+        clip: auto;
     }
 }
 

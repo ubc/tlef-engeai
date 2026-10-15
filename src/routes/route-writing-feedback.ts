@@ -269,8 +269,6 @@ function safeError(error: unknown): string {
         REVIEW_WHILE_GENERATING_MESSAGE, APPROVE_WHILE_GENERATING_MESSAGE,
         ...Object.values(REPLACEMENT_ERRORS),
         ...Object.values(BATCH_ERRORS),
-        'Approve the writing rubric before checking course-material coverage',
-        'Course-material coverage is unavailable for this engine',
         ...RELEASE_REFUSAL_PREFIXES
     ];
     return safePrefixes.some((prefix) => message.startsWith(prefix))
@@ -557,41 +555,6 @@ router.get('/:courseId/writing-feedback/course-materials', asyncHandlerWithAuth(
     const mongo = await EngEAI_MongoDB.getInstance();
     const course = await mongo.getActiveCourse(courseId(req));
     res.json({ success: true, data: listPublishedCourseMaterialTitles(course) });
-}));
-
-/**
- * Cached course-material coverage for an assignment's writing rubric.
- *
- * @route GET /api/courses/:courseId/writing-feedback/assignments/:assignmentId/material-coverage
- * @returns {{ coverage: MaterialCoverage | null, current: boolean }} Staff-only coverage rows
- */
-router.get('/:courseId/writing-feedback/assignments/:assignmentId/material-coverage', asyncHandlerWithAuth(async (req: Request, res: Response) => {
-    try {
-        const mongo = await EngEAI_MongoDB.getInstance();
-        const data = await new WritingFeedbackService(mongo).getMaterialCoverage(courseId(req), String(req.params.assignmentId));
-        res.json({ success: true, data });
-    } catch (error) {
-        res.status(400).json({ success: false, error: safeError(error) });
-    }
-}));
-
-/**
- * Recomputes course-material coverage from the course's current materials.
- *
- * @route POST /api/courses/:courseId/writing-feedback/assignments/:assignmentId/material-coverage
- * @returns {MaterialCoverage} Freshly stored coverage
- */
-router.post('/:courseId/writing-feedback/assignments/:assignmentId/material-coverage', asyncHandlerWithAuth(async (req: Request, res: Response) => {
-    try {
-        const mongo = await EngEAI_MongoDB.getInstance();
-        // Same per-course model choice generation uses, so coverage judges relevance alike.
-        const llmCallOptions = await ModelSelectionService.getInstance().buildFeatureLlmCallOptions(courseId(req), 'writingFeedback');
-        const data = await new WritingFeedbackService(mongo)
-            .recomputeMaterialCoverage(courseId(req), String(req.params.assignmentId), llmCallOptions);
-        res.json({ success: true, data });
-    } catch (error) {
-        res.status(400).json({ success: false, error: safeError(error) });
-    }
 }));
 
 router.get('/:courseId/writing-feedback/glossary', asyncHandlerWithAuth(async (req: Request, res: Response) => {

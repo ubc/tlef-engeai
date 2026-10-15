@@ -148,26 +148,8 @@ export interface TextDiagnosis {
     rationale: string; // staff-only
 }
 
-/** What a retrieval need is about; also the coverage row type. */
+/** What a retrieval need is about. */
 export type RetrievalNeedKind = 'genre' | 'stage' | 'task_requirement' | 'language_function' | 'contrast' | 'finding';
-
-/** One row of the staff-only course-material coverage report. */
-export interface MaterialCoverageRow {
-    needId: string;
-    kind: RetrievalNeedKind;
-    label: string;
-    covered: boolean;
-    materialLabels: string[]; // published material labels only
-}
-
-/** Coverage cached on an assignment, invalidated by rubric version or material changes. */
-export interface MaterialCoverage {
-    rubricVersion: number;
-    materialFingerprint: string;
-    needsVersion?: string; // absent on coverage cached before D-154, which then reads as stale
-    computedAt: Date;
-    rows: MaterialCoverageRow[];
-}
 
 /**
  * One cell of the rubric grid: the points a criterion earns at one level, and the
@@ -354,8 +336,6 @@ export interface WritingAssignment {
     dueAt?: Date;
     createdAt: Date; // assignment audit creation timestamp
     updatedAt: Date; // latest assignment/rubric state timestamp
-    /** Cached course-material coverage for the approved writing rubric; staff-only. */
-    materialCoverage?: MaterialCoverage;
 }
 
 /** Local, course-scoped student submission used by verification and staff review workflows. */
@@ -1085,16 +1065,6 @@ export interface WritingFeedbackEngine {
         verifiedText: string;
         llmCallOptions?: LLMOptions;
     }): Promise<WritingFeedbackResult>;
-    /**
-     * Genre-pass retrieval and relevance for coverage, reading only the approved profile.
-     * Optional: engines without course-material grounding omit it.
-     */
-    computeGenreGrounding?(assignment: WritingAssignment, llmCallOptions?: LLMOptions): Promise<{
-        needs: Array<{ id: string; kind: RetrievalNeedKind; label: string; query: string }>;
-        retrieval: { excerpts: Array<{ id: string; text: string; needIds: string[]; score: number; published: boolean; mention?: CourseMaterialMention }>; failed: boolean };
-        supported: Map<string, Set<string>>;
-        relevanceFailed: boolean;
-    }>;
 }
 
 /** Student PDF section selector used by staff download endpoints. */

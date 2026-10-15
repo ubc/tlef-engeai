@@ -228,24 +228,6 @@ export interface TextDiagnosis {
     rationale: string;
 }
 
-/** One coverage row on the rubric page. */
-export interface MaterialCoverageRow {
-    needId: string;
-    kind: 'genre' | 'stage' | 'task_requirement' | 'language_function' | 'contrast' | 'finding';
-    label: string;
-    covered: boolean;
-    materialLabels: string[];
-}
-
-/** Cached coverage returned by the coverage route. */
-export interface MaterialCoverage {
-    rubricVersion: number;
-    materialFingerprint: string;
-    needsVersion?: string; // absent on coverage cached before D-154
-    computedAt: string;
-    rows: MaterialCoverageRow[];
-}
-
 /** Immutable model-run snapshot displayed as the starting point for staff review. */
 export interface FeedbackRun {
     id: string; // provenance key attached to subsequent staff revisions

@@ -94,16 +94,16 @@ describe('writing feedback rubric page source contract', () => {
     });
 });
 
-describe('required stages and course-material coverage on the rubric page', () => {
+describe('required stages on the rubric page', () => {
     it('saves the stage Required checkbox instead of forcing every stage required', () => {
         expect(source).not.toMatch(/required: true, order: stages\.length \+ 1/);
         expect(source).toContain('data-stage-required');
-        expect(source).toContain('If most required sections are weak or missing, or the text is the wrong genre, the student gets general feedback about the whole text');
+        expect(source).toContain('wf-stage-head');
     });
 
-    it('shows coverage with a recheck action and the one-time required-stages notice', () => {
-        expect(source).toContain('/material-coverage');
-        expect(source).toContain('Recheck materials');
-        expect(source).toContain('shouldShowRequiredNotice(');
+    it('shows neither the required-stages notice nor a coverage panel', () => {
+        expect(source).not.toContain('/material-coverage');
+        expect(source).not.toContain('Recheck materials');
+        expect(source).not.toContain('renderRequiredStagesNotice');
     });
 });

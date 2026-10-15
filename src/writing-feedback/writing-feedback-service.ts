@@ -18,7 +18,6 @@ import type {
     CanvasReleaseInput,
     CanvasReleaseService,
     FeedbackPdfInclude,
-    MaterialCoverage,
     FeedbackPdfLens,
     StaffReviewRevision,
     SummarySource,
@@ -40,8 +39,6 @@ import { seedCommentsFromRun, stampCommentAuthors, validateAnchoredComments, wit
 import { NO_REVISION_GOALS_MESSAGE, RubricWritingFeedbackEngine } from './feedback-engine';
 import { TEXT_DIAGNOSIS_FAILED_MESSAGE } from './text-diagnosis';
 import { hasWholeTextProblem, resolveHoldBack, studentFacingComments } from './feedback-gate';
-import { buildCoverageRows, COVERAGE_NEEDS_VERSION, courseMaterialFingerprint, isCoverageCurrent } from './material-coverage';
-import type { GroundingExcerpt, RetrievalNeed } from './course-material-mentions';
 import type { LLMOptions } from 'ubc-genai-toolkit-llm';
 import { TECHNICAL_PROMPT_VERSION, TechnicalWritingFeedbackEngine } from './technical-feedback-engine';
 import { lensesForAssignment, selectRubric, rubricForVersion } from './rubric-lens';
@@ -822,51 +819,6 @@ export class WritingFeedbackService {
         const approved = await this.mongo.approveWritingSubmission(courseId, submissionId, staffUserId, staffName);
         if (!approved) throw new Error('A draft-ready submission is required before approval');
         return approved;
-    }
-
-    /**
-     * getMaterialCoverage - cached coverage and whether it still describes the assignment.
-     *
-     * @param courseId - Course boundary
-     * @param assignmentId - Assignment
-     * @returns Cached coverage (or null) and whether it matches the rubric version and materials
-     */
-    async getMaterialCoverage(courseId: string, assignmentId: string): Promise<{ coverage: MaterialCoverage | null; current: boolean }> {
-        const assignment = await this.requireAssignment(courseId, assignmentId);
-        const rubric = selectRubric(assignment, 'linguistic').approved;
-        const course = await this.mongo.getActiveCourse(courseId);
-        const coverage = assignment.materialCoverage ?? null;
-        return {
-            coverage,
-            current: Boolean(rubric) && isCoverageCurrent(coverage ?? undefined, rubric!.version, courseMaterialFingerprint(course))
-        };
-    }
-
-    /**
-     * recomputeMaterialCoverage - runs the genre pass and stores fresh coverage.
-     *
-     * @param courseId - Course boundary
-     * @param assignmentId - Assignment with an approved writing rubric
-     * @param llmCallOptions - Per-course model options, built by the caller
-     * @returns The stored coverage
-     * @throws Error when the writing rubric is not approved or the engine cannot ground
-     */
-    async recomputeMaterialCoverage(courseId: string, assignmentId: string, llmCallOptions?: LLMOptions): Promise<MaterialCoverage> {
-        const assignment = await this.requireAssignment(courseId, assignmentId);
-        const rubric = selectRubric(assignment, 'linguistic').approved;
-        if (!rubric) throw new Error('Approve the writing rubric before checking course-material coverage');
-        if (!this.engine.computeGenreGrounding) throw new Error('Course-material coverage is unavailable for this engine');
-        const course = await this.mongo.getActiveCourse(courseId);
-        const grounding = await this.engine.computeGenreGrounding({ ...assignment, rubric }, llmCallOptions);
-        const coverage: MaterialCoverage = {
-            rubricVersion: rubric.version,
-            materialFingerprint: courseMaterialFingerprint(course),
-            needsVersion: COVERAGE_NEEDS_VERSION,
-            computedAt: new Date(),
-            rows: buildCoverageRows(grounding.needs as RetrievalNeed[], grounding.retrieval.excerpts as GroundingExcerpt[], grounding.supported)
-        };
-        await this.mongo.setWritingAssignmentMaterialCoverage(courseId, assignmentId, coverage);
-        return coverage;
     }
 
     /**

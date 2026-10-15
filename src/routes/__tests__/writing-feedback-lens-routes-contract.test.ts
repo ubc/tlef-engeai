@@ -377,18 +377,8 @@ describe('review revision hold-back choice', () => {
 });
 
 describe('course-material coverage routes', () => {
-    it('declares the read and recompute routes on the assignment', () => {
-        expect(source).toContain("router.get('/:courseId/writing-feedback/assignments/:assignmentId/material-coverage'");
-        expect(source).toContain("router.post('/:courseId/writing-feedback/assignments/:assignmentId/material-coverage'");
-    });
-
-    it('builds per-course model options for the recompute, as generation does', () => {
-        const route = source.match(/router\.post\('\/:courseId\/writing-feedback\/assignments\/:assignmentId\/material-coverage'[\s\S]*?\n}\)\);/)?.[0] ?? '';
-        expect(route).toContain("buildFeatureLlmCallOptions(");
-        expect(route).toContain('recomputeMaterialCoverage(');
-    });
-
-    it('lets the fixed coverage refusal past the safeError allowlist', () => {
-        expect(source).toContain("'Approve the writing rubric before checking course-material coverage'");
+    it('are not registered: feedback runs its own course-material search', () => {
+        expect(source).not.toContain('/material-coverage');
+        expect(source).not.toContain('MaterialCoverage');
     });
 });

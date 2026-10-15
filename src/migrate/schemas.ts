@@ -418,6 +418,7 @@ export const writingAssignmentSchema: FieldSpec[] = [
     { key: 'technicalRubricSource', optional: true },
     { key: 'canvasDetails', kind: 'opaque', optional: true },
     { key: 'dueAt', optional: true },
+    // No longer written or read; kept so assignments that cached a coverage check still validate.
     { key: 'materialCoverage', kind: 'opaque', optional: true },
     { key: 'createdAt', optional: true },
     { key: 'updatedAt', optional: true },
