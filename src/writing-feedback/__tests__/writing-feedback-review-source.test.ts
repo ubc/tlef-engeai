@@ -28,13 +28,14 @@ describe('writing feedback review source contract', () => {
         expect(criterionLabel).not.toMatch(/\?\?\s*id/);
     });
 
-    it('polls for generation results past the worker\'s worst-case retry budget', () => {
-        // maxAttempts=3 with up to a 60s lease each (writing-feedback-service.ts,
-        // writing-feedback-mongo.ts leaseNextWritingJob) means a job that fails once
-        // and succeeds on retry can legitimately take past two minutes. A shorter
-        // ceiling here throws a false "still running" error and stops the polling
-        // that was keeping the staff session's idle timer alive.
-        expect(source).toContain('const GENERATION_POLL_TIMEOUT_MS = 300_000;');
+    it('follows generation only while staff stay on the submission, never pulling them back', () => {
+        // Generate used to await a blocking poll that reopened the submission when it finished,
+        // even after staff had moved on. The follower now stops once the submission is no
+        // longer shown, and reports the outcome only to staff still looking at it.
+        expect(source).not.toContain('waitForGeneration(');
+        const follower = source.match(/async function waitUntilGenerated[\s\S]*?\n}\n/)?.[0] ?? '';
+        expect(follower).toContain('if (!stillShown()) return;');
+        expect(follower).toContain("showSuccessToast('Feedback draft generated for staff review.')");
     });
 
     it('explains a refused Canvas write from the release record, by the step it stopped at', () => {
@@ -199,5 +200,38 @@ describe('single release source contract', () => {
         // The refused connection still exists, so the usual "not connected" prompt never appears.
         expect(source).toContain('error instanceof CanvasAccountMismatchError');
         expect(source).toContain('canvasReconnectUrl: error.connectUrl');
+    });
+});
+
+describe('section check on the review page', () => {
+    it('shows the section check only through its view, which is null without a whole-text problem', () => {
+        expect(source).toContain('sectionCheckView(feedbackRun, profileStages)');
+        expect(source).toContain('renderSectionCheck(');
+    });
+
+    it('saves a hold-back choice only when staff made one', () => {
+        expect(source).not.toContain('modeOverride');
+        expect(source).toContain('holdBackChoice !== undefined');
+        expect(source).toContain('holdBackAnnotations: holdBackChoice');
+    });
+
+    it('holds back annotations and gates course readings on supported citations', () => {
+        expect(anchorsSource).toContain('renderHeldBackGroup(');
+        expect(anchorsSource).toContain('splitHeldBack(');
+        expect(anchorsSource).toContain('readAgainLabel(');
+    });
+
+    it('edits the overall message above the usual sections, which are never hidden', () => {
+        expect(source).toContain('renderOverallMessageEditor(');
+        expect(source).toContain("createText('h3', 'General feedback')");
+        expect(source).not.toContain('goalsSection.hidden');
+    });
+});
+
+describe('held-back annotations in the document', () => {
+    it('leaves held-back annotations out of the document and its numbering until released', () => {
+        expect(anchorsSource).toContain('!(holdBack && isHeldBack(comment))');
+        expect(anchorsSource).toContain('annotationNumbers(context.lens, text, context.holdBack ?? false)');
+        expect(anchorsSource).toContain('orderedAnchorable(context.lens, text, context.holdBack ?? false)');
     });
 });

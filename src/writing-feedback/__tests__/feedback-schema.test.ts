@@ -46,7 +46,9 @@ function feedbackFor(
         revisionGoals: [{
             skillTag: 'audience-awareness',
             goal: 'Define the key term.',
-            guidedQuestion: 'What does a reader need to know first?'
+            action: 'Add a formal definition before the term is used.',
+            guidedQuestion: 'What does a reader need to know first?',
+            questionScope: 'whole'
         }],
         internalFlags: []
     };
@@ -254,7 +256,7 @@ describe('buildSummaryRedraftSchema', () => {
             criterion: criterion.id, suggestedLevel: rubric.levels[0].id, explanation: 'Why.', confidence: 0.5
         })),
         strengths: ['One.'],
-        revisionGoals: [{ skillTag: 'x', goal: 'Goal.', guidedQuestion: 'Question?' }]
+        revisionGoals: [{ skillTag: 'x', goal: 'Goal.', action: 'Do this.', guidedQuestion: 'Question?', questionScope: 'whole' }]
     });
 
     it('accepts a complete redraft', () => {
@@ -271,5 +273,48 @@ describe('buildSummaryRedraftSchema', () => {
         for (const value of [unknown, missing, strengths, noGoals, fourGoals]) {
             expect(schema.safeParse(value).success).toBe(false);
         }
+    });
+});
+
+describe('Socratic questions in the output schema (D-153)', () => {
+    const rubric = sixCriterionRubric();
+    const valid = () => feedbackFor(rubric) as WritingFeedbackResult & { revisionGoals: Array<Record<string, unknown>> };
+
+    it('accepts a goal with a question and a scope', () => {
+        expect(buildFeedbackSchema(rubric).safeParse(valid()).success).toBe(true);
+    });
+
+    it('rejects a goal without a guidedQuestion', () => {
+        const result = valid();
+        delete (result.revisionGoals[0] as { guidedQuestion?: string }).guidedQuestion;
+        expect(buildFeedbackSchema(rubric).safeParse(result).success).toBe(false);
+    });
+
+    it('rejects a goal without a questionScope or with an unknown scope', () => {
+        const missing = valid();
+        delete (missing.revisionGoals[0] as { questionScope?: string }).questionScope;
+        expect(buildFeedbackSchema(rubric).safeParse(missing).success).toBe(false);
+        const unknown = valid();
+        (unknown.revisionGoals[0] as { questionScope?: string }).questionScope = 'paragraph';
+        expect(buildFeedbackSchema(rubric).safeParse(unknown).success).toBe(false);
+    });
+
+    it('requires the overall message on a whole-text problem and drops it otherwise', () => {
+        expect(buildFeedbackSchema(rubric, { wholeTextProblem: true }).safeParse(valid()).success).toBe(false);
+        const withMessage = { ...valid(), overallMessage: 'Keep your topic.\n1. Define it.' };
+        expect(buildFeedbackSchema(rubric, { wholeTextProblem: true }).safeParse(withMessage).success).toBe(true);
+        const parsed = buildFeedbackSchema(rubric).safeParse(withMessage);
+        expect(parsed.success && 'overallMessage' in parsed.data).toBe(false);
+    });
+
+    it('requires the question and scope in a summary redraft too', () => {
+        const redraft = {
+            criteria: rubric.criteria.map((criterion) => ({ criterion: criterion.id, suggestedLevel: rubric.levels[0].id, explanation: 'e', confidence: 0.5 })),
+            strengths: [] as string[],
+            revisionGoals: [{ skillTag: 'x', goal: 'g', action: 'a', guidedQuestion: 'What does your reader need first?' } as Record<string, unknown>]
+        };
+        expect(buildSummaryRedraftSchema(rubric).safeParse(redraft).success).toBe(false);
+        redraft.revisionGoals[0] = { ...redraft.revisionGoals[0], questionScope: 'whole' };
+        expect(buildSummaryRedraftSchema(rubric).safeParse(redraft).success).toBe(true);
     });
 });

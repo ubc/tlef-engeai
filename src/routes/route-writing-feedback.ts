@@ -74,6 +74,7 @@ import {
     type RubricGridSource
 } from '../writing-feedback/rubric-autofill';
 import type { ImportedRubricShape, WritingFeedbackLens, WritingRubricDefinition } from '../writing-feedback/contracts';
+import { ModelSelectionService } from '../dashboard-setting/model-selection-service';
 import { RELEASE_REFUSAL_PREFIXES } from '../writing-feedback/release-refusals';
 import {
     RUBRIC_SOURCE_ERRORS,
@@ -268,6 +269,8 @@ function safeError(error: unknown): string {
         REVIEW_WHILE_GENERATING_MESSAGE, APPROVE_WHILE_GENERATING_MESSAGE,
         ...Object.values(REPLACEMENT_ERRORS),
         ...Object.values(BATCH_ERRORS),
+        'Approve the writing rubric before checking course-material coverage',
+        'Course-material coverage is unavailable for this engine',
         ...RELEASE_REFUSAL_PREFIXES
     ];
     return safePrefixes.some((prefix) => message.startsWith(prefix))
@@ -554,6 +557,41 @@ router.get('/:courseId/writing-feedback/course-materials', asyncHandlerWithAuth(
     const mongo = await EngEAI_MongoDB.getInstance();
     const course = await mongo.getActiveCourse(courseId(req));
     res.json({ success: true, data: listPublishedCourseMaterialTitles(course) });
+}));
+
+/**
+ * Cached course-material coverage for an assignment's writing rubric.
+ *
+ * @route GET /api/courses/:courseId/writing-feedback/assignments/:assignmentId/material-coverage
+ * @returns {{ coverage: MaterialCoverage | null, current: boolean }} Staff-only coverage rows
+ */
+router.get('/:courseId/writing-feedback/assignments/:assignmentId/material-coverage', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const mongo = await EngEAI_MongoDB.getInstance();
+        const data = await new WritingFeedbackService(mongo).getMaterialCoverage(courseId(req), String(req.params.assignmentId));
+        res.json({ success: true, data });
+    } catch (error) {
+        res.status(400).json({ success: false, error: safeError(error) });
+    }
+}));
+
+/**
+ * Recomputes course-material coverage from the course's current materials.
+ *
+ * @route POST /api/courses/:courseId/writing-feedback/assignments/:assignmentId/material-coverage
+ * @returns {MaterialCoverage} Freshly stored coverage
+ */
+router.post('/:courseId/writing-feedback/assignments/:assignmentId/material-coverage', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    try {
+        const mongo = await EngEAI_MongoDB.getInstance();
+        // Same per-course model choice generation uses, so coverage judges relevance alike.
+        const llmCallOptions = await ModelSelectionService.getInstance().buildFeatureLlmCallOptions(courseId(req), 'writingFeedback');
+        const data = await new WritingFeedbackService(mongo)
+            .recomputeMaterialCoverage(courseId(req), String(req.params.assignmentId), llmCallOptions);
+        res.json({ success: true, data });
+    } catch (error) {
+        res.status(400).json({ success: false, error: safeError(error) });
+    }
 }));
 
 router.get('/:courseId/writing-feedback/glossary', asyncHandlerWithAuth(async (req: Request, res: Response) => {
@@ -1668,6 +1706,11 @@ router.post('/:courseId/writing-feedback/submissions/:submissionId/reviews', asy
             }
             summaryEdits = parsedEdits.data;
         }
+        // Sent only when staff changed "Hold back annotations"; absent keeps the current choice.
+        if (req.body?.holdBackAnnotations !== undefined && typeof req.body.holdBackAnnotations !== 'boolean') {
+            return res.status(400).json({ success: false, error: 'holdBackAnnotations must be true or false' });
+        }
+        const holdBackAnnotations: boolean | undefined = req.body?.holdBackAnnotations;
         const globalUser = (req.session as any).globalUser;
         const mongo = await EngEAI_MongoDB.getInstance();
         const revision = await new WritingFeedbackService(mongo).appendReview(courseId(req), String(req.params.submissionId), {
@@ -1679,6 +1722,8 @@ router.post('/:courseId/writing-feedback/submissions/:submissionId/reviews', asy
             finalAssessment,
             assessmentDraft,
             summaryEdits,
+            // Omitted unless staff changed the checkbox: Mongo would store undefined as null.
+            ...(typeof holdBackAnnotations === 'boolean' ? { holdBackAnnotations } : {}),
             technicalFeedbackRunId: typeof req.body?.technicalFeedbackRunId === 'string'
                 ? req.body.technicalFeedbackRunId.slice(0, 64)
                 : undefined

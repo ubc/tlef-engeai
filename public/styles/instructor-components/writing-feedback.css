@@ -2121,7 +2121,7 @@
 
 .wf-stage-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.75fr) auto;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.75fr) auto auto;
     /* Stretch, not start: an input and a one-row textarea do not resolve to the
        same natural height, so side by side they sat on mismatched baselines. */
     align-items: stretch;
@@ -2136,6 +2136,76 @@
 
 .wf-stage-row textarea {
     resize: vertical;
+}
+
+/* The Required toggle sits beside its section so the choice reads per row. */
+.wf-stage-required {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.wf-required-notice {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px 16px;
+    margin: 0 0 16px;
+    padding: 12px 16px;
+    border: 1px solid var(--color-ubc-blue);
+    border-radius: 8px;
+    color: var(--text-primary);
+}
+
+.wf-required-notice p {
+    margin: 0;
+    flex: 1 1 280px;
+}
+
+/* Course-material coverage: a quiet list under the rubric steps. */
+.wf-coverage {
+    margin-top: 24px;
+    padding: 16px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.wf-coverage-banner {
+    margin: 8px 0;
+    color: var(--text-secondary);
+}
+
+.wf-coverage-list {
+    list-style: none;
+    margin: 12px 0;
+    padding: 0;
+    display: grid;
+    gap: 6px;
+}
+
+.wf-coverage-row {
+    display: grid;
+    grid-template-columns: 1.5rem minmax(0, 1fr) minmax(0, 1.5fr);
+    gap: 8px;
+    align-items: baseline;
+    overflow-wrap: anywhere;
+}
+
+.wf-coverage-mark {
+    font-weight: 700;
+    color: var(--color-chbe-green);
+}
+
+.wf-coverage-row--gap .wf-coverage-mark {
+    color: var(--color-eng-red);
+}
+
+.wf-coverage-detail {
+    color: var(--text-secondary);
 }
 
 /*
@@ -2158,6 +2228,14 @@
 
     .wf-stage-row textarea {
         grid-column: 1 / -1;
+    }
+
+    .wf-coverage-row {
+        grid-template-columns: 1.5rem minmax(0, 1fr);
+    }
+
+    .wf-coverage-detail {
+        grid-column: 2;
     }
 }
 
@@ -4340,4 +4418,187 @@ mark.wf-anchor.is-filtered-out,
     border: 1px solid var(--border-1, #c9d4c9);
     border-radius: 6px;
     background: var(--background-2);
+}
+
+/* Section check: "Off-genre or missing sections" (review page, staff only, whole-text problems). Built on .wf-annotation-card. */
+.wf-diagnosis {
+    display: grid;
+    gap: 8px;
+    margin: 0 0 16px;
+    overflow-wrap: anywhere;
+}
+
+.wf-diagnosis-header {
+    justify-content: space-between;
+    margin-bottom: 0;
+}
+
+.wf-annotation-card .wf-diagnosis-headline {
+    margin: 0;
+}
+
+.wf-diagnosis-why p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.wf-diagnosis-stages {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.wf-diagnosis-stages .wf-chip {
+    white-space: normal;
+}
+
+.wf-diagnosis-required {
+    margin-left: 2px;
+    font-weight: 700;
+}
+
+.wf-annotation-card .wf-diagnosis-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.wf-diagnosis-note svg {
+    flex: none;
+    width: 14px;
+    height: 14px;
+    margin-top: 3px;
+}
+
+/* "Why EngE-AI flagged this": a small text link, matching "Reset to default". */
+.wf-diagnosis-why {
+    display: grid;
+    gap: 4px;
+}
+
+.wf-diagnosis-why__link {
+    justify-self: start;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--color-chbe-green);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+/* Only the words are underlined, so the arrow reads as an icon beside them. */
+.wf-diagnosis-why__label {
+    text-decoration: underline;
+}
+
+.wf-diagnosis-why__arrow {
+    display: inline-block;
+    font-size: 16px;
+    line-height: 1;
+    transition: transform 0.15s ease;
+}
+
+.wf-diagnosis-why__link[aria-expanded="true"] .wf-diagnosis-why__arrow {
+    transform: rotate(90deg);
+}
+
+.wf-diagnosis-why__link:focus-visible {
+    outline: 2px solid var(--color-ubc-blue);
+    outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .wf-diagnosis-why__arrow {
+        transition: none;
+    }
+}
+
+.wf-hold-back {
+    display: grid;
+    gap: 4px;
+    margin-top: 8px;
+}
+
+.wf-hold-back__option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.wf-hold-back__option input {
+    flex: none;
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    accent-color: var(--color-chbe-green);
+}
+
+.wf-annotation-card .wf-hold-back__source {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.wf-hold-back__reset {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--color-chbe-green);
+    font: inherit;
+    font-weight: 600;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.wf-hold-back__option input:focus-visible,
+.wf-hold-back__reset:focus-visible {
+    outline: 2px solid var(--color-ubc-blue);
+    outline-offset: 2px;
+}
+
+@media (hover: none) {
+    .wf-diagnosis-why__link,
+    .wf-hold-back__option,
+    .wf-hold-back__reset {
+        min-height: 44px;
+    }
+}
+
+/* Annotations withheld from the student while "Hold back annotations" is ticked. */
+.wf-held-back {
+    margin-top: 16px;
+    padding: 8px 12px;
+    border: 1px dashed var(--border-color);
+    border-radius: 8px;
+}
+
+.wf-held-back > summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.wf-held-back-item {
+    display: grid;
+    gap: 6px;
+    margin-top: 12px;
 }

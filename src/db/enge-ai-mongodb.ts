@@ -79,6 +79,7 @@ import type {
     CanvasRubricRow,
     StaffReviewRevision,
     WritingFeedbackLens,
+    MaterialCoverage,
     WritingFeedbackRun,
     WritingGlossaryEntry,
     WritingSourceMaterial,
@@ -242,6 +243,16 @@ export class EngEAI_MongoDB {
      */
     public getWritingAssignment = async (courseId: string, assignmentId: string) =>
         WritingFeedbackMongo.getWritingAssignment(this.ctx(), courseId, assignmentId);
+
+    /**
+     * setWritingAssignmentMaterialCoverage — caches course-material coverage on an assignment.
+     *
+     * @param courseId - Owning course id
+     * @param assignmentId - Internal assignment id
+     * @param coverage - Coverage keyed by rubric version and material fingerprint
+     */
+    public setWritingAssignmentMaterialCoverage = async (courseId: string, assignmentId: string, coverage: MaterialCoverage) =>
+        WritingFeedbackMongo.setWritingAssignmentMaterialCoverage(this.ctx(), courseId, assignmentId, coverage);
 
     /**
      * getWritingAssignmentByCanvasId — resolves a course-local Canvas mapping.

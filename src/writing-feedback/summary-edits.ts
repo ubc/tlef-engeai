@@ -8,6 +8,7 @@
  */
 
 import { z } from 'zod';
+import { MAX_OVERALL_MESSAGE_LENGTH } from './feedback-schema';
 import type {
     StaffSummaryEdit,
     WritingAssignment,
@@ -29,7 +30,12 @@ export const summaryEditsInputSchema = z.array(z.object({
         criterion: z.string().trim().min(1).max(64),
         explanation: z.string().trim().min(1).max(4000)
     })).max(10),
-    revisionGoalsText: z.string().trim().min(1).max(30000).optional()
+    revisionGoalsText: z.string().trim().min(1).max(30000).optional(),
+    // Writing lens only. An empty string is an explicit clear: the student gets no overall message.
+    overallMessage: z.string().trim().max(MAX_OVERALL_MESSAGE_LENGTH).optional()
+}).refine((edit) => edit.overallMessage === undefined || edit.lens === 'linguistic', {
+    message: 'Only the writing lens has an overall message',
+    path: ['overallMessage']
 })).max(2);
 
 /**

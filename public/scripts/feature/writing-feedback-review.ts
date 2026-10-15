@@ -70,6 +70,8 @@ import { describeApprovalBlocker, type GradeProgress } from './writing-feedback-
 import { changedLenses, decideNextAction, stepBarState, type ReviewStep } from './writing-feedback-review-steps.js';
 import { SummaryEditor, seedSummaryText, type SummaryBaseline } from './writing-feedback-summary-editor.js';
 import { fingerprintAnnotations } from './writing-feedback-annotation-fingerprint.js';
+import { hasWholeTextProblem, resolveHoldBack, sectionCheckView } from './writing-feedback-diagnosis-model.js';
+import { renderOverallMessageEditor, renderSectionCheck } from './writing-feedback-diagnosis.js';
 
 function latestReview(submission: Submission): ReviewRevision | undefined {
     return submission.reviews?.[submission.reviews.length - 1];
@@ -250,27 +252,6 @@ function delay(ms: number): Promise<void> {
     return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-// The worker retries a failed attempt up to maxAttempts (3) with up to a 60s lease
-// each, so a job that fails once and succeeds on retry can legitimately take past
-// two minutes. This ceiling stays comfortably above that worst case, and matches
-// the server's default idle-session window (5 minutes) so a submission that is
-// still generating when this loop gives up has, in practice, already logged the
-// user out rather than doing so silently after this promise settles.
-const GENERATION_POLL_TIMEOUT_MS = 300_000;
-
-async function waitForGeneration(submissionId: string): Promise<SubmissionDetail> {
-    const deadline = Date.now() + GENERATION_POLL_TIMEOUT_MS;
-    while (Date.now() < deadline) {
-        const detail = await request<SubmissionDetail>(`/submissions/${encodeURIComponent(submissionId)}`);
-        if (detail.submission.status === 'draft_ready') return detail;
-        if (detail.submission.status === 'failed') {
-            throw new Error('Feedback generation failed. Check the rubric/profile and try again.');
-        }
-        await delay(2000);
-    }
-    throw new Error('Feedback generation is taking longer than expected. It may still finish — refresh this submission in a moment to check.');
-}
-
 /**
  * followReviewGeneration - refreshes an open review page once its submission leaves `generating`.
  *
@@ -308,6 +289,10 @@ async function waitUntilGenerated(submissionId: string, stillShown: () => boolea
         if (detail.submission.status === 'generating') continue;
         if (stillShown()) {
             followedGenerationId = null;
+            // A missing technical run is not toasted: the refreshed page shows its own warning.
+            if (detail.submission.status === 'failed') {
+                showErrorToast('Feedback generation failed. Check the rubric/profile and try again.');
+            } else showSuccessToast('Feedback draft generated for staff review.');
             await refreshReview(submissionId);
         }
         return;
@@ -322,8 +307,9 @@ interface ReleaseStatus {
 }
 
 // A live release uploads the feedback PDF, posts a Canvas comment, and waits on Canvas's own grade job.
-// Five minutes is well past the worst case observed against Canvas and matches the generation
-// ceiling above, including its reasoning about the idle-session window.
+// Five minutes is well past the worst case observed against Canvas, and matches the server's
+// default idle-session window, so a release still running when this gives up has, in practice,
+// already logged the user out.
 const RELEASE_POLL_TIMEOUT_MS = 300_000;
 
 /**
@@ -811,10 +797,8 @@ export function renderFeedbackPanel(
                         'POST'
                     );
                     showSuccessToast('Feedback generation queued. This page will refresh when it is ready.');
-                    const settled = await waitForGeneration(submission.id);
-                    if (assignment?.isLabReport && assignment.technicalRubric?.status === 'approved' && !settled.technicalFeedbackRun) {
-                        showErrorToast('Technical feedback was not generated. Check that the technical rubric is approved, then generate again.');
-                    } else showSuccessToast('Feedback draft generated for staff review.');
+                    // The submission is now `generating`, so the refresh shows the generating
+                    // panel, whose follower waits only while staff stay on this submission.
                     await refreshReview(submission.id);
                 },
                 submission.requiresVerification
@@ -832,6 +816,12 @@ export function renderFeedbackPanel(
     // The technical lens leads: a lab report is graded on its technical rubric (D-098).
     const lenses = (['technical', 'linguistic'] as const).filter((lens) => lensRuns[lens]);
     const isLabReport = lenses.length > 1;
+    // "Hold back annotations" for the writing lens: the staff choice, else held back exactly
+    // when the run has a whole-text problem. The saved choice is resent on every save; a
+    // choice is first saved only when staff change the checkbox.
+    const savedHoldBack = typeof detail.holdBackAnnotations === 'boolean' ? detail.holdBackAnnotations : undefined;
+    let holdBackChoice: boolean | undefined = savedHoldBack;
+    const holdBack = (): boolean => resolveHoldBack(feedbackRun, holdBackChoice);
     // Assigned once the footer exists: every edit re-states what staff can do next.
     let refreshActions: () => void = () => undefined;
     const markDirty = () => {
@@ -906,7 +896,9 @@ export function renderFeedbackPanel(
             listHost,
             verifiedText: submission.verifiedText ?? submission.originalText,
             lens,
-            markDirty
+            markDirty,
+            holdBack: lens === 'linguistic' && holdBack(),
+            run: lensRuns[lens] ?? null
         });
     };
 
@@ -946,6 +938,25 @@ export function renderFeedbackPanel(
         renderLensAnnotations(lens);
     };
 
+    // Staff-only section check, shown only for a whole-text problem, with "Hold back annotations".
+    const diagnosisHost = document.createElement('div');
+    const profileStages = rubricForRun(assignment, feedbackRun, 'linguistic')?.sflContext?.stages ?? [];
+    const renderDiagnosis = (): void => {
+        const view = sectionCheckView(feedbackRun, profileStages);
+        const suggested = hasWholeTextProblem(feedbackRun);
+        diagnosisHost.replaceChildren(...(view
+            ? [renderSectionCheck(view, { checked: holdBack(), changed: holdBackChoice !== undefined && holdBackChoice !== suggested }, true, (next) => {
+                // Choosing the suggestion again is the same as resetting to it.
+                holdBackChoice = next === suggested ? undefined : next;
+                markDirty();
+                renderDiagnosis();
+                renderLensAnnotations(activeLens);
+            })]
+            : []));
+    };
+    renderDiagnosis();
+    annotationsBody.append(diagnosisHost);
+
     const annotationTabs = lensTabs();
     if (annotationTabs) annotationsBody.append(annotationTabs);
     listHosts.forEach((host) => annotationsBody.append(host));
@@ -959,7 +970,7 @@ export function renderFeedbackPanel(
     let gradeEntryLens: WritingFeedbackLens | null = null;
     for (const lens of lenses) {
         const run = lensRuns[lens]!;
-        const lensSummary = renderSummaryLens({ assignment, lens, run, editor, markDirty, latest, preserved });
+        const lensSummary = renderSummaryLens({ assignment, lens, run, editor, markDirty, latest, preserved, overallMessageSeed: detail.overallMessage });
         lensPanels.set(lens, lensSummary.element);
         baselines.set(lens, lensSummary.baseline);
         evidenceRefreshers.push(lensSummary.refreshEvidence);
@@ -1233,7 +1244,12 @@ export function renderFeedbackPanel(
             comments: getWorkingComments(),
             ...(grades.complete ? { finalAssessment: grades.complete } : {}),
             ...(grades.draft ? { assessmentDraft: grades.draft } : {}),
-            summaryEdits: lenses.map((lens) => editor.readEdit(lens, lensRuns[lens]!.id))
+            summaryEdits: lenses.map((lens) => editor.readEdit(lens, lensRuns[lens]!.id)),
+            // Only a staff choice is sent: an unchanged checkbox follows the gate, and a reset
+            // to the suggestion is saved as the suggested value so it replaces an earlier choice.
+            ...(holdBackChoice !== undefined
+                ? { holdBackAnnotations: holdBackChoice }
+                : savedHoldBack !== undefined ? { holdBackAnnotations: hasWholeTextProblem(feedbackRun) } : {})
         });
         state.reviewDirty = false;
     }
@@ -1346,7 +1362,7 @@ export function renderFeedbackPanel(
             const source = detail.summarySources?.[lens];
             if (source) sourceFingerprints[lens] = source.annotationsFingerprint;
         });
-        const changed = changedLenses({ lenses: [...lenses], currentFingerprints, sourceFingerprints });
+        const changed = changedLenses({ lenses, currentFingerprints, sourceFingerprints });
         const edited = lenses.filter((lens) => editor.isEdited(lens, baselines.get(lens)!));
         const action = decideNextAction({ status: submission.status, changedLenses: changed, editedLenses: edited });
 
@@ -1476,9 +1492,9 @@ interface LensSummary {
 /**
  * renderSummaryLens - one lens's editable summary (D-126, D-127).
  *
- * Strengths, criterion cards (each carrying its final grade on the lens the assignment is graded
- * on) with evidence from the final annotations, readings (writing lens), internal flags, and
- * revision goals.
+ * The overall message (writing lens, whole-text problem only), strengths, criterion cards (each
+ * carrying its final grade on the lens the assignment is graded on) with evidence from the final
+ * annotations, readings (writing lens), internal flags, and revision goals.
  *
  * @param input - Lens, its latest run, the shared editor, and preserved state after a redraft
  * @returns The lens panel plus what the footer and Next step need from it
@@ -1491,8 +1507,10 @@ function renderSummaryLens(input: {
     markDirty: () => void;
     latest: ReviewRevision | undefined;
     preserved: PendingReviewState | null;
+    /** Overall message the student would receive, resolved by the server. */
+    overallMessageSeed?: string;
 }): LensSummary {
-    const { assignment, lens, run, editor, markDirty, latest, preserved } = input;
+    const { assignment, lens, run, editor, markDirty, latest, preserved, overallMessageSeed } = input;
     const element = document.createElement('div');
     element.className = 'wf-summary-lens';
     const rubric = rubricForRun(assignment, run, lens);
@@ -1503,16 +1521,27 @@ function renderSummaryLens(input: {
         goals: seedSummaryText(run.result.revisionGoals)
     };
 
-    // Step 1: What the student did well.
+    // Step 1: the overall message opens the student's feedback, only for a whole-text problem.
+    if (lens === 'linguistic' && hasWholeTextProblem(run)) {
+        const overallSection = document.createElement('section');
+        overallSection.className = 'wf-feedback-section';
+        overallSection.append(createText('h3', 'General feedback'));
+        const seed = overallMessageSeed ?? edit?.overallMessage ?? run.result.overallMessage ?? '';
+        editor.seedOverallMessage('linguistic', seed);
+        overallSection.append(renderOverallMessageEditor(seed, true, (text) => editor.setOverallMessage('linguistic', text)));
+        element.append(overallSection);
+    }
+
+    // Step 2: What the student did well.
     element.append(editor.strengthsSection(lens, edit?.strengths ?? run.result.strengths));
 
-    // Step 2: grade controls, on the lens the assignment is graded on — technical for a lab report.
+    // Step 3: grade controls, on the lens the assignment is graded on — technical for a lab report.
     const gradedLens: WritingFeedbackLens = assignment?.isLabReport ? 'technical' : 'linguistic';
     const gradeEntry = lens === gradedLens && hasSuggestedGrading(rubric)
         ? new GradeEntry(rubric, run, savedGrades(rubric, preserved, latest), markDirty)
         : null;
 
-    // Step 3: criterion feedback, each card carrying its grade. Evidence comes from this lens's
+    // Step 4: criterion feedback, each card carrying its grade. Evidence comes from this lens's
     // final annotations and is re-read every time the Summary step opens, because staff edit
     // annotations on step 1.
     const evidenceHosts = new Map<string, HTMLElement>();
@@ -1586,10 +1615,10 @@ function renderSummaryLens(input: {
     rubricSection.append(criterionList);
     element.append(rubricSection);
 
-    // Step 4: readings (writing lens), under the levels they qualify.
+    // Step 5: readings (writing lens), under the levels they qualify.
     if (lens === 'linguistic') element.append(...renderReadings(run));
 
-    // Step 5: revision goals. Writing keeps the student-feedback textarea and its binding rule.
+    // Step 6: revision goals. Writing keeps the student-feedback textarea and its binding rule.
     const goalsSection = document.createElement('section');
     goalsSection.className = 'wf-feedback-section';
     goalsSection.append(createText('h3', 'Priority revision goals'));

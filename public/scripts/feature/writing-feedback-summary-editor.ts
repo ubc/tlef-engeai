@@ -41,10 +41,14 @@ export interface SummaryBaseline {
  * @param goals - Revision goals from a run
  * @returns Plain text for the goals textarea
  */
-export function seedSummaryText(goals: Array<{ goal: string; guidedQuestion: string }>): string {
+export function seedSummaryText(goals: Array<{ goal: string; action?: string; guidedQuestion?: string }>): string {
     return goals
         .slice(0, 3)
-        .map((goal, index) => `${index + 1}. ${goal.goal}\nAsk yourself: ${goal.guidedQuestion}`)
+        .map((goal, index) => [
+            `${index + 1}. ${goal.goal}`,
+            goal.action ? `Next step: ${goal.action}` : undefined,
+            goal.guidedQuestion ? `Ask yourself: ${goal.guidedQuestion}` : undefined
+        ].filter(Boolean).join('\n'))
         .join('\n\n');
 }
 
@@ -57,6 +61,8 @@ interface LensControls {
 /** Per-lens editable summary controls. */
 export class SummaryEditor {
     private readonly lenses = new Map<WritingFeedbackLens, LensControls>();
+    /** Staff edits of the overall message, writing lens only. */
+    private readonly overallMessages = new Map<WritingFeedbackLens, string>();
 
     /**
      * @param markDirty - Called on every edit so leaving the page asks first
@@ -221,9 +227,34 @@ export class SummaryEditor {
      * @param runId - Latest run id for the lens
      * @returns Edit for the review save
      */
+    /**
+     * setOverallMessage - records the staff-edited overall message for a lens.
+     *
+     * @param lens - Lens being edited; only the writing lens has an overall message
+     * @param text - Current editor contents
+     */
+    setOverallMessage(lens: WritingFeedbackLens, text: string): void {
+        this.overallMessages.set(lens, text);
+        this.markDirty();
+    }
+
+    /**
+     * seedOverallMessage - loads the overall message on screen without marking the page dirty.
+     *
+     * Every save then resends it, so a later unrelated save never drops an earlier edit.
+     *
+     * @param lens - Lens being shown
+     * @param text - Message currently displayed
+     */
+    seedOverallMessage(lens: WritingFeedbackLens, text: string): void {
+        this.overallMessages.set(lens, text);
+    }
+
     readEdit(lens: WritingFeedbackLens, runId: string): StaffSummaryEdit {
         const controls = this.controls(lens);
         const goals = controls.goals?.value.trim();
+        // Sent whenever the editor holds it, so clearing the field reaches the server.
+        const overallMessage = lens === 'linguistic' ? this.overallMessages.get(lens)?.trim() : undefined;
         return {
             lens,
             feedbackRunId: runId,
@@ -231,7 +262,8 @@ export class SummaryEditor {
             criterionExplanations: [...controls.explanations]
                 .map(([criterion, textarea]) => ({ criterion, explanation: textarea.value.trim() }))
                 .filter(({ explanation }) => explanation.trim().length > 0),
-            ...(lens === 'technical' && goals ? { revisionGoalsText: goals } : {})
+            ...(lens === 'technical' && goals ? { revisionGoalsText: goals } : {}),
+            ...(overallMessage !== undefined ? { overallMessage } : {})
         };
     }
 }

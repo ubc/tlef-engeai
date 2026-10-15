@@ -535,6 +535,80 @@ describe('WritingFeedbackService anchored comments', () => {
             comments: [expect.objectContaining({ id: 'comment-1' })]
         }));
     });
+
+    describe('whole-text problem in the student PDF', () => {
+        function reviewWith(comments: AnchoredComment[], extra: Partial<StaffReviewRevision> = {}): StaffReviewRevision {
+            return {
+                id: 'review-1', submissionId: 'submission-1', feedbackRunId: 'run-1', staffUserId: 'instructor-1',
+                // After the run was generated, as a real staff save always is.
+                studentFeedback: 'Summary.', comments, createdAt: new Date(Date.now() + 60_000), ...extra
+            };
+        }
+        const held = () => storedComment({ id: 'held', origin: 'model_seed', heldBack: true });
+        const shown = () => storedComment({ id: 'shown', quote: 'student', startOffset: 9, endOffset: 16 });
+        const overallMessage = 'Model message.\n1. Model step.';
+
+        async function renderWith(review: StaffReviewRevision, runExtra: Record<string, unknown>) {
+            const sub = submission('approved');
+            const mongo = {
+                getWritingSubmission: jest.fn(async () => ({ ...sub, reviews: [review] })),
+                getWritingAssignment: jest.fn(async () => assignment),
+                getLatestWritingFeedbackRun: jest.fn(async () => {
+                    const run = runFor(sub);
+                    return { ...run, rubricVersion: assignment.rubric.version, ...runExtra, result: { ...run.result, ...runExtra } };
+                })
+            } as unknown as EngEAI_MongoDB;
+            const pdfService = { render: jest.fn(async () => Buffer.from('pdf')) };
+            await new WritingFeedbackService(mongo, engine, pdfService).renderPdf('course-1', 'submission-1', 'both');
+            return (pdfService.render.mock.calls[0] as unknown as [Record<string, unknown>])[0];
+        }
+
+        it('withholds held-back annotations and prints the overall message', async () => {
+            const input = await renderWith(reviewWith([held(), shown()]), { gateDecision: 'global_revision', overallMessage });
+            expect((input.comments as AnchoredComment[]).map((comment) => comment.id)).toEqual(['shown']);
+            expect(input.overallMessage).toBe(overallMessage);
+        });
+
+        it('prints every annotation once staff tick "Include annotations"', async () => {
+            const input = await renderWith(reviewWith([held(), shown()], { holdBackAnnotations: false }), { gateDecision: 'global_revision', overallMessage });
+            expect((input.comments as AnchoredComment[]).map((comment) => comment.id)).toEqual(['held', 'shown']);
+            expect(input.overallMessage).toBe(overallMessage);
+        });
+
+        it('treats a run stored before the gate as having no whole-text problem', async () => {
+            const input = await renderWith(reviewWith([held(), shown()]), {});
+            expect(input.overallMessage).toBeUndefined();
+            expect((input.comments as AnchoredComment[])).toHaveLength(2);
+        });
+
+        it('sends the review page the overall message the student will get, even after an unrelated save', async () => {
+            const sub = submission('draft_ready');
+            const edit = { lens: 'linguistic' as const, feedbackRunId: 'run-1', strengths: [], criterionExplanations: [], overallMessage: 'Staff message.' };
+            const first = reviewWith([shown()], { id: 'review-1', summaryEdits: [edit] });
+            const second = reviewWith([shown()], { id: 'review-2', createdAt: new Date(Date.now() + 120_000) });
+            const mongo = {
+                getWritingSubmission: jest.fn(async () => ({ ...sub, reviews: [first, second] })),
+                getWritingAssignment: jest.fn(async () => assignment),
+                getLatestWritingFeedbackRun: jest.fn(async (_id: string, lens?: string) => {
+                    if (lens === 'technical') return null;
+                    const run = runFor(sub);
+                    return { ...run, gateDecision: 'global_revision', result: { ...run.result, gateDecision: 'global_revision', overallMessage } };
+                }),
+                getLatestWritingRelease: jest.fn(async () => null),
+                getHeldWritingReplacement: jest.fn(async () => null),
+                listWritingReleases: jest.fn(async () => [])
+            } as unknown as EngEAI_MongoDB;
+            const detail = await new WritingFeedbackService(mongo, engine).detail('course-1', 'submission-1');
+            expect(detail.overallMessage).toBe('Staff message.');
+            expect(detail.holdBackAnnotations).toBeUndefined();
+        });
+
+        it('prints the staff-edited overall message over the model one', async () => {
+            const edit = { lens: 'linguistic' as const, feedbackRunId: 'run-1', strengths: [], criterionExplanations: [], overallMessage: 'Staff message.' };
+            const input = await renderWith(reviewWith([shown()], { summaryEdits: [edit] }), { gateDecision: 'global_revision', overallMessage });
+            expect(input.overallMessage).toBe('Staff message.');
+        });
+    });
 });
 
 describe('two-lens generation', () => {
@@ -586,7 +660,7 @@ describe('two-lens generation', () => {
         const technicalRun = mongo.createWritingFeedbackRun.mock.calls
             .map(([input]: [{ lens: string; modelMetadata: { promptVersion: string } }]) => input)
             .find((input) => input.lens === 'technical');
-        expect(technicalRun?.modelMetadata.promptVersion).toBe('lab-report-technical-v1.2.0');
+        expect(technicalRun?.modelMetadata.promptVersion).toBe('lab-report-technical-v1.5.1');
     });
 });
 
@@ -884,7 +958,7 @@ describe('WritingFeedbackService summary redraft', () => {
         expect(created[0].redraftOfRunId).toBe('run-gen');
         expect(created[0].sourceComments).toEqual([staffComment]);
         expect(created[0].annotationsFingerprint).toMatch(/^[0-9a-f]{8}$/);
-        expect(created[0].modelMetadata.promptVersion).toBe('summary-redraft-v1.1.0');
+        expect(created[0].modelMetadata.promptVersion).toBe('summary-redraft-v1.4.0');
         expect(result.detail.summarySources.linguistic?.runId).toBe(created[0].id);
         expect(result.detail.workingComments.map((comment) => comment.id)).toEqual(['c-staff']);
     });

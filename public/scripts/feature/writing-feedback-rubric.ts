@@ -26,6 +26,7 @@ import { showSuccessToast } from '../ui/toast-notification.js';
 import { AutosaveHeldError, AutosaveSignedOutError, createAutosave } from './writing-feedback-autosave.js';
 import type { Autosave } from './writing-feedback-autosave.js';
 import { ensureAssignmentTypeChosen } from './writing-feedback-assignment-type.js';
+import { coverageRowViews, shouldShowRequiredNotice } from './writing-feedback-coverage-model.js';
 import { renderSourcesPanel, type SourcesPanel } from './writing-feedback-sources.js';
 import {
     MIN_RATINGS_PER_CRITERION,
@@ -63,6 +64,7 @@ import {
     RubricLevel,
     RubricResponse,
     SflContextProfile,
+    MaterialCoverage,
     SflStage,
     WfFunctionTag,
     WritingFeedbackLens,
@@ -123,10 +125,10 @@ const DEFAULT_WRITING_CRITERIA_MIRROR: Array<{ id: string; label: string; descri
         description: 'How effectively the text is staged and held together for this task.',
         sflDimension: 'Information sequencing, theme progression, cohesive ties, and paragraph boundaries.',
         descriptors: {
-            weak: 'Ideas appear in no clear sequence, paragraph boundaries are unclear or absent, and a reader must work to find related information.',
-            developing: 'A rough sequence is visible but transitions are missing or inconsistent, and some paragraphs mix unrelated ideas.',
-            proficient: 'Information is sequenced logically with clear paragraph boundaries and cohesive ties; a reader can follow the progression without re-reading.',
-            exemplary: "The sequence builds purposefully toward the task's goal, transitions make relationships between ideas explicit, and paragraphing reinforces the structure."
+            weak: 'Ideas come in no clear order, paragraphs are unclear or missing, and the reader has to search for related information.',
+            developing: 'There is a rough order, but links between ideas are missing or uneven, and some paragraphs mix unrelated ideas.',
+            proficient: 'Ideas follow a logical order in clear paragraphs, and linking words help the reader follow without re-reading.',
+            exemplary: 'The order of ideas builds toward the purpose of the task, links between ideas are always clear, and the paragraphs support the structure.'
         }
     },
     {
@@ -134,10 +136,10 @@ const DEFAULT_WRITING_CRITERIA_MIRROR: Array<{ id: string; label: string; descri
         description: 'How accurately and completely the text represents the subject of the assignment.',
         sflDimension: 'Technical entities, processes, participants, circumstances, and the relations between them.',
         descriptors: {
-            weak: 'The subject matter is mostly inaccurate, missing, or unrelated to what the task asked for.',
-            developing: 'Core content is present but incomplete or contains inaccuracies that a reader familiar with the topic would notice.',
-            proficient: 'The subject matter is represented accurately and completely, with entities, processes, and relationships explained correctly.',
-            exemplary: 'Content is accurate, complete, and precise, with relationships between entities and processes explained in a way that shows command of the subject.'
+            weak: 'The information is mostly wrong, missing, or not what the task asked for.',
+            developing: 'The main information is there but incomplete, or has mistakes that a reader who knows the topic would notice.',
+            proficient: 'The information is accurate and complete, and the things, processes and links between them are explained correctly.',
+            exemplary: 'The information is accurate, complete and precise, and explains how things and processes connect in a way that shows strong understanding.'
         }
     },
     {
@@ -145,10 +147,10 @@ const DEFAULT_WRITING_CRITERIA_MIRROR: Array<{ id: string; label: string; descri
         description: 'How effectively the writer positions the reader for the stated audience and purpose.',
         sflDimension: 'Modality, hedging, stance, and technicality calibrated to the stated audience.',
         descriptors: {
-            weak: 'Stance and tone do not match the stated audience or purpose; claims are overstated, unsupported, or written for the wrong reader.',
-            developing: 'Stance is mostly appropriate but modality, hedging, or technicality slip out of register in places.',
-            proficient: 'Modality, hedging, and technicality are calibrated to the stated audience and purpose throughout.',
-            exemplary: 'The writer positions the reader precisely and consistently, using stance and technicality that anticipate what this audience needs to be convinced or informed.'
+            weak: 'The tone does not fit the reader or purpose; claims are too strong, unsupported, or written for the wrong reader.',
+            developing: 'The tone mostly fits, but in places claims sound too sure or too unsure, or the wording is too casual or too technical for the reader.',
+            proficient: 'Claims sound as sure as the evidence allows, and the formality and technical words fit the reader and purpose throughout.',
+            exemplary: 'The writing speaks to the reader precisely and consistently, choosing tone, certainty and technical words that give this reader exactly what they need.'
         }
     }
 ];
@@ -431,10 +433,10 @@ function renderSflProfileBox(
     const taskRequirements = namedControl(textAreaControl((sflContext?.taskRequirements ?? []).join('\n'), 3), 'sfl.taskRequirements');
     taskRequirements.placeholder = 'One per line — e.g. at least three sources';
     const glossaryTerms = namedControl(textAreaControl((sflContext?.approvedGlossaryTerms ?? []).join('\n'), 2), 'sfl.approvedGlossaryTerms');
-    glossaryTerms.placeholder = 'One per line. Leave blank if none';
+    glossaryTerms.placeholder = 'One per line. Feedback may use these terms, with a short explanation. Leave blank if none';
     body.append(sflField({ label: 'Smaller pieces of writing inside it (optional)', control: embeddedGenres }));
     body.append(sflField({ label: 'What must they include?', control: taskRequirements, required: true }));
-    body.append(sflField({ label: 'Words from your course glossary (optional)', control: glossaryTerms }));
+    body.append(sflField({ label: 'Course terms students already know (optional)', control: glossaryTerms }));
 
     [genreLabelControl, fieldControl, tenorControl, modeControl, evaluatorControl, productionControl,
         embeddedGenres, taskRequirements, glossaryTerms].forEach((control) => bindTextControl(control, canEdit, onInput));
@@ -468,21 +470,29 @@ function renderStageRepeater(
     const labelEl = document.createElement('label');
     labelEl.append(labelWithRequiredMarker('What sections should it have, in order?'));
     wrapper.append(labelEl);
+    const requiredHelp = document.createElement('p');
+    requiredHelp.className = 'wf-field-help';
+    requiredHelp.textContent = 'Tick Required for the sections a text cannot do without. If most required sections are weak or missing, or the text is the wrong genre, the student gets general feedback about the whole text, and its annotations are not included by default.';
+    wrapper.append(requiredHelp);
 
     const list = document.createElement('div');
     list.className = 'wf-stage-repeater';
     wrapper.append(list);
 
-    const rows: Array<{ id: string; nameLabel: HTMLInputElement; purpose: HTMLTextAreaElement }> = [];
+    const rows: Array<{ id: string; nameLabel: HTMLInputElement; purpose: HTMLTextAreaElement; required: HTMLInputElement }> = [];
 
     const renumber = (): void => {
         list.replaceChildren();
         rows.forEach((row, index) => {
             row.nameLabel.name = `sfl.stage.${index}.label`;
             row.purpose.name = `sfl.stage.${index}.purpose`;
+            row.required.name = `sfl.stage.${index}.required`;
+            const requiredLabel = document.createElement('label');
+            requiredLabel.className = 'wf-stage-required';
+            requiredLabel.append(row.required, document.createTextNode(' Required'));
             const rowEl = document.createElement('div');
             rowEl.className = 'wf-stage-row';
-            rowEl.append(row.nameLabel, row.purpose);
+            rowEl.append(row.nameLabel, row.purpose, requiredLabel);
             if (canEdit) {
                 const remove = createIconButton('trash-2', `Remove section ${row.nameLabel.value || index + 1}`, 'danger', async () => {
                     const at = rows.indexOf(row);
@@ -497,7 +507,7 @@ function renderStageRepeater(
         });
     };
 
-    const addRow = (label: string, purpose: string): void => {
+    const addRow = (label: string, purpose: string, required: boolean): void => {
         const nameLabel = document.createElement('input');
         nameLabel.type = 'text';
         nameLabel.value = label;
@@ -510,22 +520,113 @@ function renderStageRepeater(
         purposeControl.placeholder = 'What this section is for';
         purposeControl.readOnly = !canEdit;
         purposeControl.addEventListener('input', onInput);
-        rows.push({ id: crypto.randomUUID(), nameLabel, purpose: purposeControl });
+        const requiredControl = document.createElement('input');
+        requiredControl.type = 'checkbox';
+        requiredControl.setAttribute('data-stage-required', 'true');
+        requiredControl.checked = required;
+        requiredControl.disabled = !canEdit;
+        requiredControl.addEventListener('change', onInput);
+        rows.push({ id: crypto.randomUUID(), nameLabel, purpose: purposeControl, required: requiredControl });
         renumber();
     };
 
     (initialStages.length ? initialStages : [{ id: 'main_response', label: 'Main response', purpose: '', required: true, order: 1 }])
-        .forEach((stage) => addRow(stage.label, stage.purpose));
+        .forEach((stage) => addRow(stage.label, stage.purpose, stage.required === true));
 
     if (canEdit) {
         const addButton = createButton('Add section', 'outline', async () => {
-            addRow('', '');
+            addRow('', '', false);
             onInput();
         }, false, 'plus');
         wrapper.append(addButton);
     }
 
     return wrapper;
+}
+
+/**
+ * renderRequiredStagesNotice - one-time notice asking staff to confirm required stages.
+ *
+ * Every stage saved before the Required checkbox existed was stored as required, and the
+ * required stages decide whether a text has a whole-text problem.
+ *
+ * @param assignmentId - Assignment the rubric belongs to
+ * @param rubricVersion - Approved writing rubric version
+ * @returns The notice, or null once dismissed for this version
+ */
+function renderRequiredStagesNotice(assignmentId: string, rubricVersion: number): HTMLElement | null {
+    let storage: Pick<Storage, 'getItem' | 'setItem'> | null = null;
+    try {
+        storage = window.localStorage;
+    } catch {
+        storage = null;
+    }
+    if (storage && !shouldShowRequiredNotice(assignmentId, rubricVersion, storage)) return null;
+    const notice = document.createElement('div');
+    notice.className = 'wf-required-notice';
+    notice.setAttribute('role', 'note');
+    notice.append(createText('p', 'Check which sections are required. Every section was previously treated as required. If most required sections are weak or missing, the student gets general feedback about the whole text, and its annotations are not included by default.'));
+    notice.append(createButton('Got it', 'outline', async () => {
+        try {
+            storage?.setItem(`wf-required-notice:${assignmentId}:${rubricVersion}`, '1');
+        } catch {
+            // Storage blocked: the notice simply returns next time.
+        }
+        notice.remove();
+    }));
+    return notice;
+}
+
+/**
+ * renderCoveragePanel - which assignment expectations the course materials teach.
+ *
+ * @param assignmentId - Assignment whose approved writing rubric coverage describes
+ * @returns Panel that loads cached coverage and offers a recheck
+ */
+function renderCoveragePanel(assignmentId: string): HTMLElement {
+    const panel = document.createElement('section');
+    panel.className = 'wf-coverage';
+    panel.setAttribute('aria-label', 'Course-material coverage');
+    panel.append(createText('h2', 'Course-material coverage', 'wf-step-title'));
+    const intro = createText('p', 'Which parts of this assignment your published course materials explain. Feedback cites only covered materials.', 'wf-field-help');
+    const body = document.createElement('div');
+    const status = createText('p', '', 'wf-field-help');
+    status.setAttribute('role', 'status');
+    const path = `/assignments/${encodeURIComponent(assignmentId)}/material-coverage`;
+
+    const show = (coverage: MaterialCoverage | null, current: boolean): void => {
+        const view = coverageRowViews(coverage, current);
+        body.replaceChildren();
+        if (view.banner) body.append(createText('p', view.banner, 'wf-coverage-banner'));
+        const list = document.createElement('ul');
+        list.className = 'wf-coverage-list';
+        view.rows.forEach((row) => {
+            const item = document.createElement('li');
+            item.className = row.covered ? 'wf-coverage-row' : 'wf-coverage-row wf-coverage-row--gap';
+            const mark = createText('span', row.covered ? '✓' : '✗', 'wf-coverage-mark');
+            mark.setAttribute('aria-label', row.covered ? 'Covered' : 'Not covered');
+            item.append(mark, createText('span', row.label, 'wf-coverage-label'), createText('span', row.detail, 'wf-coverage-detail'));
+            list.append(item);
+        });
+        if (view.rows.length) body.append(list);
+    };
+
+    // createButton shows the busy state and blocks repeat clicks while the check runs.
+    const recheck = createButton('Recheck materials', 'outline', async () => {
+        status.textContent = '';
+        try {
+            const coverage = await jsonRequest<MaterialCoverage>(path, 'POST');
+            show(coverage, true);
+        } catch (error) {
+            status.textContent = error instanceof Error ? error.message : 'Coverage check failed';
+        }
+    }, false, 'refresh-cw');
+
+    panel.append(intro, body, recheck, status);
+    request<{ coverage: MaterialCoverage | null; current: boolean }>(path)
+        .then(({ coverage, current }) => show(coverage, current))
+        .catch(() => { status.textContent = 'Coverage could not be loaded.'; });
+    return panel;
 }
 
 /**
@@ -545,7 +646,10 @@ function readStageRepeaterRows(form: HTMLFormElement): SflStage[] {
         let id = slugFromLabel(label) || `stage_${index + 1}`;
         while (usedIds.has(id)) id = `${id}_${index + 1}`;
         usedIds.add(id);
-        stages.push({ id, label, purpose, required: true, order: stages.length + 1 });
+        // Only a ticked box counts: an optional stage the student skips keeps local feedback.
+        const requiredControl = form.elements.namedItem(`sfl.stage.${index}.required`);
+        const required = requiredControl instanceof HTMLInputElement && requiredControl.checked;
+        stages.push({ id, label, purpose, required, order: stages.length + 1 });
     }
     return stages;
 }
@@ -1767,6 +1871,10 @@ function renderRubricPage(
     );
     header.append(heading, meta);
     root.append(header);
+    if (linguisticData.approved) {
+        const requiredNotice = renderRequiredStagesNotice(assignment.id, linguisticData.approved.version);
+        if (requiredNotice) root.append(requiredNotice);
+    }
 
     // The progress strip is inserted here but filled by refreshProgress once the
     // steps below exist; everything it shows is derived, nothing is stored.
@@ -2195,6 +2303,9 @@ function renderRubricPage(
 
     step3.append(step3Header, step3Body);
     root.append(step3);
+
+    // Coverage describes the approved writing rubric, so it appears only once there is one.
+    if (linguisticData.approved) root.append(renderCoveragePanel(assignment.id));
 
     /**
      * refreshProgress - recomputes the strip, the step summaries, and the profile

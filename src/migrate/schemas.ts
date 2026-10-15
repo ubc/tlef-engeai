@@ -418,6 +418,7 @@ export const writingAssignmentSchema: FieldSpec[] = [
     { key: 'technicalRubricSource', optional: true },
     { key: 'canvasDetails', kind: 'opaque', optional: true },
     { key: 'dueAt', optional: true },
+    { key: 'materialCoverage', kind: 'opaque', optional: true },
     { key: 'createdAt', optional: true },
     { key: 'updatedAt', optional: true },
 ];
@@ -477,6 +478,14 @@ export const writingFeedbackRunSchema: FieldSpec[] = [
     { key: 'redraftOfRunId', optional: true },
     { key: 'sourceComments', kind: 'opaque', optional: true },
     { key: 'annotationsFingerprint', optional: true },
+    { key: 'generatedAt', optional: true },
+    { key: 'textDiagnosis', kind: 'opaque', optional: true },
+    { key: 'gateDecision', optional: true },
+    { key: 'contrastExcerpts', kind: 'opaque', optional: true },
+    { key: 'supportedExcerptIds', kind: 'opaque', optional: true },
+    { key: 'flags', kind: 'opaque', optional: true },
+    { key: 'diagnosisPromptVersion', optional: true },
+    { key: 'relevancePromptVersion', optional: true },
 ];
 
 export const writingReleaseSchema: FieldSpec[] = [

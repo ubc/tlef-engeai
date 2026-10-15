@@ -231,6 +231,31 @@ describe('applySummaryToResult', () => {
 });
 
 describe('buildRedraftRun', () => {
+    it('keeps the gate decision and overall message, which annotation changes never affect', () => {
+        const previous = run({ gateDecision: 'global_revision' });
+        previous.result = { ...previous.result, gateDecision: 'global_revision', overallMessage: 'It explains.\n1. Classify.', overallMessageExcerptIds: ['g1'] };
+        const built = buildRedraftRun(previous, {
+            criteria: [
+                { criterion: 'content', suggestedLevel: 'weak', explanation: 'Redrafted.', confidence: 0.8 },
+                { criterion: 'organization', suggestedLevel: 'weak', explanation: 'Org.', confidence: 0.7 }
+            ],
+            strengths: [],
+            revisionGoals: [{ skillTag: 'content', goal: 'Make it a report.', action: 'Classify first.' }]
+        }, [], 'fp', 'LlmSummaryRedraftEngine');
+        expect(built.gateDecision).toBe('global_revision');
+        expect(built.result.gateDecision).toBe('global_revision');
+        expect(built.result.overallMessage).toBe('It explains.\n1. Classify.');
+        expect(built.result.overallMessageExcerptIds).toEqual(['g1']);
+    });
+
+    it('records when the redrafted feedback was first generated', () => {
+        const first = run({ createdAt: new Date('2026-09-01T00:00:00Z') });
+        const once = buildRedraftRun(first, { criteria: [], strengths: [], revisionGoals: [] }, [], 'fp', 'E');
+        expect(once.generatedAt).toEqual(new Date('2026-09-01T00:00:00Z'));
+        const twice = buildRedraftRun({ ...first, ...once, id: 'run-2', createdAt: new Date('2026-09-05T00:00:00Z') }, { criteria: [], strengths: [], revisionGoals: [] }, [], 'fp', 'E');
+        expect(twice.generatedAt).toEqual(new Date('2026-09-01T00:00:00Z'));
+    });
+
     it('copies provenance, stores the source annotations, and never copies the Mongo _id', () => {
         const previous = { ...run(), _id: 'mongo-object-id' } as WritingFeedbackRun & { _id: string };
         const comments = [comment({ id: 'a' })];
@@ -251,7 +276,7 @@ describe('buildRedraftRun', () => {
         expect(built.rubricVersion).toBe(2);
         expect(built.lens).toBe('linguistic');
         expect(built.sflAnalysis).toEqual(previous.sflAnalysis);
-        expect(built.modelMetadata).toEqual({ engine: 'LlmSummaryRedraftEngine', promptVersion: 'summary-redraft-v1.1.0' });
+        expect(built.modelMetadata).toEqual({ engine: 'LlmSummaryRedraftEngine', promptVersion: 'summary-redraft-v1.4.0' });
         expect(built.result.criteria[0]).toEqual({
             criterion: 'content', suggestedLevel: 'proficient', explanation: 'Redrafted.', confidence: 0.8,
             evidence: [{ quote: 'A quoted passage', rationale: 'Name the claim.' }]

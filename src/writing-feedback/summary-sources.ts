@@ -30,7 +30,7 @@ import { earnedLevelFor } from './rubric-bands';
 import { isStaffAssessed } from './criterion-assessment';
 
 /** Prompt version stamped on every redraft run. */
-export const SUMMARY_REDRAFT_PROMPT_VERSION = 'summary-redraft-v1.1.0';
+export const SUMMARY_REDRAFT_PROMPT_VERSION = 'summary-redraft-v1.4.0';
 
 /** Validated writer-only redraft output for one lens. */
 export interface SummaryRedraftOutput {
@@ -303,9 +303,16 @@ export function buildRedraftRun(
             strengths: output.strengths,
             revisionGoals: output.revisionGoals,
             internalFlags: result.internalFlags,
-            ...(result.courseMaterialMentions ? { courseMaterialMentions: result.courseMaterialMentions } : {})
+            ...(result.courseMaterialMentions ? { courseMaterialMentions: result.courseMaterialMentions } : {}),
+            // The whole-text judgment and its overall message are not redrafted: a redraft
+            // follows annotation changes, which never change the whole-text problem.
+            ...(result.gateDecision ? { gateDecision: result.gateDecision } : {}),
+            ...(result.overallMessage ? { overallMessage: result.overallMessage } : {}),
+            ...(result.overallMessageExcerptIds ? { overallMessageExcerptIds: result.overallMessageExcerptIds } : {})
         },
         modelMetadata: { engine: engineName, promptVersion: SUMMARY_REDRAFT_PROMPT_VERSION },
+        // A redraft belongs to the same generation, so a staff hold-back choice still applies.
+        generatedAt: previous.generatedAt ?? previous.createdAt,
         redraftOfRunId: previousId,
         sourceComments: comments,
         annotationsFingerprint

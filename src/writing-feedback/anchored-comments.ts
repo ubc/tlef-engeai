@@ -15,6 +15,7 @@
 import { randomUUID } from 'crypto';
 import { z } from 'zod';
 import type { AnchoredComment, SflFinding, WritingFeedbackRun, WritingRubricDefinition } from './contracts';
+import { hasWholeTextProblem } from './feedback-gate';
 
 /** Built-in rubric criterion to SFL function fallback for legacy/no-trace runs. */
 const CRITERION_FUNCTION_TAG: Partial<Record<string, AnchoredComment['functionTag']>> = {
@@ -70,6 +71,7 @@ export const anchoredCommentInputSchema = z.object({
     courseMaterialTitle: z.string().trim().min(1).max(240).optional(),
     courseMaterialId: z.string().trim().min(1).max(120).optional(),
     courseMaterialMention: courseMaterialMentionSchema.optional(),
+    supportingExcerptId: z.string().trim().min(1).max(40).optional(),
     glossaryDefinition: z.object({
         term: z.string().trim().min(1).max(80),
         definition: z.string().trim().min(1).max(600)
@@ -79,7 +81,8 @@ export const anchoredCommentInputSchema = z.object({
     origin: z.enum(['model_seed', 'staff']),
     functionTag: z.enum(['content', 'interpersonal', 'organizational']).optional(),
     levelTag: z.enum(['text', 'section', 'clause_word']).optional(),
-    priority: z.enum(['high', 'medium', 'low']).optional()
+    priority: z.enum(['high', 'medium', 'low']).optional(),
+    heldBack: z.boolean().optional()
 }).refine((comment) => comment.endOffset > comment.startOffset, {
     message: 'Comment anchor must cover a non-empty span',
     path: ['endOffset']
@@ -181,6 +184,9 @@ export function seedCommentsFromRun(
     rubric?: WritingRubricDefinition
 ): AnchoredComment[] {
     const seeds: AnchoredComment[] = [];
+    // A whole-text problem holds its annotations back by default, until staff release one
+    // or untick "Hold back annotations".
+    const heldBack = hasWholeTextProblem(run);
     const seededTokens: Array<Set<string>> = [];
     const seededFindingIds = new Set<string>();
     const searchFrom = new Map<string, number>();
@@ -255,7 +261,9 @@ export function seedCommentsFromRun(
                 comment: evidence.rationale,
                 ...(evidence.revisionGuidance?.trim() ? { howToImprove: evidence.revisionGuidance.trim() } : {}),
                 origin: 'model_seed',
+                ...(heldBack ? { heldBack: true } : {}),
                 ...(evidence.courseMaterialMention ? { courseMaterialMention: evidence.courseMaterialMention } : {}),
+                ...(evidence.supportingExcerptId ? { supportingExcerptId: evidence.supportingExcerptId } : {}),
                 ...(evidence.glossaryEntryId ? { glossaryEntryId: evidence.glossaryEntryId } : {}),
                 ...(evidence.glossarySnapshot ? { glossarySnapshot: evidence.glossarySnapshot } : {}),
                 ...(functionTag ? { functionTag } : {}),

@@ -135,6 +135,59 @@ describe('technical engine generation', () => {
     });
 
     it('exposes a stable prompt version', () => {
-        expect(TECHNICAL_PROMPT_VERSION).toBe('lab-report-technical-v1.2.0');
+        expect(TECHNICAL_PROMPT_VERSION).toBe('lab-report-technical-v1.5.1');
+    });
+});
+
+describe('plain-language contract', () => {
+    const verifiedText = 'The experimental value was 35.3% higher than the literature value. The uncertainty was larger than the calculated value.';
+    const originalMockResponse = process.env.MOCK_RESPONSE;
+    afterAll(() => {
+        if (originalMockResponse === undefined) delete process.env.MOCK_RESPONSE;
+        else process.env.MOCK_RESPONSE = originalMockResponse;
+    });
+
+    it('names the student as the final reader, after the prime directive', () => {
+        const prompt = buildTechnicalFeedbackSystemPrompt(labAssignment());
+        expect(prompt).not.toMatch(/Your reader is the teaching team, not the student/);
+        expect(prompt.indexOf('<student_reader>')).toBeGreaterThan(0); // after PRIME_DIRECTIVE (D-055)
+    });
+
+});
+
+describe('technical known terms', () => {
+    it('lets standard lab terms and the course glossary through without a gloss', () => {
+        const assignment = labAssignment();
+        assignment.rubric = { ...assignment.rubric, sflContext: { ...(assignment.rubric.sflContext ?? {}), approvedGlossaryTerms: ['thermal expansion coefficient'] } as never };
+        const prompt = buildTechnicalFeedbackSystemPrompt(assignment);
+        expect(prompt).toMatch(/no explanation needed\):[^\n]*"percent error"/);
+        expect(prompt).toMatch(/Known course terms you may use:[^\n]*"thermal expansion coefficient"/);
+    });
+
+});
+
+describe('Socratic questions (D-153)', () => {
+    const verifiedText = 'The experimental value was 35.3% higher than the literature value.';
+    const original = process.env.MOCK_RESPONSE;
+    afterAll(() => { if (original === undefined) delete process.env.MOCK_RESPONSE; else process.env.MOCK_RESPONSE = original; });
+
+    it('requires a scoped question in the prompt', () => {
+        const prompt = buildTechnicalFeedbackSystemPrompt(labAssignment());
+        expect(prompt).toContain('every revision goal has exactly one guidedQuestion and a questionScope');
+        expect(prompt).not.toContain('only when it genuinely helps the student think');
+        expect(TECHNICAL_PROMPT_VERSION).toBe('lab-report-technical-v1.5.1');
+    });
+
+    it('retries once when no goal asks about the whole report', async () => {
+        process.env.MOCK_RESPONSE = 'true';
+        const good = await new TechnicalWritingFeedbackEngine().generate({ assignment: labAssignment(), verifiedText });
+        const bad = { ...good, revisionGoals: good.revisionGoals.map((goal) => ({ ...goal, questionScope: 'part' as const })) };
+        process.env.MOCK_RESPONSE = 'false';
+        const llm = { sendStructuredConversation: jest.fn()
+            .mockResolvedValueOnce({ parsed: bad })
+            .mockResolvedValueOnce({ parsed: good }) };
+        const result = await new TechnicalWritingFeedbackEngine(llm as never).generate({ assignment: labAssignment(), verifiedText });
+        expect(llm.sendStructuredConversation).toHaveBeenCalledTimes(2);
+        expect(result.revisionGoals.some((goal) => goal.questionScope === 'whole')).toBe(true);
     });
 });
