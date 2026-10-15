@@ -321,7 +321,7 @@ export async function fetchScenarioSolution(
 
 /** Client-side publish pre-check (server re-validates on PATCH status). */
 export function validatePublish(question: Pick<ScenarioQuestion, 'questionBody' | 'subQuestions'>): string | null {
-    if (!question.questionBody?.trim()) return 'Base question narrative is required.';
+    if (!question.questionBody?.trim()) return 'Scenario is required.';
     if (!question.subQuestions?.length) return 'At least one subquestion is required.';
     for (const sq of question.subQuestions) {
         const label = sq.subQuestionId || sq.partId || '?';

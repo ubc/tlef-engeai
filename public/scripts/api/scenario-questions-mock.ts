@@ -647,7 +647,7 @@ export async function generateQuestion(
 
 /** Client-side publish validation for flexible parts. */
 export function validatePublish(question: ScenarioQuestionExtended): string | null {
-    if (!question.questionBody.trim()) return 'Base question narrative is required.';
+    if (!question.questionBody.trim()) return 'Scenario is required.';
     if (question.subQuestions.length < 1) return 'At least one subquestion is required.';
     for (const sq of question.subQuestions) {
         if (!sq.prompt.trim() || !sq.modelAnswer.trim()) {

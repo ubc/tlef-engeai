@@ -60,7 +60,7 @@ export const generatedSubQuestionSchema = z.object({
 });
 
 /**
- * generatedScenarioSchema - Base question returned by the generation LLM.
+ * generatedScenarioSchema - Scenario (narrative, solution, sub-questions) returned by the generation LLM.
  */
 export const generatedScenarioSchema = z.object({
     title: z.string().trim().min(1).max(120),

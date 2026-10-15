@@ -133,6 +133,34 @@
     margin-bottom: 0;
 }
 
+/* Copy-materials course picker */
+.material-copy-picker__label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+}
+
+.material-copy-picker__select {
+    width: 100%;
+    max-width: 100%;
+    padding: 10px 12px;
+    border: 2px solid #e9ecef;
+    border-radius: 8px;
+    font: inherit;
+    background: #fff;
+    color: inherit;
+}
+
+.material-copy-picker__select:focus-visible {
+    border-color: var(--color-chbe-green);
+    outline: none;
+}
+
+.material-copy-picker__skipped {
+    margin: 0;
+    padding-left: 1.25rem;
+}
+
 /* ===========================================
    MODAL FOOTER
    =========================================== */

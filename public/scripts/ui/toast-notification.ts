@@ -12,16 +12,31 @@
 import type { ToastPosition, ToastType, ToastConfig } from '../types.js';
 
 /**
+ * readingDurationMs - how long a toast stays up when its caller does not say.
+ *
+ * A fixed few seconds suits "Changes saved." but takes a long sentence away before it can be
+ * read, so the time grows with the message: two seconds to notice the toast, then about
+ * 200 words a minute, never less than `minimumMs` and never more than 12 seconds.
+ *
+ * @param message - The text the toast shows
+ * @param minimumMs - Shortest time the toast stays up
+ * @returns Milliseconds before the toast dismisses itself
+ */
+export function readingDurationMs(message: string, minimumMs = 4000): number {
+    return Math.min(12000, Math.max(minimumMs, 2000 + message.length * 60));
+}
+
+/**
  * Shows a toast notification that auto-dismisses after the specified duration.
  *
  * @param message - The message to display
- * @param durationMs - Duration in milliseconds (default: 3000)
+ * @param durationMs - Duration in milliseconds (default: long enough to read the message)
  * @param position - Position on screen (default: 'top-right')
  * @param type - Toast variant: 'default', 'success' (green CHBE), or 'error' (red ubc-eng-red)
  */
 export function showToast(
     message: string,
-    durationMs: number = 3000,
+    durationMs: number = readingDurationMs(message),
     position: ToastPosition = 'top-right',
     type: ToastType = 'default'
 ): void {
@@ -76,14 +91,14 @@ export function showToast(
  * Shows a success toast (green CHBE styling).
  */
 export function showSuccessToast(message: string, durationMs?: number): void {
-    showToast(message, durationMs ?? 3000, 'top-right', 'success');
+    showToast(message, durationMs ?? readingDurationMs(message), 'top-right', 'success');
 }
 
 /**
  * Shows an error toast (red ubc-eng-red styling).
  */
 export function showErrorToast(message: string, durationMs?: number): void {
-    showToast(message, durationMs ?? 4000, 'top-right', 'error');
+    showToast(message, durationMs ?? readingDurationMs(message, 5000), 'top-right', 'error');
 }
 
 export default { showToast, showSuccessToast, showErrorToast };

@@ -56,4 +56,8 @@ describe('generateChatTitleFromResponse', () => {
     it('falls back to New Chat when no title words remain', () => {
         expect(generateChatTitleFromResponse('$$x + y$$ — !!!')).toBe('New Chat');
     });
+
+    it('keeps accented and non-Latin letters instead of dropping them', () => {
+        expect(generateChatTitleFromResponse('¿Qué es la entalpía?')).toBe('Qué es la entalpía');
+    });
 });

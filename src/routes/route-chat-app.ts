@@ -920,9 +920,6 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
                 appLogger.log('   Assistant message ID:', assistantMessage.id);
                 //END DEBUG LOG : DEBUG-CODE(SEND-MSG-008)
                 
-                // Check if chat title needs updating (first user-AI exchange)
-                await chatApp.updateChatTitleIfNeeded(chatId, assistantMessage.text, courseName, userId);
-                
                 // Reset timer after successful message processing
                 chatApp.resetChatTimer(chatId);
                 

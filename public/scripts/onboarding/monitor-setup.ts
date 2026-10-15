@@ -481,7 +481,7 @@ function renderDemoStudentDetails(): void {
                 <div class="chat-history-list">
                     ${demoStudent.chatHistory.map(chat => `
                         <div class="chat-history-item">
-                            <div class="chat-title">${chat.title}</div>
+                            <div class="chat-title">${escapeHtml(chat.title)}</div>
                             <button class="download-button" onclick="demoDownloadChat('${chat.id}')">
                                 <i data-feather="download"></i>
                                 Download
@@ -891,7 +891,7 @@ function renderDemoStudentList(): void {
                 <div class="chat-history-list">
                     ${student.chatHistory.map(chat => `
                         <div class="chat-history-item">
-                            <div class="chat-title">${chat.title}</div>
+                            <div class="chat-title">${escapeHtml(chat.title)}</div>
                             <button class="download-button" onclick="demoDownloadChat('${chat.id}')">
                                 <i data-feather="download"></i>
                                 Download
@@ -1000,6 +1000,17 @@ function getHelpContent(stepNumber: number): string {
 // ===========================================
 // UTILITY FUNCTIONS
 // ===========================================
+
+/**
+ * Escape HTML to prevent XSS
+ * @param text - Text to escape
+ * @returns Escaped HTML
+ */
+function escapeHtml(text: string): string {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
 
 /**
  * Formats a date for display

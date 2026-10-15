@@ -71,6 +71,9 @@ export const CANVAS_OAUTH_SCOPES: readonly string[] = [
     // refused with 401 whatever the grant contains. The `verifier` authorizes that one file on
     // its own, so `canvas-attachment-download.ts` fetches the bytes with no token at all.
     'url:POST|/api/v1/courses/:course_id/assignments/:assignment_id/submissions/:user_id/comments/files',
+    // The last step of a comment upload. Canvas with inst-fs storage confirms the file here with
+    // the token; a Canvas storing files itself confirms through `create_success` instead.
+    'url:GET|/api/v1/files/:id',
     'url:PUT|/api/v1/courses/:course_id/assignments/:assignment_id/submissions/:user_id',
     'url:POST|/api/v1/courses/:course_id/assignments/:assignment_id/submissions/update_grades',
     'url:GET|/api/v1/progress/:id',

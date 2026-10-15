@@ -33,9 +33,10 @@ describe('rubric editor toggle', () => {
         expect(grid).toContain("['staff', 'Course staff']");
     });
 
-    it('explains the choice once above the grid', () => {
-        expect(grid).toContain('The AI only receives the text of a submission.');
-        expect(grid).toContain('authorshipHint');
+    it('explains the choice from an info button beside the control', () => {
+        // Without it the control says what it does but never why an instructor would reach for it.
+        expect(grid).toContain('head.append(caption, authorshipHelpButton())');
+        expect(grid).toContain('It cannot see formatting');
     });
 
     it('reads the control back into the draft under the same name', () => {

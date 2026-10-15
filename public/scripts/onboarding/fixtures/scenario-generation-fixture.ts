@@ -58,7 +58,7 @@ export interface ScenarioGenerationDemo {
 }
 
 const TUTORIAL_PROMPTS: Record<ScenarioTutorialSubquestionType, string> = {
-    calculation: 'Estimate the relevant performance value using the information in the base question, and state your assumptions.',
+    calculation: 'Estimate the relevant performance value using the information in the scenario, and state your assumptions.',
     troubleshoot: 'Identify two plausible causes and explain what evidence would help distinguish between them.',
     action: 'Choose the next diagnostic action and explain what evidence it should produce.',
     corrective: 'Recommend a corrective response and justify when it should be used.'

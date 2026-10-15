@@ -18,6 +18,7 @@ import type {
     WritingRubricDefinition
 } from '../../../writing-feedback/contracts';
 import {
+    addWritingSourceMaterial,
     appendWritingReview,
     approveWritingRubricDraft,
     autoConfirmWritingTranscript,
@@ -28,6 +29,7 @@ import {
     createCanvasWritingAssignment,
     createManualWritingAssignment,
     deleteWritingAssignment,
+    deleteWritingSourceMaterial,
     discardWritingRubricDraft,
     editWritingTranscript,
     updateVerifiedWritingText,
@@ -37,6 +39,7 @@ import {
     getLatestWritingRelease,
     leaseNextWritingJob,
     listLatestWritingRunVersions,
+    listWritingSourceMaterials,
     listWritingSubmissions,
     normalizeWritingAssignment,
     replaceWritingSubmission,
@@ -760,11 +763,12 @@ describe('deleteWritingAssignment', () => {
             },
             'writing-jobs': { findOne: jest.fn().mockResolvedValue(options.job ?? null), deleteMany: jest.fn().mockResolvedValue({}) },
             'writing-releases': { findOne: jest.fn().mockResolvedValue(options.release ?? null), deleteMany: jest.fn().mockResolvedValue({}) },
-            'writing-feedback-runs': { deleteMany: jest.fn().mockResolvedValue({}) }
+            'writing-feedback-runs': { deleteMany: jest.fn().mockResolvedValue({}) },
+            'writing-source-materials': { deleteMany: jest.fn().mockResolvedValue({}) }
         };
     }
 
-    it('deletes the assignment and every submission, run, release, and job belonging to it', async () => {
+    it('deletes the assignment and every submission, run, release, job, and source material belonging to it', async () => {
         const cols = collections();
         const result = await deleteWritingAssignment(contextWithCollections(cols), 'course-1', 'assignment-1');
 
@@ -774,6 +778,7 @@ describe('deleteWritingAssignment', () => {
         expect(cols['writing-feedback-runs'].deleteMany).toHaveBeenCalledWith({ submissionId: ids });
         expect(cols['writing-releases'].deleteMany).toHaveBeenCalledWith({ submissionId: ids });
         expect(cols['writing-jobs'].deleteMany).toHaveBeenCalledWith({ 'payload.submissionId': ids });
+        expect(cols['writing-source-materials'].deleteMany).toHaveBeenCalledWith({ courseId: 'course-1', assignmentId: 'assignment-1' });
     });
 
     it.each([
@@ -794,6 +799,65 @@ describe('deleteWritingAssignment', () => {
 
         expect(result).toEqual({ deleted: false, blockedByWork: false });
         expect(cols['writing-submissions'].deleteMany).not.toHaveBeenCalled();
+        expect(cols['writing-source-materials'].deleteMany).not.toHaveBeenCalled();
+    });
+});
+
+describe('Writing Feedback source materials', () => {
+    const input = {
+        courseId: 'course-1',
+        assignmentId: 'assignment-1',
+        kind: 'file' as const,
+        fileName: 'rubric.docx',
+        text: '| Criterion | Points |',
+        hasTables: true,
+        addedBy: 'user-1'
+    };
+
+    function materialsCollection(held: number) {
+        return {
+            createIndex: jest.fn().mockResolvedValue('index-name'),
+            countDocuments: jest.fn().mockResolvedValue(held),
+            insertOne: jest.fn().mockResolvedValue({}),
+            find: jest.fn().mockReturnValue({ sort: jest.fn().mockReturnValue({ toArray: jest.fn().mockResolvedValue([]) }) }),
+            deleteOne: jest.fn().mockResolvedValue({ deletedCount: 1 })
+        };
+    }
+
+    it('stores a material with its character count while the assignment has room', async () => {
+        const collection = materialsCollection(4);
+        const stored = await addWritingSourceMaterial(contextWithCollections({ 'writing-source-materials': collection }), input, 5);
+
+        expect(stored).toMatchObject({ ...input, characterCount: input.text.length });
+        expect(stored?.id).toEqual(expect.any(String));
+        expect(collection.countDocuments).toHaveBeenCalledWith({ courseId: 'course-1', assignmentId: 'assignment-1' });
+        expect(collection.insertOne).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses a material once the assignment holds the maximum', async () => {
+        const collection = materialsCollection(5);
+        const stored = await addWritingSourceMaterial(contextWithCollections({ 'writing-source-materials': collection }), input, 5);
+
+        expect(stored).toBeNull();
+        expect(collection.insertOne).not.toHaveBeenCalled();
+    });
+
+    it('lists only the course and assignment asked for, oldest first', async () => {
+        const collection = materialsCollection(0);
+        await listWritingSourceMaterials(contextWithCollections({ 'writing-source-materials': collection }), 'course-1', 'assignment-1');
+
+        expect(collection.find).toHaveBeenCalledWith({ courseId: 'course-1', assignmentId: 'assignment-1' }, { projection: { _id: 0 } });
+        expect(collection.find.mock.results[0]!.value.sort).toHaveBeenCalledWith({ addedAt: 1 });
+    });
+
+    it('deletes a material only within its course and assignment', async () => {
+        const collection = materialsCollection(0);
+        const removed = await deleteWritingSourceMaterial(
+            contextWithCollections({ 'writing-source-materials': collection }), 'course-1', 'assignment-1', 'material-1'
+        );
+
+        expect(removed).toBe(true);
+        expect(collection.deleteOne).toHaveBeenCalledWith({ id: 'material-1', courseId: 'course-1', assignmentId: 'assignment-1' });
     });
 });
 

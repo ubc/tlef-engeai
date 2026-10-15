@@ -49,8 +49,15 @@ router.get('/login', (req: express.Request, res: express.Response, next: express
     }
 });
 
-// SAML callback handler (shared between both callback routes)
-const samlCallbackHandler = [
+/**
+ * samlCallbackHandler — completes a CWL sign-in: authenticates the SAML response, finds or creates
+ * the GlobalUser, grants Canvas roster enrollment, stores the session, and redirects.
+ *
+ * Mounted at both `/auth/saml/callback` (local SAML testing) and `/Shibboleth.sso/SAML2/POST` in
+ * `server.ts` (the path UBC's IdP posts to in deployed environments). Every CWL sign-in must pass
+ * through this one handler so the two paths cannot diverge.
+ */
+export const samlCallbackHandler = [
     (req: express.Request, res: express.Response, next: express.NextFunction) => {
         appLogger.log('[AUTH] SAML callback received at:', req.path);
 

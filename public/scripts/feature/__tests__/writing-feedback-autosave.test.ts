@@ -6,7 +6,7 @@
  * reading of the form and the drawing of the status line live in the page.
  */
 
-import { AutosaveSignedOutError, createAutosave } from '../writing-feedback-autosave';
+import { AutosaveHeldError, AutosaveSignedOutError, createAutosave } from '../writing-feedback-autosave';
 import type { AutosaveState } from '../writing-feedback-autosave';
 
 jest.useFakeTimers();
@@ -122,6 +122,39 @@ describe('failure handling', () => {
         jest.advanceTimersByTime(1500);
         await jest.runAllTimersAsync();
         expect(write).toHaveBeenCalledTimes(2);
+    });
+
+    it('reports a held cycle as held, never as saved, and tries again on the next edit', async () => {
+        // The page holds a cycle the server would reject. Resolving would read as saved and
+        // clear the page's unsaved-work guard while nothing had been stored.
+        const write = jest.fn()
+            .mockRejectedValueOnce(new AutosaveHeldError('Every performance level needs a label and a description.'))
+            .mockResolvedValueOnce(undefined);
+        const { autosave, statuses } = harness(write as () => Promise<void>);
+
+        autosave.markDirty();
+        await jest.runAllTimersAsync();
+        expect(autosave.state()).toEqual({
+            status: 'held',
+            message: 'Every performance level needs a label and a description.'
+        });
+        expect(statuses()).not.toContain('saved');
+
+        autosave.markDirty();
+        await jest.runAllTimersAsync();
+        expect(write).toHaveBeenCalledTimes(2);
+        expect(autosave.state().status).toBe('saved');
+    });
+
+    it('does not retry a held cycle on its own', async () => {
+        const write = jest.fn().mockRejectedValue(new AutosaveHeldError('Review the rubric.'));
+        const { autosave } = harness(write as () => Promise<void>);
+
+        autosave.markDirty();
+        await jest.runAllTimersAsync();
+        jest.advanceTimersByTime(60000);
+        await jest.runAllTimersAsync();
+        expect(write).toHaveBeenCalledTimes(1);
     });
 
     it('stops the loop when the session has expired', async () => {

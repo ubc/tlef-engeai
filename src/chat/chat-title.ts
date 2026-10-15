@@ -11,7 +11,7 @@
  */
 
 const CHAT_TITLE_WORD_LIMIT = 10;
-const CHAT_TITLE_WORD_PATTERN = /[A-Za-z0-9_]+(?:['\u2018\u2019\u02bc][A-Za-z0-9_]+)*/g;
+const CHAT_TITLE_WORD_PATTERN = /[\p{L}\p{N}_]+(?:['\u2018\u2019\u02bc][\p{L}\p{N}_]+)*/gu;
 
 /**
  * Build a short, plain-text title from an assistant response.

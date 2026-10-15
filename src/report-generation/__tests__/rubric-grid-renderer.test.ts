@@ -17,7 +17,7 @@ import type { WritingRubricDefinition } from '../../writing-feedback/contracts';
 /** LETTER minus the report's 64pt margins, measured below a section heading. */
 const page = { portraitWidth: 612 - 128, landscapeWidth: 792 - 128, availableHeight: 600 };
 
-function rubricWith(levelCount: number, criterionCount = 3): WritingRubricDefinition {
+function rubricWith(levelCount: number, criterionCount = 3, descriptorLength = 400): WritingRubricDefinition {
     return {
         version: 1,
         status: 'approved',
@@ -38,13 +38,32 @@ function rubricWith(levelCount: number, criterionCount = 3): WritingRubricDefini
             points: 20,
             cells: Object.fromEntries(Array.from({ length: levelCount }, (_, index) => [
                 `level_${index + 1}`,
-                { min: index * 4, max: index * 4 + 3, descriptor: 'D'.repeat(400) }
+                { min: index * 4, max: index * 4 + 3, descriptor: 'D'.repeat(descriptorLength) }
             ]))
         }))
     } as WritingRubricDefinition;
 }
 
 describe('measureRubricGrid', () => {
+    /** The report's turned LETTER page inside its 64pt margins. */
+    const landscapePage = { ...page, landscapeAvailableHeight: 612 - 128 };
+    /** The repeated column header every page of the grid starts with. */
+    const headerHeight = 8.5 * 2 + 4 * 2;
+
+    it('keeps the normal descriptor size wherever a row already fits a page', () => {
+        expect(new Set(measureRubricGrid(rubricWith(8), landscapePage).descriptorSizes)).toEqual(new Set([7.5]));
+        expect(new Set(measureRubricGrid(rubricWith(4, 3, 800), page).descriptorSizes)).toEqual(new Set([7.5]));
+    });
+
+    it('shrinks the descriptors of a row too tall for a page until it fits', () => {
+        const shortPage = { ...page, landscapeAvailableHeight: 400 };
+        const geometry = measureRubricGrid(rubricWith(8, 3, 800), shortPage);
+        geometry.rowHeights.forEach((height) => {
+            expect(height).toBeLessThanOrEqual(shortPage.landscapeAvailableHeight - headerHeight);
+        });
+        expect(Math.max(...geometry.descriptorSizes)).toBeLessThan(7.5);
+    });
+
     it('stays portrait at four levels or fewer', () => {
         expect(measureRubricGrid(rubricWith(4), page).landscape).toBe(false);
         expect(measureRubricGrid(rubricWith(2), page).landscape).toBe(false);

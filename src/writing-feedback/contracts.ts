@@ -180,6 +180,12 @@ export interface WritingRubricCell {
     max: number; // highest points awardable in this band, inclusive
     label?: string; // rating name for this criterion at this level, as Canvas names it per row
     descriptor?: string; // criterion-specific meaning of this level
+    /**
+     * Who wrote the descriptor: copied from staff material (`source`), or written by EngE-AI
+     * because the material had none (`proposed`). Absent means staff wrote or accepted it;
+     * editing a cell's descriptor removes the marker, and approval clears `proposed`.
+     */
+    origin?: 'source' | 'proposed';
 }
 
 /** One instructor-authored criterion in a versioned Writing Feedback rubric. */
@@ -187,6 +193,12 @@ export interface WritingRubricCriterion {
     id: WritingCriterionId; // stable instructor-authored slug shared across model output and staff UI
     label: string; // staff/student-facing criterion name
     description: string; // instructor-authored assessment meaning
+    /**
+     * `'proposed'` when EngE-AI wrote the description because staff material gave none.
+     * Absent means staff wrote or accepted it; editing the description removes the marker,
+     * and approval clears it.
+     */
+    descriptionOrigin?: 'proposed';
     functionTag?: WritingFunctionTag; // optional SFL metafunction used by staff filters
     sflDimension?: string; // optional instructor-editable linguistic lens supplied to generation
     /** Maximum points this criterion contributes. Absent means the rubric is ordinal only. */
@@ -241,6 +253,17 @@ export interface WritingRubricDefinition {
     labContext?: string;
     /** Staff-approved genre/register profile required by the V2 linguistic pipeline. */
     sflContext?: WritingSflContextProfile;
+    /**
+     * Where this version's grid came from, set when a fill chose its source. Kept on the version
+     * rather than the assignment so a discarded draft takes its source with it and an approval
+     * carries it forward. Absent on older versions, where the assignment's `rubricSource` /
+     * `technicalRubricSource` answer instead.
+     */
+    gridSource?: {
+        kind: 'builtin' | 'canvas' | 'uploaded';
+        label?: string; // the source's name, for a grid built from staff material
+        notes?: string[]; // what extraction asked staff to check
+    };
 }
 
 /** Course-scoped assignment whose current approved rubric governs all downstream artifacts. */
@@ -249,7 +272,11 @@ export interface WritingAssignment {
     courseId: string; // authorization and persistence boundary
     title: string; // staff/student-facing assignment label
     profileVersion: string; // originating platform-template provenance retained on feedback runs
-    rubricSource: 'internal_profile' | 'canvas'; // import provenance, not synchronization state
+    /**
+     * Where the writing grid came from: the built-in profile, the Canvas rubric, or a rubric
+     * extracted from instructor-uploaded material. Provenance, not synchronization state.
+     */
+    rubricSource: 'internal_profile' | 'canvas' | 'uploaded';
     /** Raw instructor-approved assignment directions used as rubric-editor context. */
     instructions?: string;
     /** Legacy complete level-to-points mapping derived at approval when levels carry points. */
@@ -283,6 +310,21 @@ export interface WritingAssignment {
      */
     canvasRubricRefusal?: CanvasRubricRefusal;
     /**
+     * Rubrics extraction found in staff material, held until staff choose one, when the material
+     * held more than one (for example a draft and a final version of the same rubric).
+     */
+    pendingRubricExtraction?: {
+        lens: WritingFeedbackLens;
+        sourceLabel: string;
+        candidates: Array<{ title: string; shape: ImportedRubricShape; notes: string[]; deductions: string[]; needsDescriptions?: string[]; needsCriterionDescriptions?: string[] }>;
+        createdAt: Date;
+    };
+    /**
+     * Set when the imported Canvas rubric seeded the draft but some of its descriptions were
+     * longer than the grid allows and were shortened. Written at creation only.
+     */
+    canvasRubricShortened?: boolean;
+    /**
      * The Canvas rubric exactly as imported, held independently of which lens uses it.
      *
      * Kept whole because lens routing cannot happen at import time: `isLabReport` is set by a
@@ -305,7 +347,7 @@ export interface WritingAssignment {
      * Split per lens so a Canvas-seeded technical rubric does not make the writing lens report
      * `canvas` and lose the metafunctions auto-fill that a lab report's writing lens needs.
      */
-    technicalRubricSource?: 'canvas' | 'builtin';
+    technicalRubricSource?: 'canvas' | 'builtin' | 'uploaded';
     /** Assignment description and metadata imported from Canvas; reference material only. */
     canvasDetails?: CanvasAssignmentDetails;
     /** Submission deadline shown to staff; sourced from Canvas or manual entry. */
@@ -516,6 +558,31 @@ export interface CanvasImportedRubric {
  * and `constraints` from it; until that exists this is reference material for staff, and
  * nothing reads it automatically.
  */
+/**
+ * Instructor-supplied assignment material: an uploaded file or pasted text, kept as extracted
+ * text only. Instructor material, never student work, and never sent to the course RAG index.
+ */
+export interface WritingSourceMaterial {
+    id: string;
+    courseId: string;
+    assignmentId: string;
+    kind: 'file' | 'paste';
+    /** Sanitized basename of an uploaded file, for display only. */
+    fileName?: string;
+    /** Extracted text. Tables are kept as markdown tables wherever the source had real ones. */
+    text: string;
+    /** Whether `text` holds tables whose rows and columns came from the source's own structure. */
+    hasTables: boolean;
+    characterCount: number;
+    addedAt: Date;
+    /** Internal user id of the staff member who added it; never a PUID. */
+    addedBy: string;
+    /** When staff last corrected the text by hand, if they have. */
+    editedAt?: Date;
+    /** Internal user id of the staff member who last corrected it; never a PUID. */
+    editedBy?: string;
+}
+
 export interface CanvasAssignmentDetails {
     /** Canvas `description` — rich-editor HTML, stored as delivered. */
     descriptionHtml?: string;

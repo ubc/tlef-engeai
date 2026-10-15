@@ -2157,7 +2157,12 @@ export class ChatManager {
         // Add loading indicator if chat is not fully loaded
         const isLoaded = this.loadedChatIds.has(metadata.id);
         if (!isLoaded && metadata.id === this.activeChatId) {
-            titleSpan.innerHTML = `${metadata.itemTitle} <span style="color: #525252; font-size: 0.8em;">(loading...)</span>`;
+            titleSpan.textContent = `${metadata.itemTitle} `;
+            const loadingIndicator = document.createElement('span');
+            loadingIndicator.style.color = '#525252';
+            loadingIndicator.style.fontSize = '0.8em';
+            loadingIndicator.textContent = '(loading...)';
+            titleSpan.appendChild(loadingIndicator);
         }
 
         const actions = document.createElement('div');

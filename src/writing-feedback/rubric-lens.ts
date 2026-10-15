@@ -100,6 +100,45 @@ export function selectRubric(assignment: WritingAssignment, lens: WritingFeedbac
     };
 }
 
+/** Where one lens's grid came from, as stored on the assignment. */
+export type StoredGridSource = 'builtin' | 'canvas' | 'uploaded';
+
+/**
+ * rubricGridSource - where one rubric version's grid came from.
+ *
+ * A version records its own source once a fill has chosen it (`gridSource`). Older versions do
+ * not, and fall back to the assignment's per-lens field: `rubricSource` for the writing lens,
+ * `technicalRubricSource` for the technical lens, where a missing or built-in value reads as
+ * `'builtin'`.
+ *
+ * @param rubric - The version asked about, or undefined to read the assignment's field alone
+ * @param assignment - Assignment holding the fallback fields
+ * @param lens - Lens the version belongs to
+ * @returns Whether that grid came from Canvas, uploaded material, or the built-in profile
+ */
+export function rubricGridSource(
+    rubric: WritingRubricDefinition | undefined,
+    assignment: WritingAssignment,
+    lens: WritingFeedbackLens
+): StoredGridSource {
+    if (rubric?.gridSource) return rubric.gridSource.kind;
+    const stored = lens === 'linguistic' ? assignment.rubricSource : assignment.technicalRubricSource;
+    return stored === 'canvas' || stored === 'uploaded' ? stored : 'builtin';
+}
+
+/**
+ * storedGridSource - where the grid staff are working on came from: the draft's, failing that
+ * the approved version's.
+ *
+ * @param assignment - Assignment whose grid provenance is read
+ * @param lens - Lens whose grid is asked about
+ * @returns Whether that lens's grid came from Canvas, uploaded material, or the built-in profile
+ */
+export function storedGridSource(assignment: WritingAssignment, lens: WritingFeedbackLens): StoredGridSource {
+    const selected = selectRubric(assignment, lens);
+    return rubricGridSource(selected.draft ?? selected.approved, assignment, lens);
+}
+
 /**
  * lensesForAssignment - lists the lenses an assignment must generate.
  *

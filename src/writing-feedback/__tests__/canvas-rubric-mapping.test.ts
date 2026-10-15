@@ -389,3 +389,37 @@ describe('a Canvas rating is read as the top of a band', () => {
         expect(parsed.success).toBe(true);
     });
 });
+
+describe('mapCanvasRubric text limits', () => {
+    it('keeps a long Canvas descriptor whole up to the cell limit, and validates', () => {
+        const source = row('Thesis', FULL_SCALE, 10);
+        source.ratings[0]!.description = 'x'.repeat(790);
+        const mapping = mapCanvasRubric(rubric([source]));
+
+        const cells = Object.values(mapping.shape!.criteria[0]!.cells ?? {});
+        expect(cells.some((cell) => cell.descriptor?.length === 790)).toBe(true);
+        expect(mapping.shortened).toBeUndefined();
+        const draft = { ...buildStaffedWritingRubric('user-1'), ...mapping.shape! };
+        expect(writingRubricDraftInputSchema.safeParse(draft).success).toBe(true);
+    });
+
+    it('reports a descriptor cut to the cell limit', () => {
+        const source = row('Thesis', FULL_SCALE, 10);
+        source.ratings[0]!.description = 'x'.repeat(900);
+        const mapping = mapCanvasRubric(rubric([source]));
+
+        const longest = Math.max(...Object.values(mapping.shape!.criteria[0]!.cells ?? {})
+            .map((cell) => cell.descriptor?.length ?? 0));
+        expect(longest).toBe(800);
+        expect(mapping.shortened).toBe(true);
+    });
+
+    it('reports a criterion description cut to the criterion limit', () => {
+        const source = row('Thesis', FULL_SCALE, 10);
+        source.description = 'y'.repeat(2100);
+        const mapping = mapCanvasRubric(rubric([source]));
+
+        expect(mapping.shape!.criteria[0]!.description).toHaveLength(2000);
+        expect(mapping.shortened).toBe(true);
+    });
+});

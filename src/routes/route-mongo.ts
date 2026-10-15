@@ -115,6 +115,7 @@ import { mountSystemPromptConfigRoutes } from './mongo/system-prompt-config-rout
 import { mountScenarioQuestionRoutes } from './mongo/scenario-questions-routes';
 import { mountPathwaysRoutes } from './mongo/pathways-routes';
 import { mountGuidedPathwayFlagRoutes } from './mongo/guided-pathway-flag-routes';
+import { mountCourseMaterialCopyRoutes } from './mongo/course-material-copy-routes';
 import { isManualFlagType, MANUAL_FLAG_TYPES } from '../flags/manual-flag-policy';
 
 const router = express.Router();
@@ -1099,7 +1100,7 @@ router.put('/:id', requireInstructorForCourseAPI(['paramsId']), asyncHandlerWith
         });
     }
     
-    // Keep capabilities, immutable ids, and physical collection registrations server-owned.
+    // Keep capabilities, immutable ids, physical collection registrations, and the copy lease server-owned.
     // Also strip the three tutorial flags: they moved to `GlobalUser.instructorOnboarding` (OB-002)
     // and must not be resurrected on the course document by a stale client.
     const updateData = Object.fromEntries(
@@ -1110,6 +1111,7 @@ router.put('/:id', requireInstructorForCourseAPI(['paramsId']), asyncHandlerWith
             && key !== 'collections'
             && !key.startsWith('collections.')
             && key !== 'contentSetup'
+            && key !== 'materialCopyLease'
             && key !== 'flagSetup'
             && key !== 'monitorSetup'
         ))
@@ -4801,3 +4803,8 @@ mountPathwaysRoutes(router);
 // ========= GUIDED PATHWAY ALERTS API ======
 // ===========================================
 mountGuidedPathwayFlagRoutes(router);
+
+// ===========================================
+// ========= COURSE MATERIAL COPY API =======
+// ===========================================
+mountCourseMaterialCopyRoutes(router);
