@@ -1,6 +1,6 @@
 {
   "name": "tlef-EngE-AI",
-  "version": "1.14.0",
+  "version": "1.14.1",
   "description": "",
   "main": "dist/server.js",
   "scripts": {
@@ -20,6 +20,7 @@
     "dev:frontend": "npm run vendor:chart && npm run vendor:marked && npm run vendor:feather && tsc -p public/tsconfig.json --watch",
     "dev:client": "browser-sync start --proxy 'http://localhost:8020' --files 'public'",
     "test": "jest --config jest.config.cjs",
+    "test:documents-add-division": "node --test scripts/documents-add-division.test.cjs",
     "test:embedding": "ts-node src/test-scripts/test-embedding-generation.ts",
     "test:qdrant-empty": "ts-node src/test-scripts/test-qdrant-empty-upload.ts",
     "test:integrated": "ts-node src/test-scripts/test-integrated-embedding-qdrant.ts",
