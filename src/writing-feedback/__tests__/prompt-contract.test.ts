@@ -1,6 +1,6 @@
 /**
  * @fileoverview Prompt contract: explained expectedness codes, no unexplained gates, Theme
- * no longer suppressed, worked examples present, invariants kept, mode-specific method.
+ * no longer suppressed, worked examples present, invariants kept, whole-text problem method.
  */
 
 import { buildSflAnalyzerSystemPrompt, buildWritingFeedbackSystemPrompt } from '../feedback-engine';
@@ -51,17 +51,26 @@ describe('writer prompt', () => {
         expect(prompt).toMatch(/action/);
     });
 
-    it('asks for standard feedback and the rewrite block in every run, never naming the mode', () => {
-        const prompt = buildWritingFeedbackSystemPrompt(assignment);
-        expect(prompt).not.toContain('This text needs a rewrite');
-        expect(prompt).toContain('Always fill globalRevision');
-        expect(prompt).toContain('globalRevision.rewriteGoal');
-        expect(prompt).toContain('<worked_example_global>');
-        expect(prompt).not.toMatch(/student will see only the rewrite/i);
+    it('asks for the overall message and restructuring goal only on a whole-text problem', () => {
+        const problem = buildWritingFeedbackSystemPrompt(assignment, true);
+        expect(problem).toContain('Write overallMessage');
+        expect(problem).toContain('Your first revision goal is the restructuring goal');
+        expect(problem).toContain('chosen from transferableStrengths');
+        expect(problem).toContain('<worked_example_whole_text_problem>');
+        expect(problem).toContain('Never say "rewrite", "resubmit" or "start again".');
+        expect(problem).toContain('No list and no numbered steps');
+        const fine = buildWritingFeedbackSystemPrompt(assignment);
+        expect(fine).not.toContain('overallMessage');
+        expect(fine).not.toContain('restructuring goal');
+        expect(fine).not.toContain('<worked_example_whole_text_problem>');
     });
 
-    it('says the rewrite goal does not count toward the whole-submission question', () => {
-        expect(buildWritingFeedbackSystemPrompt(assignment)).toMatch(/at least one of these revision goals has questionScope "whole"; the rewrite goal does not count/i);
+    it('never asks for the old rewrite block', () => {
+        for (const prompt of [buildWritingFeedbackSystemPrompt(assignment), buildWritingFeedbackSystemPrompt(assignment, true)]) {
+            expect(prompt).not.toContain('globalRevision');
+            expect(prompt).not.toContain('rewriteGoal');
+            expect(prompt).toMatch(/at least one of these revision goals has questionScope "whole"\./i);
+        }
     });
 
     it('points the first goal at a weak or missing section', () => {
@@ -91,11 +100,13 @@ it('writes for the student in plain language, not in SFL terms', () => {
 });
 
 describe('Socratic questions in the writer prompt (D-153)', () => {
-    it('requires a scoped Socratic question on every goal and the rewrite block', () => {
+    it('requires a scoped Socratic question on every goal', () => {
         const prompt = buildWritingFeedbackSystemPrompt(buildEvalAssignment());
         expect(prompt).toContain('every revision goal has exactly one guidedQuestion and a questionScope');
         expect(prompt).not.toContain('Add a guidedQuestion only when it genuinely helps');
-        expect(prompt).toContain('globalRevision.guidedQuestion');
-        expect(prompt).toContain('globalRevision.rewriteGoal');
+    });
+
+    it('scopes the restructuring goal to the whole submission', () => {
+        expect(buildWritingFeedbackSystemPrompt(buildEvalAssignment(), true)).toContain('its questionScope is "whole"');
     });
 });

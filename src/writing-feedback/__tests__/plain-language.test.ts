@@ -124,9 +124,9 @@ describe('familiar lab-report terms', () => {
     });
 });
 
-describe('rewrite question lint (D-153)', () => {
-    it('lints the rewrite question', () => {
-        const report = lintFeedbackProse({ criteria: [], strengths: [], revisionGoals: [], globalRevision: { diagnosisStatement: 'Plain.', rewriteDirection: 'Plain.', guidedQuestion: 'How does the Theme work here?' } }, []);
+describe('overall message lint', () => {
+    it('lints the overall message', () => {
+        const report = lintFeedbackProse({ criteria: [], strengths: [], revisionGoals: [], overallMessage: 'Your Theme moves around.\n1. Say what sound is.' }, []);
         expect(report.bannedTerms).toContain('Theme');
     });
 });

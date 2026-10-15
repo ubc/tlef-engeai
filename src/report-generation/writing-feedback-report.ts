@@ -32,15 +32,12 @@
 import { randomUUID } from 'crypto';
 import PDFDocument from 'pdfkit';
 import { renderRubricGrid } from './rubric-grid-renderer';
-import { resolveRewriteGoal } from '../writing-feedback/feedback-gate';
 import type {
     WritingFeedbackPdfService,
     WritingFeedbackResult,
     AnchoredComment,
     FeedbackPdfInclude,
-    FeedbackMode,
     FeedbackPdfLens,
-    GlobalRevision,
     RevisionGoal,
     StaffFinalAssessment,
     WritingAssignment,
@@ -92,10 +89,8 @@ export class StudentWritingFeedbackPdfService implements WritingFeedbackPdfServi
         lens?: FeedbackPdfLens;
         finalAssessment?: StaffFinalAssessment;
         annotationAuthor?: string;
-        /** Effective mode for the writing lens; global revision prints the rewrite block. */
-        mode?: FeedbackMode;
-        /** Rewrite block (staff edits over the model's), used when mode is global revision. */
-        globalRevision?: GlobalRevision;
+        /** Opening paragraph about the whole text (staff edits over the model's); whole-text problems only. */
+        overallMessage?: string;
         technicalFeedback?: WritingFeedbackResult;
         technicalRubric?: WritingRubricDefinition;
         technicalStaffFeedback?: string;
@@ -133,27 +128,16 @@ export class StudentWritingFeedbackPdfService implements WritingFeedbackPdfServi
                         if (input.assignment.isLabReport && input.technicalFeedback && input.technicalRubric) {
                             renderTechnicalSections(doc, input.technicalRubric, input.technicalFeedback, input.technicalStaffFeedback);
                         }
-                        if (input.mode === 'global_revision' && input.globalRevision) {
-                            renderGlobalRevisionSections(
-                                doc,
-                                input.assignment,
-                                input.feedback,
-                                input.globalRevision,
-                                input.finalAssessment,
-                                input.technicalRubric,
-                                input.comments ?? []
-                            );
-                        } else {
-                            renderGeneralSections(
-                                doc,
-                                input.assignment,
-                                input.feedback,
-                                input.staffFeedback,
-                                input.finalAssessment,
-                                input.technicalRubric,
-                                input.comments ?? []
-                            );
-                        }
+                        renderGeneralSections(
+                            doc,
+                            input.assignment,
+                            input.feedback,
+                            input.staffFeedback,
+                            input.finalAssessment,
+                            input.technicalRubric,
+                            input.comments ?? [],
+                            input.overallMessage
+                        );
                     }
                     if (include === 'annotated' || include === 'both') {
                         if (include === 'both') doc.addPage();
@@ -208,7 +192,10 @@ function bullet(doc: PDFKit.PDFDocument, text: string): void {
     body(doc).text(`•  ${text}`, { indent: 6, lineGap: 3, paragraphGap: 4 });
 }
 
-/** Summary sections: strengths, per-criterion evidence, staff feedback, and fallback goals. */
+/**
+ * Summary sections: an optional overall message, strengths, per-criterion evidence, grades,
+ * staff feedback, and fallback goals. Every submission gets this one format.
+ */
 function renderGeneralSections(
     doc: PDFKit.PDFDocument,
     assignment: WritingAssignment,
@@ -216,8 +203,15 @@ function renderGeneralSections(
     staffFeedback?: string,
     finalAssessment?: StaffFinalAssessment,
     technicalRubric?: WritingRubricDefinition,
-    comments: AnchoredComment[] = []
+    comments: AnchoredComment[] = [],
+    overallMessage?: string
 ): void {
+    // A whole-text problem opens with the teacher's note about the whole text: no heading,
+    // so it reads as an opening rather than a warning.
+    if (overallMessage?.trim()) {
+        doc.moveDown(0.5);
+        body(doc).text(overallMessage.trim(), { lineGap: 3 });
+    }
     sectionHeading(doc, 'What you did well');
     feedback.strengths.forEach((strength) => bullet(doc, strength));
 
@@ -245,43 +239,6 @@ function renderGeneralSections(
 
     renderCourseMaterialSources(doc, feedback, comments);
 
-}
-
-/**
- * Rewrite-mode summary: the whole-text message, what to keep, how to rewrite, one goal.
- * Criterion evidence is omitted on purpose: local comments would suggest the text can stay.
- */
-function renderGlobalRevisionSections(
-    doc: PDFKit.PDFDocument,
-    assignment: WritingAssignment,
-    feedback: WritingFeedbackResult,
-    globalRevision: GlobalRevision,
-    finalAssessment?: StaffFinalAssessment,
-    technicalRubric?: WritingRubricDefinition,
-    comments: AnchoredComment[] = []
-): void {
-    sectionHeading(doc, 'What to do next: rewrite');
-    body(doc).text(globalRevision.diagnosisStatement.trim(), { lineGap: 3 });
-    if (globalRevision.whatToKeep.length) {
-        sectionHeading(doc, 'Keep');
-        globalRevision.whatToKeep.forEach((item) => bullet(doc, item));
-    }
-    sectionHeading(doc, 'How to rewrite');
-    body(doc).text(globalRevision.rewriteDirection.trim(), { lineGap: 3 });
-    const blockQuestion = globalRevision.guidedQuestion?.trim();
-    if (blockQuestion) body(doc).text(`Ask yourself: ${blockQuestion}`, { lineGap: 3 });
-    // The rewrite goal comes from the rewrite block on new runs, or from a legacy rewrite-gated
-    // run's first goal; a standard goal is never shown as one. Its question is left off when
-    // the block already asks one, so the student reads it once.
-    const rewriteGoal = resolveRewriteGoal(feedback, globalRevision);
-    if (rewriteGoal) renderRevisionGoals(doc, [blockQuestion ? { ...rewriteGoal, guidedQuestion: undefined } : rewriteGoal]);
-    if (finalAssessment) {
-        const gradedRubric = finalAssessment.lens === 'technical'
-            ? technicalRubric ?? assignment.technicalRubric
-            : assignment.rubric;
-        if (gradedRubric) renderFinalAssessment(doc, gradedRubric, finalAssessment);
-    }
-    renderCourseMaterialSources(doc, feedback, comments);
 }
 
 /**

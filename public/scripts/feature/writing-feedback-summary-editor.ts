@@ -61,8 +61,8 @@ interface LensControls {
 /** Per-lens editable summary controls. */
 export class SummaryEditor {
     private readonly lenses = new Map<WritingFeedbackLens, LensControls>();
-    /** Staff edits of the rewrite block, writing lens only. */
-    private readonly globalRevisions = new Map<WritingFeedbackLens, { diagnosisStatement: string; whatToKeep: string[]; rewriteDirection: string; guidedQuestion?: string }>();
+    /** Staff edits of the overall message, writing lens only. */
+    private readonly overallMessages = new Map<WritingFeedbackLens, string>();
 
     /**
      * @param markDirty - Called on every edit so leaving the page asks first
@@ -228,42 +228,33 @@ export class SummaryEditor {
      * @returns Edit for the review save
      */
     /**
-     * setGlobalRevision - records the staff-edited rewrite block for a lens.
+     * setOverallMessage - records the staff-edited overall message for a lens.
      *
-     * @param lens - Lens being edited; only the writing lens has a rewrite block
-     * @param draft - Current editor contents
+     * @param lens - Lens being edited; only the writing lens has an overall message
+     * @param text - Current editor contents
      */
-    setGlobalRevision(lens: WritingFeedbackLens, draft: { diagnosisStatement: string; whatToKeep: string[]; rewriteDirection: string; guidedQuestion?: string }): void {
-        this.globalRevisions.set(lens, draft);
+    setOverallMessage(lens: WritingFeedbackLens, text: string): void {
+        this.overallMessages.set(lens, text);
         this.markDirty();
     }
 
     /**
-     * seedGlobalRevision - loads the rewrite block on screen without marking the page dirty.
+     * seedOverallMessage - loads the overall message on screen without marking the page dirty.
      *
      * Every save then resends it, so a later unrelated save never drops an earlier edit.
      *
      * @param lens - Lens being shown
-     * @param draft - Block currently displayed
+     * @param text - Message currently displayed
      */
-    seedGlobalRevision(lens: WritingFeedbackLens, draft: { diagnosisStatement: string; whatToKeep: string[]; rewriteDirection: string; guidedQuestion?: string }): void {
-        this.globalRevisions.set(lens, draft);
+    seedOverallMessage(lens: WritingFeedbackLens, text: string): void {
+        this.overallMessages.set(lens, text);
     }
 
     readEdit(lens: WritingFeedbackLens, runId: string): StaffSummaryEdit {
         const controls = this.controls(lens);
         const goals = controls.goals?.value.trim();
-        const global = this.globalRevisions.get(lens);
-        // The server refuses a block without both statements, so an unfinished one stays unsent.
-        const globalRevision = lens === 'linguistic' && global?.diagnosisStatement.trim() && global.rewriteDirection.trim()
-            ? {
-                diagnosisStatement: global.diagnosisStatement.trim(),
-                whatToKeep: global.whatToKeep.map((item) => item.trim()).filter(Boolean).slice(0, 3),
-                rewriteDirection: global.rewriteDirection.trim(),
-                // Sent whenever the editor holds it, so clearing the field reaches the server.
-                ...(global.guidedQuestion !== undefined ? { guidedQuestion: global.guidedQuestion.trim() } : {})
-            }
-            : undefined;
+        // Sent whenever the editor holds it, so clearing the field reaches the server.
+        const overallMessage = lens === 'linguistic' ? this.overallMessages.get(lens)?.trim() : undefined;
         return {
             lens,
             feedbackRunId: runId,
@@ -272,7 +263,7 @@ export class SummaryEditor {
                 .map(([criterion, textarea]) => ({ criterion, explanation: textarea.value.trim() }))
                 .filter(({ explanation }) => explanation.trim().length > 0),
             ...(lens === 'technical' && goals ? { revisionGoalsText: goals } : {}),
-            ...(globalRevision ? { globalRevision } : {})
+            ...(overallMessage !== undefined ? { overallMessage } : {})
         };
     }
 }

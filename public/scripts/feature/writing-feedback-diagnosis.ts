@@ -1,57 +1,56 @@
 /**
- * @fileoverview DOM for the review page's whole-text diagnosis: the staff banner with the
- * mode toggle, the held-back annotation group, and the rewrite-block editor.
+ * @fileoverview DOM for the review page's section check: the staff-only card shown for a
+ * whole-text problem with its "Include annotations" checkbox, the group of annotations not
+ * included, and the overall-message editor.
  */
 
-import type { AnchoredComment, FeedbackMode } from './writing-feedback-shared.js';
-import { chip, createButton, createText, refreshIcons } from './writing-feedback-shared.js';
-import type { diagnosisBannerView } from './writing-feedback-diagnosis-model.js';
+import type { AnchoredComment } from './writing-feedback-shared.js';
+import { chip, createText, refreshIcons } from './writing-feedback-shared.js';
+import type { sectionCheckView } from './writing-feedback-diagnosis-model.js';
 
-type BannerView = NonNullable<ReturnType<typeof diagnosisBannerView>>;
+type SectionCheckView = NonNullable<ReturnType<typeof sectionCheckView>>;
 
-/** The rewrite block staff edit on the Summary step. */
-export interface GlobalRevisionDraft {
-    diagnosisStatement: string;
-    whatToKeep: string[];
-    rewriteDirection: string;
-    /** Whole-submission Socratic question (D-153); absent on runs stored before it. */
-    guidedQuestion?: string;
+/**
+ * Whether annotations are held back, for the section check. Shown inverted, as
+ * "Include annotations", so ticking the box means the student sees them.
+ */
+export interface HoldBackState {
+    /** Effective hold-back: the staff choice, else the default (held back). */
+    checked: boolean;
+    /** True when staff changed it from the suggestion, saved or not. */
+    changed: boolean;
 }
 
 /**
- * renderDiagnosisBanner - staff-only whole-text diagnosis with the mode toggle.
+ * renderSectionCheck - staff-only section check for a whole-text problem.
  *
- * @param view - From diagnosisBannerView
- * @param mode - Current effective mode
- * @param canEdit - Whether the viewer may change the mode
- * @param onToggle - Called with the new mode; the caller marks the summary stale and re-renders
- * @returns Banner element
+ * @param view - From sectionCheckView
+ * @param holdBack - Current checkbox state
+ * @param canEdit - Whether the viewer may change the checkbox
+ * @param onChange - Called with the hold-back choice, or undefined to reset to the default
+ * @returns Section check element
  */
-export function renderDiagnosisBanner(
-    view: BannerView,
-    mode: FeedbackMode,
+export function renderSectionCheck(
+    view: SectionCheckView,
+    holdBack: HoldBackState,
     canEdit: boolean,
-    onToggle: (next: FeedbackMode) => void
+    onChange: (next: boolean | undefined) => void
 ): HTMLElement {
     // Built on the annotation card so the panel reads as one family (D-155).
-    const banner = document.createElement('section');
-    banner.className = 'wf-annotation-card wf-diagnosis';
-    banner.setAttribute('aria-label', 'Whole-text diagnosis');
+    const card = document.createElement('section');
+    card.className = 'wf-annotation-card wf-diagnosis';
+    card.setAttribute('aria-label', 'Off-genre or missing sections');
 
     const header = document.createElement('div');
     header.className = 'wf-annotation-header wf-diagnosis-header';
-    header.append(createText('span', 'WHOLE-TEXT DIAGNOSIS', 'wf-filter-label'));
-    if (mode === 'global_revision') header.append(chip('Rewrite feedback', 'amber'));
-    banner.append(header);
+    header.append(createText('span', 'OFF-GENRE OR MISSING SECTIONS', 'wf-filter-label'));
+    card.append(header);
 
-    banner.append(createText('h4', view.headline, 'wf-diagnosis-headline'));
-    banner.append(createText('p', mode === 'global_revision'
-        ? 'The student gets rewrite feedback only. Passage comments are held back.'
-        : 'The student gets passage comments and revision goals.', 'wf-diagnosis-mode'));
+    card.append(createText('h4', view.headline, 'wf-diagnosis-headline'));
 
     const stages = document.createElement('ul');
     stages.className = 'wf-diagnosis-stages';
-    stages.setAttribute('aria-label', 'Stages');
+    stages.setAttribute('aria-label', 'Sections');
     view.stageChips.forEach((stage) => {
         const item = document.createElement('li');
         const node = chip(`${stage.label}: ${stage.status}`, stage.tone);
@@ -59,14 +58,14 @@ export function renderDiagnosisBanner(
             const marker = document.createElement('span');
             marker.className = 'wf-diagnosis-required';
             marker.textContent = '*';
-            marker.title = 'Required stage';
+            marker.title = 'Required section';
             marker.setAttribute('aria-label', 'required');
             node.append(marker);
         }
         item.append(node);
         stages.append(item);
     });
-    banner.append(stages);
+    card.append(stages);
 
     view.warnings.forEach((warning) => {
         const note = document.createElement('p');
@@ -76,39 +75,93 @@ export function renderDiagnosisBanner(
         icon.setAttribute('data-feather', 'info');
         icon.setAttribute('aria-hidden', 'true');
         note.append(icon, document.createTextNode(warning));
-        banner.append(note);
+        card.append(note);
     });
 
-    const why = document.createElement('details');
-    why.className = 'wf-diagnosis-why';
-    const summary = document.createElement('summary');
-    summary.textContent = 'Why this diagnosis';
-    why.append(summary, createText('p', view.rationale));
-    banner.append(why);
+    card.append(renderWhyLink(view.rationale));
 
-    if (canEdit) {
-        const toggle = createButton(view.toggleLabel, 'outline', async () => {
-            onToggle(mode === 'global_revision' ? 'standard' : 'global_revision');
-        });
-        toggle.classList.add('wf-diagnosis-toggle');
-        banner.append(toggle);
-    }
+    card.append(renderHoldBackControl(holdBack, canEdit, onChange));
     refreshIcons();
-    return banner;
+    return card;
+}
+
+/** A small text link that shows or hides EngE-AI's reasoning, collapsed to start. */
+function renderWhyLink(rationale: string): HTMLElement {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'wf-diagnosis-why';
+    const text = createText('p', rationale);
+    text.id = 'wf-diagnosis-why-text';
+    text.hidden = true;
+    const link = document.createElement('button');
+    link.type = 'button';
+    link.className = 'wf-diagnosis-why__link';
+    link.setAttribute('aria-expanded', 'false');
+    link.setAttribute('aria-controls', text.id);
+    link.append(createText('span', 'Why EngE-AI flagged this', 'wf-diagnosis-why__label'), createText('span', '›', 'wf-diagnosis-why__arrow'));
+    link.querySelector('.wf-diagnosis-why__arrow')?.setAttribute('aria-hidden', 'true');
+    link.addEventListener('click', () => {
+        const open = link.getAttribute('aria-expanded') !== 'true';
+        link.setAttribute('aria-expanded', String(open));
+        text.hidden = !open;
+    });
+    wrapper.append(link, text);
+    return wrapper;
+}
+
+/** "Include annotations", with where its value came from and a way back to the default. */
+function renderHoldBackControl(
+    holdBack: HoldBackState,
+    canEdit: boolean,
+    onChange: (next: boolean | undefined) => void
+): HTMLElement {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'wf-hold-back';
+
+    const option = document.createElement('label');
+    option.className = 'wf-hold-back__option';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    // Ticked means included, the opposite of the stored hold-back value.
+    input.checked = !holdBack.checked;
+    input.disabled = !canEdit;
+    input.setAttribute('aria-describedby', 'wf-hold-back-source');
+    input.addEventListener('change', () => onChange(!input.checked));
+    option.append(input, createText('span', 'Include annotations'));
+    wrapper.append(option);
+
+    const source = document.createElement('p');
+    source.id = 'wf-hold-back-source';
+    source.className = 'wf-hold-back__source';
+    if (holdBack.changed) {
+        source.append(document.createTextNode('Changed by staff. '));
+        if (canEdit) {
+            const reset = document.createElement('button');
+            reset.type = 'button';
+            reset.className = 'wf-hold-back__reset';
+            reset.textContent = 'Reset to default';
+            reset.addEventListener('click', () => onChange(undefined));
+            source.append(reset);
+        }
+    } else {
+        source.textContent = 'Annotations are not included by default because of the issue above. The student sees only the annotations you include one by one.';
+    }
+    wrapper.append(source);
+    return wrapper;
 }
 
 /**
- * renderHeldBackGroup - collapsed list of annotations withheld from the student.
+ * renderHeldBackGroup - collapsed list of annotations not included for the student.
  *
  * @param comments - Held-back comments
- * @param renderCard - The review page's existing annotation card renderer
- * @param canEdit - Whether the viewer may release comments
- * @param onRelease - Called with a comment id when staff release it
+ * @param renderCard - The review page's annotation card renderer; given an include action, the
+ *                     card shows an Include button with its other actions
+ * @param canEdit - Whether the viewer may include comments
+ * @param onRelease - Called with a comment id when staff include it
  * @returns A details element, or null when nothing is held back
  */
 export function renderHeldBackGroup(
     comments: AnchoredComment[],
-    renderCard: (comment: AnchoredComment) => HTMLElement,
+    renderCard: (comment: AnchoredComment, onInclude?: () => void) => HTMLElement,
     canEdit: boolean,
     onRelease: (id: string) => void
 ): HTMLElement | null {
@@ -116,91 +169,40 @@ export function renderHeldBackGroup(
     const group = document.createElement('details');
     group.className = 'wf-held-back';
     const summary = document.createElement('summary');
-    summary.textContent = `Held back until revision (${comments.length})`;
-    group.append(summary, createText('p', 'The student does not see these while this submission gets rewrite feedback.', 'wf-field-help'));
+    summary.textContent = `Annotations not included (${comments.length})`;
+    group.append(summary, createText('p', 'The student does not see these annotations. Include one to show it to the student.', 'wf-field-help'));
     comments.forEach((comment) => {
         const item = document.createElement('div');
         item.className = 'wf-held-back-item';
-        item.append(renderCard(comment));
-        if (canEdit) {
-            item.append(createButton('Release to student', 'outline', async () => onRelease(comment.id)));
-        }
+        item.append(renderCard(comment, canEdit ? () => onRelease(comment.id) : undefined));
         group.append(item);
     });
     return group;
 }
 
 /**
- * renderGlobalRevisionEditor - Summary-step editor for the rewrite block.
+ * renderOverallMessageEditor - Summary-step editor for the overall message ("General feedback").
  *
- * @param value - Current block (staff edit over the model's)
+ * @param value - Current message (staff edit over the model's)
  * @param canEdit - Whether the viewer may edit
- * @param onChange - Called with the edited block on every input
- * @returns Editor element with labelled fields
+ * @param onChange - Called with the edited text on every input
+ * @returns Textarea named by the section heading
  */
-export function renderGlobalRevisionEditor(
-    value: GlobalRevisionDraft,
+export function renderOverallMessageEditor(
+    value: string,
     canEdit: boolean,
-    onChange: (next: GlobalRevisionDraft) => void
+    onChange: (next: string) => void
 ): HTMLElement {
-    const editor = document.createElement('div');
-    editor.className = 'wf-global-editor';
-    const current: GlobalRevisionDraft = { ...value, whatToKeep: [...value.whatToKeep] };
-
-    const field = (id: string, label: string, text: string, rows: number, apply: (raw: string) => void): HTMLElement => {
-        const wrapper = document.createElement('div');
-        wrapper.className = 'wf-field wf-field--wide';
-        const labelEl = document.createElement('label');
-        labelEl.htmlFor = id;
-        labelEl.textContent = label;
-        const input = document.createElement('textarea');
-        input.id = id;
-        input.rows = rows;
-        input.value = text;
-        input.readOnly = !canEdit;
-        input.addEventListener('input', () => {
-            apply(input.value);
-            onChange({ ...current, whatToKeep: [...current.whatToKeep] });
-        });
-        wrapper.append(labelEl, input);
-        return wrapper;
-    };
-
-    editor.append(
-        field('wf-global-diagnosis', 'What the text does', current.diagnosisStatement, 4, (raw) => { current.diagnosisStatement = raw; }),
-        field('wf-global-keep', 'Keep (one per line)', current.whatToKeep.join('\n'), 3, (raw) => {
-            current.whatToKeep = raw.split('\n').map((line) => line.trim()).filter(Boolean).slice(0, 3);
-        }),
-        field('wf-global-direction', 'How to rewrite', current.rewriteDirection, 4, (raw) => { current.rewriteDirection = raw; }),
-        field('wf-global-question', 'Question for the student', current.guidedQuestion ?? '', 2, (raw) => { current.guidedQuestion = raw; })
-    );
-    return editor;
-}
-
-/**
- * renderRewriteGoal - read-only view of the goal the student gets with rewrite feedback.
- *
- * Uses the rewrite editor's own field pattern (label over a read-only textarea), so it
- * reads as part of the block staff approve.
- *
- * @param goal - From rewriteGoalFor
- * @returns Field-styled block matching the rewrite editor
- */
-export function renderRewriteGoal(goal: { goal: string; action?: string; guidedQuestion?: string }): HTMLElement {
     const wrapper = document.createElement('div');
     wrapper.className = 'wf-field wf-field--wide';
-    const label = document.createElement('label');
-    label.htmlFor = 'wf-global-rewrite-goal';
-    label.textContent = 'Rewrite goal';
-    const text = document.createElement('textarea');
-    text.id = 'wf-global-rewrite-goal';
-    text.readOnly = true;
-    text.rows = 3;
-    text.value = [
-        goal.goal,
-        ...(goal.action ? [`Next step: ${goal.action}`] : []),
-        ...(goal.guidedQuestion ? [`Ask yourself: ${goal.guidedQuestion}`] : [])
-    ].join('\n');
-    wrapper.append(label, text, createText('small', 'Sent with the rewrite feedback.'));
+    const input = document.createElement('textarea');
+    input.id = 'wf-overall-message';
+    // The section heading names the field, so it carries no visible label of its own.
+    input.setAttribute('aria-label', 'General feedback');
+    input.rows = 7;
+    input.value = value;
+    input.readOnly = !canEdit;
+    input.addEventListener('input', () => onChange(input.value));
+    wrapper.append(input);
     return wrapper;
 }

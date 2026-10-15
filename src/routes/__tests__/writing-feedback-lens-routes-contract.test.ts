@@ -361,16 +361,18 @@ describe('POST release', () => {
     });
 });
 
-describe('review revision mode override', () => {
+describe('review revision hold-back choice', () => {
     const reviewRoute = source.match(/router\.post\('\/:courseId\/writing-feedback\/submissions\/:submissionId\/reviews'[\s\S]*?\n}\)\);/)?.[0] ?? '';
 
-    it('accepts only the two feedback modes and refuses anything else with 400', () => {
-        expect(reviewRoute).toContain("req.body.modeOverride !== 'standard' && req.body.modeOverride !== 'global_revision'");
-        expect(reviewRoute).toContain("'modeOverride must be standard or global_revision'");
+    it('accepts only a boolean and refuses anything else with 400', () => {
+        expect(reviewRoute).toContain("typeof req.body.holdBackAnnotations !== 'boolean'");
+        expect(reviewRoute).toContain("'holdBackAnnotations must be true or false'");
+        expect(reviewRoute).not.toContain('modeOverride');
     });
 
-    it('passes the override into the append-only revision', () => {
-        expect(reviewRoute).toMatch(/appendReview\([\s\S]*modeOverride,/);
+    it('passes the choice into the append-only revision', () => {
+        // Only a boolean is passed on: Mongo would store an undefined field as null.
+        expect(reviewRoute).toContain("...(typeof holdBackAnnotations === 'boolean' ? { holdBackAnnotations } : {})");
     });
 });
 

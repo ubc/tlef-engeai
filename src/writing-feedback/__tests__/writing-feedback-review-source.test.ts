@@ -190,10 +190,16 @@ describe('single release source contract', () => {
     });
 });
 
-describe('whole-text diagnosis on the review page', () => {
-    it('shows the diagnosis banner and saves the effective mode with every revision', () => {
-        expect(source).toContain('renderDiagnosisBanner(');
-        expect(source).toContain('modeOverride: resolvedMode(');
+describe('section check on the review page', () => {
+    it('shows the section check only through its view, which is null without a whole-text problem', () => {
+        expect(source).toContain('sectionCheckView(feedbackRun, profileStages)');
+        expect(source).toContain('renderSectionCheck(');
+    });
+
+    it('saves a hold-back choice only when staff made one', () => {
+        expect(source).not.toContain('modeOverride');
+        expect(source).toContain('holdBackChoice !== undefined');
+        expect(source).toContain('holdBackAnnotations: holdBackChoice');
     });
 
     it('holds back annotations and gates course readings on supported citations', () => {
@@ -202,14 +208,17 @@ describe('whole-text diagnosis on the review page', () => {
         expect(anchorsSource).toContain('readAgainLabel(');
     });
 
-    it('edits the rewrite block instead of the goals in rewrite mode', () => {
-        expect(source).toContain('renderGlobalRevisionEditor(');
-        expect(source).toContain('setGlobalRevision(');
+    it('edits the overall message above the usual sections, which are never hidden', () => {
+        expect(source).toContain('renderOverallMessageEditor(');
+        expect(source).toContain("createText('h3', 'General feedback')");
+        expect(source).not.toContain('goalsSection.hidden');
     });
+});
 
-    it('shows the rewrite goal staff approve beside the rewrite block, and swaps it with the goals', () => {
-        expect(source).toContain('renderRewriteGoal(rewriteGoal)');
-        expect(source).toContain('rewriteGoalFor(run)');
-        expect(source).toContain('goalsSection.hidden = next === \'global_revision\'');
+describe('held-back annotations in the document', () => {
+    it('leaves held-back annotations out of the document and its numbering until released', () => {
+        expect(anchorsSource).toContain('!(holdBack && isHeldBack(comment))');
+        expect(anchorsSource).toContain('annotationNumbers(context.lens, text, context.holdBack ?? false)');
+        expect(anchorsSource).toContain('orderedAnchorable(context.lens, text, context.holdBack ?? false)');
     });
 });

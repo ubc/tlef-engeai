@@ -122,7 +122,10 @@ export const REALIZED_GENRES = [
 ] as const;
 export type RealizedGenre = typeof REALIZED_GENRES[number];
 
-/** Which feedback a submission receives: local annotations, or rewrite-level feedback only. */
+/**
+ * The gate decision stored on a run: `global_revision` marks a whole-text problem (wrong genre,
+ * or most required stages weak or missing). Staff-only; read it through `hasWholeTextProblem`.
+ */
 export type FeedbackMode = 'standard' | 'global_revision';
 
 /** One profile stage as the diagnosis found it in the text. */
@@ -134,27 +137,15 @@ export interface TextDiagnosisStage {
 
 /**
  * Whole-text judgment made before any local analysis. Staff-only except where the writer
- * turns it into the student-facing {@link GlobalRevision}.
+ * turns a whole-text problem into the student-facing `overallMessage`.
  */
 export interface TextDiagnosis {
     realizedGenre: RealizedGenre;
     genreFit: 'fits' | 'partial' | 'mismatch';
     stages: TextDiagnosisStage[]; // exactly one entry per approved profile stage
     contradictingFeatures: Array<{ quote: string; note: string }>; // language doing another genre's work
-    transferableStrengths: Array<{ text: string; quote?: string }>; // choices worth keeping in a rewrite
+    transferableStrengths: Array<{ text: string; quote?: string }>; // choices worth keeping whatever the student writes next
     rationale: string; // staff-only
-}
-
-/** Student-facing rewrite feedback used when the effective mode is global. */
-export interface GlobalRevision {
-    diagnosisStatement: string;
-    whatToKeep: string[];
-    rewriteDirection: string;
-    /** Whole-submission Socratic question. Required on new runs (D-153). */
-    guidedQuestion?: string;
-    supportingExcerptIds?: string[];
-    /** The one goal the student gets in rewrite mode. Required on new runs; absent on runs stored before 2026-10-13. */
-    rewriteGoal?: RevisionGoal;
 }
 
 /** What a retrieval need is about; also the coverage row type. */
@@ -589,10 +580,16 @@ export interface WritingFeedbackResult {
     strengths: string[]; // concise formative positives safe for staff review
     revisionGoals: RevisionGoal[]; // at most three prioritized next steps
     internalFlags: string[]; // staff-only uncertainty/constraint signals
-    /** Gate decision at generation time. Absent on runs stored before the gate: read as standard. */
+    /** Gate decision at generation time. Absent on runs stored before the gate: no whole-text problem. */
     gateDecision?: FeedbackMode;
-    /** Rewrite-level feedback, always produced on new runs so staff can flip the mode without regenerating. */
-    globalRevision?: GlobalRevision;
+    /**
+     * General feedback: one opening paragraph about the whole text, present only when the gate
+     * found a whole-text problem: what is worth keeping, and what the text does against what
+     * the genre asks.
+     */
+    overallMessage?: string;
+    /** Genre-excerpt ids the overall message draws on; resolved into course-material mentions. */
+    overallMessageExcerptIds?: string[];
     /** Deduplicated student-visible course-material labels selected from validated retrieval. */
     courseMaterialMentions?: CourseMaterialMention[];
 }
@@ -818,8 +815,8 @@ export interface AnchoredComment {
     levelTag?: 'text' | 'section' | 'clause_word';
     priority?: 'high' | 'medium' | 'low';
     /**
-     * Model seed withheld from the student while the effective mode is global revision.
-     * Staff release clears it. Ignored in standard mode.
+     * Model seed withheld from the student while annotations are held back (a whole-text
+     * problem, unless staff ticked "Include annotations"). Including one clears it.
      */
     heldBack?: boolean;
 }
@@ -836,8 +833,8 @@ export interface StaffSummaryEdit {
     strengths: string[]; // "What you did well", 0..5
     criterionExplanations: Array<{ criterion: WritingCriterionId; explanation: string }>;
     revisionGoalsText?: string; // technical lens only; the writing lens keeps `studentFeedback`
-    /** Staff edits of the global rewrite block (writing lens only). */
-    globalRevision?: Pick<GlobalRevision, 'diagnosisStatement' | 'whatToKeep' | 'rewriteDirection' | 'guidedQuestion'>;
+    /** Staff edit of the overall message (writing lens, whole-text problem runs only). */
+    overallMessage?: string;
 }
 
 /** Which run a lens's summary currently comes from, and the annotations it reflects. */
@@ -864,8 +861,11 @@ export interface StaffReviewRevision {
     technicalFeedbackRunId?: string;
     /** Editable summary sections per lens (D-126). */
     summaryEdits?: StaffSummaryEdit[];
-    /** Staff override of the gate decision; the effective mode is `modeOverride ?? run.gateDecision`. */
-    modeOverride?: FeedbackMode;
+    /**
+     * Staff hold-back choice (the inverse of the "Include annotations" checkbox), saved only when staff change it.
+     * Absent means the default: held back exactly when the run has a whole-text problem.
+     */
+    holdBackAnnotations?: boolean;
     createdAt: Date; // append-only revision timestamp
 }
 

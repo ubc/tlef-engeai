@@ -7,7 +7,7 @@
  *
  * @author: @rdschrs
  * @date: 2026-10-05
- * @version: 1.1.0
+ * @version: 1.2.0
  * @description: Pure question validation plus a one-retry generation gate.
  */
 
@@ -34,12 +34,13 @@ function questionProblems(label: string, question: string): string[] {
  * validateSocraticQuestions - every rule a new run's questions must meet.
  *
  * @param goals - Revision goals as parsed from the model
- * @param globalRevision - Rewrite block, when the output has one
+ * @param options - `firstGoalWhole` when the first goal is the restructuring goal of a
+ *                  whole-text problem, which must be about the whole submission
  * @returns Problems for the corrective retry; empty when valid. Never contains student text.
  */
 export function validateSocraticQuestions(
-    goals: Array<{ guidedQuestion?: string | null; questionScope?: string | null }>,
-    globalRevision?: { guidedQuestion?: string | null } | null
+    goals: Array<{ action?: string | null; guidedQuestion?: string | null; questionScope?: string | null }>,
+    options: { firstGoalWhole?: boolean } = {}
 ): string[] {
     const problems: string[] = [];
     goals.forEach((goal, index) => {
@@ -54,33 +55,9 @@ export function validateSocraticQuestions(
     if (goals.length && !goals.some((goal) => goal.questionScope === 'whole')) {
         problems.push('At least one goal needs a question about the whole submission (questionScope "whole").');
     }
-    if (globalRevision) {
-        const question = globalRevision.guidedQuestion?.trim();
-        if (!question) problems.push('globalRevision has no guidedQuestion.');
-        else problems.push(...questionProblems('globalRevision', question));
+    if (options.firstGoalWhole && goals.length && goals[0].questionScope !== 'whole') {
+        problems.push('Goal 1 is the restructuring goal and needs questionScope "whole".');
     }
-    return problems;
-}
-
-/**
- * validateRewriteGoal - the rules a new run's rewrite goal must meet.
- *
- * The rewrite goal is about the whole submission, so its question must be scoped `whole`.
- *
- * @param goal - `globalRevision.rewriteGoal` as parsed from the model
- * @returns Problems for the corrective retry; empty when valid. Never contains student text.
- */
-export function validateRewriteGoal(
-    goal?: { action?: string | null; guidedQuestion?: string | null; questionScope?: string | null } | null
-): string[] {
-    if (!goal) return ['globalRevision has no rewriteGoal.'];
-    const label = 'globalRevision.rewriteGoal';
-    const problems: string[] = [];
-    if (!goal.action?.trim()) problems.push(`${label} has no action.`);
-    const question = goal.guidedQuestion?.trim();
-    if (!question) problems.push(`${label} has no guidedQuestion.`);
-    else problems.push(...questionProblems(label, question));
-    if (goal.questionScope !== 'whole') problems.push(`${label} needs questionScope "whole".`);
     return problems;
 }
 

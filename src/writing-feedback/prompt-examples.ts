@@ -6,11 +6,11 @@
  *
  * @author: @rdschrs
  * @date: 2026-09-28
- * @version: 1.3.0
+ * @version: 1.5.0
  * @description: Versioned few-shot examples for the analyzer and writer prompts.
  */
 
-export const PROMPT_EXAMPLES_VERSION = 'prompt-examples-v1.3.0';
+export const PROMPT_EXAMPLES_VERSION = 'prompt-examples-v1.5.0';
 
 /** Socratic question rules shared by the writer, technical and redraft prompts (D-153). */
 export const SOCRATIC_QUESTION_RULES = [
@@ -41,5 +41,5 @@ export const WRITER_STANDARD_EXAMPLES = [
 
 export const WRITER_GLOBAL_EXAMPLE = [
     'Text (synthetic) explains how rain forms step by step instead of describing the types of precipitation.',
-    '{ "diagnosisStatement": "Precipitation is a good topic for a descriptive report, and you use accurate words such as condensation. But your paragraph explains how rain forms, step by step. A descriptive report instead says what precipitation is and describes its types.", "whatToKeep": ["Precipitation as your topic", "Accurate terms such as condensation"], "rewriteDirection": "1. Start with one sentence that says what precipitation is.\\n2. Name its main types (rain, snow, sleet, hail).\\n3. Describe each type in turn, using the present tense.", "guidedQuestion": "What should a reader know about precipitation after reading your report?", "rewriteGoal": { "skillTag": "descriptive_report", "goal": "Rewrite the paragraph as a descriptive report about precipitation.", "action": "Write one sentence that says what precipitation is.", "guidedQuestion": "Which types of precipitation will your reader need to tell apart?", "questionScope": "whole" } }'
+    '{ "overallMessage": "Precipitation is a good topic for a descriptive report, and you use accurate words such as condensation. But your paragraph explains how rain forms, step by step. A descriptive report instead says what precipitation is and describes its types.", "strengths": ["You chose precipitation, a topic with clear types to describe.", "You use accurate terms such as condensation."], "revisionGoals": [{ "skillTag": "descriptive_report", "goal": "Make the paragraph describe precipitation and its types.", "action": "Write one sentence that says what precipitation is.", "guidedQuestion": "Which types of precipitation will your reader need to tell apart?", "questionScope": "whole" }] }'
 ].join('\n');

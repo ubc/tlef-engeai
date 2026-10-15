@@ -17,9 +17,7 @@ import type {
     AnchoredComment,
     CanvasReleaseInput,
     CanvasReleaseService,
-    FeedbackMode,
     FeedbackPdfInclude,
-    GlobalRevision,
     MaterialCoverage,
     FeedbackPdfLens,
     StaffReviewRevision,
@@ -41,7 +39,7 @@ import { computeReleaseFingerprint } from './canvas-release-service';
 import { seedCommentsFromRun, stampCommentAuthors, validateAnchoredComments, withStaleFlags, type AnchoredCommentWithState } from './anchored-comments';
 import { NO_REVISION_GOALS_MESSAGE, RubricWritingFeedbackEngine } from './feedback-engine';
 import { TEXT_DIAGNOSIS_FAILED_MESSAGE } from './text-diagnosis';
-import { effectiveMode, studentFacingComments } from './feedback-gate';
+import { hasWholeTextProblem, resolveHoldBack, studentFacingComments } from './feedback-gate';
 import { buildCoverageRows, COVERAGE_NEEDS_VERSION, courseMaterialFingerprint, isCoverageCurrent } from './material-coverage';
 import type { GroundingExcerpt, RetrievalNeed } from './course-material-mentions';
 import type { LLMOptions } from 'ubc-genai-toolkit-llm';
@@ -125,50 +123,53 @@ const SAFE_TO_LOG_MESSAGES = new Set([
 ]);
 
 /**
- * latestModeOverride - the staff mode override in force for a submission.
+ * latestHoldBackChoice - the staff "Hold back annotations" choice in force for a submission.
  *
- * A later revision without an override keeps the earlier one. An override belongs to the
- * feedback it was made against: regenerating starts from the new gate decision, while a
- * summary redraft (same generation, see `generatedAt`) keeps it.
+ * Staff save a choice only when they change the checkbox, and a later revision without one
+ * keeps the earlier one. A choice belongs to the feedback it was made against: regenerating
+ * starts from the new gate decision, while a summary redraft (same generation, see
+ * `generatedAt`) keeps it.
  *
  * @param submission - Submission with its append-only reviews
- * @param run - Latest linguistic run; overrides saved before its generation are ignored
- * @returns The newest applicable override since the last text edit, if any
+ * @param run - Latest linguistic run; choices saved before its generation are ignored
+ * @returns The newest applicable choice since the last text edit, if any
  */
-export function latestModeOverride(
+export function latestHoldBackChoice(
     submission: Pick<WritingSubmission, 'transcriptEditedAt'> & { reviews?: StaffReviewRevision[] },
     run?: Pick<WritingFeedbackRun, 'createdAt' | 'generatedAt'> | null
-): FeedbackMode | undefined {
+): boolean | undefined {
     const since = run ? new Date(run.generatedAt ?? run.createdAt).getTime() : -Infinity;
     return [...reviewsSinceTextEdit(submission)].reverse()
-        .find((review) => review.modeOverride && new Date(review.createdAt).getTime() > since)?.modeOverride;
+        // Only a boolean is a choice; a revision saved without one may hold null.
+        .find((review) => typeof review.holdBackAnnotations === 'boolean' && new Date(review.createdAt).getTime() > since)?.holdBackAnnotations;
 }
 
 /**
- * resolveStudentView - what the student sees for the writing lens under the effective mode.
+ * resolveStudentView - the writing lens's whole-text additions and visible annotations.
  *
  * @param run - Latest linguistic run
  * @param submission - Submission with its reviews
  * @param comments - Working-set comments for the writing lens
- * @returns Effective mode, the global block (staff edits over the model's), and visible comments
+ * @returns The overall message (staff edit over the model's; only on a whole-text problem),
+ *          the effective hold-back, and the annotations the student sees
  */
 export function resolveStudentView(
     run: WritingFeedbackRun,
     submission: Pick<WritingSubmission, 'transcriptEditedAt'> & { reviews?: StaffReviewRevision[] },
     comments: AnchoredComment[]
-): { mode: FeedbackMode; globalRevision?: GlobalRevision; comments: AnchoredComment[] } {
-    const mode = effectiveMode(run.gateDecision ?? run.result.gateDecision, latestModeOverride(submission, run));
+): { overallMessage?: string; holdBackAnnotations: boolean; comments: AnchoredComment[] } {
+    const wholeTextProblem = hasWholeTextProblem(run);
+    const holdBackAnnotations = resolveHoldBack(wholeTextProblem, latestHoldBackChoice(submission, run));
     const edit = [...reviewsSinceTextEdit(submission)].reverse()
         .flatMap((review) => review.summaryEdits ?? [])
-        .find((candidate) => candidate.lens === 'linguistic' && candidate.feedbackRunId === run.id && candidate.globalRevision);
-    const base = run.result.globalRevision;
-    const merged: GlobalRevision | undefined = base || edit?.globalRevision
-        ? { ...(base ?? { diagnosisStatement: '', whatToKeep: [], rewriteDirection: '' }), ...(edit?.globalRevision ?? {}) }
-        : undefined;
-    // Staff clearing the rewrite question (an empty string) removes the model's question.
-    const { guidedQuestion, ...rest } = merged ?? ({} as GlobalRevision);
-    const globalRevision = merged ? (guidedQuestion?.trim() ? merged : rest as GlobalRevision) : undefined;
-    return { mode, ...(globalRevision ? { globalRevision } : {}), comments: studentFacingComments(comments, mode) };
+        .find((candidate) => candidate.lens === 'linguistic' && candidate.feedbackRunId === run.id && candidate.overallMessage !== undefined);
+    // Staff clearing the message (an empty string) removes it.
+    const overallMessage = wholeTextProblem ? (edit?.overallMessage ?? run.result.overallMessage)?.trim() : undefined;
+    return {
+        ...(overallMessage ? { overallMessage } : {}),
+        holdBackAnnotations,
+        comments: studentFacingComments(comments, holdBackAnnotations)
+    };
 }
 
 /**
@@ -238,10 +239,10 @@ export interface SubmissionDetail {
     workingComments: AnchoredCommentWithState[];
     /** Per lens, the run the summary comes from and the annotations fingerprint it reflects. */
     summarySources: Partial<Record<WritingFeedbackLens, SummarySource>>;
-    /** Staff override of the gate decision in force since the last text edit, if any. */
-    modeOverride?: FeedbackMode;
-    /** The rewrite block the student would receive: newest staff edit over the model's. */
-    globalRevision?: GlobalRevision;
+    /** Staff "Hold back annotations" choice in force for this generation; absent means the default. */
+    holdBackAnnotations?: boolean;
+    /** The overall message the student would receive (whole-text problem only): newest staff edit over the model's. */
+    overallMessage?: string;
     /** Latest persisted Canvas release state, including any reconciliation requirement. */
     release: WritingRelease | null;
     /** How many times this submission's feedback has reached the student in Canvas. */
@@ -598,10 +599,10 @@ export class WritingFeedbackService {
             seedComments,
             workingComments,
             summarySources,
-            ...(latestModeOverride(submission, feedbackRun) ? { modeOverride: latestModeOverride(submission, feedbackRun) } : {}),
+            ...(latestHoldBackChoice(submission, feedbackRun) !== undefined ? { holdBackAnnotations: latestHoldBackChoice(submission, feedbackRun) } : {}),
             // Same resolution the PDF uses, so the editor shows exactly what the student gets.
-            ...(feedbackRun && resolveStudentView(feedbackRun, submission, []).globalRevision
-                ? { globalRevision: resolveStudentView(feedbackRun, submission, []).globalRevision }
+            ...(feedbackRun && resolveStudentView(feedbackRun, submission, []).overallMessage
+                ? { overallMessage: resolveStudentView(feedbackRun, submission, []).overallMessage }
                 : {}),
             release,
             releaseCount: countCompletedReleases(priorReleases),
@@ -921,8 +922,7 @@ export class WritingFeedbackService {
             grade: studentDocument.latestReview?.finalAssessment?.totalPoints,
             staffFeedback: studentDocument.staffFeedback,
             comments: studentDocument.comments,
-            mode: studentDocument.mode,
-            ...(studentDocument.globalRevision ? { globalRevision: studentDocument.globalRevision } : {}),
+            ...(studentDocument.overallMessage ? { overallMessage: studentDocument.overallMessage } : {}),
             include,
             lens,
             finalAssessment: studentDocument.latestReview?.finalAssessment,
@@ -1354,7 +1354,7 @@ export class WritingFeedbackService {
         const technical = technicalRun
             ? resolveLensComments('technical', { revision, run: technicalRun, seeds: [] }, { includeSeeds: false })
             : { comments: [], origin: 'none' as const };
-        // Rewrite mode withholds held-back annotations from everything the student receives.
+        // Held-back annotations are withheld from everything the student receives.
         const view = resolveStudentView(feedbackRun, submission, anchored(linguistic.comments));
         const linguisticComments = view.comments;
         const technicalComments = anchored(technical.comments);
@@ -1367,8 +1367,7 @@ export class WritingFeedbackService {
 
         return {
             latestReview,
-            mode: view.mode,
-            ...(view.globalRevision ? { globalRevision: view.globalRevision } : {}),
+            ...(view.overallMessage ? { overallMessage: view.overallMessage } : {}),
             // Technical first, so a lab report's annotated pages lead with the graded rubric.
             comments: [...technicalComments, ...linguisticComments],
             feedback: applySummaryToResult(feedbackRun.result, {
@@ -1417,8 +1416,7 @@ export class WritingFeedbackService {
             staffFeedback: studentDocument.staffFeedback,
             finalAssessment: studentDocument.latestReview?.finalAssessment,
             comments: studentDocument.comments,
-            mode: studentDocument.mode,
-            ...(studentDocument.globalRevision ? { globalRevision: studentDocument.globalRevision } : {}),
+            ...(studentDocument.overallMessage ? { overallMessage: studentDocument.overallMessage } : {}),
             annotationAuthor: submission.approvedByName,
             ...(technicalRun && technicalRubric && studentDocument.technicalFeedback
                 ? {

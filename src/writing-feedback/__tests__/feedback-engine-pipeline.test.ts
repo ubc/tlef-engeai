@@ -57,8 +57,8 @@ function writer(criteria: Array<{ id: string }>, levelId: string, excerptId: str
         strengths: ['Clear sequencing: "First, the vibrating object pushes on the air particles next to it."'],
         revisionGoals: goals ?? [{ skillTag: 'identify', goal: 'Define sound formally.', action: 'Name the class sound belongs to.', guidedQuestion: 'What group of things does sound belong to?', questionScope: 'whole' }],
         internalFlags: [],
-        globalRevision: { diagnosisStatement: 'The text explains a process.', whatToKeep: ['Sound'], rewriteDirection: 'Classify the types of sound.', guidedQuestion: 'What should your reader learn about sound first?', supportingExcerptIds: null,
-            rewriteGoal: { skillTag: 'descriptive_report', goal: 'Rewrite as a report.', action: 'Start with what sound is.', guidedQuestion: 'Which kinds of sound will your reader need to tell apart?', questionScope: 'whole' } }
+        overallMessage: 'The text explains a process.\n1. Say what sound is.\n2. Describe its types.',
+        overallMessageExcerptIds: null
     };
 }
 
@@ -118,25 +118,31 @@ describe('RubricWritingFeedbackEngine pipeline', () => {
             .generate({ assignment, verifiedText: text })).rejects.toThrow('Feedback questions were incomplete; regenerate.');
     });
 
-    it('mock mode emits a whole-submission question and a rewrite question', async () => {
+    it('mock mode emits a whole-submission question, and an overall message only for a whole-text problem', async () => {
         process.env.MOCK_RESPONSE = 'true';
         const generated = await new RubricWritingFeedbackEngine(undefined, new InMemoryMaterialRetriever()).generate({ assignment, verifiedText: text });
         expect(generated.revisionGoals.some((goal) => goal.questionScope === 'whole')).toBe(true);
         expect(generated.revisionGoals.every((goal) => goal.guidedQuestion?.endsWith('?'))).toBe(true);
-        expect(generated.globalRevision?.guidedQuestion).toMatch(/\?$/);
-        expect(generated.globalRevision?.rewriteGoal?.questionScope).toBe('whole');
-        expect(generated.globalRevision?.rewriteGoal?.action).toBeTruthy();
+        expect(Boolean(generated.overallMessage)).toBe(generated.gateDecision === 'global_revision');
     });
 
-    it('sends the same writer system prompt whatever the gate decides', async () => {
-        const writerPrompt = async (fit: 'fits' | 'mismatch') => {
+    it('asks for the overall message and restructuring goal only on a whole-text problem', async () => {
+        const writerCall = async (fit: 'fits' | 'mismatch') => {
             const send = fakeLlm(fit, () => null);
-            await new RubricWritingFeedbackEngine({ sendStructuredConversation: send } as unknown as LLMModule, new InMemoryMaterialRetriever())
+            const generated = await new RubricWritingFeedbackEngine({ sendStructuredConversation: send } as unknown as LLMModule, new InMemoryMaterialRetriever())
                 .generate({ assignment, verifiedText: text });
             const call = send.mock.calls.find((entry) => entry[2].structuredOutputName === 'writing_feedback_v2')!;
-            return call[0][0].content;
+            return { prompt: call[0][0].content as string, generated };
         };
-        expect(await writerPrompt('mismatch')).toBe(await writerPrompt('fits'));
+        const problem = await writerCall('mismatch');
+        expect(problem.prompt).toContain('Write overallMessage');
+        expect(problem.prompt).toContain('restructuring goal');
+        expect(problem.generated.overallMessage).toContain('Say what sound is.');
+        const fine = await writerCall('fits');
+        expect(fine.prompt).not.toContain('overallMessage');
+        expect(fine.prompt).not.toContain('restructuring goal');
+        // The fake model returns a message anyway; a run without a whole-text problem never keeps one.
+        expect(fine.generated.overallMessage).toBeUndefined();
     });
 
     it('runs diagnosis first and gates a mismatch to global revision', async () => {
@@ -150,14 +156,12 @@ describe('RubricWritingFeedbackEngine pipeline', () => {
         expect(names).toEqual(['text_diagnosis', 'sfl_analysis', 'writing_feedback_v2']);
         expect(generated.gateDecision).toBe('global_revision');
         expect(generated.runTrace?.gateDecision).toBe('global_revision');
-        // The gate no longer shapes the writer: standard goals are stored on a rewrite-gated run.
+        // A whole-text problem keeps the one feedback format and adds the overall message.
         expect(generated.revisionGoals.length).toBeGreaterThanOrEqual(1);
-        expect(generated.globalRevision?.rewriteGoal).toBeDefined();
+        expect(generated.overallMessage).toBeDefined();
         expect(generated.runTrace?.textDiagnosis?.realizedGenre).toBe('explanation');
         expect(generated.runTrace?.contrastExcerpts?.length).toBeGreaterThan(0);
-        // Strengths are no longer narrowed to transferable ones on a rewrite-gated run (rewrite
-        // feedback prints whatToKeep); the contradicting-feature guard still drops praise of
-        // the explanation's sequencing.
+        // The contradicting-feature guard drops praise of the explanation's sequencing.
         expect(generated.strengths).toEqual([]);
     });
 

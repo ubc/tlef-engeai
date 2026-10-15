@@ -15,6 +15,7 @@
 import { randomUUID } from 'crypto';
 import { z } from 'zod';
 import type { AnchoredComment, SflFinding, WritingFeedbackRun, WritingRubricDefinition } from './contracts';
+import { hasWholeTextProblem } from './feedback-gate';
 
 /** Built-in rubric criterion to SFL function fallback for legacy/no-trace runs. */
 const CRITERION_FUNCTION_TAG: Partial<Record<string, AnchoredComment['functionTag']>> = {
@@ -183,9 +184,9 @@ export function seedCommentsFromRun(
     rubric?: WritingRubricDefinition
 ): AnchoredComment[] {
     const seeds: AnchoredComment[] = [];
-    // A rewrite-mode run holds its local annotations back from the student until staff
-    // release them or switch the submission to standard feedback.
-    const heldBack = (run.gateDecision ?? run.result.gateDecision) === 'global_revision';
+    // A whole-text problem holds its annotations back by default, until staff release one
+    // or untick "Hold back annotations".
+    const heldBack = hasWholeTextProblem(run);
     const seededTokens: Array<Set<string>> = [];
     const seededFindingIds = new Set<string>();
     const searchFrom = new Map<string, number>();

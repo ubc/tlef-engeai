@@ -7,13 +7,13 @@
  *
  * @author: @rdschrs
  * @date: 2026-09-28
- * @version: 1.1.0
+ * @version: 1.2.0
  * @description: Pure scoring of one eval fixture's engine output.
  */
 
 import type { EvalFixture } from './__tests__/fixtures/eval/eval-fixtures';
 import { lintFeedbackProse } from './plain-language';
-import { validateRewriteGoal, validateSocraticQuestions } from './socratic-questions';
+import { validateSocraticQuestions } from './socratic-questions';
 
 /** Loose view of engine output; every field optional so baseline output fits. */
 export interface EvalRunOutput {
@@ -23,10 +23,7 @@ export interface EvalRunOutput {
         criteria?: Array<{ explanation?: string; evidence?: Array<{ quote?: string; rationale?: string; revisionGuidance?: string; courseMaterialMention?: { id: string; label: string }; supportingExcerptId?: string; sflFindingIds?: string[] }> }>;
         strengths?: string[];
         revisionGoals?: Array<{ skillTag?: string; goal?: string; action?: string; guidedQuestion?: string; questionScope?: string }>;
-        globalRevision?: {
-            diagnosisStatement?: string; whatToKeep?: string[]; rewriteDirection?: string; guidedQuestion?: string;
-            rewriteGoal?: { skillTag?: string; goal?: string; action?: string; guidedQuestion?: string; questionScope?: string };
-        };
+        overallMessage?: string;
     };
     runTrace?: {
         gateDecision?: string;
@@ -38,7 +35,7 @@ export interface EvalRunOutput {
         sflAnalysis?: { findings?: Array<{ ruleIds?: string[] }> };
         supportedExcerptIds?: string[];
     };
-    /** Annotations the student would see under the effective mode; absent on baseline. */
+    /** Annotations the student would see under the default hold-back; absent on baseline. */
     studentComments?: Array<{ quote: string }>;
 }
 
@@ -81,18 +78,16 @@ export function runEvalChecks(output: EvalRunOutput, fixture: EvalFixture, known
         .filter(([stageId, status]) => stages.get(stageId) !== status)
         .map(([stageId, status]) => `${stageId}: expected ${status}, got ${stages.get(stageId) ?? 'absent'}`);
 
-    // Plain language: both blocks are stored on every run and staff may show either, so
-    // both are linted, the rewrite goal with the goals.
-    const rewriteGoal = result.globalRevision?.rewriteGoal;
+    const wholeTextProblem = mode === 'global_revision';
     const plain = lintFeedbackProse({
         criteria: (result.criteria ?? []).map((criterion) => ({ explanation: criterion.explanation, evidence: criterion.evidence ?? [] })),
         strengths: result.strengths ?? [],
-        revisionGoals: [...goals, ...(rewriteGoal ? [rewriteGoal] : [])].map((goal) => ({ goal: goal.goal ?? '', action: goal.action, guidedQuestion: goal.guidedQuestion })),
-        ...(result.globalRevision ? { globalRevision: result.globalRevision } : {})
+        revisionGoals: goals.map((goal) => ({ goal: goal.goal ?? '', action: goal.action, guidedQuestion: goal.guidedQuestion })),
+        ...(result.overallMessage ? { overallMessage: result.overallMessage } : {})
     }, knownTerms);
-    // Every goal needs a scoped question, and so does the rewrite block (D-153); both are stored on every run.
-    const socraticProblems = validateSocraticQuestions(goals, result.globalRevision ?? null);
-    const rewriteGoalProblems = validateRewriteGoal(rewriteGoal);
+    // Every goal needs a scoped question (D-153); a whole-text problem's first goal is about the whole text.
+    const socraticProblems = validateSocraticQuestions(goals, { firstGoalWhole: wholeTextProblem });
+    const hasOverallMessage = Boolean(result.overallMessage?.trim());
     const bannedPer100 = plain.words ? (100 * plain.bannedHits) / plain.words : 0;
     const longShare = plain.sentences ? plain.longSentences / plain.sentences : 0;
 
@@ -110,11 +105,15 @@ export function runEvalChecks(output: EvalRunOutput, fixture: EvalFixture, known
             socraticProblems.join('; ') || `${goals.length} goals, all with questions`
         ),
         check(
-            'bothModes',
-            // Only gated (writing-lens) runs carry a rewrite mode; technical output has neither.
+            'wholeTextShape',
+            // Only gated (writing-lens) runs carry a gate decision; technical output has none.
             Boolean(mode),
-            goals.length > 0 && Boolean(result.globalRevision) && rewriteGoalProblems.length === 0,
-            rewriteGoalProblems.join('; ') || `${goals.length} standard goals and a rewrite goal`
+            wholeTextProblem
+                ? hasOverallMessage && goals[0]?.questionScope === 'whole'
+                : !hasOverallMessage,
+            wholeTextProblem
+                ? `overall message ${hasOverallMessage ? 'present' : 'missing'}; first goal scoped ${goals[0]?.questionScope ?? 'absent'}`
+                : `no whole-text problem; overall message ${hasOverallMessage ? 'present (unexpected)' : 'absent'}`
         ),
         check('mode', Boolean(expectation.mode), mode === expectation.mode, `expected ${expectation.mode ?? '-'}, got ${mode ?? 'absent'}`),
         check('stageStatuses', Boolean(expectation.stageStatuses), stageMismatches.length === 0, stageMismatches.join('; ') || 'all match'),
@@ -137,7 +136,7 @@ export function runEvalChecks(output: EvalRunOutput, fixture: EvalFixture, known
             `need ${expectation.minSupportedCitations ?? 0}`
         ),
         check(
-            'noLocalAnnotationsInGlobal',
+            'annotationsHeldBack',
             expectation.mode === 'global_revision',
             output.studentComments !== undefined && output.studentComments.length === 0,
             `${output.studentComments?.length ?? 'unknown'} student-facing annotations`

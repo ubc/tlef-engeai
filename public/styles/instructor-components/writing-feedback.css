@@ -4051,7 +4051,7 @@ mark.wf-anchor.is-filtered-out,
     background: var(--background-2);
 }
 
-/* Whole-text diagnosis banner (review page, staff only). Built on .wf-annotation-card. */
+/* Section check: "Off-genre or missing sections" (review page, staff only, whole-text problems). Built on .wf-annotation-card. */
 .wf-diagnosis {
     display: grid;
     gap: 8px;
@@ -4068,7 +4068,6 @@ mark.wf-anchor.is-filtered-out,
     margin: 0;
 }
 
-.wf-annotation-card .wf-diagnosis-mode,
 .wf-diagnosis-why p {
     margin: 0;
     color: var(--text-secondary);
@@ -4111,30 +4110,111 @@ mark.wf-anchor.is-filtered-out,
     margin-top: 3px;
 }
 
-/* Same disclosure row as the review history items. */
-.wf-diagnosis-why > summary {
-    cursor: pointer;
-    color: var(--text-primary);
+/* "Why EngE-AI flagged this": a small text link, matching "Reset to default". */
+.wf-diagnosis-why {
+    display: grid;
+    gap: 4px;
+}
+
+.wf-diagnosis-why__link {
+    justify-self: start;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--color-chbe-green);
+    font: inherit;
     font-size: 13px;
     font-weight: 600;
+    cursor: pointer;
 }
 
-.wf-diagnosis-why[open] > summary {
-    margin-bottom: 4px;
+/* Only the words are underlined, so the arrow reads as an icon beside them. */
+.wf-diagnosis-why__label {
+    text-decoration: underline;
 }
 
-.wf-diagnosis-toggle {
-    justify-self: start;
+.wf-diagnosis-why__arrow {
+    display: inline-block;
+    font-size: 16px;
+    line-height: 1;
+    transition: transform 0.15s ease;
+}
+
+.wf-diagnosis-why__link[aria-expanded="true"] .wf-diagnosis-why__arrow {
+    transform: rotate(90deg);
+}
+
+.wf-diagnosis-why__link:focus-visible {
+    outline: 2px solid var(--color-ubc-blue);
+    outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .wf-diagnosis-why__arrow {
+        transition: none;
+    }
+}
+
+.wf-hold-back {
+    display: grid;
+    gap: 4px;
+    margin-top: 8px;
+}
+
+.wf-hold-back__option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.wf-hold-back__option input {
+    flex: none;
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    accent-color: var(--color-chbe-green);
+}
+
+.wf-annotation-card .wf-hold-back__source {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.wf-hold-back__reset {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--color-chbe-green);
+    font: inherit;
+    font-weight: 600;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.wf-hold-back__option input:focus-visible,
+.wf-hold-back__reset:focus-visible {
+    outline: 2px solid var(--color-ubc-blue);
+    outline-offset: 2px;
 }
 
 @media (hover: none) {
-    .wf-diagnosis-why > summary,
-    .wf-diagnosis-toggle {
+    .wf-diagnosis-why__link,
+    .wf-hold-back__option,
+    .wf-hold-back__reset {
         min-height: 44px;
     }
 }
 
-/* Annotations withheld from the student while rewrite feedback applies. */
+/* Annotations withheld from the student while "Hold back annotations" is ticked. */
 .wf-held-back {
     margin-top: 16px;
     padding: 8px 12px;
@@ -4152,13 +4232,4 @@ mark.wf-anchor.is-filtered-out,
     display: grid;
     gap: 6px;
     margin-top: 12px;
-}
-
-.wf-held-back-item > .wf-button {
-    justify-self: start;
-}
-
-.wf-global-editor {
-    display: grid;
-    gap: 12px;
 }

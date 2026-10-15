@@ -1,6 +1,6 @@
 /**
  * @fileoverview Summary seeding prints each goal's concrete action, and a question only
- * when the goal has one.
+ * when the goal has one; the overall message is saved with the writing lens edit.
  */
 
 import { SummaryEditor, seedSummaryText } from '../writing-feedback-summary-editor';
@@ -18,27 +18,32 @@ describe('seedSummaryText', () => {
 });
 
 
-describe('SummaryEditor rewrite block', () => {
-    it('saves a complete rewrite block with the writing lens edit', () => {
-        const editor = new SummaryEditor(() => undefined);
-        editor.setGlobalRevision('linguistic', { diagnosisStatement: 'It explains.', whatToKeep: ['Sound'], rewriteDirection: 'Classify.' });
-        expect(editor.readEdit('linguistic', 'run-1').globalRevision)
-            .toEqual({ diagnosisStatement: 'It explains.', whatToKeep: ['Sound'], rewriteDirection: 'Classify.' });
-    });
-
-    it('omits an incomplete block the server would refuse', () => {
-        const editor = new SummaryEditor(() => undefined);
-        editor.setGlobalRevision('linguistic', { diagnosisStatement: '  ', whatToKeep: [], rewriteDirection: 'Classify.' });
-        expect(editor.readEdit('linguistic', 'run-1').globalRevision).toBeUndefined();
-    });
-});
-
-describe('SummaryEditor rewrite block seeding', () => {
-    it('resends the displayed block on every save without marking the page dirty', () => {
+describe('SummaryEditor overall message', () => {
+    it('saves the edited message with the writing lens edit', () => {
         const markDirty = jest.fn();
         const editor = new SummaryEditor(markDirty);
-        editor.seedGlobalRevision('linguistic', { diagnosisStatement: 'Staff diagnosis.', whatToKeep: [], rewriteDirection: 'Staff direction.' });
+        editor.setOverallMessage('linguistic', '  Keep your topic.\n1. Define it.  ');
+        expect(markDirty).toHaveBeenCalled();
+        expect(editor.readEdit('linguistic', 'run-1').overallMessage).toBe('Keep your topic.\n1. Define it.');
+    });
+
+    it('sends an emptied message so the clear reaches the server', () => {
+        const editor = new SummaryEditor(() => undefined);
+        editor.setOverallMessage('linguistic', '   ');
+        expect(editor.readEdit('linguistic', 'run-1').overallMessage).toBe('');
+    });
+
+    it('resends the displayed message on every save without marking the page dirty', () => {
+        const markDirty = jest.fn();
+        const editor = new SummaryEditor(markDirty);
+        editor.seedOverallMessage('linguistic', 'Staff message.');
         expect(markDirty).not.toHaveBeenCalled();
-        expect(editor.readEdit('linguistic', 'run-1').globalRevision?.diagnosisStatement).toBe('Staff diagnosis.');
+        expect(editor.readEdit('linguistic', 'run-1').overallMessage).toBe('Staff message.');
+    });
+
+    it('never sends a message for a lens without one', () => {
+        const editor = new SummaryEditor(() => undefined);
+        expect(editor.readEdit('linguistic', 'run-1')).not.toHaveProperty('overallMessage');
+        expect(editor.readEdit('technical', 'run-2')).not.toHaveProperty('overallMessage');
     });
 });

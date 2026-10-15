@@ -34,14 +34,17 @@ describe('summaryEditsInputSchema', () => {
     });
 });
 
-describe('rewrite question edits (D-153)', () => {
-    it('accepts and keeps a staff-edited rewrite question', () => {
-        const edit = [{
-            lens: 'linguistic', feedbackRunId: 'run-l', strengths: [], criterionExplanations: [],
-            globalRevision: { diagnosisStatement: 'd', whatToKeep: [], rewriteDirection: 'r', guidedQuestion: 'What should your first sentence tell the reader?' }
-        }];
-        const parsed = summaryEditsInputSchema.safeParse(edit);
-        expect(parsed.success && parsed.data[0].globalRevision?.guidedQuestion).toBe('What should your first sentence tell the reader?');
+describe('overall message edits', () => {
+    const edit = (lens: string, overallMessage: string) => [{ lens, feedbackRunId: 'run-l', strengths: [], criterionExplanations: [], overallMessage }];
+
+    it('accepts and trims a staff-edited overall message on the writing lens', () => {
+        const parsed = summaryEditsInputSchema.safeParse(edit('linguistic', '  Keep your topic.  '));
+        expect(parsed.success && parsed.data[0].overallMessage).toBe('Keep your topic.');
+    });
+
+    it('refuses an overall message on the technical lens or past the length cap', () => {
+        expect(summaryEditsInputSchema.safeParse(edit('technical', 'x')).success).toBe(false);
+        expect(summaryEditsInputSchema.safeParse(edit('linguistic', 'x'.repeat(2001))).success).toBe(false);
     });
 });
 

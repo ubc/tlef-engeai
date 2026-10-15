@@ -50,8 +50,7 @@ function feedbackFor(
             guidedQuestion: 'What does a reader need to know first?',
             questionScope: 'whole'
         }],
-        internalFlags: [],
-        globalRevision: { diagnosisStatement: 'The text fits the genre.', whatToKeep: [], rewriteDirection: 'Keep the stages.', guidedQuestion: 'What does a reader need to know first?', rewriteGoal: { skillTag: 'descriptive_report', goal: 'Rewrite as a report.', action: 'Start with a definition.', guidedQuestion: 'Which types will your reader need to tell apart?', questionScope: 'whole' } }
+        internalFlags: []
     };
 }
 
@@ -281,7 +280,7 @@ describe('Socratic questions in the output schema (D-153)', () => {
     const rubric = sixCriterionRubric();
     const valid = () => feedbackFor(rubric) as WritingFeedbackResult & { revisionGoals: Array<Record<string, unknown>> };
 
-    it('accepts a goal with a question and a scope, and a rewrite block with a question', () => {
+    it('accepts a goal with a question and a scope', () => {
         expect(buildFeedbackSchema(rubric).safeParse(valid()).success).toBe(true);
     });
 
@@ -300,10 +299,12 @@ describe('Socratic questions in the output schema (D-153)', () => {
         expect(buildFeedbackSchema(rubric).safeParse(unknown).success).toBe(false);
     });
 
-    it('rejects a rewrite block without a guidedQuestion', () => {
-        const result = valid();
-        delete (result.globalRevision as { guidedQuestion?: string }).guidedQuestion;
-        expect(buildFeedbackSchema(rubric).safeParse(result).success).toBe(false);
+    it('requires the overall message on a whole-text problem and drops it otherwise', () => {
+        expect(buildFeedbackSchema(rubric, { wholeTextProblem: true }).safeParse(valid()).success).toBe(false);
+        const withMessage = { ...valid(), overallMessage: 'Keep your topic.\n1. Define it.' };
+        expect(buildFeedbackSchema(rubric, { wholeTextProblem: true }).safeParse(withMessage).success).toBe(true);
+        const parsed = buildFeedbackSchema(rubric).safeParse(withMessage);
+        expect(parsed.success && 'overallMessage' in parsed.data).toBe(false);
     });
 
     it('requires the question and scope in a summary redraft too', () => {

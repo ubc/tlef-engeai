@@ -1,5 +1,7 @@
 # Writing Feedback proportional rewrite gate and reliable mode switch — design
 
+> **Superseded (2026-10-14):** the two feedback modes and the mode switch were replaced by one feedback format; see `2026-10-14-writing-feedback-one-format-design.md`. The 75% gate rule below still applies.
+
 Date: 2026-10-13
 Branch: new branch from `48230ba` (worktree `wf-diagnosis-grounding`); proposed name `feature/writing-feedback-proportional-gate`
 Amends: D-143 (gate rule), D-144 (what rewrite mode shows); supersedes the mode-switch redraft in `needsModeRedraft`

@@ -4,7 +4,6 @@
 import { SanitizedJobError } from '../job-runner';
 import {
     SOCRATIC_QUESTIONS_FAILED_MESSAGE,
-    validateRewriteGoal,
     validateSocraticQuestions,
     withQuestionGate
 } from '../socratic-questions';
@@ -57,29 +56,12 @@ describe('validateSocraticQuestions', () => {
         expect(validateSocraticQuestions([{ ...whole, guidedQuestion: 'What does your reader need first?"' }])).toEqual([]);
     });
 
-    it('requires the rewrite block question when a rewrite block is present', () => {
-        expect(validateSocraticQuestions([whole], { guidedQuestion: '' })).toContain('globalRevision has no guidedQuestion.');
-        expect(validateSocraticQuestions([whole], { guidedQuestion: 'Did it work?' }))
-            .toContain('globalRevision asks a yes/no question; ask what, which, how or why instead.');
-        expect(validateSocraticQuestions([whole], { guidedQuestion: 'What does your reader need to know first?' })).toEqual([]);
-    });
-});
-
-describe('validateRewriteGoal', () => {
-    const good = { action: 'Start with a definition.', guidedQuestion: 'What should your reader learn first?', questionScope: 'whole' };
-
-    it('accepts a whole-submission goal with an action and an open question', () => {
-        expect(validateRewriteGoal(good)).toEqual([]);
-    });
-
-    it('reports a missing goal', () => {
-        expect(validateRewriteGoal(undefined)).toEqual(['globalRevision has no rewriteGoal.']);
-    });
-
-    it('refuses a part-scoped goal, a missing action and a yes/no question', () => {
-        expect(validateRewriteGoal({ ...good, questionScope: 'part' }).join(' ')).toMatch(/questionScope "whole"/);
-        expect(validateRewriteGoal({ ...good, action: ' ' }).join(' ')).toMatch(/no action/);
-        expect(validateRewriteGoal({ ...good, guidedQuestion: 'Is your definition clear?' }).length).toBeGreaterThan(0);
+    it('requires a whole-submission first goal on a whole-text problem', () => {
+        const partFirst = [{ ...whole, questionScope: 'part' }, whole];
+        expect(validateSocraticQuestions(partFirst, { firstGoalWhole: true }))
+            .toContain('Goal 1 is the restructuring goal and needs questionScope "whole".');
+        expect(validateSocraticQuestions(partFirst)).toEqual([]);
+        expect(validateSocraticQuestions([whole], { firstGoalWhole: true })).toEqual([]);
     });
 });
 

@@ -1,14 +1,14 @@
 /**
- * @fileoverview Review-page diagnosis model: banner copy, held-back split and release,
- * effective mode, and when "Read again" appears.
+ * @fileoverview Review-page section check model: when it shows and its copy, held-back
+ * split and release, the hold-back default, and when "Read again" appears.
  */
 
 import {
-    diagnosisBannerView,
+    hasWholeTextProblem,
     readAgainLabel,
     releaseHeldBack,
-    resolvedMode,
-    rewriteGoalFor,
+    resolveHoldBack,
+    sectionCheckView,
     showReadAgain,
     splitHeldBack
 } from '../writing-feedback-diagnosis-model';
@@ -34,37 +34,62 @@ const comment = (id: string, extra: Partial<AnchoredComment> = {}): AnchoredComm
     id, lens: 'linguistic', quote: 'q', startOffset: 0, endOffset: 1, comment: 'c', origin: 'model_seed', ...extra
 });
 
-describe('diagnosisBannerView', () => {
-    it('describes the diagnosis in plain words with required stages marked', () => {
-        const view = diagnosisBannerView(run, stages, 'global_revision')!;
-        expect(view.headline).toBe('This reads as an explanation, not the target genre.');
+describe('sectionCheckView', () => {
+    it('names both problems when the text is off-genre and missing most required sections', () => {
+        const view = sectionCheckView(run, stages)!;
+        expect(view.headline).toBe('This submission is off-genre and missing several sections.');
         expect(view.stageChips).toEqual([
             { label: 'General statement', status: 'Weak', required: true, tone: 'amber' },
             { label: 'Classification or composition', status: 'Missing', required: true, tone: 'red' },
             { label: 'Closing', status: 'Missing', required: false, tone: 'red' }
         ]);
-        expect(view.warnings).toEqual(['No course material on this genre was found, so the diagnosis relies on general knowledge.']);
-        expect(view.toggleLabel).toBe('Switch to standard feedback');
+        // Missing genre material belongs to the rubric page's coverage report, not each submission.
+        expect(view.warnings).toEqual([]);
     });
 
-    it('colours Present green and an unchecked stage neutral', () => {
+    it('names missing sections alone when the genre fits', () => {
+        const mostlyMissing = { ...run, textDiagnosis: { ...run.textDiagnosis!, genreFit: 'partial' } } as FeedbackRun;
+        const view = sectionCheckView(mostlyMissing, stages)!;
+        expect(view.headline).toBe('This submission is missing several sections.');
+    });
+
+    it('names off-genre alone when most required sections are present, whatever genre it reads as', () => {
+        for (const realizedGenre of ['explanation', 'unclear']) {
+            const offGenre = { ...run, textDiagnosis: { ...run.textDiagnosis!, realizedGenre, stages: [{ stageId: 'identify', status: 'present' }, { stageId: 'classify', status: 'weak' }] } } as FeedbackRun;
+            const view = sectionCheckView(offGenre, stages)!;
+            expect(view.headline).toBe('This submission is off-genre.');
+        }
+    });
+
+    it('colours Present green and an unchecked section neutral', () => {
         const fits = { ...run, textDiagnosis: { ...run.textDiagnosis!, stages: [{ stageId: stages[0].id, status: 'present' }] } } as FeedbackRun;
-        const chips = diagnosisBannerView(fits, stages, 'standard')!.stageChips;
+        const chips = sectionCheckView(fits, stages)!.stageChips;
         expect(chips[0].tone).toBe('green');
         expect(chips[1]).toMatchObject({ status: 'Not checked', tone: 'neutral' });
     });
 
-    it('returns null for a run stored before the diagnosis existed', () => {
-        expect(diagnosisBannerView({ ...run, textDiagnosis: undefined } as FeedbackRun, stages, 'standard')).toBeNull();
+    it('is hidden without a whole-text problem', () => {
+        expect(sectionCheckView({ ...run, gateDecision: 'standard' } as FeedbackRun, stages)).toBeNull();
+    });
+
+    it('is hidden for a run stored before the diagnosis existed', () => {
+        expect(sectionCheckView({ ...run, textDiagnosis: undefined } as FeedbackRun, stages)).toBeNull();
     });
 });
 
 describe('held-back comments', () => {
     const comments = [comment('a', { heldBack: true }), comment('b', { origin: 'staff' })];
 
-    it('splits only in global mode', () => {
-        expect(splitHeldBack(comments, 'global_revision')).toEqual({ visible: [comments[1]], heldBack: [comments[0]] });
-        expect(splitHeldBack(comments, 'standard')).toEqual({ visible: comments, heldBack: [] });
+    it('splits only while annotations are held back', () => {
+        expect(splitHeldBack(comments, true)).toEqual({ visible: [comments[1]], heldBack: [comments[0]] });
+        expect(splitHeldBack(comments, false)).toEqual({ visible: comments, heldBack: [] });
+    });
+
+    it('groups unflagged model seeds as held back, but not released seeds or staff comments', () => {
+        const seeds = [comment('s1'), comment('s2', { heldBack: false }), comment('st', { origin: 'staff' })];
+        const split = splitHeldBack(seeds, true);
+        expect(split.heldBack.map((item) => item.id)).toEqual(['s1']);
+        expect(split.visible.map((item) => item.id)).toEqual(['s2', 'st']);
     });
 
     it('releases one comment by clearing its flag', () => {
@@ -72,11 +97,13 @@ describe('held-back comments', () => {
     });
 });
 
-describe('resolvedMode', () => {
-    it('prefers the override, then the gate, then standard', () => {
-        expect(resolvedMode(run, 'standard')).toBe('standard');
-        expect(resolvedMode(run)).toBe('global_revision');
-        expect(resolvedMode(null)).toBe('standard');
+describe('hold-back default', () => {
+    it('holds back exactly when the run has a whole-text problem, unless staff chose', () => {
+        expect(hasWholeTextProblem(run)).toBe(true);
+        expect(resolveHoldBack(run)).toBe(true);
+        expect(resolveHoldBack(run, false)).toBe(false);
+        expect(resolveHoldBack({ ...run, gateDecision: 'standard' } as FeedbackRun)).toBe(false);
+        expect(resolveHoldBack(null)).toBe(false);
     });
 });
 
@@ -106,30 +133,5 @@ describe('readAgainLabel', () => {
 
     it('shows nothing for a model seed with no supported citation and no title', () => {
         expect(readAgainLabel(comment('g', { courseMaterialMention: { id: 'm', label: 'L' } }), run)).toBeUndefined();
-    });
-});
-
-describe('splitHeldBack on a standard run switched to rewrite mode', () => {
-    it('groups unflagged model seeds as held back', () => {
-        const seeds = [comment('s1'), comment('s2', { heldBack: false }), comment('st', { origin: 'staff' })];
-        const split = splitHeldBack(seeds, 'global_revision');
-        expect(split.heldBack.map((item) => item.id)).toEqual(['s1']);
-        expect(split.visible.map((item) => item.id)).toEqual(['s2', 'st']);
-    });
-});
-
-describe('rewriteGoalFor', () => {
-    const goal = { skillTag: 'descriptive_report', goal: 'REWRITE', action: 'a', guidedQuestion: 'q?', questionScope: 'whole' as const };
-
-    it('reads the stored rewrite goal on any run', () => {
-        const stored = { gateDecision: 'standard', result: { revisionGoals: [{ skillTag: 's', goal: 'STANDARD' }], globalRevision: { diagnosisStatement: 'd', whatToKeep: [], rewriteDirection: 'r', rewriteGoal: goal } } } as unknown as FeedbackRun;
-        expect(rewriteGoalFor(stored)?.goal).toBe('REWRITE');
-    });
-
-    it('falls back to the first goal only on a legacy rewrite-gated run', () => {
-        const legacy = { gateDecision: 'global_revision', result: { revisionGoals: [{ skillTag: 's', goal: 'FIRST' }] } } as unknown as FeedbackRun;
-        const standard = { gateDecision: 'standard', result: { revisionGoals: [{ skillTag: 's', goal: 'FIRST' }] } } as unknown as FeedbackRun;
-        expect(rewriteGoalFor(legacy)?.goal).toBe('FIRST');
-        expect(rewriteGoalFor(standard)).toBeUndefined();
     });
 });

@@ -25,7 +25,6 @@ import {
     autoGrow,
     CanvasAccountMismatchError,
     CriterionFeedback,
-    FeedbackMode,
     FeedbackRun,
     FUNCTION_TAG_LABELS,
     ReviewRevision,
@@ -68,11 +67,11 @@ import { connectUrlReturningTo } from './writing-feedback-canvas-connect.js';
 import { renderReplacementNotice } from './writing-feedback-replacement.js';
 import { GradeEntry } from './writing-feedback-grade-entry.js';
 import { describeApprovalBlocker, type GradeProgress } from './writing-feedback-grade-progress.js';
-import { changedLenses, decideNextAction, needsModeRedraft, stepBarState, type ReviewStep } from './writing-feedback-review-steps.js';
+import { changedLenses, decideNextAction, stepBarState, type ReviewStep } from './writing-feedback-review-steps.js';
 import { SummaryEditor, seedSummaryText, type SummaryBaseline } from './writing-feedback-summary-editor.js';
 import { fingerprintAnnotations } from './writing-feedback-annotation-fingerprint.js';
-import { diagnosisBannerView, resolvedMode, rewriteGoalFor } from './writing-feedback-diagnosis-model.js';
-import { renderDiagnosisBanner, renderGlobalRevisionEditor, renderRewriteGoal } from './writing-feedback-diagnosis.js';
+import { hasWholeTextProblem, resolveHoldBack, sectionCheckView } from './writing-feedback-diagnosis-model.js';
+import { renderOverallMessageEditor, renderSectionCheck } from './writing-feedback-diagnosis.js';
 
 function latestReview(submission: Submission): ReviewRevision | undefined {
     return submission.reviews?.[submission.reviews.length - 1];
@@ -789,9 +788,12 @@ export function renderFeedbackPanel(
     // The technical lens leads: a lab report is graded on its technical rubric (D-098).
     const lenses = (['technical', 'linguistic'] as const).filter((lens) => lensRuns[lens]);
     const isLabReport = lenses.length > 1;
-    // Whole-text mode for the writing lens: the saved override, else the run's gate decision.
-    let modeOverride: FeedbackMode | undefined = detail.modeOverride;
-    const writingMode = (): FeedbackMode => resolvedMode(feedbackRun, modeOverride);
+    // "Hold back annotations" for the writing lens: the staff choice, else held back exactly
+    // when the run has a whole-text problem. The saved choice is resent on every save; a
+    // choice is first saved only when staff change the checkbox.
+    const savedHoldBack = typeof detail.holdBackAnnotations === 'boolean' ? detail.holdBackAnnotations : undefined;
+    let holdBackChoice: boolean | undefined = savedHoldBack;
+    const holdBack = (): boolean => resolveHoldBack(feedbackRun, holdBackChoice);
     // Assigned once the footer exists: every edit re-states what staff can do next.
     let refreshActions: () => void = () => undefined;
     const markDirty = () => {
@@ -867,7 +869,7 @@ export function renderFeedbackPanel(
             verifiedText: submission.verifiedText ?? submission.originalText,
             lens,
             markDirty,
-            mode: lens === 'linguistic' ? writingMode() : 'standard',
+            holdBack: lens === 'linguistic' && holdBack(),
             run: lensRuns[lens] ?? null
         });
     };
@@ -908,19 +910,19 @@ export function renderFeedbackPanel(
         renderLensAnnotations(lens);
     };
 
-    // Staff-only whole-text diagnosis, with the switch between rewrite and standard feedback.
+    // Staff-only section check, shown only for a whole-text problem, with "Hold back annotations".
     const diagnosisHost = document.createElement('div');
     const profileStages = rubricForRun(assignment, feedbackRun, 'linguistic')?.sflContext?.stages ?? [];
-    const summaryModeSetters: Array<(mode: FeedbackMode) => void> = [];
     const renderDiagnosis = (): void => {
-        const view = diagnosisBannerView(feedbackRun, profileStages, writingMode());
+        const view = sectionCheckView(feedbackRun, profileStages);
+        const suggested = hasWholeTextProblem(feedbackRun);
         diagnosisHost.replaceChildren(...(view
-            ? [renderDiagnosisBanner(view, writingMode(), true, (next) => {
-                modeOverride = next;
+            ? [renderSectionCheck(view, { checked: holdBack(), changed: holdBackChoice !== undefined && holdBackChoice !== suggested }, true, (next) => {
+                // Choosing the suggestion again is the same as resetting to it.
+                holdBackChoice = next === suggested ? undefined : next;
                 markDirty();
                 renderDiagnosis();
                 renderLensAnnotations(activeLens);
-                summaryModeSetters.forEach((apply) => apply(next));
             })]
             : []));
     };
@@ -940,8 +942,7 @@ export function renderFeedbackPanel(
     let gradeEntryLens: WritingFeedbackLens | null = null;
     for (const lens of lenses) {
         const run = lensRuns[lens]!;
-        const lensSummary = renderSummaryLens({ assignment, lens, run, editor, markDirty, latest, preserved, mode: writingMode(), globalSeed: detail.globalRevision });
-        if (lensSummary.setMode) summaryModeSetters.push(lensSummary.setMode);
+        const lensSummary = renderSummaryLens({ assignment, lens, run, editor, markDirty, latest, preserved, overallMessageSeed: detail.overallMessage });
         lensPanels.set(lens, lensSummary.element);
         baselines.set(lens, lensSummary.baseline);
         evidenceRefreshers.push(lensSummary.refreshEvidence);
@@ -1216,8 +1217,11 @@ export function renderFeedbackPanel(
             ...(grades.complete ? { finalAssessment: grades.complete } : {}),
             ...(grades.draft ? { assessmentDraft: grades.draft } : {}),
             summaryEdits: lenses.map((lens) => editor.readEdit(lens, lensRuns[lens]!.id)),
-            // Always the current toggle, so an unset field never means "back to the gate".
-            ...(feedbackRun!.textDiagnosis ? { modeOverride: resolvedMode(feedbackRun, modeOverride) } : {})
+            // Only a staff choice is sent: an unchanged checkbox follows the gate, and a reset
+            // to the suggestion is saved as the suggested value so it replaces an earlier choice.
+            ...(holdBackChoice !== undefined
+                ? { holdBackAnnotations: holdBackChoice }
+                : savedHoldBack !== undefined ? { holdBackAnnotations: hasWholeTextProblem(feedbackRun) } : {})
         });
         state.reviewDirty = false;
     }
@@ -1330,11 +1334,7 @@ export function renderFeedbackPanel(
             const source = detail.summarySources?.[lens];
             if (source) sourceFingerprints[lens] = source.annotationsFingerprint;
         });
-        // In rewrite mode the writing summary is the staff-edited rewrite block, never redrafted.
-        const redraftable = lenses.filter((lens) => lens !== 'linguistic' || writingMode() !== 'global_revision');
-        const changed = changedLenses({ lenses: redraftable, currentFingerprints, sourceFingerprints });
-        // Switching a rewrite-gated run to standard feedback needs a standard summary too.
-        if (feedbackRun && needsModeRedraft(feedbackRun, writingMode()) && !changed.includes('linguistic')) changed.push('linguistic');
+        const changed = changedLenses({ lenses, currentFingerprints, sourceFingerprints });
         const edited = lenses.filter((lens) => editor.isEdited(lens, baselines.get(lens)!));
         const action = decideNextAction({ status: submission.status, changedLenses: changed, editedLenses: edited });
 
@@ -1459,16 +1459,14 @@ interface LensSummary {
     gradeEntry: GradeEntry | null;
     /** Re-reads the working annotations into each criterion's evidence (called on entering step 2). */
     refreshEvidence: () => void;
-    /** Writing lens only: swaps the goals editor for the rewrite-block editor as the mode changes. */
-    setMode?: (mode: FeedbackMode) => void;
 }
 
 /**
  * renderSummaryLens - one lens's editable summary (D-126, D-127).
  *
- * Strengths, criterion cards (each carrying its final grade on the lens the assignment is graded
- * on) with evidence from the final annotations, readings (writing lens), internal flags, and
- * revision goals.
+ * The overall message (writing lens, whole-text problem only), strengths, criterion cards (each
+ * carrying its final grade on the lens the assignment is graded on) with evidence from the final
+ * annotations, readings (writing lens), internal flags, and revision goals.
  *
  * @param input - Lens, its latest run, the shared editor, and preserved state after a redraft
  * @returns The lens panel plus what the footer and Next step need from it
@@ -1481,11 +1479,10 @@ function renderSummaryLens(input: {
     markDirty: () => void;
     latest: ReviewRevision | undefined;
     preserved: PendingReviewState | null;
-    mode: FeedbackMode;
-    /** Rewrite block the student would receive, resolved by the server. */
-    globalSeed?: { diagnosisStatement: string; whatToKeep: string[]; rewriteDirection: string };
+    /** Overall message the student would receive, resolved by the server. */
+    overallMessageSeed?: string;
 }): LensSummary {
-    const { assignment, lens, run, editor, markDirty, latest, preserved, mode, globalSeed } = input;
+    const { assignment, lens, run, editor, markDirty, latest, preserved, overallMessageSeed } = input;
     const element = document.createElement('div');
     element.className = 'wf-summary-lens';
     const rubric = rubricForRun(assignment, run, lens);
@@ -1496,16 +1493,27 @@ function renderSummaryLens(input: {
         goals: seedSummaryText(run.result.revisionGoals)
     };
 
-    // Step 1: What the student did well.
+    // Step 1: the overall message opens the student's feedback, only for a whole-text problem.
+    if (lens === 'linguistic' && hasWholeTextProblem(run)) {
+        const overallSection = document.createElement('section');
+        overallSection.className = 'wf-feedback-section';
+        overallSection.append(createText('h3', 'General feedback'));
+        const seed = overallMessageSeed ?? edit?.overallMessage ?? run.result.overallMessage ?? '';
+        editor.seedOverallMessage('linguistic', seed);
+        overallSection.append(renderOverallMessageEditor(seed, true, (text) => editor.setOverallMessage('linguistic', text)));
+        element.append(overallSection);
+    }
+
+    // Step 2: What the student did well.
     element.append(editor.strengthsSection(lens, edit?.strengths ?? run.result.strengths));
 
-    // Step 2: grade controls, on the lens the assignment is graded on — technical for a lab report.
+    // Step 3: grade controls, on the lens the assignment is graded on — technical for a lab report.
     const gradedLens: WritingFeedbackLens = assignment?.isLabReport ? 'technical' : 'linguistic';
     const gradeEntry = lens === gradedLens && hasSuggestedGrading(rubric)
         ? new GradeEntry(rubric, run, savedGrades(rubric, preserved, latest), markDirty)
         : null;
 
-    // Step 3: criterion feedback, each card carrying its grade. Evidence comes from this lens's
+    // Step 4: criterion feedback, each card carrying its grade. Evidence comes from this lens's
     // final annotations and is re-read every time the Summary step opens, because staff edit
     // annotations on step 1.
     const evidenceHosts = new Map<string, HTMLElement>();
@@ -1579,10 +1587,10 @@ function renderSummaryLens(input: {
     rubricSection.append(criterionList);
     element.append(rubricSection);
 
-    // Step 4: readings (writing lens), under the levels they qualify.
+    // Step 5: readings (writing lens), under the levels they qualify.
     if (lens === 'linguistic') element.append(...renderReadings(run));
 
-    // Step 5: revision goals. Writing keeps the student-feedback textarea and its binding rule.
+    // Step 6: revision goals. Writing keeps the student-feedback textarea and its binding rule.
     const goalsSection = document.createElement('section');
     goalsSection.className = 'wf-feedback-section';
     goalsSection.append(createText('h3', 'Priority revision goals'));
@@ -1601,28 +1609,8 @@ function renderSummaryLens(input: {
     }
     element.append(goalsSection);
 
-    // Rewrite mode (writing lens): the student receives the rewrite block instead of the goals.
-    let setMode: ((next: FeedbackMode) => void) | undefined;
-    if (lens === 'linguistic' && (run.result.globalRevision || run.textDiagnosis)) {
-        const globalSection = document.createElement('section');
-        globalSection.className = 'wf-feedback-section';
-        globalSection.append(createText('h3', 'Rewrite feedback the student will receive'));
-        const seed = globalSeed ?? edit?.globalRevision ?? run.result.globalRevision ?? { diagnosisStatement: '', whatToKeep: [], rewriteDirection: '' };
-        editor.seedGlobalRevision('linguistic', seed);
-        globalSection.append(renderGlobalRevisionEditor(seed, true, (draft) => editor.setGlobalRevision('linguistic', draft)));
-        // The goal the student gets with rewrite feedback, shown so staff approve exactly it.
-        const rewriteGoal = rewriteGoalFor(run);
-        if (rewriteGoal) globalSection.append(renderRewriteGoal(rewriteGoal));
-        element.append(globalSection);
-        setMode = (next) => {
-            globalSection.hidden = next !== 'global_revision';
-            goalsSection.hidden = next === 'global_revision';
-        };
-        setMode(mode);
-    }
-
     refreshEvidence();
-    return { element, baseline, studentFeedback, gradeEntry, refreshEvidence, ...(setMode ? { setMode } : {}) };
+    return { element, baseline, studentFeedback, gradeEntry, refreshEvidence };
 }
 
 /**

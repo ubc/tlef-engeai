@@ -84,17 +84,8 @@ const revisionGoalSchema = z.object({
     questionScope: z.enum(['whole', 'part'])
 });
 
-const globalRevisionSchema = z.object({
-    diagnosisStatement: z.string().min(1).max(1500),
-    whatToKeep: z.array(z.string().min(1).max(300)).max(3),
-    rewriteDirection: z.string().min(1).max(1500),
-    // Required (D-153): one question about the whole submission.
-    guidedQuestion: z.string().min(1).max(400),
-    supportingExcerptIds: z.array(z.string().trim().min(1).max(40)).max(3).nullish(),
-    // Required: every run carries the rewrite goal, so staff can switch to rewrite feedback
-    // on any submission without a new model call.
-    rewriteGoal: revisionGoalSchema
-});
+/** Longest overall message (general feedback): one opening paragraph. */
+export const MAX_OVERALL_MESSAGE_LENGTH = 2000;
 
 /** Why a schema cannot be built for a rubric the model is asked nothing about. */
 export const NO_MODEL_CRITERIA_MESSAGE =
@@ -109,12 +100,12 @@ export const NO_MODEL_CRITERIA_MESSAGE =
  * is flexible, but every model-assessed criterion must appear exactly once.
  *
  * @param rubric - Assignment rubric governing the pending generation run
- * @param options - `requireGlobalRevision` (default true) adds the rewrite block the
- *                  linguistic writer always returns; the technical lens has no gate and opts out
+ * @param options - `wholeTextProblem` (default false) requires the overall message; only
+ *                  the linguistic writer's gate sets it
  * @returns Zod schema accepting only a complete result for that rubric's model criteria
  * @throws Error when a rubric has no levels, no criteria, or none the model assesses
  */
-export function buildFeedbackSchema(rubric: WritingRubricDefinition, options: { requireGlobalRevision?: boolean } = {}) {
+export function buildFeedbackSchema(rubric: WritingRubricDefinition, options: { wholeTextProblem?: boolean } = {}) {
     const criterionIds = modelAssessedCriteria(rubric).map((criterion) => criterion.id);
     const levelIds = rubric.levels.map((level) => level.id);
     if (!rubric.criteria.length || !levelIds.length) {
@@ -140,8 +131,13 @@ export function buildFeedbackSchema(rubric: WritingRubricDefinition, options: { 
         revisionGoals: z.array(revisionGoalSchema).min(1).max(3),
         internalFlags: z.array(z.string()).max(8),
         courseMaterialMentions: z.array(courseMaterialMentionSchema()).max(5).nullish(),
-        // Always produced by the linguistic writer, so staff can flip the mode without regenerating.
-        ...(options.requireGlobalRevision === false ? {} : { globalRevision: globalRevisionSchema })
+        // Only a whole-text problem gets an overall message; without one the field is not offered.
+        ...(options.wholeTextProblem
+            ? {
+                overallMessage: z.string().min(1).max(MAX_OVERALL_MESSAGE_LENGTH),
+                overallMessageExcerptIds: z.array(z.string().trim().min(1).max(40)).max(3).nullish()
+            }
+            : {})
     }).superRefine((feedback, ctx) => {
         const returnedIds = feedback.criteria.map((criterion) => criterion.criterion);
         if (new Set(returnedIds).size !== criterionIds.length) {
@@ -404,7 +400,7 @@ export function applyExcerptCitations(
 }
 
 /**
- * applyGlobalExcerptCitations - filters the global block's citations the same way.
+ * applyGlobalExcerptCitations - filters the overall message's citations the same way.
  *
  * @param result - Writer output, mutated in place
  * @param allowed - Excerpt ids judged `supports` for a genre or contrast need
@@ -415,8 +411,8 @@ export function applyGlobalExcerptCitations(
     allowed: Set<string>,
     excerptsById: Map<string, GroundingExcerpt>
 ): void {
-    if (!result.globalRevision?.supportingExcerptIds) return;
-    result.globalRevision.supportingExcerptIds = result.globalRevision.supportingExcerptIds
+    if (!result.overallMessageExcerptIds) return;
+    result.overallMessageExcerptIds = result.overallMessageExcerptIds
         .filter((excerptId) => allowed.has(excerptId) && citableMention(excerptsById.get(excerptId)));
 }
 
@@ -428,9 +424,6 @@ function words(text: string): string {
  * guardStrengths - removes praise for language that shows the genre failure.
  *
  * @param result - Writer output, mutated in place
- * Strengths are stored once for both modes: rewrite feedback never prints them (it prints
- * `globalRevision.whatToKeep`), so they are not narrowed to transferable ones here.
- *
  * @param diagnosis - Validated diagnosis
  * @returns Staff flags to append to internal flags
  */

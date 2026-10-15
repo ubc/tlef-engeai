@@ -135,7 +135,7 @@ describe('technical engine generation', () => {
     });
 
     it('exposes a stable prompt version', () => {
-        expect(TECHNICAL_PROMPT_VERSION).toBe('lab-report-technical-v1.5.0');
+        expect(TECHNICAL_PROMPT_VERSION).toBe('lab-report-technical-v1.5.1');
     });
 });
 
@@ -175,7 +175,7 @@ describe('Socratic questions (D-153)', () => {
         const prompt = buildTechnicalFeedbackSystemPrompt(labAssignment());
         expect(prompt).toContain('every revision goal has exactly one guidedQuestion and a questionScope');
         expect(prompt).not.toContain('only when it genuinely helps the student think');
-        expect(TECHNICAL_PROMPT_VERSION).toBe('lab-report-technical-v1.5.0');
+        expect(TECHNICAL_PROMPT_VERSION).toBe('lab-report-technical-v1.5.1');
     });
 
     it('retries once when no goal asks about the whole report', async () => {

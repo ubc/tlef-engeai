@@ -1,4 +1,4 @@
-import { changedLenses, decideNextAction, needsModeRedraft, stepBarState } from '../writing-feedback-review-steps';
+import { changedLenses, decideNextAction, stepBarState } from '../writing-feedback-review-steps';
 
 describe('stepBarState', () => {
     it('enables only the usable direction', () => {
@@ -36,28 +36,5 @@ describe('decideNextAction', () => {
     it('asks first when a changed lens has an edited summary', () => {
         expect(decideNextAction({ status: 'draft_ready', changedLenses: ['technical', 'linguistic'], editedLenses: ['linguistic'] }))
             .toEqual({ kind: 'confirm', lenses: ['technical', 'linguistic'] });
-    });
-});
-
-
-describe('needsModeRedraft', () => {
-    it('redrafts once when staff switch a rewrite-gated run to standard feedback', () => {
-        expect(needsModeRedraft({ gateDecision: 'global_revision' }, 'standard')).toBe(true);
-    });
-
-    it('does not redraft again once a redraft exists, or when the modes agree', () => {
-        expect(needsModeRedraft({ gateDecision: 'global_revision', redraftOfRunId: 'run-1' }, 'standard')).toBe(false);
-        expect(needsModeRedraft({ gateDecision: 'global_revision' }, 'global_revision')).toBe(false);
-        expect(needsModeRedraft({ gateDecision: 'standard' }, 'standard')).toBe(false);
-        expect(needsModeRedraft({}, 'standard')).toBe(false);
-    });
-
-    it('does not redraft a new rewrite-gated run: its standard content is already stored', () => {
-        const run = { gateDecision: 'global_revision' as const, result: { globalRevision: { rewriteGoal: { goal: 'g' } } } };
-        expect(needsModeRedraft(run, 'standard')).toBe(false);
-    });
-
-    it('still redrafts a legacy rewrite-gated run with no rewrite goal', () => {
-        expect(needsModeRedraft({ gateDecision: 'global_revision', result: { globalRevision: {} } }, 'standard')).toBe(true);
     });
 });

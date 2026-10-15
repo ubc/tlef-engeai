@@ -118,8 +118,7 @@ export function buildStudentReaderContract(knownTerms: string[], familiarTerms: 
         '- A rationale says what the quoted words do and what that means for the reader, in at most two sentences.',
         '- Revision guidance starts with a verb and gives one action the student can take on that passage, in at most two sentences.',
         '- A criterion explanation is at most three sentences.',
-        '- Make each point once, in the place it fits best. Do not repeat the same advice under another criterion, goal, or the rewrite direction.',
-        '- In a rewrite direction, write numbered steps, one per line, each one short sentence.',
+        '- Make each point once, in the place it fits best. Do not repeat the same advice under another criterion, goal, or the general feedback.',
         ...(familiarTerms.length
             ? [`- Standard terms the students use in their own reports (use them freely, no explanation needed): ${familiarTerms.map((term) => `"${term}"`).join(', ')}.`]
             : []),
@@ -196,9 +195,7 @@ export function lintFeedbackProse(result: LintableFeedback, knownTerms: string[]
         ...result.revisionGoals.flatMap((goal) => [goal.goal, goal.action, goal.guidedQuestion]
             .filter((text): text is string => Boolean(text))
             .map((text) => [text, undefined] as [string, undefined])),
-        ...[result.globalRevision?.diagnosisStatement, result.globalRevision?.rewriteDirection, result.globalRevision?.guidedQuestion]
-            .filter((text): text is string => Boolean(text))
-            .map((text) => [text, undefined] as [string, undefined])
+        [result.overallMessage, undefined] as [string | undefined, undefined]
     ];
     const issues = fields
         .filter((field): field is [string, number | undefined] => Boolean(field[0]?.trim()))
@@ -237,5 +234,5 @@ export interface LintableFeedback {
     criteria: Array<{ explanation?: string; evidence: Array<{ rationale?: string; revisionGuidance?: string }> }>;
     strengths: string[];
     revisionGoals: Array<{ goal: string; action?: string; guidedQuestion?: string }>;
-    globalRevision?: { diagnosisStatement?: string; rewriteDirection?: string; guidedQuestion?: string };
+    overallMessage?: string;
 }

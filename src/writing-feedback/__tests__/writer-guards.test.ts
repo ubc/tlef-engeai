@@ -56,10 +56,10 @@ describe('applyExcerptCitations', () => {
         expect(draft.criteria[0].evidence[0].courseMaterialMention).toBeUndefined();
     });
 
-    it('filters global-block citations to supported published excerpts', () => {
-        const draft = { ...result([]), globalRevision: { diagnosisStatement: 'd', whatToKeep: [], rewriteDirection: 'r', supportingExcerptIds: ['w1', 'w2', 'nope'] } };
+    it('filters overall-message citations to supported published excerpts', () => {
+        const draft = { ...result([]), overallMessage: 'm', overallMessageExcerptIds: ['w1', 'w2', 'nope'] };
         applyGlobalExcerptCitations(draft, new Set(['w1', 'w2']), excerpts);
-        expect(draft.globalRevision.supportingExcerptIds).toEqual(['w1']);
+        expect(draft.overallMessageExcerptIds).toEqual(['w1']);
     });
 });
 
@@ -100,11 +100,7 @@ describe('buildFeedbackSchema', () => {
         })),
         strengths: [],
         revisionGoals: [{ skillTag: 'identify', goal: 'g', action: 'Add a class word.', guidedQuestion: 'What group does it belong to?', questionScope: 'whole' }],
-        internalFlags: [],
-        globalRevision: {
-            diagnosisStatement: 'd', whatToKeep: [], rewriteDirection: 'r', guidedQuestion: 'What does the genre ask?', supportingExcerptIds: null,
-            rewriteGoal: { skillTag: 'descriptive_report', goal: 'Rewrite as a report.', action: 'Start with a definition.', guidedQuestion: 'What should your reader learn first?', questionScope: 'whole' }
-        }
+        internalFlags: []
     };
 
     it('accepts a goal with an action, a question and a scope', () => {
@@ -119,15 +115,9 @@ describe('buildFeedbackSchema', () => {
         expect(schema.safeParse({ ...base, revisionGoals: [{ skillTag: 's', goal: 'g', guidedQuestion: 'q' }] }).success).toBe(false);
     });
 
-    it('requires a rewrite goal in the global block', () => {
-        const { rewriteGoal, ...withoutGoal } = base.globalRevision;
-        void rewriteGoal;
-        expect(schema.safeParse({ ...base, globalRevision: withoutGoal }).success).toBe(false);
-    });
-
-    it('requires the global block', () => {
-        const { globalRevision, ...withoutGlobal } = base;
-        void globalRevision;
-        expect(schema.safeParse(withoutGlobal).success).toBe(false);
+    it('requires the overall message only on a whole-text problem', () => {
+        const problem = buildFeedbackSchema(rubric, { wholeTextProblem: true });
+        expect(problem.safeParse(base).success).toBe(false);
+        expect(problem.safeParse({ ...base, overallMessage: 'Keep your topic.', overallMessageExcerptIds: null }).success).toBe(true);
     });
 });

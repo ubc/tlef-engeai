@@ -1,13 +1,13 @@
 /**
- * @fileoverview Held-back review state: global runs seed held-back comments; the
- * revision payload accepts heldBack, modeOverride and global-block edits; old runs seed
- * nothing held back.
+ * @fileoverview Held-back review state: whole-text problem runs seed held-back comments; the
+ * revision payload accepts heldBack and overall-message edits; the staff hold-back choice
+ * lives as long as its generation; old runs seed nothing held back.
  */
 
 import type { StaffReviewRevision, WritingFeedbackRun, WritingSubmission } from '../contracts';
 import { anchoredCommentInputSchema, seedCommentsFromRun } from '../anchored-comments';
 import { summaryEditsInputSchema } from '../summary-edits';
-import { latestModeOverride } from '../writing-feedback-service';
+import { latestHoldBackChoice } from '../writing-feedback-service';
 
 const text = 'Sound happens when an object vibrates. First, the object pushes the air.';
 
@@ -25,7 +25,7 @@ function run(gateDecision?: 'standard' | 'global_revision'): WritingFeedbackRun 
 }
 
 describe('held-back seeds', () => {
-    it('holds back every seed of a global-revision run', () => {
+    it('holds back every seed of a whole-text problem run', () => {
         expect(seedCommentsFromRun(run('global_revision'), text).every((seed) => seed.heldBack === true)).toBe(true);
     });
 
@@ -43,26 +43,31 @@ describe('revision payload schemas', () => {
         expect(parsed.heldBack).toBe(true);
     });
 
-    it('accepts global-block edits on the linguistic lens only', () => {
-        const edit = { feedbackRunId: 'run-1', strengths: [], criterionExplanations: [], globalRevision: { diagnosisStatement: 'd', whatToKeep: ['k'], rewriteDirection: 'r' } };
+    it('accepts overall-message edits on the linguistic lens only', () => {
+        const edit = { feedbackRunId: 'run-1', strengths: [], criterionExplanations: [], overallMessage: 'Keep your topic.' };
         expect(summaryEditsInputSchema.safeParse([{ ...edit, lens: 'linguistic' }]).success).toBe(true);
         expect(summaryEditsInputSchema.safeParse([{ ...edit, lens: 'technical' }]).success).toBe(false);
     });
 });
 
 
-describe('latestModeOverride', () => {
-    const review = (createdAt: string, modeOverride?: 'standard' | 'global_revision') =>
-        ({ id: createdAt, createdAt: new Date(createdAt), ...(modeOverride ? { modeOverride } : {}) }) as unknown as StaffReviewRevision;
+describe('latestHoldBackChoice', () => {
+    const review = (createdAt: string, holdBackAnnotations?: boolean) =>
+        ({ id: createdAt, createdAt: new Date(createdAt), ...(holdBackAnnotations !== undefined ? { holdBackAnnotations } : {}) }) as unknown as StaffReviewRevision;
 
-    it('keeps the newest override when a later revision sets none', () => {
-        const submission = { reviews: [review('2026-09-01', 'standard'), review('2026-09-02', 'global_revision'), review('2026-09-03')] } as unknown as WritingSubmission;
-        expect(latestModeOverride(submission)).toBe('global_revision');
+    it('keeps the newest choice when a later revision sets none', () => {
+        const submission = { reviews: [review('2026-09-01', true), review('2026-09-02', false), review('2026-09-03')] } as unknown as WritingSubmission;
+        expect(latestHoldBackChoice(submission)).toBe(false);
     });
 
-    it('forgets overrides made before the text was edited', () => {
-        const submission = { transcriptEditedAt: new Date('2026-09-05'), reviews: [review('2026-09-02', 'standard')] } as unknown as WritingSubmission;
-        expect(latestModeOverride(submission)).toBeUndefined();
+    it('has no choice when staff never changed the checkbox', () => {
+        const submission = { reviews: [review('2026-09-01'), review('2026-09-02')] } as unknown as WritingSubmission;
+        expect(latestHoldBackChoice(submission)).toBeUndefined();
+    });
+
+    it('forgets choices made before the text was edited', () => {
+        const submission = { transcriptEditedAt: new Date('2026-09-05'), reviews: [review('2026-09-02', false)] } as unknown as WritingSubmission;
+        expect(latestHoldBackChoice(submission)).toBeUndefined();
     });
 });
 
@@ -80,18 +85,26 @@ describe('seeded citation provenance', () => {
     });
 });
 
-describe('mode override lifetime', () => {
-    const review = (createdAt: string, modeOverride: 'standard' | 'global_revision') =>
-        ({ id: createdAt, createdAt: new Date(createdAt), modeOverride }) as unknown as StaffReviewRevision;
-    const submission = { reviews: [review('2026-09-02', 'global_revision')] } as unknown as WritingSubmission;
+describe('hold-back choice lifetime', () => {
+    const submission = { reviews: [{ id: 'r', createdAt: new Date('2026-09-02'), holdBackAnnotations: false }] } as unknown as WritingSubmission;
 
-    it('drops an override saved against earlier feedback once feedback is regenerated', () => {
+    it('drops a choice saved against earlier feedback once feedback is regenerated', () => {
         const regenerated = { createdAt: new Date('2026-09-03') } as WritingFeedbackRun;
-        expect(latestModeOverride(submission, regenerated)).toBeUndefined();
+        expect(latestHoldBackChoice(submission, regenerated)).toBeUndefined();
     });
 
-    it('keeps the override across a summary redraft of the same generation', () => {
+    it('keeps the choice across a summary redraft of the same generation', () => {
         const redraft = { createdAt: new Date('2026-09-04'), generatedAt: new Date('2026-09-01'), redraftOfRunId: 'run-1' } as WritingFeedbackRun;
-        expect(latestModeOverride(submission, redraft)).toBe('global_revision');
+        expect(latestHoldBackChoice(submission, redraft)).toBe(false);
+    });
+});
+
+describe('hold-back choice stored as null', () => {
+    it('ignores a null left by a save that made no choice', () => {
+        const submission = { reviews: [
+            { id: 'a', createdAt: new Date('2026-09-01'), holdBackAnnotations: false },
+            { id: 'b', createdAt: new Date('2026-09-02'), holdBackAnnotations: null }
+        ] } as unknown as WritingSubmission;
+        expect(latestHoldBackChoice(submission)).toBe(false);
     });
 });

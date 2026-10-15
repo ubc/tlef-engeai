@@ -468,7 +468,7 @@ function renderStageRepeater(
     wrapper.append(labelEl);
     const requiredHelp = document.createElement('p');
     requiredHelp.className = 'wf-field-help';
-    requiredHelp.textContent = 'Tick Required for the sections a text cannot do without. If a student leaves out a required section, the student gets rewrite feedback only.';
+    requiredHelp.textContent = 'Tick Required for the sections a text cannot do without. If most required sections are weak or missing, or the text is the wrong genre, the student gets general feedback about the whole text, and its annotations are not included by default.';
     wrapper.append(requiredHelp);
 
     const list = document.createElement('div');
@@ -543,8 +543,8 @@ function renderStageRepeater(
 /**
  * renderRequiredStagesNotice - one-time notice asking staff to confirm required stages.
  *
- * Every stage saved before the Required checkbox existed was stored as required, and a
- * missing required stage now sends a student rewrite feedback only.
+ * Every stage saved before the Required checkbox existed was stored as required, and the
+ * required stages decide whether a text has a whole-text problem.
  *
  * @param assignmentId - Assignment the rubric belongs to
  * @param rubricVersion - Approved writing rubric version
@@ -561,7 +561,7 @@ function renderRequiredStagesNotice(assignmentId: string, rubricVersion: number)
     const notice = document.createElement('div');
     notice.className = 'wf-required-notice';
     notice.setAttribute('role', 'note');
-    notice.append(createText('p', 'Check which sections are required. Every section was previously treated as required; a student who leaves out a required section now gets rewrite feedback only.'));
+    notice.append(createText('p', 'Check which sections are required. Every section was previously treated as required. If most required sections are weak or missing, the student gets general feedback about the whole text, and its annotations are not included by default.'));
     notice.append(createButton('Got it', 'outline', async () => {
         try {
             storage?.setItem(`wf-required-notice:${assignmentId}:${rubricVersion}`, '1');

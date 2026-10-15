@@ -32,14 +32,15 @@ function arg(name: string): string | undefined {
 async function studentComments(result: Record<string, unknown>, verifiedText: string): Promise<EvalRunOutput['studentComments']> {
     try {
         // require, not import(): ts-node runs this file as CommonJS, where import() of a .ts path fails.
-        const gate = require('../src/writing-feedback/feedback-gate') as { studentFacingComments: <T extends { heldBack?: boolean }>(c: T[], m: string) => T[] };
-        const mode = (result.gateDecision as 'standard' | 'global_revision' | undefined) ?? 'standard';
+        const gate = require('../src/writing-feedback/feedback-gate') as { studentFacingComments: <T extends { heldBack?: boolean }>(c: T[], holdBack: boolean) => T[] };
+        // Default hold-back: a whole-text problem holds the model's annotations back.
+        const holdBack = result.gateDecision === 'global_revision';
         const criteria = (result.criteria as Array<{ evidence: Array<{ quote: string }> }>) ?? [];
         const seeds = criteria.flatMap((criterion) => criterion.evidence.map((item) => ({
             quote: item.quote,
-            heldBack: mode === 'global_revision'
+            heldBack: holdBack
         })));
-        return gate.studentFacingComments(seeds.filter((seed) => verifiedText.includes(seed.quote)), mode);
+        return gate.studentFacingComments(seeds.filter((seed) => verifiedText.includes(seed.quote)), holdBack);
     } catch {
         return undefined;
     }

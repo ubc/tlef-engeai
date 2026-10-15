@@ -1,21 +1,13 @@
 /**
- * @fileoverview Pure model for the review page's whole-text diagnosis: banner copy,
- * effective mode, held-back annotations, and when a course reading is shown.
+ * @fileoverview Pure model for the review page's "Off-genre or missing sections" card: whether
+ * the run has a whole-text problem, its copy, held-back annotations, and when a course reading
+ * is shown.
  */
 
-import type { AnchoredComment, FeedbackMode, FeedbackRun } from './writing-feedback-shared.js';
+import type { AnchoredComment, FeedbackRun } from './writing-feedback-shared.js';
 
-const GENRE_NAMES: Record<string, string> = {
-    descriptive_report: 'a descriptive report',
-    data_commentary: 'a data commentary',
-    problem_solution: 'a problem-solution text',
-    explanation: 'an explanation',
-    recount: 'a recount',
-    procedure: 'a procedure',
-    argument: 'an argument',
-    personal_response: 'a personal response',
-    unclear: 'no recognizable genre'
-};
+/** Share of required sections weak or missing that trips the gate; mirrors the server gate in feedback-gate.ts. */
+const MISSING_SECTIONS_SHARE = 0.75;
 
 const STATUS_LABELS: Record<string, string> = { present: 'Present', weak: 'Weak', missing: 'Missing' };
 
@@ -23,54 +15,58 @@ const STATUS_LABELS: Record<string, string> = { present: 'Present', weak: 'Weak'
 const STATUS_TONES: Record<string, 'green' | 'amber' | 'red' | 'neutral'> = { Present: 'green', Weak: 'amber', Missing: 'red' };
 
 /**
- * resolvedMode - the effective mode on the review page.
+ * hasWholeTextProblem - whether the run's gate found a whole-text problem.
+ *
+ * Mirrors the server's `hasWholeTextProblem`: decided once, at generation.
  *
  * @param run - Latest linguistic run, if any
- * @param override - Staff override from the latest revision, or the unsaved toggle state
- * @returns Override, else the run's gate decision, else standard
+ * @returns True when the stored gate decision is `global_revision`
  */
-export function resolvedMode(run: FeedbackRun | null, override?: FeedbackMode): FeedbackMode {
-    return override ?? run?.gateDecision ?? run?.result.gateDecision ?? 'standard';
+export function hasWholeTextProblem(run: FeedbackRun | null): boolean {
+    return (run?.gateDecision ?? run?.result.gateDecision) === 'global_revision';
 }
 
 /**
- * rewriteGoalFor - the rewrite goal the student receives in rewrite mode.
+ * resolveHoldBack - whether annotations are held back on the review page.
  *
- * Mirrors the server's `resolveRewriteGoal`: the stored rewrite goal, else a legacy
- * rewrite-gated run's first goal; a standard run's goal is never shown as one.
- *
- * @param run - Latest writing-lens run
- * @returns The rewrite goal, or undefined
+ * @param run - Latest linguistic run
+ * @param staffChoice - The saved or unsaved staff choice, if staff changed the checkbox
+ * @returns The staff choice when set, else whether the run has a whole-text problem
  */
-export function rewriteGoalFor(run: FeedbackRun): FeedbackRun['result']['revisionGoals'][number] | undefined {
-    if (run.result.globalRevision?.rewriteGoal) return run.result.globalRevision.rewriteGoal;
-    return (run.gateDecision ?? run.result.gateDecision) === 'global_revision' ? run.result.revisionGoals[0] : undefined;
+export function resolveHoldBack(run: FeedbackRun | null, staffChoice?: boolean): boolean {
+    return staffChoice ?? hasWholeTextProblem(run);
 }
 
 /**
- * diagnosisBannerView - staff-facing banner content.
+ * sectionCheckView - staff-facing section check content.
+ *
+ * Shown only for a whole-text problem; without one, staff see nothing, since a missing
+ * section already reaches the student through the first revision goal.
  *
  * @param run - Latest linguistic run
  * @param stages - Approved profile stages
- * @param mode - Effective mode
- * @returns Banner content, or null when the run has no diagnosis
+ * @returns Section check content, or null when the run has no diagnosis or no whole-text problem
  */
-export function diagnosisBannerView(
+export function sectionCheckView(
     run: FeedbackRun,
-    stages: Array<{ id: string; label: string; required?: boolean }>,
-    mode: FeedbackMode
-): { headline: string; stageChips: Array<{ label: string; status: string; required: boolean; tone: 'green' | 'amber' | 'red' | 'neutral' }>; warnings: string[]; rationale: string; toggleLabel: string } | null {
+    stages: Array<{ id: string; label: string; required?: boolean }>
+): { headline: string; stageChips: Array<{ label: string; status: string; required: boolean; tone: 'green' | 'amber' | 'red' | 'neutral' }>; warnings: string[]; rationale: string } | null {
     const diagnosis = run.textDiagnosis;
-    if (!diagnosis) return null;
-    const genre = GENRE_NAMES[diagnosis.realizedGenre] ?? diagnosis.realizedGenre;
-    const headline = diagnosis.genreFit === 'mismatch'
-        ? `This reads as ${genre}, not the target genre.`
-        : diagnosis.genreFit === 'partial'
-            ? 'This does the target genre\'s work, but a stage is weak.'
-            : 'This does the target genre\'s work.';
+    if (!diagnosis || !hasWholeTextProblem(run)) return null;
     const byId = new Map(diagnosis.stages.map((stage) => [stage.stageId, stage.status]));
+    // Two things trip the gate, alone or together, and the fixed headline names which did.
+    const required = stages.filter((stage) => stage.required === true);
+    const failing = required.filter((stage) => byId.has(stage.id) && byId.get(stage.id) !== 'present');
+    const offGenre = diagnosis.genreFit === 'mismatch';
+    const missingSections = required.length > 0 && failing.length / required.length >= MISSING_SECTIONS_SHARE;
+    const headline = offGenre && missingSections
+        ? 'This submission is off-genre and missing several sections.'
+        : offGenre
+            ? 'This submission is off-genre.'
+            : 'This submission is missing several sections.';
     const warnings: string[] = [];
-    if (run.flags?.includes('no_genre_material')) warnings.push('No course material on this genre was found, so the diagnosis relies on general knowledge.');
+    // Missing genre material is a course-setup gap, shown once in the rubric page's coverage
+    // report rather than on every submission.
     if (run.flags?.includes('relevance_unavailable')) warnings.push('Course materials could not be checked for this run, so no readings were cited.');
     return {
         headline,
@@ -79,26 +75,35 @@ export function diagnosisBannerView(
             return { label: stage.label, status, required: stage.required === true, tone: STATUS_TONES[status] ?? 'neutral' };
         }),
         warnings,
-        rationale: diagnosis.rationale,
-        toggleLabel: mode === 'global_revision' ? 'Switch to standard feedback' : 'Switch to rewrite feedback only'
+        rationale: diagnosis.rationale
     };
 }
 
 /**
- * splitHeldBack - comments shown normally versus held back, under a mode.
+ * splitHeldBack - comments shown normally versus held back.
  *
  * @param comments - Working set for the writing lens
- * @param mode - Effective mode
- * @returns Visible and held-back comments; nothing is held back in standard mode
+ * @param holdBack - Effective hold-back (the inverse of "Include annotations")
+ * @returns Visible and held-back comments; nothing is held back when the box is unticked
  */
-export function splitHeldBack(comments: AnchoredComment[], mode: FeedbackMode): { visible: AnchoredComment[]; heldBack: AnchoredComment[] } {
-    if (mode !== 'global_revision') return { visible: comments, heldBack: [] };
-    // Same rule as the server: a model seed stays back until staff release it (heldBack: false).
-    const held = (comment: AnchoredComment) => comment.heldBack === true || (comment.origin === 'model_seed' && comment.heldBack !== false);
+export function splitHeldBack(comments: AnchoredComment[], holdBack: boolean): { visible: AnchoredComment[]; heldBack: AnchoredComment[] } {
+    if (!holdBack) return { visible: comments, heldBack: [] };
     return {
-        visible: comments.filter((comment) => !held(comment)),
-        heldBack: comments.filter(held)
+        visible: comments.filter((comment) => !isHeldBack(comment)),
+        heldBack: comments.filter(isHeldBack)
     };
+}
+
+/**
+ * isHeldBack - whether a comment stays back while annotations are held back.
+ *
+ * Same rule as the server: a model seed stays back until staff release it (`heldBack: false`).
+ *
+ * @param comment - Annotation
+ * @returns True when flagged, or a model seed staff have not released
+ */
+export function isHeldBack(comment: AnchoredComment): boolean {
+    return comment.heldBack === true || (comment.origin === 'model_seed' && comment.heldBack !== false);
 }
 
 /**

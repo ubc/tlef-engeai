@@ -105,6 +105,11 @@ export class GradeEntry {
             input.placeholder = `0–${criterion.points}`;
             // No visible label: the prompt beside the box speaks only when staff need to act.
             input.setAttribute('aria-label', `Points for ${criterion.label}`);
+            // A focused number box steps its value on the scroll wheel, so scrolling the page
+            // past it silently changed a grade. Leaving the box lets the wheel scroll the page.
+            input.addEventListener('wheel', () => {
+                if (document.activeElement === input) input.blur();
+            }, { passive: true });
             const points = savedPoints.get(criterion.id);
             if (points !== undefined) input.value = String(points);
             this.inputs.set(criterion.id, input);

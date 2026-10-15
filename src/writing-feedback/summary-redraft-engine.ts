@@ -16,6 +16,7 @@ import { isMockResponse } from '../helpers/mock-response';
 import { buildSummaryRedraftSchema } from './feedback-schema';
 import { SOCRATIC_QUESTION_RULES } from './prompt-examples';
 import { validateSocraticQuestions, withQuestionGate } from './socratic-questions';
+import { hasWholeTextProblem } from './feedback-gate';
 import { modelAssessedCriteria } from './criterion-assessment';
 import { stripNulls } from './strip-nulls';
 import { buildStudentReaderContract, knownTermsFor, LAB_REPORT_FAMILIAR_TERMS } from './plain-language';
@@ -64,11 +65,12 @@ const RULES = [
 /**
  * buildSummaryRedraftSystemPrompt - staff-approved context and rules for one lens.
  *
- * @param input - Assignment, lens and approved rubric
+ * @param input - Assignment, lens and approved rubric; `wholeTextProblem` when the run's gate
+ *                found one, so the restructuring goal stays first
  * @returns System prompt; contains no student-derived text
  */
 export function buildSummaryRedraftSystemPrompt(
-    input: Pick<SummaryRedraftInput, 'assignment' | 'lens' | 'rubric'>
+    input: Pick<SummaryRedraftInput, 'assignment' | 'lens' | 'rubric'> & { wholeTextProblem?: boolean }
 ): string {
     const { rubric } = input;
     return [
@@ -82,6 +84,9 @@ export function buildSummaryRedraftSystemPrompt(
         `Use only these performance-level ids: ${rubric.levels.map((level) => level.id).join(', ')}.`,
         'Rules:',
         ...RULES.map((rule) => `- ${rule}`),
+        ...(input.wholeTextProblem
+            ? ['- The text has a whole-text problem. The first previous revision goal is the restructuring goal: keep it first, with questionScope "whole". You may tighten its wording.']
+            : []),
         `<approved_rubric lens="${input.lens}" version="${rubric.version}">${JSON.stringify({
             assignmentTitle: input.assignment.title,
             task: rubric.task,
@@ -174,8 +179,9 @@ export class LlmSummaryRedraftEngine implements SummaryRedraftEngine {
      */
     async redraft(input: SummaryRedraftInput): Promise<SummaryRedraftOutput> {
         if (isMockResponse() || !this.llm) return deterministicSummaryRedraft(input);
+        const wholeTextProblem = hasWholeTextProblem(input.previousResult);
         const messages: Message[] = [
-            { role: 'system', content: buildSummaryRedraftSystemPrompt(input) },
+            { role: 'system', content: buildSummaryRedraftSystemPrompt({ ...input, wholeTextProblem }) },
             { role: 'user', content: buildSummaryRedraftUserMessage(input) }
         ];
         // The question gate (D-153) allows one corrective retry.
@@ -185,7 +191,7 @@ export class LlmSummaryRedraftEngine implements SummaryRedraftEngine {
                 buildSummaryRedraftSchema(input.rubric),
                 { structuredOutputName: 'writing_summary_redraft', ...input.llmCallOptions }
             )).parsed) as SummaryRedraftOutput,
-            (parsed) => validateSocraticQuestions(parsed.revisionGoals ?? [])
+            (parsed) => validateSocraticQuestions(parsed.revisionGoals ?? [], { firstGoalWhole: wholeTextProblem })
         );
     }
 }

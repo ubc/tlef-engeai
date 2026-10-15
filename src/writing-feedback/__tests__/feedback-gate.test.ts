@@ -1,10 +1,11 @@
 /**
  * @fileoverview Truth table for the whole-text gate: only a mismatch, or 75% or more of the
- * `required === true` stages weak or missing, sends a submission to rewrite feedback.
+ * `required === true` stages weak or missing, is a whole-text problem; plus the hold-back
+ * default and the student-facing annotation filter.
  */
 
 import type { TextDiagnosis, WritingSflContextProfile } from '../contracts';
-import { REWRITE_STAGE_SHARE, effectiveMode, resolveGateDecision, resolveRewriteGoal, studentFacingComments } from '../feedback-gate';
+import { REWRITE_STAGE_SHARE, hasWholeTextProblem, resolveGateDecision, resolveHoldBack, studentFacingComments } from '../feedback-gate';
 
 const profile = {
     stages: [
@@ -102,52 +103,44 @@ describe('resolveGateDecision at the 75% boundary', () => {
     });
 });
 
-describe('effectiveMode', () => {
-    it('lets the staff override win in both directions', () => {
-        expect(effectiveMode('global_revision', 'standard')).toBe('standard');
-        expect(effectiveMode('standard', 'global_revision')).toBe('global_revision');
+describe('hasWholeTextProblem', () => {
+    it('reads the gate decision from the run or its result', () => {
+        expect(hasWholeTextProblem({ gateDecision: 'global_revision' })).toBe(true);
+        expect(hasWholeTextProblem({ result: { gateDecision: 'global_revision' } })).toBe(true);
+        expect(hasWholeTextProblem({ gateDecision: 'standard' })).toBe(false);
     });
 
-    it('treats a run stored before the gate as standard', () => {
-        expect(effectiveMode(undefined, undefined)).toBe('standard');
+    it('treats a run stored before the gate as having no whole-text problem', () => {
+        expect(hasWholeTextProblem({})).toBe(false);
+    });
+});
+
+describe('resolveHoldBack', () => {
+    it('holds annotations back by default exactly when there is a whole-text problem', () => {
+        expect(resolveHoldBack(true, undefined)).toBe(true);
+        expect(resolveHoldBack(false, undefined)).toBe(false);
+    });
+
+    it('lets an explicit staff choice win', () => {
+        expect(resolveHoldBack(true, false)).toBe(false);
+        expect(resolveHoldBack(false, true)).toBe(true);
     });
 });
 
 describe('studentFacingComments', () => {
     const comments = [{ id: 'a', heldBack: true }, { id: 'b' }, { id: 'c', heldBack: false }];
 
-    it('hides held-back comments only in global mode', () => {
-        expect(studentFacingComments(comments, 'global_revision').map((comment) => comment.id)).toEqual(['b', 'c']);
-        expect(studentFacingComments(comments, 'standard').map((comment) => comment.id)).toEqual(['a', 'b', 'c']);
+    it('hides held-back comments only while annotations are held back', () => {
+        expect(studentFacingComments(comments, true).map((comment) => comment.id)).toEqual(['b', 'c']);
+        expect(studentFacingComments(comments, false).map((comment) => comment.id)).toEqual(['a', 'b', 'c']);
     });
-});
 
-describe('studentFacingComments after staff force rewrite mode on a standard run', () => {
     it('holds back model seeds that were never flagged, but not staff comments or released seeds', () => {
-        const comments = [
+        const mixed = [
             { id: 'seed', origin: 'model_seed' },
             { id: 'released', origin: 'model_seed', heldBack: false },
             { id: 'staff', origin: 'staff' }
         ];
-        expect(studentFacingComments(comments, 'global_revision').map((comment) => comment.id)).toEqual(['released', 'staff']);
-    });
-});
-
-describe('resolveRewriteGoal', () => {
-    const rewriteGoal = { skillTag: 'descriptive_report', goal: 'REWRITE', action: 'a', guidedQuestion: 'q?', questionScope: 'whole' as const };
-    const standardGoal = { skillTag: 'theme', goal: 'STANDARD', action: 'a' };
-
-    it('uses the stored rewrite goal whatever the gate decided', () => {
-        expect(resolveRewriteGoal({ gateDecision: 'standard', revisionGoals: [standardGoal] }, { rewriteGoal })?.goal).toBe('REWRITE');
-        expect(resolveRewriteGoal({ gateDecision: 'global_revision', revisionGoals: [standardGoal] }, { rewriteGoal })?.goal).toBe('REWRITE');
-    });
-
-    it('falls back to the first goal of a legacy rewrite-gated run', () => {
-        expect(resolveRewriteGoal({ gateDecision: 'global_revision', revisionGoals: [standardGoal] }, {})?.goal).toBe('STANDARD');
-    });
-
-    it('never presents a legacy standard run\'s goal as a rewrite goal', () => {
-        expect(resolveRewriteGoal({ gateDecision: 'standard', revisionGoals: [standardGoal] }, {})).toBeUndefined();
-        expect(resolveRewriteGoal({ revisionGoals: [standardGoal] }, undefined)).toBeUndefined();
+        expect(studentFacingComments(mixed, true).map((comment) => comment.id)).toEqual(['released', 'staff']);
     });
 });

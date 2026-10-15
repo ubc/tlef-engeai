@@ -8,7 +8,7 @@
  *
  * @author: @rdschrs
  * @date: 2026-07-18
- * @version: 2.1.0
+ * @version: 2.2.0
  * @description: Generates staff-review drafts from assignment rubrics and verified text.
  */
 
@@ -72,7 +72,7 @@ import {
 } from './course-material-mentions';
 import { SanitizedJobError } from './job-runner';
 import { ANALYZER_EXAMPLES, SOCRATIC_QUESTION_RULES, WRITER_GLOBAL_EXAMPLE, WRITER_STANDARD_EXAMPLES } from './prompt-examples';
-import { validateRewriteGoal, validateSocraticQuestions, withQuestionGate } from './socratic-questions';
+import { validateSocraticQuestions, withQuestionGate } from './socratic-questions';
 import { resolveGateDecision } from './feedback-gate';
 import { buildStudentReaderContract, knownTermsFor } from './plain-language';
 import { buildRelevancePairs, judgeRelevance, supportedByNeed } from './material-relevance';
@@ -184,7 +184,8 @@ function deterministicFeedback(
     text: string,
     analysis: SflAnalysis,
     allowedByFinding: Map<string, Set<string>>,
-    excerpts: GroundingExcerpt[]
+    excerpts: GroundingExcerpt[],
+    wholeTextProblem: boolean
 ): WritingFeedbackResult {
     const evidence = firstEvidence(text);
     const profileGenreId = assignment.rubric.sflContext?.genreId ?? 'genre';
@@ -220,59 +221,71 @@ function deterministicFeedback(
             confidence: 0.5
         })),
         strengths: [],
-        revisionGoals: generated.slice(0, 3).map((criterion, index) => ({
-            skillTag: criterion.id,
-            goal: `Revise the passage or section that most affects ${criterion.label}.`,
-            action: `Revise the passage that most affects ${criterion.label}.`,
-            guidedQuestion: index === 0
-                ? 'Who will read your text, and what do they need to know first?'
-                : `Which passage most affects ${criterion.label.toLowerCase()}, and what would make it clearer for your reader?`,
-            questionScope: index === 0 ? 'whole' as const : 'part' as const
-        })),
-        internalFlags: [...analysis.abstentions],
-        globalRevision: {
-            diagnosisStatement: 'The draft needs staff review against the approved genre profile.',
-            whatToKeep: [],
-            rewriteDirection: 'Revise the draft so each stage in the profile does its purpose.',
-            guidedQuestion: 'What does the assignment ask your text to do, and what does your text do now?',
-            rewriteGoal: {
+        revisionGoals: [
+            // A whole-text problem leads with the restructuring goal, as a live run does.
+            ...(wholeTextProblem ? [{
                 skillTag: profileGenreId,
-                goal: 'Rewrite the draft so it does the work of the target genre.',
+                goal: 'Make the draft do the work of the target genre.',
                 action: 'Write the first stage of the genre before anything else.',
                 guidedQuestion: 'Which section should your reader meet first, and what should it tell them?',
                 questionScope: 'whole' as const
-            }
-        }
+            }] : []),
+            ...generated.slice(0, wholeTextProblem ? 2 : 3).map((criterion, index) => ({
+                skillTag: criterion.id,
+                goal: `Revise the passage or section that most affects ${criterion.label}.`,
+                action: `Revise the passage that most affects ${criterion.label}.`,
+                guidedQuestion: index === 0 && !wholeTextProblem
+                    ? 'Who will read your text, and what do they need to know first?'
+                    : `Which passage most affects ${criterion.label.toLowerCase()}, and what would make it clearer for your reader?`,
+                questionScope: index === 0 && !wholeTextProblem ? 'whole' as const : 'part' as const
+            }))
+        ],
+        internalFlags: [...analysis.abstentions],
+        ...(wholeTextProblem
+            ? { overallMessage: 'The draft needs staff review against the approved genre profile.' }
+            : {})
     };
 }
 
 /**
  * buildWritingFeedbackSystemPrompt - serializes the approved assignment rubric.
  *
- * The prompt is the same whatever the gate decides: every run returns standard feedback
- * and the rewrite block, and the effective mode only selects what is shown.
+ * Every run gets the same feedback format. A whole-text problem (decided by the gate before
+ * this call) adds the overall message, makes the first goal the restructuring goal, and
+ * draws strengths from what transfers; without one, neither is asked for.
  *
  * @param assignment - Assignment whose approved rubric governs generation
+ * @param wholeTextProblem - The gate's result for this text
  * @returns System instruction containing only staff-approved assessment context
  */
-export function buildWritingFeedbackSystemPrompt(assignment: WritingAssignment): string {
+export function buildWritingFeedbackSystemPrompt(assignment: WritingAssignment, wholeTextProblem = false): string {
     const rubric = assignment.rubric;
     requireCompleteSflProfile(rubric.sflContext);
     const method = [
         'Method:',
-        '1. Read the diagnosis. If a required stage is weak or missing, your first revision goal addresses it: name the section, say what to add or fix, and set skillTag to that stage id. When several are, take the earliest in the stage order. Otherwise, if genreFit is "partial", your first revision goal addresses the weakest stage.',
+        wholeTextProblem
+            ? '1. The diagnosis found a whole-text problem: the text does another genre\'s work, or most required stages are weak or missing. Your first revision goal is the restructuring goal: make the text do the target genre\'s work. Its action names the first stage to write, its guidedQuestion is about the whole submission, its questionScope is "whole", and its skillTag is the target genre id. It must not repeat the overallMessage.'
+            : '1. Read the diagnosis. If a required stage is weak or missing, your first revision goal addresses it: name the section, say what to add or fix, and set skillTag to that stage id. When several are, take the earliest in the stage order. Otherwise, if genreFit is "partial", your first revision goal addresses the weakest stage.',
         `2. For each criterion, choose the passages that most affect its level. Return at most ${MAX_EVIDENCE_PER_CRITERION} evidence items per criterion. Three is a ceiling, not a target: every evidence item becomes one annotation the student reads.`,
         '3. Each evidence.rationale must name the specific problem in that passage; do not restate the quote and do not repeat the criterion explanation. Each evidence.revisionGuidance must give a concrete next revision action for that exact passage. It must not copy the criterion explanation, the rationale, or a full revision goal.',
         '4. Where finding_citations lists an excerpt for a finding linked to the passage, set supportingExcerptId to that id. Otherwise leave it null. Never cite for decoration.',
         '5. Each explanation must synthesize that criterion\'s evidence as a whole — the pattern across its passages and why it sits at that level — not repeat any single rationale.',
-        '6. Return one to three revision goals, each with a concrete action, a guidedQuestion and a questionScope (see Questions). At least one of these revision goals has questionScope "whole"; the rewrite goal does not count.',
-        '7. Return zero to two strengths that serve the target genre. Never praise a contradictingFeature from the diagnosis.',
-        '8. Always fill globalRevision as well. Staff may give this student rewrite feedback instead, and then globalRevision carries the whole message:',
-        '   - globalRevision.diagnosisStatement: open with what is worth keeping, then say plainly what the text does compared with what the genre asks. Quote at most two contradicting features as examples.',
-        '   - globalRevision.whatToKeep: one to three choices from transferableStrengths.',
-        '   - globalRevision.rewriteDirection: the stages the rewrite needs, in order, as numbered steps one per line, each saying what to write in plain words. Cite supporting genre_excerpts ids in supportingExcerptIds where they teach the stage.',
-        '   - globalRevision.guidedQuestion: one question about the whole submission that helps the student see what the genre asks.',
-        '   - globalRevision.rewriteGoal: one revision goal to rewrite the text as the target genre, with an action naming the first stage to write, a guidedQuestion about the whole submission, and questionScope "whole". It must not repeat globalRevision.guidedQuestion.'
+        ...(wholeTextProblem
+            ? ['   Where the whole-text problem is the reason for a level, say so plainly. Do not suggest polishing passages that a text doing the target genre\'s work would not keep.']
+            : []),
+        '6. Return one to three revision goals, each with a concrete action, a guidedQuestion and a questionScope (see Questions). At least one of these revision goals has questionScope "whole".',
+        wholeTextProblem
+            ? '7. Return zero to two strengths, chosen from transferableStrengths in the diagnosis: what is worth keeping whatever the student writes next. Never praise a contradictingFeature from the diagnosis.'
+            : '7. Return zero to two strengths that serve the target genre. Never praise a contradictingFeature from the diagnosis.',
+        ...(wholeTextProblem
+            ? [
+                '8. Write overallMessage, the general feedback the student reads before anything else:',
+                '   - One short paragraph: open with what is worth keeping, then say plainly what the text does compared with what the genre asks. Quote at most two contradicting features as examples.',
+                '   - No list and no numbered steps: the revision goals carry the next steps.',
+                '   - Write it so it helps whether the student revises this text or writes the next one. Never say "rewrite", "resubmit" or "start again".',
+                '   - Cite supporting genre_excerpts ids in overallMessageExcerptIds where they explain what the genre asks.'
+            ]
+            : [])
     ];
     return [
         'You are the feedback-writer step. Staff review your draft and then release it to the student, so the student is your reader.',
@@ -282,12 +295,12 @@ export function buildWritingFeedbackSystemPrompt(assignment: WritingAssignment):
         ...method,
         'Knowledge: the diagnosis, the validated SFL analysis, finding_excerpts (course text judged to support specific findings), genre_excerpts, and the approved rubric below.',
         `<worked_examples>\n${WRITER_STANDARD_EXAMPLES}\n</worked_examples>`,
-        `<worked_example_global>\n${WRITER_GLOBAL_EXAMPLE}\n</worked_example_global>`,
+        ...(wholeTextProblem ? [`<worked_example_whole_text_problem>\n${WRITER_GLOBAL_EXAMPLE}\n</worked_example_whole_text_problem>`] : []),
         'Constraints:',
         `- Assess every criterion exactly once, using only these criterion ids: ${modelAssessedCriteria(rubric).map((criterion) => criterion.id).join(', ')}; and only these level ids: ${rubric.levels.map((level) => level.id).join(', ')}.`,
         `- Every evidence.quote is copied exactly from one validated SFL evidence span: the shortest clause or single sentence, at most ${MAX_EVIDENCE_QUOTE_LENGTH} characters.`,
         '- Never make the same point twice anywhere in the result.',
-        '- Cite course material only through supportingExcerptId or supportingExcerptIds from the ids you were given. Never quote excerpt text as student evidence, and never use course material as hidden criteria.',
+        `- Cite course material only through supportingExcerptId${wholeTextProblem ? ' or overallMessageExcerptIds' : ''} from the ids you were given. Never quote excerpt text as student evidence, and never use course material as hidden criteria.`,
         '- Do not write or rewrite sentences, paragraphs, or model answers for the student.',
         '- Never invent numeric weights or grades.',
         '- Never state a confidence level, certainty, or how sure you are anywhere in prose — not in explanation, strengths, or revision goals. Confidence belongs only in the separate confidence field.',
@@ -468,9 +481,10 @@ export class RubricWritingFeedbackEngine implements WritingFeedbackEngine {
             }
         }
 
-        // Step 3: the gate is code, so staff can predict it. It selects what is shown, not
-        // what is written.
+        // Step 3: the gate is code, so staff can predict it. A whole-text problem changes
+        // what the writer is asked for: an overall message and a restructuring first goal.
         const gateDecision: FeedbackMode = resolveGateDecision(diagnosis, profile);
+        const wholeTextProblem = gateDecision === 'global_revision';
 
         // Step 4: contrast material only when the student wrote a different genre.
         const contrastNeed = buildContrastNeed(diagnosis.realizedGenre, profile.genreId);
@@ -516,9 +530,9 @@ export class RubricWritingFeedbackEngine implements WritingFeedbackEngine {
             if (ids) allowedByFinding.set(finding.id, ids);
         });
 
-        // Step 7: the writer produces standard and rewrite content in one call, whatever the
-        // gate decides; the question gate (D-153) gives it one corrective retry when a goal or
-        // the rewrite goal lacks a valid question.
+        // Step 7: the writer produces the one feedback format, plus the overall message on a
+        // whole-text problem; the question gate (D-153) gives it one corrective retry when a
+        // goal lacks a valid question or the restructuring goal is not about the whole text.
         const writerUserContent = mock ? '' : [
             `<text_diagnosis>${JSON.stringify(diagnosis)}</text_diagnosis>`,
             `<validated_sfl_analysis>${JSON.stringify(analysis)}</validated_sfl_analysis>`,
@@ -529,17 +543,14 @@ export class RubricWritingFeedbackEngine implements WritingFeedbackEngine {
             `<genre_excerpts>${JSON.stringify([...genreExcerpts, ...contrastExcerpts].map(({ id, text }) => ({ id, text })))}</genre_excerpts>`
         ].join('\n');
         const writerResult = mock
-            ? deterministicFeedback(input.assignment, input.verifiedText, analysis, allowedByFinding, findingRetrieval.excerpts)
+            ? deterministicFeedback(input.assignment, input.verifiedText, analysis, allowedByFinding, findingRetrieval.excerpts, wholeTextProblem)
             : await withQuestionGate(
                 async (correction) => stripNulls((await this.llm!.sendStructuredConversation([
-                    { role: 'system', content: buildWritingFeedbackSystemPrompt(input.assignment) },
+                    { role: 'system', content: buildWritingFeedbackSystemPrompt(input.assignment, wholeTextProblem) },
                     { role: 'user', content: writerUserContent },
                     ...(correction ? [{ role: 'user' as const, content: correction }] : [])
-                ], buildFeedbackSchema(input.assignment.rubric), { structuredOutputName: 'writing_feedback_v2', ...input.llmCallOptions })).parsed) as WritingFeedbackResult,
-                (parsed) => [
-                    ...validateSocraticQuestions(parsed.revisionGoals ?? [], parsed.globalRevision ?? null),
-                    ...validateRewriteGoal(parsed.globalRevision?.rewriteGoal)
-                ]
+                ], buildFeedbackSchema(input.assignment.rubric, { wholeTextProblem }), { structuredOutputName: 'writing_feedback_v2', ...input.llmCallOptions })).parsed) as WritingFeedbackResult,
+                (parsed) => validateSocraticQuestions(parsed.revisionGoals ?? [], { firstGoalWhole: wholeTextProblem })
             );
 
         if (!writerResult.revisionGoals?.length) throw new SanitizedJobError(NO_REVISION_GOALS_MESSAGE);
@@ -554,13 +565,18 @@ export class RubricWritingFeedbackEngine implements WritingFeedbackEngine {
         if (dropped) result.internalFlags.push(`${dropped} course-material citation(s) were removed for lack of supporting material.`);
         applyGlobalExcerptCitations(result, new Set([...genreExcerpts, ...contrastExcerpts].map((excerpt) => excerpt.id)), excerptsById);
         result.internalFlags.push(...guardStrengths(result, diagnosis));
+        // Only a whole-text problem carries an overall message, whatever the model returned.
+        if (!wholeTextProblem) {
+            delete result.overallMessage;
+            delete result.overallMessageExcerptIds;
+        }
         result.gateDecision = gateDecision;
         result.schemaVersion = WRITING_FEEDBACK_SCHEMA_V2;
 
         // Step 9: the student reading list is the published material actually cited.
         const citedMentions = uniqueByMentionId([
             ...result.criteria.flatMap((criterion) => criterion.evidence.map((evidence) => evidence.courseMaterialMention)),
-            ...(result.globalRevision?.supportingExcerptIds ?? []).map((excerptId) => excerptsById.get(excerptId)?.mention)
+            ...(result.overallMessageExcerptIds ?? []).map((excerptId) => excerptsById.get(excerptId)?.mention)
         ]);
         if (citedMentions.length) result.courseMaterialMentions = citedMentions.slice(0, 5);
         else delete result.courseMaterialMentions;

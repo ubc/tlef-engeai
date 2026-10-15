@@ -39,7 +39,7 @@ import type {
 } from './contracts';
 
 /** Immutable provenance stamped on every technical run. */
-export const TECHNICAL_PROMPT_VERSION = 'lab-report-technical-v1.5.0';
+export const TECHNICAL_PROMPT_VERSION = 'lab-report-technical-v1.5.1';
 
 /**
  * The prime directive, stated before the rubric.
@@ -249,7 +249,7 @@ export class TechnicalWritingFeedbackEngine implements WritingFeedbackEngine {
         const parsedResult = await withQuestionGate(
             async (correction) => stripNulls((await this.llm!.sendStructuredConversation(
                 [...messages, ...(correction ? [{ role: 'user' as const, content: correction }] : [])],
-                buildFeedbackSchema(rubric, { requireGlobalRevision: false }),
+                buildFeedbackSchema(rubric),
                 { structuredOutputName: 'lab_report_technical_feedback', ...input.llmCallOptions }
             )).parsed) as WritingFeedbackResult,
             (parsed) => validateSocraticQuestions(parsed.revisionGoals ?? [])

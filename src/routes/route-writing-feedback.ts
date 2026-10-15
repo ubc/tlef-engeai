@@ -1188,13 +1188,11 @@ router.post('/:courseId/writing-feedback/submissions/:submissionId/reviews', asy
             }
             summaryEdits = parsedEdits.data;
         }
-        let modeOverride: 'standard' | 'global_revision' | undefined;
-        if (req.body?.modeOverride !== undefined) {
-            if (req.body.modeOverride !== 'standard' && req.body.modeOverride !== 'global_revision') {
-                return res.status(400).json({ success: false, error: 'modeOverride must be standard or global_revision' });
-            }
-            modeOverride = req.body.modeOverride;
+        // Sent only when staff changed "Hold back annotations"; absent keeps the current choice.
+        if (req.body?.holdBackAnnotations !== undefined && typeof req.body.holdBackAnnotations !== 'boolean') {
+            return res.status(400).json({ success: false, error: 'holdBackAnnotations must be true or false' });
         }
+        const holdBackAnnotations: boolean | undefined = req.body?.holdBackAnnotations;
         const globalUser = (req.session as any).globalUser;
         const mongo = await EngEAI_MongoDB.getInstance();
         const revision = await new WritingFeedbackService(mongo).appendReview(courseId(req), String(req.params.submissionId), {
@@ -1206,7 +1204,8 @@ router.post('/:courseId/writing-feedback/submissions/:submissionId/reviews', asy
             finalAssessment,
             assessmentDraft,
             summaryEdits,
-            modeOverride,
+            // Omitted unless staff changed the checkbox: Mongo would store undefined as null.
+            ...(typeof holdBackAnnotations === 'boolean' ? { holdBackAnnotations } : {}),
             technicalFeedbackRunId: typeof req.body?.technicalFeedbackRunId === 'string'
                 ? req.body.technicalFeedbackRunId.slice(0, 64)
                 : undefined

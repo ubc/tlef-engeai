@@ -32,15 +32,15 @@ describe('runEvalChecks', () => {
         expect(checks.quotesExact.status).toBe('pass');
     });
 
-    it('passes a global-revision output that holds back local annotations', () => {
+    it('passes a whole-text problem output that holds back local annotations', () => {
         const checks = byName({
             verifiedText: text,
             result: {
                 gateDecision: 'global_revision',
                 criteria: [{ evidence: [{ quote: 'First, the object pushes the air.' }] }],
                 strengths: ['Sound is a good entity to classify.'],
-                revisionGoals: [{ goal: 'Rewrite as a report.', action: 'List the types of sound first.' }],
-                globalRevision: { diagnosisStatement: 'x', whatToKeep: ['Sound'], rewriteDirection: 'y' }
+                revisionGoals: [{ goal: 'Make it a report.', action: 'List the types of sound first.' }],
+                overallMessage: 'Sound is a good topic.\n1. Say what sound is.'
             },
             runTrace: {
                 gateDecision: 'global_revision',
@@ -55,7 +55,7 @@ describe('runEvalChecks', () => {
         expect(checks.mode.status).toBe('pass');
         expect(checks.stageStatuses.status).toBe('pass');
         expect(checks.strengthsGuard.status).toBe('pass');
-        expect(checks.noLocalAnnotationsInGlobal.status).toBe('pass');
+        expect(checks.annotationsHeldBack.status).toBe('pass');
         expect(checks.flags.status).toBe('pass');
     });
 
@@ -99,9 +99,9 @@ describe('plainLanguage check', () => {
 });
 
 describe('socraticQuestions check (D-153)', () => {
-    const output = (goals: NonNullable<EvalRunOutput['result']['revisionGoals']>, gateDecision = 'standard', globalRevision?: EvalRunOutput['result']['globalRevision']): EvalRunOutput => ({
+    const output = (goals: NonNullable<EvalRunOutput['result']['revisionGoals']>, gateDecision = 'standard'): EvalRunOutput => ({
         verifiedText: text,
-        result: { gateDecision, criteria: [], strengths: [], revisionGoals: goals, ...(globalRevision ? { globalRevision } : {}) }
+        result: { gateDecision, criteria: [], strengths: [], revisionGoals: goals }
     });
 
     it('passes with a whole and a part question', () => {
@@ -116,37 +116,38 @@ describe('socraticQuestions check (D-153)', () => {
         expect(byName(output([{ goal: 'g', guidedQuestion: 'Which word names the class?', questionScope: 'part' }])).socraticQuestions.status).toBe('fail');
     });
 
-    it('fails a rewrite run whose rewrite block has no question', () => {
+    it('fails a whole-text problem run whose first goal is about one part', () => {
         expect(byName(output(
-            [{ goal: 'g', guidedQuestion: 'What does your reader need first?', questionScope: 'whole' }],
-            'global_revision',
-            { diagnosisStatement: 'd', rewriteDirection: 'r' }
+            [
+                { goal: 'g', guidedQuestion: 'Which word names the class?', questionScope: 'part' },
+                { goal: 'g', guidedQuestion: 'What does your reader need first?', questionScope: 'whole' }
+            ],
+            'global_revision'
         )).socraticQuestions.status).toBe('fail');
     });
 });
 
-describe('bothModes', () => {
-    const goals = [{ skillTag: 'identify', goal: 'Define sound.', action: 'Name its class.', guidedQuestion: 'What group of things does sound belong to?', questionScope: 'whole' }];
-    const block = { diagnosisStatement: 'd', whatToKeep: [], rewriteDirection: 'r', guidedQuestion: 'What does your reader need first?' };
-    const rewriteGoal = { skillTag: 'descriptive_report', goal: 'Rewrite.', action: 'Start with a definition.', guidedQuestion: 'Which types will your reader need?', questionScope: 'whole' };
+describe('wholeTextShape', () => {
+    const goals = [{ skillTag: 'descriptive_report', goal: 'Make it a report.', action: 'Define sound first.', guidedQuestion: 'What group of things does sound belong to?', questionScope: 'whole' }];
 
-    it('passes when standard goals and a complete rewrite block are stored', () => {
-        const checks = byName({ verifiedText: text, result: { gateDecision: 'standard', revisionGoals: goals, globalRevision: { ...block, rewriteGoal } } });
-        expect(checks.bothModes.status).toBe('pass');
+    it('passes a whole-text problem with an overall message and a whole-submission first goal', () => {
+        const checks = byName({ verifiedText: text, result: { gateDecision: 'global_revision', revisionGoals: goals, overallMessage: 'Keep your topic.' } });
+        expect(checks.wholeTextShape.status).toBe('pass');
     });
 
-    it('fails a run without a rewrite goal, whatever its gate decision', () => {
-        const checks = byName({ verifiedText: text, result: { gateDecision: 'standard', revisionGoals: goals, globalRevision: block } });
-        expect(checks.bothModes.status).toBe('fail');
+    it('fails a whole-text problem without an overall message', () => {
+        const checks = byName({ verifiedText: text, result: { gateDecision: 'global_revision', revisionGoals: goals } });
+        expect(checks.wholeTextShape.status).toBe('fail');
     });
 
-    it('skips technical-lens output, which has no gate and no rewrite mode', () => {
+    it('fails a run without a whole-text problem that still has an overall message', () => {
+        const checks = byName({ verifiedText: text, result: { gateDecision: 'standard', revisionGoals: goals, overallMessage: 'Stray.' } });
+        expect(checks.wholeTextShape.status).toBe('fail');
+        expect(byName({ verifiedText: text, result: { gateDecision: 'standard', revisionGoals: goals } }).wholeTextShape.status).toBe('pass');
+    });
+
+    it('skips technical-lens output, which has no gate', () => {
         const checks = byName({ verifiedText: text, result: { revisionGoals: goals } });
-        expect(checks.bothModes.status).toBe('skip');
-    });
-
-    it('fails a run with no standard goals', () => {
-        const checks = byName({ verifiedText: text, result: { gateDecision: 'global_revision', revisionGoals: [], globalRevision: { ...block, rewriteGoal } } });
-        expect(checks.bothModes.status).toBe('fail');
+        expect(checks.wholeTextShape.status).toBe('skip');
     });
 });
