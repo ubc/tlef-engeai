@@ -29,6 +29,7 @@ import {
     buildStudentURL
 } from '../utils/url-parser.js';
 import { bindSpaLink } from '../utils/spa-link.js';
+import { isHashOnlyNavigation } from '../utils/hash-navigation.js';
 import { syncPageTitleFromURL } from '../utils/page-title.js';
 
 /**
@@ -1028,6 +1029,9 @@ async function initializeChatInterface(user: any, urlState?: { view: string | nu
 
     // Handle browser back/forward navigation
     window.addEventListener('popstate', (event: PopStateEvent) => {
+        // Same view, new #fragment (e.g. a message heading link): rebuilding would destroy its target
+        if (isHashOnlyNavigation(event)) return;
+
         // Prevent recursive navigation calls
         if (isNavigating) {
             // console.log('[STUDENT-MODE] ⚠️ Navigation already in progress, skipping...');

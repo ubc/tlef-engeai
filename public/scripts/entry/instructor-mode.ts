@@ -55,6 +55,7 @@ import {
     buildInstructorURL
 } from '../utils/url-parser.js';
 import { bindSpaLink } from '../utils/spa-link.js';
+import { isHashOnlyNavigation } from '../utils/hash-navigation.js';
 import { syncPageTitleFromURL } from '../utils/page-title.js';
 import {
     buildOnboardingStagePath,
@@ -864,7 +865,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     bindInstructorViewLink(pathwayLibraryStateEl, 'pathway-library');
     
     // Handle browser back/forward navigation
-    window.addEventListener('popstate', async () => {
+    window.addEventListener('popstate', async (event: PopStateEvent) => {
+        // Same view, new #fragment (e.g. a message heading link): rebuilding would destroy its target
+        if (isHashOnlyNavigation(event)) return;
+
         const view = getInstructorViewFromURL();
         const chatId = getChatIdFromURL();
 

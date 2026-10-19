@@ -25,6 +25,7 @@ import { RenderChat } from "./render-chat.js";
 import { showDeleteConfirmationModal, showSimpleErrorModal } from "../ui/modal-overlay.js";
 import { getCourseIdFromURL, navigateToStudentScenarios, buildInstructorURL, buildStudentURL } from "../utils/url-parser.js";
 import { bindSpaLink } from "../utils/spa-link.js";
+import { pushHashLocation } from "../utils/hash-navigation.js";
 import {
     clearChatDraftPrefill,
     peekChatDraftPrefill,
@@ -41,6 +42,19 @@ interface ChatMetadata {
     pinnedMessageId: string | null;
     lastMessageTimestamp: number;
     messageCount: number;
+}
+
+const MESSAGE_HEADING_ID_PREFIX = 'message-heading-';
+
+/**
+ * Returns the id of a message's heading, the target of `#message-heading-…` links.
+ * Built from the saved message id, so it is the same every time the chat loads. The prefix
+ * keeps it a valid CSS selector (message ids can start with a digit) and apart from other ids.
+ *
+ * @param messageId - Saved (server-issued) message id
+ */
+export function messageHeadingId(messageId: string): string {
+    return `${MESSAGE_HEADING_ID_PREFIX}${messageId}`;
 }
 
 /**
@@ -177,7 +191,12 @@ export class ChatManager {
     
     // Incremental update tracking
     private domMessageIds: Set<string> = new Set(); // Track which messages are in DOM
+    private pendingMessageIds: Set<string> = new Set(); // Local placeholders shown until the server replies
     private lastRenderedMessageCount: number = 0; // Track last rendered count for active chat
+
+    // Hash links to message headings (#message-heading-…)
+    private hashFocusedLocation: string | null = null; // URL (with hash) whose heading was last focused on render
+    private hashFocusTimer: ReturnType<typeof setTimeout> | null = null;
     private messageAreaResizeObserver: ResizeObserver | null = null;
     private observedMessageArea: HTMLElement | null = null;
     
@@ -240,6 +259,7 @@ export class ChatManager {
     private constructor(config: ChatManagerConfig) {
         this.config = config;
         this.renderChat = new RenderChat();
+        this.bindMessageHeadingLinks();
     }
 
     /**
@@ -711,6 +731,8 @@ export class ChatManager {
             timestamp: Date.now(),
         } as ChatMessage & { artefact?: any };
         activeChat.messages.push(botMessage);
+        this.pendingMessageIds.add(userMessage.id);
+        this.pendingMessageIds.add(botMessageId);
 
         // Add messages to DOM incrementally
         this.addMessageToDOM(userMessage, activeChat);
@@ -978,13 +1000,16 @@ export class ChatManager {
         activeChat.messages.forEach(msg => {
             this.addMessageToDOM(msg, activeChat);
         });
+        this.syncLatestMessageLink(); // covers a chat with no messages
 
         this.lastRenderedMessageCount = activeChat.messages.length;
-        
+
         // Wait for LaTeX rendering to complete before scrolling
         // LaTeX rendering is asynchronous and can change element heights
         // Delay ensures layout is stable before scrolling
-        this.scrollToBottom(150);
+        if (!this.focusHashTargetAfterRender(150)) {
+            this.scrollToBottom(150);
+        }
         
         this.renderPinnedBanner(activeChat);
         this.syncConversationModeComposer();
@@ -1086,6 +1111,7 @@ export class ChatManager {
         
         messageAreaEl.appendChild(messageEl);
         this.domMessageIds.add(msg.id);
+        this.syncLatestMessageLink();
     }
 
     /**
@@ -1142,6 +1168,8 @@ export class ChatManager {
             messageEl.remove();
             this.domMessageIds.delete(messageId);
         }
+        this.pendingMessageIds.delete(messageId);
+        this.syncLatestMessageLink();
     }
 
     /**
@@ -1281,6 +1309,119 @@ export class ChatManager {
         } else {
             performScroll();
         }
+    }
+
+    // ===== MESSAGE HEADING LINKS =====
+
+    /**
+     * Handles `#message-heading-…` links. Following a hash link doesn't move focus on its own,
+     * so this focuses the heading when the "View latest message" link is used and on Back/Forward
+     * between hash entries. The shell routers skip hash-only popstates (`isHashOnlyNavigation`),
+     * so the chat isn't rebuilt. Bound once: ChatManager is a singleton and the link is
+     * re-inserted with the chat window, hence the document-level delegation.
+     */
+    private bindMessageHeadingLinks(): void {
+        document.addEventListener('click', (e: MouseEvent) => {
+            if (!(e.target instanceof Element)) return;
+            const link = e.target.closest<HTMLAnchorElement>('#latest-message-link');
+            // Modified clicks (new tab/window) are left to the browser; the page load focuses the heading
+            if (!link || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
+                return;
+            }
+            const heading = this.getMessageHeadingForHash(link.hash);
+            if (!heading) return;
+
+            // pushState (not the default navigation) adds the history entry without firing popstate
+            e.preventDefault();
+            pushHashLocation(link.hash);
+            this.hashFocusedLocation = window.location.href;
+            this.focusMessageHeading(heading);
+        });
+
+        window.addEventListener('popstate', (e: PopStateEvent) => {
+            // In-app navigation dispatches synthetic popstates; only Back/Forward and edited hashes count
+            if (!e.isTrusted) return;
+            const heading = this.getMessageHeadingForHash(window.location.hash);
+            if (heading) this.focusMessageHeading(heading);
+        });
+    }
+
+    /**
+     * Points "View latest message" at the newest saved message's heading, or hides the link
+     * when there is none. Placeholders have no heading id, so the link never targets them.
+     */
+    private syncLatestMessageLink(): void {
+        const link = document.getElementById('latest-message-link') as HTMLAnchorElement | null;
+        if (!link) return;
+
+        const headings = document.querySelectorAll<HTMLElement>('#message-area .message-heading[id]');
+        const latest = headings[headings.length - 1];
+        if (latest) {
+            link.setAttribute('href', `#${latest.id}`);
+            link.hidden = false;
+        } else {
+            link.removeAttribute('href');
+            link.hidden = true;
+        }
+    }
+
+    /**
+     * Returns the rendered message heading a URL hash names, or null when the hash isn't a
+     * message heading link or that message isn't in the open chat.
+     */
+    private getMessageHeadingForHash(hash: string): HTMLElement | null {
+        let id: string;
+        try {
+            id = decodeURIComponent(hash.slice(1));
+        } catch {
+            return null;
+        }
+        if (!id.startsWith(MESSAGE_HEADING_ID_PREFIX)) return null;
+
+        const heading = document.getElementById(id);
+        return heading?.closest('#message-area') ? heading : null;
+    }
+
+    private focusMessageHeading(heading: HTMLElement): void {
+        heading.scrollIntoView({ block: 'start' });
+        heading.focus({ preventScroll: true });
+    }
+
+    /**
+     * After a full render, schedules focus on the heading the URL hash names, in place of the
+     * usual scroll to the bottom. Runs once per URL so later re-renders of the same chat
+     * (e.g. re-selecting it) don't pull focus back.
+     *
+     * @param delay - Same settle time the bottom scroll uses (LaTeX changes heights)
+     * @returns true when focus was scheduled and the caller should skip scrolling to the bottom
+     */
+    private focusHashTargetAfterRender(delay: number): boolean {
+        const heading = this.getMessageHeadingForHash(window.location.hash);
+        if (!heading) {
+            // Leaving the target's chat means coming back to it (e.g. Back) should focus it again
+            this.hashFocusedLocation = null;
+            return false;
+        }
+
+        const location = window.location.href;
+        // A chat often renders twice while loading; a render while focus is still pending re-arms it
+        if (location === this.hashFocusedLocation && this.hashFocusTimer === null) return false;
+        this.hashFocusedLocation = location;
+
+        if (this.hashFocusTimer !== null) clearTimeout(this.hashFocusTimer);
+        const headingId = heading.id;
+        this.hashFocusTimer = setTimeout(() => {
+            // Same two frames as scrollToBottom, so a bottom scroll scheduled earlier lands first
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    this.hashFocusTimer = null;
+                    // Look it up again: a later render may have replaced the element
+                    const target = document.getElementById(headingId);
+                    if (target) this.focusMessageHeading(target);
+                });
+            });
+        }, delay);
+        return true;
     }
 
     // Artefact panel loading removed - now embedded in chat-window.html
@@ -2412,7 +2553,7 @@ export class ChatManager {
         // Process artefacts for all messages (including initial messages)
         if (sender === 'bot') {
             // NEW: Direct markdown + LaTeX rendering with messageId for artifacts
-            contentEl.innerHTML = this.renderMessageHtml(text, messageId);
+            contentEl.innerHTML = this.renderMessageHtml(text);
             renderLatexInHtmlContent(contentEl);
             this.appendPathwayCtas(contentEl, ctas);
         } else {
@@ -2422,6 +2563,11 @@ export class ChatManager {
 
         const heading = document.createElement('h2');
         heading.className = 'message-heading';
+        // Placeholders are swapped for the server's copy, so only saved messages get a linkable id
+        if (!this.pendingMessageIds.has(messageId)) {
+            heading.id = messageHeadingId(messageId);
+        }
+        heading.setAttribute('tabindex', '-1');
         heading.appendChild(document.createTextNode(`${sender === 'user' ? 'You' : 'EngE-AI'} (${this.formatFullTimestamp(timestamp)})`));
         messageWrapper.appendChild(heading);
 
