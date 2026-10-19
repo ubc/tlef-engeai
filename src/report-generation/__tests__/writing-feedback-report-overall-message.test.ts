@@ -5,7 +5,7 @@
  */
 
 import zlib from 'zlib';
-import { buildDefaultWritingAssignment } from '../../writing-feedback/default-rubric-profile';
+import { buildDefaultWritingAssignment } from '../../writing-feedback/rubric/default-rubric-profile';
 import type { WritingFeedbackResult, WritingSubmission } from '../../writing-feedback/contracts';
 import { StudentWritingFeedbackPdfService } from '../writing-feedback-report';
 

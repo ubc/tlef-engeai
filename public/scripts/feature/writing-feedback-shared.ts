@@ -32,7 +32,7 @@ export type WritingLevelId = string;
 /** Staff-reviewed genre/register state used by SFL-founded feedback. */
 export type SflGenreProfileState = 'declared' | 'staff_confirmed' | 'custom' | 'composite' | 'needs_staff_input';
 
-/** Mirrors `CanvasRubricRefusal` in src/writing-feedback/contracts.ts. */
+/** Mirrors `CanvasRubricRefusal` in src/writing-feedback/contracts/index.ts. */
 export type CanvasRubricRefusal =
     | 'no_rubric'
     | 'too_few_ratings'
@@ -40,7 +40,7 @@ export type CanvasRubricRefusal =
     | 'too_many_levels';
 
 /**
- * Mirrors `CanvasRubricIdMap` in src/writing-feedback/canvas-rubric-mapping.ts.
+ * Mirrors `CanvasRubricIdMap` in src/writing-feedback/canvas/canvas-rubric-mapping.ts.
  *
  * The browser never builds one — it is written at import and read only by the release path —
  * but the assignment carries it, so the type has to exist on this side of the mirror.
@@ -106,7 +106,7 @@ export interface RubricCriterion {
 
 /**
  * Label words naming how a document looks. Mirrors FORMATTING_CRITERION_PATTERN in
- * src/writing-feedback/criterion-assessment.ts, which defaults these rows to staff on
+ * src/writing-feedback/rubric/criterion-assessment.ts, which defaults these rows to staff on
  * Canvas import; a parity test pins the two.
  */
 export const FORMATTING_CRITERION_PATTERN = /\b(?:format(?:s|ted|ting)?|layouts?|fonts?|margins?|spacing|typograph(?:y|ic|ical))\b/i;
@@ -293,7 +293,7 @@ export interface CourseMaterialMention {
 }
 
 /** Reusable course glossary entry returned by glossary endpoints. */
-/** Instructor-supplied assignment material, as extracted text. Mirrors src/writing-feedback/contracts.ts. */
+/** Instructor-supplied assignment material, as extracted text. Mirrors src/writing-feedback/contracts/index.ts. */
 export interface WritingSourceMaterial {
     id: string;
     courseId: string;
@@ -307,7 +307,7 @@ export interface WritingSourceMaterial {
     addedBy: string; // internal user id, never a PUID
 }
 
-/** One piece of material "Fill these in for me" can read. Mirrors src/writing-feedback/autofill-sources.ts. */
+/** One piece of material "Fill these in for me" can read. Mirrors src/writing-feedback/sources/autofill-sources.ts. */
 export interface AutofillSource {
     id: string; // 'instructions', 'canvas_description', or a source-material id
     kind: 'instructions' | 'canvas_description' | 'file' | 'paste';
@@ -318,7 +318,7 @@ export interface AutofillSource {
     edited?: boolean; // staff corrected a file's or paste's text by hand
 }
 
-/** Where the graded grid comes from. Mirrors GradedGridState in src/writing-feedback/rubric-source-choice.ts. */
+/** Where the graded grid comes from. Mirrors GradedGridState in src/writing-feedback/rubric/rubric-source-choice.ts. */
 export interface GradedGridState {
     lens: WritingFeedbackLens; // the lens that carries the grade
     current: 'builtin' | 'canvas' | 'uploaded';
@@ -1222,7 +1222,7 @@ export function isLateSubmission(submission: Submission, assignment: Assignment 
 /**
  * runPredatesTextEdit - whether feedback was generated for text staff have since edited.
  *
- * Mirrors `runPredatesTextEdit` in src/writing-feedback/transcript-edit.ts.
+ * Mirrors `runPredatesTextEdit` in src/writing-feedback/intake/transcript-edit.ts.
  *
  * @param submission - Submission carrying the last text edit time
  * @param run - Feedback run to check; an absent run never predates anything

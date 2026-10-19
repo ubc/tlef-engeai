@@ -11,8 +11,8 @@
  */
 
 import type { WritingAssignment } from '../../../contracts';
-import { buildDefaultWritingAssignment } from '../../../default-rubric-profile';
-import { approveRubricDraft } from '../../../rubric-schema';
+import { buildDefaultWritingAssignment } from '../../../rubric/default-rubric-profile';
+import { approveRubricDraft } from '../../../rubric/rubric-schema';
 
 export type EvalMode = 'standard' | 'global_revision';
 export type EvalStageStatus = 'present' | 'weak' | 'missing';

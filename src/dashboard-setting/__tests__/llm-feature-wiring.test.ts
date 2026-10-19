@@ -36,7 +36,7 @@ const TOOLKIT_REASONING_EFFORTS: readonly ReasoningEffort[] = [
 const FEATURE_CALL_SITES: Record<LlmFeatureKey, readonly string[]> = {
     chat: ['src/chat/chat-app.ts'],
     scenarioGeneration: ['src/scenario-generation/scenario-service.ts'],
-    writingFeedback: ['src/writing-feedback/writing-feedback-service.ts'],
+    writingFeedback: ['src/writing-feedback/service/writing-feedback-service.ts'],
     guidedPathway: ['src/guided-pathways/pathway-orchestrator.ts'],
     memoryAgent: [
         'src/memory-agent/memory-agent.ts',

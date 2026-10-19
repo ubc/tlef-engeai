@@ -2,7 +2,7 @@
  * Annotation fingerprint parity — the browser and server must agree on "unchanged".
  */
 
-import { fingerprintAnnotations as serverFingerprint } from '../../../../src/writing-feedback/annotation-fingerprint';
+import { fingerprintAnnotations as serverFingerprint } from '../../../../src/writing-feedback/review/annotation-fingerprint';
 import { fingerprintAnnotations as browserFingerprint } from '../writing-feedback-annotation-fingerprint';
 
 const base = [

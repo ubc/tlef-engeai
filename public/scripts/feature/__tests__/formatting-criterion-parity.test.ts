@@ -6,7 +6,7 @@
  * imported as staff could be switched without a warning, or warn when it never defaulted.
  */
 
-import { FORMATTING_CRITERION_PATTERN as SERVER_PATTERN } from '../../../../src/writing-feedback/criterion-assessment';
+import { FORMATTING_CRITERION_PATTERN as SERVER_PATTERN } from '../../../../src/writing-feedback/rubric/criterion-assessment';
 import { FORMATTING_CRITERION_PATTERN as CLIENT_PATTERN } from '../writing-feedback-shared';
 
 describe('formatting criterion pattern parity', () => {

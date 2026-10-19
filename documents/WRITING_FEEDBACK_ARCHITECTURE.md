@@ -52,7 +52,7 @@ their original ownership and mark only the Writing Feedback integration seam.
 
 | Read in this order | Files | Responsibility |
 |---|---|---|
-| 1. Domain vocabulary | `src/writing-feedback/contracts.ts`, `default-rubric-profile.ts`, `criterion-library.ts`, `sfl-foundation.ts`, and the schema modules | Persistent records, lifecycle states, neutral draft defaults, dynamic rubric/profile validation, curated SFL runtime contracts, and exact-evidence rules |
+| 1. Domain vocabulary | `src/writing-feedback/contracts/index.ts`, `default-rubric-profile.ts`, `criterion-library.ts`, `sfl-foundation.ts`, and the schema modules | Persistent records, lifecycle states, neutral draft defaults, dynamic rubric/profile validation, curated SFL runtime contracts, and exact-evidence rules |
 | 2. Core orchestration | `feedback-engine.ts`, `sfl-analysis.ts`, `course-material-mentions.ts`, `writing-feedback-service.ts`, and `worker.ts` | Two-call SFL analysis/writer generation, analyzer validation, published-material allowlists, async queueing, provenance checks, staff revisions, approval, and student-safe PDF preparation |
 | 3. Specific comments and PDF | `anchored-comments.ts`, `src/report-generation/writing-feedback-layout.ts`, and `writing-feedback-report.ts` | UTF-16 anchors, deterministic text layout, sentence-level highlights, and interactive annotation contents |
 | 4. Intake and external boundaries | `document-extraction-service.ts`, `canvas-import-*.ts`, `canvas-release-service.ts`, `live-canvas-release-service.ts`, and `job-runner.ts` | Non-RAG extraction, synthetic/not-configured Canvas modes, preview-before-release, live exact-attempt release, and leased-job infrastructure |

@@ -11,7 +11,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { requireCompleteRubricCells } from '../../writing-feedback/rubric-schema';
+import { requireCompleteRubricCells } from '../../writing-feedback/rubric/rubric-schema';
 import type { WritingRubricDefinition } from '../../writing-feedback/contracts';
 
 /** A one-criterion draft missing exactly one of the two things the gate requires. */

@@ -16,35 +16,35 @@ import multer from 'multer';
 import { asyncHandler, asyncHandlerWithAuth } from '../middleware/async-handler';
 import { requireCourseFeatureAPI, requireInstructorForCourseAPI } from '../middleware/require-course-role';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
-import { LocalDocumentExtractionService } from '../writing-feedback/document-extraction-service';
-import { listPublishedCourseMaterialTitles } from '../writing-feedback/course-material-catalog';
+import { LocalDocumentExtractionService } from '../writing-feedback/sources/document-extraction-service';
+import { listPublishedCourseMaterialTitles } from '../writing-feedback/materials/course-material-catalog';
 import {
     APPROVE_WHILE_GENERATING_MESSAGE,
     REDRAFT_NOT_DRAFT_READY_MESSAGE,
     REVIEW_WHILE_GENERATING_MESSAGE,
     WritingFeedbackService
-} from '../writing-feedback/writing-feedback-service';
-import { BATCH_ERRORS, WritingBatchGenerationService } from '../writing-feedback/batch-generation';
-import { summaryEditsInputSchema } from '../writing-feedback/summary-edits';
-import { SUMMARY_REDRAFT_FAILED_MESSAGE } from '../writing-feedback/summary-redraft-engine';
-import { MockCanvasGateway, SafeCanvasReleaseService } from '../writing-feedback/canvas-release-service';
+} from '../writing-feedback/service/writing-feedback-service';
+import { BATCH_ERRORS, WritingBatchGenerationService } from '../writing-feedback/generation/batch-generation';
+import { summaryEditsInputSchema } from '../writing-feedback/review/summary-edits';
+import { SUMMARY_REDRAFT_FAILED_MESSAGE } from '../writing-feedback/generation/summary-redraft-engine';
+import { MockCanvasGateway, SafeCanvasReleaseService } from '../writing-feedback/release/canvas-release-service';
 import type { CanvasRubricRow, WritingSourceType } from '../writing-feedback/contracts';
-import { SafeCanvasImportService } from '../writing-feedback/canvas-import-service';
+import { SafeCanvasImportService } from '../writing-feedback/canvas/canvas-import-service';
 import {
     isLiveCanvasCourse,
     resolveCanvasCourseId,
     resolveCanvasImportService,
     resolveCanvasImportStatus
-} from '../writing-feedback/canvas-import-resolver';
-import { LiveCanvasReleaseService } from '../writing-feedback/live-canvas-release-service';
-import { REPLACEMENT_CONFLICTS, REPLACEMENT_ERRORS, SubmissionReplacementService } from '../writing-feedback/submission-replacement';
+} from '../writing-feedback/canvas/canvas-import-resolver';
+import { LiveCanvasReleaseService } from '../writing-feedback/release/live-canvas-release-service';
+import { REPLACEMENT_CONFLICTS, REPLACEMENT_ERRORS, SubmissionReplacementService } from '../writing-feedback/intake/submission-replacement';
 import type { CanvasReleaseService } from '../writing-feedback/contracts';
 import { canvasConfig, resolveUserKey } from '../lms/canvas-config';
 import { ensureCanvasIdentityVerified } from '../lms/canvas-identity-once';
 import { handleCanvasIdentityError } from '../lms/canvas-identity-response';
 import { canvas as canvasProvider } from '@ubc/ubc-genai-toolkit-lms-integration';
-import { anchoredCommentsInputSchema } from '../writing-feedback/anchored-comments';
-import { staffAssessmentDraftInputSchema, staffFinalAssessmentInputSchema } from '../writing-feedback/staff-final-assessment';
+import { anchoredCommentsInputSchema } from '../writing-feedback/review/anchored-comments';
+import { staffAssessmentDraftInputSchema, staffFinalAssessmentInputSchema } from '../writing-feedback/review/staff-final-assessment';
 import {
     approveRubricDraft,
     assertRetiredIdsNotReused,
@@ -53,29 +53,29 @@ import {
     requireCompleteRubricCells,
     rubricContentEquals,
     writingRubricDraftInputSchema
-} from '../writing-feedback/rubric-schema';
-import { requireCompleteSflProfile } from '../writing-feedback/sfl-analysis';
-import { listCriterionLibrary } from '../writing-feedback/criterion-library';
+} from '../writing-feedback/rubric/rubric-schema';
+import { requireCompleteSflProfile } from '../writing-feedback/language/sfl-analysis';
+import { listCriterionLibrary } from '../writing-feedback/rubric/criterion-library';
 import { isCourseStaff } from '../utils/course-staff';
-import { parseLens, rubricGridSource, selectRubric, storedGridSource } from '../writing-feedback/rubric-lens';
-import { seedRubricForLens } from '../writing-feedback/rubric-seed';
+import { parseLens, rubricGridSource, selectRubric, storedGridSource } from '../writing-feedback/rubric/rubric-lens';
+import { seedRubricForLens } from '../writing-feedback/rubric/rubric-seed';
 import {
     AssignmentTypeService,
     CHOOSE_TYPE_BEFORE_APPROVAL_MESSAGE,
     assignmentTypeErrorStatus,
     isAssignmentTypeChoice
-} from '../writing-feedback/assignment-type';
-import { mapCanvasRubric } from '../writing-feedback/canvas-rubric-mapping';
+} from '../writing-feedback/rubric/assignment-type';
+import { mapCanvasRubric } from '../writing-feedback/canvas/canvas-rubric-mapping';
 import {
     autofillMergeRules,
     gridSourceForStored,
     mergeAutofill,
     proposeRubricFromInstructions,
     type RubricGridSource
-} from '../writing-feedback/rubric-autofill';
+} from '../writing-feedback/rubric/rubric-autofill';
 import type { ImportedRubricShape, WritingFeedbackLens, WritingRubricDefinition } from '../writing-feedback/contracts';
 import { ModelSelectionService } from '../dashboard-setting/model-selection-service';
-import { RELEASE_REFUSAL_PREFIXES } from '../writing-feedback/release-refusals';
+import { RELEASE_REFUSAL_PREFIXES } from '../writing-feedback/release/release-refusals';
 import {
     RUBRIC_SOURCE_ERRORS,
     gradedGridState,
@@ -85,21 +85,21 @@ import {
     seedGrid,
     withGrid,
     type RubricSourceChoice
-} from '../writing-feedback/rubric-source-choice';
+} from '../writing-feedback/rubric/rubric-source-choice';
 import {
     convertExtractedRubric,
     extractRubricsFromMaterial,
     type ExtractedRubricRefusal
-} from '../writing-feedback/source-rubric-extraction';
-import { suggestScale } from '../writing-feedback/rubric-scale-presets';
+} from '../writing-feedback/sources/source-rubric-extraction';
+import { suggestScale } from '../writing-feedback/rubric/rubric-scale-presets';
 import {
     countProposedCells,
     proposeCellDescriptions,
     type ProposalContext,
     type ProposalTargets
-} from '../writing-feedback/rubric-cell-proposals';
+} from '../writing-feedback/rubric/rubric-cell-proposals';
 import type { RubricProvenanceUpdate } from '../db/mongo/writing-feedback-mongo';
-import { gradedLensFor } from '../writing-feedback/staff-final-assessment';
+import { gradedLensFor } from '../writing-feedback/review/staff-final-assessment';
 import {
     type AutofillSource,
     AUTOFILL_SOURCE_ERRORS,
@@ -107,14 +107,14 @@ import {
     composeAutofillMaterial,
     listAutofillSources,
     selectAutofillSources
-} from '../writing-feedback/autofill-sources';
+} from '../writing-feedback/sources/autofill-sources';
 import {
     MAX_SOURCE_MATERIALS,
     SOURCE_MATERIAL_ERRORS,
     editedSourceText,
     extractPastedSource,
     extractSourceFile
-} from '../writing-feedback/source-material-extraction';
+} from '../writing-feedback/sources/source-material-extraction';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });

@@ -11,6 +11,7 @@
  * @description: Guards the Writing Feedback attribute-check allowlists against the stored types.
  */
 
+import fs from 'fs';
 import path from 'path';
 import ts from 'typescript';
 import { walkObject, type FieldSpec } from '../schema-walker';
@@ -22,7 +23,11 @@ import {
     writingSubmissionSchema
 } from '../schemas';
 
-const CONTRACTS = path.join(__dirname, '..', '..', 'writing-feedback', 'contracts.ts');
+const CONTRACTS_DIR = path.join(__dirname, '..', '..', 'writing-feedback', 'contracts');
+const CONTRACT_FILES = fs
+    .readdirSync(CONTRACTS_DIR)
+    .filter((name) => name.endsWith('.ts'))
+    .map((name) => path.join(CONTRACTS_DIR, name));
 
 /** Fields stored beside a type's own, written through intersection types in the Mongo delegate. */
 const STORED_EXTRAS: Record<string, string[]> = {
@@ -30,22 +35,24 @@ const STORED_EXTRAS: Record<string, string[]> = {
 };
 
 let checker: ts.TypeChecker;
-let contracts: ts.SourceFile;
+let contracts: ts.SourceFile[];
 
 beforeAll(() => {
-    const program = ts.createProgram([CONTRACTS], { strict: true, noEmit: true });
+    const program = ts.createProgram(CONTRACT_FILES, { strict: true, noEmit: true });
     checker = program.getTypeChecker();
-    contracts = program.getSourceFile(CONTRACTS)!;
+    contracts = CONTRACT_FILES.map((file) => program.getSourceFile(file)!);
 });
 
 function storedFields(typeName: string): string[] {
     let fields: string[] | undefined;
-    ts.forEachChild(contracts, (node) => {
-        if (ts.isInterfaceDeclaration(node) && node.name.text === typeName) {
-            fields = checker.getPropertiesOfType(checker.getTypeAtLocation(node)).map((property) => property.name);
-        }
-    });
-    if (!fields) throw new Error(`${typeName} is not declared in contracts.ts`);
+    for (const file of contracts) {
+        ts.forEachChild(file, (node) => {
+            if (ts.isInterfaceDeclaration(node) && node.name.text === typeName) {
+                fields = checker.getPropertiesOfType(checker.getTypeAtLocation(node)).map((property) => property.name);
+            }
+        });
+    }
+    if (!fields) throw new Error(`${typeName} is not declared in writing-feedback/contracts/`);
     return [...fields, ...(STORED_EXTRAS[typeName] ?? [])];
 }
 

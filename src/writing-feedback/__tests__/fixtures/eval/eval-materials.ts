@@ -11,7 +11,7 @@
  */
 
 import type { PublishedTaggedChunk } from '../../../../rag/rag-app';
-import type { WritingFeedbackMaterialRetriever } from '../../../course-material-mentions';
+import type { WritingFeedbackMaterialRetriever } from '../../../materials/course-material-mentions';
 
 interface LectureNote {
     id: string;

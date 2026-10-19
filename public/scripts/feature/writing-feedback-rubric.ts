@@ -101,11 +101,11 @@ const FUNCTION_OPTIONS: Array<{ value: WfFunctionTag; label: string }> = [
 /* ------------------------------------------------------------------------- *
  * Default rubric mirror
  *
- * Mirrored from src/writing-feedback/default-rubric-profile.ts and
+ * Mirrored from src/writing-feedback/rubric/default-rubric-profile.ts and
  * lab-report-profile.ts, which the browser bundle cannot import: public/scripts/
  * never reaches into src/. Behaviour here is identical to the server data; the
  * two are kept in sync by the shared points/labels asserted in
- * src/writing-feedback/__tests__/default-rubric-profile.test.ts and
+ * src/writing-feedback/rubric/__tests__/default-rubric-profile.test.ts and
  * lab-report-profile.test.ts, and by this task's requirement that both were
  * edited together (Tasks 3, 4, and this one land in the same review).
  * ------------------------------------------------------------------------- */

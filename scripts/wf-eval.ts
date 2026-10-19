@@ -14,13 +14,13 @@
 import fs from 'fs';
 import path from 'path';
 import 'dotenv/config';
-import { RubricWritingFeedbackEngine } from '../src/writing-feedback/feedback-engine';
-import type { WritingFeedbackMaterialRetriever } from '../src/writing-feedback/course-material-mentions';
+import { RubricWritingFeedbackEngine } from '../src/writing-feedback/generation/feedback-engine';
+import type { WritingFeedbackMaterialRetriever } from '../src/writing-feedback/materials/course-material-mentions';
 import { EVAL_FIXTURES, buildEvalAssignment } from '../src/writing-feedback/__tests__/fixtures/eval/eval-fixtures';
 import { InMemoryMaterialRetriever } from '../src/writing-feedback/__tests__/fixtures/eval/eval-materials';
-import { runEvalChecks, type EvalRunOutput } from '../src/writing-feedback/eval-checks';
-import { knownTermsFor, LAB_REPORT_FAMILIAR_TERMS } from '../src/writing-feedback/plain-language';
-import { technicalKnownTerms, TechnicalWritingFeedbackEngine } from '../src/writing-feedback/technical-feedback-engine';
+import { runEvalChecks, type EvalRunOutput } from '../src/writing-feedback/eval/eval-checks';
+import { knownTermsFor, LAB_REPORT_FAMILIAR_TERMS } from '../src/writing-feedback/language/plain-language';
+import { technicalKnownTerms, TechnicalWritingFeedbackEngine } from '../src/writing-feedback/generation/technical-feedback-engine';
 import { buildLabEvalAssignment, LAB_EVAL_FIXTURES } from '../src/writing-feedback/__tests__/fixtures/eval/lab-eval-fixtures';
 
 function arg(name: string): string | undefined {
@@ -32,7 +32,7 @@ function arg(name: string): string | undefined {
 async function studentComments(result: Record<string, unknown>, verifiedText: string): Promise<EvalRunOutput['studentComments']> {
     try {
         // require, not import(): ts-node runs this file as CommonJS, where import() of a .ts path fails.
-        const gate = require('../src/writing-feedback/feedback-gate') as { studentFacingComments: <T extends { heldBack?: boolean }>(c: T[], holdBack: boolean) => T[] };
+        const gate = require('../src/writing-feedback/generation/feedback-gate') as { studentFacingComments: <T extends { heldBack?: boolean }>(c: T[], holdBack: boolean) => T[] };
         // Default hold-back: a whole-text problem holds the model's annotations back.
         const holdBack = result.gateDecision === 'global_revision';
         const criteria = (result.criteria as Array<{ evidence: Array<{ quote: string }> }>) ?? [];
@@ -105,7 +105,7 @@ async function main(): Promise<void> {
         }
     }
 
-    const versions = require('../src/writing-feedback/sfl-foundation') as Record<string, unknown>;
+    const versions = require('../src/writing-feedback/language/sfl-foundation') as Record<string, unknown>;
     const outDir = path.join(process.cwd(), 'eval-reports');
     fs.mkdirSync(outDir, { recursive: true });
     const file = path.join(outDir, `wf-eval-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
@@ -115,7 +115,7 @@ async function main(): Promise<void> {
             writer: versions.SFL_WRITER_PROMPT_VERSION,
             diagnosis: versions.TEXT_DIAGNOSIS_PROMPT_VERSION ?? null,
             relevance: versions.MATERIAL_RELEVANCE_PROMPT_VERSION ?? null,
-            technical: (require('../src/writing-feedback/technical-feedback-engine') as Record<string, unknown>).TECHNICAL_PROMPT_VERSION
+            technical: (require('../src/writing-feedback/generation/technical-feedback-engine') as Record<string, unknown>).TECHNICAL_PROMPT_VERSION
         },
         model: process.env.LLM_DEFAULT_MODEL,
         report

@@ -72,13 +72,13 @@ now. See the release contract.
 
 ## Reading order
 
-1. `src/writing-feedback/contracts.ts` — every type the feature moves around.
+1. `src/writing-feedback/contracts/index.ts` — every type the feature moves around.
 2. `documents/WRITING_FEEDBACK_CANVAS_RELEASE_CONTRACT.md` — the release state machine.
-3. `src/writing-feedback/writing-feedback-service.ts` — the orchestration: generation, review,
+3. `src/writing-feedback/service/writing-feedback-service.ts` — the orchestration: generation, review,
    approval, preview, queueing, and the worker entry point.
-4. `src/writing-feedback/live-canvas-release-service.ts` — the only code that writes to a real
+4. `src/writing-feedback/release/live-canvas-release-service.ts` — the only code that writes to a real
    Canvas course.
-5. `src/writing-feedback/canvas-import-service.ts` and `canvas-live-import-gateway.ts` — the
+5. `src/writing-feedback/canvas/canvas-import-service.ts` and `canvas-live-import-gateway.ts` — the
    read-only import path.
 6. `src/db/mongo/writing-feedback-mongo.ts` — persistence, indexes, and the compare-and-set
    transitions.

@@ -16,8 +16,8 @@
 
 import fs from 'fs';
 import path from 'path';
-import { extractSourceFile } from '../src/writing-feedback/source-material-extraction';
-import { convertExtractedRubric, extractRubricsFromMaterial } from '../src/writing-feedback/source-rubric-extraction';
+import { extractSourceFile } from '../src/writing-feedback/sources/source-material-extraction';
+import { convertExtractedRubric, extractRubricsFromMaterial } from '../src/writing-feedback/sources/source-rubric-extraction';
 import type { ImportedRubricShape } from '../src/writing-feedback/contracts';
 
 function describeGrid(shape: ImportedRubricShape): string[] {

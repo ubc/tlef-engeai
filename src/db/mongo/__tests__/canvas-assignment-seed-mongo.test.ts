@@ -13,7 +13,7 @@
 import type { Db } from 'mongodb';
 import { createCanvasWritingAssignment, saveCanvasAssignmentDetails } from '../writing-feedback-mongo';
 import type { MongoDalContext } from '../mongo-context';
-import type { ImportedRubricShape } from '../../../writing-feedback/rubric-seed';
+import type { ImportedRubricShape } from '../../../writing-feedback/rubric/rubric-seed';
 import type { WritingAssignment } from '../../../writing-feedback/contracts';
 
 function contextFor(): { ctx: MongoDalContext; inserted: () => WritingAssignment } {

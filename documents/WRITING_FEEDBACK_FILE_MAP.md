@@ -137,8 +137,8 @@ The files a first-time reviewer will struggle with, largest first:
 - `src/db/mongo/writing-feedback-mongo.ts` (1312 lines)
 - `public/scripts/feature/writing-feedback-shared.ts` (1144 lines)
 - `src/routes/route-writing-feedback.ts` (1043 lines)
-- `src/writing-feedback/writing-feedback-service.ts` (927 lines)
-- `src/writing-feedback/contracts.ts` (796 lines)
+- `src/writing-feedback/service/writing-feedback-service.ts` (927 lines)
+- `src/writing-feedback/contracts/index.ts` (796 lines)
 
 Splitting them is worthwhile but is not a prerequisite for review: this map plus the
 release contract is meant to make them navigable as they stand.

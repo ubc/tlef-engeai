@@ -45,7 +45,7 @@ import {
     replaceWritingSubmission,
     saveWritingRubricDraft
 } from '../writing-feedback-mongo';
-import { buildLabReportRubric } from '../../../writing-feedback/lab-report-profile';
+import { buildLabReportRubric } from '../../../writing-feedback/rubric/lab-report-profile';
 
 function contextWithCollections(collections: Record<string, unknown>): MongoDalContext {
     return {

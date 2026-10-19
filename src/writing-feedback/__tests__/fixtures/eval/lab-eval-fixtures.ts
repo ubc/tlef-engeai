@@ -11,9 +11,9 @@
  */
 
 import type { WritingAssignment } from '../../../contracts';
-import { buildDefaultWritingAssignment } from '../../../default-rubric-profile';
-import { buildLabReportRubric } from '../../../lab-report-profile';
-import { approveRubricDraft } from '../../../rubric-schema';
+import { buildDefaultWritingAssignment } from '../../../rubric/default-rubric-profile';
+import { buildLabReportRubric } from '../../../rubric/lab-report-profile';
+import { approveRubricDraft } from '../../../rubric/rubric-schema';
 import type { EvalFixture } from './eval-fixtures';
 
 const APPROVED_AT = new Date('2026-10-03T00:00:00.000Z');

@@ -41,14 +41,14 @@ jest.mock('../../middleware/async-handler', () => {
         (req: unknown, res: unknown, next: (error?: unknown) => void) => Promise.resolve(fn(req, res, next)).catch(next);
     return { asyncHandler: wrap, asyncHandlerWithAuth: wrap };
 });
-jest.mock('../../writing-feedback/rubric-autofill', () => ({
-    ...jest.requireActual('../../writing-feedback/rubric-autofill'),
+jest.mock('../../writing-feedback/rubric/rubric-autofill', () => ({
+    ...jest.requireActual('../../writing-feedback/rubric/rubric-autofill'),
     proposeRubricFromInstructions: (...args: unknown[]) => proposeRubricFromInstructions(...args)
 }));
 
 // Imported after the mocks so the router binds to them.
 import router from '../route-writing-feedback';
-import { buildDefaultWritingAssignment } from '../../writing-feedback/default-rubric-profile';
+import { buildDefaultWritingAssignment } from '../../writing-feedback/rubric/default-rubric-profile';
 import { buildStaffedWritingRubric } from '../../writing-feedback/__tests__/helpers/staffed-rubric';
 
 const ASSIGNMENT = '/api/courses/course-1/writing-feedback/assignments/assignment-1';

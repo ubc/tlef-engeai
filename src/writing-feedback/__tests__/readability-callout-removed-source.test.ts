@@ -16,11 +16,11 @@ describe('readability callout removed', () => {
     });
 
     it('is not written by either engine', () => {
-        expect(read('src', 'writing-feedback', 'feedback-engine.ts')).not.toContain('plainLanguageFlag');
-        expect(read('src', 'writing-feedback', 'technical-feedback-engine.ts')).not.toContain('plainLanguageFlag');
+        expect(read('src', 'writing-feedback', 'generation', 'feedback-engine.ts')).not.toContain('plainLanguageFlag');
+        expect(read('src', 'writing-feedback', 'generation', 'technical-feedback-engine.ts')).not.toContain('plainLanguageFlag');
     });
 
     it('keeps the lint for the eval harness', () => {
-        expect(read('src', 'writing-feedback', 'eval-checks.ts')).toContain('lintFeedbackProse');
+        expect(read('src', 'writing-feedback', 'eval', 'eval-checks.ts')).toContain('lintFeedbackProse');
     });
 });

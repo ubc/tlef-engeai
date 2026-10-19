@@ -24,10 +24,10 @@ actual quality.
 
 Three facts in the current pipeline combine to force this output:
 
-1. `LocalDocumentExtractionService.extract` (`src/writing-feedback/document-extraction-service.ts:47`)
+1. `LocalDocumentExtractionService.extract` (`src/writing-feedback/sources/document-extraction-service.ts:47`)
    returns `{ text, fileName }`. Font, spacing, margins, and page geometry do not
    exist anywhere downstream, for any lens.
-2. `buildFeedbackSchema` (`src/writing-feedback/feedback-schema.ts:107`) constrains
+2. `buildFeedbackSchema` (`src/writing-feedback/generation/feedback-schema.ts:107`) constrains
    the criteria array to `.length(criterionIds.length)` and its `superRefine`
    requires each approved criterion exactly once. `buildSummaryRedraftSchema`
    (`feedback-schema.ts:147`) does the same.
@@ -88,13 +88,13 @@ at generation time. It is less invasive downstream but writes a fabricated
 
 | File | Change |
 |---|---|
-| `src/writing-feedback/contracts.ts:108` | Add `assessedBy?: 'model' \| 'staff'` to `WritingRubricCriterion` with a TSDoc note that absent means `'model'` |
+| `src/writing-feedback/contracts/index.ts:108` | Add `assessedBy?: 'model' \| 'staff'` to `WritingRubricCriterion` with a TSDoc note that absent means `'model'` |
 | `public/scripts/feature/writing-feedback-shared.ts:93` | Mirror the same field on the frontend `RubricCriterion` (AGENTS.md requires both mirrors) |
 
 Add one helper, used everywhere rather than inlining the comparison:
 
 ```ts
-// src/writing-feedback/rubric-lens.ts (or a new criterion-assessment.ts)
+// src/writing-feedback/rubric/rubric-lens.ts (or a new criterion-assessment.ts)
 export function modelAssessedCriteria(rubric: WritingRubricDefinition): WritingRubricCriterion[];
 export function staffAssessedCriteria(rubric: WritingRubricDefinition): WritingRubricCriterion[];
 ```
@@ -160,7 +160,7 @@ resolves labels from the rubric and renders whatever criteria it is handed.
 |---|---|
 | `public/scripts/feature/writing-feedback-rubric.ts` | Per-row control on the criterion editor: "Who assesses this criterion? AI draft / Teaching team". Default AI draft |
 | `public/scripts/feature/writing-feedback-grid.ts` | Render the row's mode as a visible marker, so the grid shows at a glance which rows the model will skip |
-| `src/writing-feedback/rubric-schema.ts:89` | Accept `assessedBy: z.enum(['model','staff']).optional()` in the criterion schema |
+| `src/writing-feedback/rubric/rubric-schema.ts:89` | Accept `assessedBy: z.enum(['model','staff']).optional()` in the criterion schema |
 | `rubric-schema.ts:238` `requireCompleteRubricCells` | Add: refuse approval when no criterion is model-assessed, naming the reason |
 | `public/scripts/feature/writing-feedback-rubric-progress.ts:207` | `describeGrid` readiness copy should mention staff-assessed rows so the chip does not read as incomplete |
 
