@@ -127,3 +127,6 @@ output/
 .superpowers/
 
 eval-reports/
+
+# Agent planning artifacts (kept outside the repository)
+docs/superpowers/
