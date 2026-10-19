@@ -1222,7 +1222,7 @@ export function isLateSubmission(submission: Submission, assignment: Assignment 
 /**
  * runPredatesTextEdit - whether feedback was generated for text staff have since edited.
  *
- * Mirrors `runPredatesTextEdit` in src/writing-feedback/intake/transcript-edit.ts.
+ * Mirrors `runPredatesTextEdit` in src/writing-feedback/intake/transcript.ts.
  *
  * @param submission - Submission carrying the last text edit time
  * @param run - Feedback run to check; an absent run never predates anything

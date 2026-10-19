@@ -6,7 +6,7 @@
 
 import type { StaffReviewRevision, WritingFeedbackRun, WritingSubmission } from '../../contracts';
 import { anchoredCommentInputSchema, seedCommentsFromRun } from '../../review/anchored-comments';
-import { summaryEditsInputSchema } from '../../review/summary-edits';
+import { summaryEditsInputSchema } from '../../review/summary';
 import { latestHoldBackChoice } from '../writing-feedback-service';
 
 const text = 'Sound happens when an object vibrates. First, the object pushes the air.';

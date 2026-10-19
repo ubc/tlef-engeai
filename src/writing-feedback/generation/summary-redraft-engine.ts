@@ -21,7 +21,7 @@ import { modelAssessedCriteria } from '../rubric/criterion-assessment';
 import { stripNulls } from '../shared/strip-nulls';
 import { buildStudentReaderContract, knownTermsFor, LAB_REPORT_FAMILIAR_TERMS } from '../language/plain-language';
 import { PRIME_DIRECTIVE, technicalKnownTerms } from './technical-feedback-engine';
-import type { SummaryRedraftOutput } from '../review/summary-sources';
+import type { SummaryRedraftOutput } from '../review/summary';
 import type {
     AnchoredComment,
     WritingAssignment,

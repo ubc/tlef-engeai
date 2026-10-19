@@ -6,7 +6,7 @@
  * @description: Coverage for scale presets, their bands, and the suggestion rule.
  */
 
-import { parseScaleChoice, scaleBands, scaleLevels, suggestScale } from '../rubric-scale-presets';
+import { parseScaleChoice, scaleBands, scaleLevels, suggestScale } from '../rubric-presets';
 
 describe('scale presets', () => {
     it('gives each preset its levels, weakest first', () => {

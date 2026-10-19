@@ -3,7 +3,7 @@
  */
 
 import type { StaffReviewRevision } from '../../contracts';
-import { reviewsSinceTextEdit, runPredatesTextEdit } from '../transcript-edit';
+import { reviewsSinceTextEdit, runPredatesTextEdit } from '../transcript';
 
 const edited = new Date('2026-09-17T12:00:00.000Z');
 const review = (createdAt: string) => ({ id: createdAt, createdAt: new Date(createdAt) }) as unknown as StaffReviewRevision;

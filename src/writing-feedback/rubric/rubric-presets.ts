@@ -1,4 +1,17 @@
 /**
+ * Rubric presets — scale presets for rubrics without levels, and the optional criterion library
+ *
+ * @author: EngE-AI Team
+ * @date: 2026-10-19
+ * @version: 1.0.0
+ * @description: Scale presets and the suggestion rule; optional assignment-specific criterion templates.
+ */
+
+import type { WritingRubricCell, WritingRubricLevel, WritingRubricCriterion } from '../contracts';
+import { DEFAULT_WRITING_LEVELS } from './default-rubric-profile';
+import { spaceBandsEvenly } from './rubric-bands';
+
+/*
  * Rubric scale presets — the rating levels a rubric gets when its source states none
  *
  * Many instructors grade with weighted criteria or a checklist and never write rating levels.
@@ -6,16 +19,7 @@
  * data, never the model's: staff choose it, or a fixed rule suggests one. Bands are derived
  * from each criterion's points, evenly for the named scales and from the percentage ranges
  * for the UBC bands.
- *
- * @author: EngE-AI Team
- * @date: 2026-10-09
- * @version: 1.0.0
- * @description: Scale presets for rubrics without levels, and the rule that suggests one.
  */
-
-import type { WritingRubricCell, WritingRubricLevel } from '../contracts';
-import { DEFAULT_WRITING_LEVELS } from './default-rubric-profile';
-import { spaceBandsEvenly } from './rubric-bands';
 
 /** A named scale. `suggested` asks the fixed rule to pick one. */
 export type ScalePresetId = 'four_level' | 'three_level_met' | 'ubc_percent_bands';
@@ -116,4 +120,43 @@ export function parseScaleChoice(value: unknown): ScaleChoice {
     if (value === undefined || value === null || value === '') return 'suggested';
     if (typeof value === 'string' && (SCALE_CHOICES as readonly string[]).includes(value)) return value as ScaleChoice;
     throw new Error('scale must be suggested, four_level, three_level_met, or ubc_percent_bands');
+}
+
+/*
+ * Writing Feedback criterion library — optional assignment-specific rubric rows
+ *
+ * Provides neutral, data-only criterion templates that instructors may add to
+ * a rubric draft. Nothing in this module silently scores or activates a criterion.
+ */
+
+/** Optional rubric criteria returned as fresh copies to prevent shared mutation. */
+export const WRITING_CRITERION_LIBRARY: ReadonlyArray<WritingRubricCriterion> = [
+    {
+        id: 'task_constraints',
+        label: 'Task Constraints',
+        description: 'How completely the submission follows the assignment’s explicit format and scope requirements.'
+    },
+    {
+        id: 'sources_referencing',
+        label: 'Sources and Referencing',
+        description: 'How effectively sources are attributed and the required citation or reference conventions are followed.',
+        functionTag: 'organizational',
+        sflDimension: 'Citation practice, attribution, reference-list structure, and source integration.'
+    },
+    {
+        id: 'genre_staging',
+        label: 'Genre Staging',
+        description: 'How effectively the writing includes and orders the stages expected for this assignment.',
+        functionTag: 'organizational',
+        sflDimension: 'Assignment-specific stage presence, ordering, optionality, and repetition.'
+    }
+];
+
+/**
+ * listCriterionLibrary - returns detached optional criterion templates.
+ *
+ * @returns Fresh criterion objects safe for an editor to modify
+ */
+export function listCriterionLibrary(): WritingRubricCriterion[] {
+    return WRITING_CRITERION_LIBRARY.map((criterion) => ({ ...criterion }));
 }

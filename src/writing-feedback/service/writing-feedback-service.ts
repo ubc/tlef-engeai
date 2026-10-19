@@ -35,7 +35,14 @@ import type {
 } from '../contracts';
 import { RELEASE_LOCK_TTL_MS } from '../contracts';
 import { computeReleaseFingerprint } from '../release/canvas-release-service';
-import { seedCommentsFromRun, stampCommentAuthors, validateAnchoredComments, withStaleFlags, type AnchoredCommentWithState } from '../review/anchored-comments';
+import {
+    seedCommentsFromRun,
+    stampCommentAuthors,
+    validateAnchoredComments,
+    withStaleFlags,
+    type AnchoredCommentWithState,
+    fingerprintAnnotations
+} from '../review/anchored-comments';
 import { NO_REVISION_GOALS_MESSAGE, RubricWritingFeedbackEngine } from '../generation/feedback-engine';
 import { TEXT_DIAGNOSIS_FAILED_MESSAGE } from '../generation/text-diagnosis';
 import { hasWholeTextProblem, resolveHoldBack, studentFacingComments } from '../generation/feedback-gate';
@@ -57,24 +64,21 @@ import {
     MAX_SUBMISSION_RELEASES,
     countCompletedReleases,
     nextReleaseRevision,
-    releaseCapMessage
-} from '../release/release-cap';
+    releaseCapMessage,
+    toSanitizedReleaseError
+} from '../release/release-refusals';
 import { SanitizedJobError } from '../jobs/job-runner';
-import { toSanitizedReleaseError } from '../release/release-refusals';
 import { resolveQueuedReleaseService } from '../release/queued-release-service';
 import {
     TEXT_EDITED_MESSAGE,
     TRANSCRIPT_EDITABLE_STATUSES,
     reviewsSinceTextEdit,
     runPredatesTextEdit
-} from '../intake/transcript-edit';
+} from '../intake/transcript';
 import { requireCompleteSflProfile } from '../language/sfl-analysis';
 import { appLogger } from '../../utils/logger';
-import { fingerprintAnnotations } from '../review/annotation-fingerprint';
-import { assertSummaryEditsBound } from '../review/summary-edits';
-import { assertStaffCriteriaWritten } from '../rubric/criterion-assessment';
-import { LlmSummaryRedraftEngine, SUMMARY_REDRAFT_FAILED_MESSAGE, type SummaryRedraftEngine } from '../generation/summary-redraft-engine';
 import {
+    assertSummaryEditsBound,
     applySummaryToResult,
     bindingStudentFeedback,
     bindingSummaryEdit,
@@ -82,7 +86,13 @@ import {
     commentsForLens,
     resolveLensComments,
     rubricForRun
-} from '../review/summary-sources';
+} from '../review/summary';
+import { assertStaffCriteriaWritten } from '../rubric/criterion-assessment';
+import {
+    LlmSummaryRedraftEngine,
+    SUMMARY_REDRAFT_FAILED_MESSAGE,
+    type SummaryRedraftEngine
+} from '../generation/summary-redraft-engine';
 
 /**
  * Fixed, developer-authored error strings this codebase throws for known validation

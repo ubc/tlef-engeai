@@ -23,7 +23,7 @@ import { isMockResponse } from '../../helpers/mock-response';
 import { CANVAS_IMPORT_PLACEHOLDERS, slugify, uniqueSlug } from '../canvas/canvas-rubric-mapping';
 import { defaultFormattingCriteriaToStaff } from '../rubric/criterion-assessment';
 import { spaceBandsEvenly } from '../rubric/rubric-bands';
-import { scaleBands, scaleLevels, SCALE_NAMES, type ScalePresetId } from '../rubric/rubric-scale-presets';
+import { scaleBands, scaleLevels, SCALE_NAMES, type ScalePresetId } from '../rubric/rubric-presets';
 import { MAX_CELL_DESCRIPTOR, MAX_CRITERION_DESCRIPTION } from '../rubric/rubric-schema';
 import { stripNulls, type WithoutNull } from '../shared/strip-nulls';
 import type { ImportedRubricShape, WritingRubricCell, WritingRubricCriterion, WritingRubricLevel } from '../contracts';

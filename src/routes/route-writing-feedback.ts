@@ -25,10 +25,17 @@ import {
     WritingFeedbackService
 } from '../writing-feedback/service/writing-feedback-service';
 import { BATCH_ERRORS, WritingBatchGenerationService } from '../writing-feedback/generation/batch-generation';
-import { summaryEditsInputSchema } from '../writing-feedback/review/summary-edits';
+import { summaryEditsInputSchema } from '../writing-feedback/review/summary';
 import { SUMMARY_REDRAFT_FAILED_MESSAGE } from '../writing-feedback/generation/summary-redraft-engine';
 import { MockCanvasGateway, SafeCanvasReleaseService } from '../writing-feedback/release/canvas-release-service';
-import type { CanvasRubricRow, WritingSourceType } from '../writing-feedback/contracts';
+import type {
+    CanvasRubricRow,
+    WritingSourceType,
+    CanvasReleaseService,
+    ImportedRubricShape,
+    WritingFeedbackLens,
+    WritingRubricDefinition
+} from '../writing-feedback/contracts';
 import { SafeCanvasImportService } from '../writing-feedback/canvas/canvas-import-service';
 import {
     isLiveCanvasCourse,
@@ -37,14 +44,21 @@ import {
     resolveCanvasImportStatus
 } from '../writing-feedback/canvas/canvas-import-resolver';
 import { LiveCanvasReleaseService } from '../writing-feedback/release/live-canvas-release-service';
-import { REPLACEMENT_CONFLICTS, REPLACEMENT_ERRORS, SubmissionReplacementService } from '../writing-feedback/intake/submission-replacement';
-import type { CanvasReleaseService } from '../writing-feedback/contracts';
+import {
+    REPLACEMENT_CONFLICTS,
+    REPLACEMENT_ERRORS,
+    SubmissionReplacementService
+} from '../writing-feedback/intake/submission-replacement';
 import { canvasConfig, resolveUserKey } from '../lms/canvas-config';
 import { ensureCanvasIdentityVerified } from '../lms/canvas-identity-once';
 import { handleCanvasIdentityError } from '../lms/canvas-identity-response';
 import { canvas as canvasProvider } from '@ubc/ubc-genai-toolkit-lms-integration';
 import { anchoredCommentsInputSchema } from '../writing-feedback/review/anchored-comments';
-import { staffAssessmentDraftInputSchema, staffFinalAssessmentInputSchema } from '../writing-feedback/review/staff-final-assessment';
+import {
+    staffAssessmentDraftInputSchema,
+    staffFinalAssessmentInputSchema,
+    gradedLensFor
+} from '../writing-feedback/review/staff-final-assessment';
 import {
     approveRubricDraft,
     assertRetiredIdsNotReused,
@@ -55,7 +69,7 @@ import {
     writingRubricDraftInputSchema
 } from '../writing-feedback/rubric/rubric-schema';
 import { requireCompleteSflProfile } from '../writing-feedback/language/sfl-analysis';
-import { listCriterionLibrary } from '../writing-feedback/rubric/criterion-library';
+import { listCriterionLibrary, suggestScale } from '../writing-feedback/rubric/rubric-presets';
 import { isCourseStaff } from '../utils/course-staff';
 import { parseLens, rubricGridSource, selectRubric, storedGridSource } from '../writing-feedback/rubric/rubric-lens';
 import { seedRubricForLens } from '../writing-feedback/rubric/rubric-seed';
@@ -73,7 +87,6 @@ import {
     proposeRubricFromInstructions,
     type RubricGridSource
 } from '../writing-feedback/rubric/rubric-autofill';
-import type { ImportedRubricShape, WritingFeedbackLens, WritingRubricDefinition } from '../writing-feedback/contracts';
 import { ModelSelectionService } from '../dashboard-setting/model-selection-service';
 import { RELEASE_REFUSAL_PREFIXES } from '../writing-feedback/release/release-refusals';
 import {
@@ -91,7 +104,6 @@ import {
     extractRubricsFromMaterial,
     type ExtractedRubricRefusal
 } from '../writing-feedback/sources/source-rubric-extraction';
-import { suggestScale } from '../writing-feedback/rubric/rubric-scale-presets';
 import {
     countProposedCells,
     proposeCellDescriptions,
@@ -99,7 +111,6 @@ import {
     type ProposalTargets
 } from '../writing-feedback/rubric/rubric-cell-proposals';
 import type { RubricProvenanceUpdate } from '../db/mongo/writing-feedback-mongo';
-import { gradedLensFor } from '../writing-feedback/review/staff-final-assessment';
 import {
     type AutofillSource,
     AUTOFILL_SOURCE_ERRORS,

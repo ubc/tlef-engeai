@@ -24,7 +24,7 @@ import type {
 } from '../contracts';
 import { selectRubric } from '../rubric/rubric-lens';
 import { requireCompleteSflProfile } from '../language/sfl-analysis';
-import { assessExtractedTranscript } from '../intake/transcript-quality';
+import { assessExtractedTranscript } from '../intake/transcript';
 import { appLogger } from '../../utils/logger';
 
 /** Persistence batch generation needs; implemented by `EngEAI_MongoDB`. */

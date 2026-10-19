@@ -12,7 +12,7 @@
 
 import { buildDefaultWritingAssignment } from '../../rubric/default-rubric-profile';
 import { approveRubricDraft } from '../../rubric/rubric-schema';
-import { MAX_SUBMISSION_RELEASES } from '../release-cap';
+import { MAX_SUBMISSION_RELEASES } from '../release-refusals';
 import { SanitizedJobError } from '../../jobs/job-runner';
 import { computeReleaseFingerprint } from '../canvas-release-service';
 import type {

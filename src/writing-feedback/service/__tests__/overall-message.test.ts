@@ -4,7 +4,7 @@
  * annotations the student sees follow the hold-back default or the staff choice.
  */
 import type { AnchoredComment, StaffReviewRevision, WritingFeedbackRun } from '../../contracts';
-import { summaryEditsInputSchema } from '../../review/summary-edits';
+import { summaryEditsInputSchema } from '../../review/summary';
 import { resolveStudentView } from '../writing-feedback-service';
 
 function run(gateDecision: 'standard' | 'global_revision', overallMessage?: string): WritingFeedbackRun {

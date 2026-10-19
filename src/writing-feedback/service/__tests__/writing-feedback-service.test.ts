@@ -24,7 +24,7 @@ import type {
 } from '../../contracts';
 import { WritingFeedbackService } from '../writing-feedback-service';
 import type { EngEAI_MongoDB } from '../../../db/enge-ai-mongodb';
-import { fingerprintAnnotations } from '../../review/annotation-fingerprint';
+import { fingerprintAnnotations } from '../../review/anchored-comments';
 
 const result: WritingFeedbackResult = {
     criteria: [],

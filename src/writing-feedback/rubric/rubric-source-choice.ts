@@ -24,7 +24,7 @@ import { rubricGridSource, selectRubric, storedGridSource, type StoredGridSource
 import { seedRubricForLens } from './rubric-seed';
 import { gradedLensFor } from '../review/staff-final-assessment';
 import { rubricContentEquals } from './rubric-schema';
-import { parseScaleChoice, type ScaleChoice } from './rubric-scale-presets';
+import { parseScaleChoice, type ScaleChoice } from './rubric-presets';
 
 /**
  * Where a fill should take the graded grid from. `keep` leaves the grid as it is; `{ sourceId }`

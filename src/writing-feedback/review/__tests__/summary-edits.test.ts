@@ -1,4 +1,4 @@
-import { SUMMARY_CHANGED_MESSAGE, assertSummaryEditsBound, summaryEditsInputSchema } from '../summary-edits';
+import { SUMMARY_CHANGED_MESSAGE, assertSummaryEditsBound, summaryEditsInputSchema } from '../summary';
 import type { WritingAssignment, WritingFeedbackRun } from '../../contracts';
 
 const runFor = (id: string, lens: 'linguistic' | 'technical') => ({

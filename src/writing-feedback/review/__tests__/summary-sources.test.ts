@@ -5,7 +5,7 @@ import {
     buildRedraftRun,
     evidenceFromComments,
     resolveLensComments
-} from '../summary-sources';
+} from '../summary';
 import type {
     AnchoredComment,
     StaffReviewRevision,

@@ -9,7 +9,7 @@
  * @description: Coverage for the single-release cap and the revision number it assigns.
  */
 
-import { MAX_SUBMISSION_RELEASES, nextReleaseRevision } from '../release-cap';
+import { MAX_SUBMISSION_RELEASES, nextReleaseRevision } from '../release-refusals';
 import type { WritingRelease } from '../../contracts';
 
 function release(status: WritingRelease['status']): WritingRelease {
