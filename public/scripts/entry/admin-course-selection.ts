@@ -18,6 +18,7 @@ import {
 import { authService } from '../services/auth-service.js';
 import { startInactivityTracking } from '../services/inactivity-tracker.js';
 import { initCanvasConnect, openCanvasConnectModal } from './canvas-connect.js';
+import { currentAcademicPeriodId } from '../utils/current-academic-period.js';
 import { AdminGuidedPathwayFlagsController } from '../feature/admin-guided-pathway-flags.js';
 
 type AdminCourseRow = Omit<activeCourse, 'instructors'> & {
@@ -38,6 +39,8 @@ interface AdminCourseSelectionPayload {
 }
 
 let currentGlobalUser: GlobalUser | null = null;
+/** Periods the admin opened or closed by hand, kept across re-renders after edits. */
+const periodExpandedByUser = new Map<string, boolean>();
 let pageData: AdminCourseSelectionPayload | null = null;
 let notificationButtonBound = false;
 let escalationsPanelOpen = false;
@@ -218,16 +221,18 @@ function renderPeriodSections(): void {
         return;
     }
 
+    // Open only the period running today; with none running, every period starts closed
+    const openPeriodId = currentAcademicPeriodId(pageData.periods);
     container.innerHTML = pageData.periods
-        .map((period) => renderPeriodSection(period))
+        .map((period) => renderPeriodSection(period, openPeriodId))
         .join('');
 
     attachPeriodListeners();
     replaceFeather();
 }
 
-function renderPeriodSection(period: AdminPeriodSection): string {
-    const collapsed = false;
+function renderPeriodSection(period: AdminPeriodSection, openPeriodId: string | null): string {
+    const collapsed = !(periodExpandedByUser.get(period.id) ?? period.id === openPeriodId);
     const courseRows = period.courses
         .map((course) => renderCourseRow(course, period.id))
         .join('');
@@ -250,7 +255,7 @@ function renderPeriodSection(period: AdminPeriodSection): string {
                     <span class="period-menu-mount" data-period-id="${period.id}"></span>
                 </div>
             </header>
-            <div class="period-course-list-wrap" data-period-id="${period.id}">
+            <div class="period-course-list-wrap${collapsed ? ' is-collapsed' : ''}" data-period-id="${period.id}">
                 <div class="period-course-list-inner">
                     <div class="course-workspace-list period-course-list" data-period-id="${period.id}">
                         ${courseRows || '<p class="period-empty">No courses in this period.</p>'}
@@ -298,6 +303,7 @@ function attachPeriodListeners(): void {
             const nextExpanded = !expanded;
             btn.setAttribute('aria-expanded', String(nextExpanded));
             wrap?.classList.toggle('is-collapsed', !nextExpanded);
+            if (periodId) periodExpandedByUser.set(periodId, nextExpanded);
         });
     });
 
