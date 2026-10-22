@@ -8,8 +8,8 @@
 
 import { ADDED_RATING_DESCRIPTION, newRatingLevel } from '../writing-feedback-grid';
 import type { RubricLevel } from '../writing-feedback-shared';
-import { writingRubricDraftInputSchema } from '../../../../src/writing-feedback/rubric-schema';
-import { buildLabReportRubric } from '../../../../src/writing-feedback/lab-report-profile';
+import { writingRubricDraftInputSchema } from '../../../../src/writing-feedback/rubric/rubric-schema';
+import { buildLabReportRubric } from '../../../../src/writing-feedback/rubric/lab-report-profile';
 
 const ORDINAL: RubricLevel[] = [
     { id: 'poor', label: 'Poor', description: 'd', rank: 1 },

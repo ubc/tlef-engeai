@@ -50,17 +50,17 @@ export const RUBRIC_SLUG = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
 const MAX_SLUG_LENGTH = 64;
 const MAX_CRITERION_LABEL = 80;
 const MAX_LEVEL_LABEL = 60;
-// Mirrors MAX_CELL_DESCRIPTOR and MAX_CRITERION_DESCRIPTION in src/writing-feedback/rubric-schema.ts.
+// Mirrors MAX_CELL_DESCRIPTOR and MAX_CRITERION_DESCRIPTION in src/writing-feedback/rubric/rubric-schema.ts.
 const MAX_DESCRIPTOR = 800;
 const MAX_TEXT = 2000;
 
 /* ------------------------------------------------------------------------- *
  * Band arithmetic
  *
- * Mirrored from src/writing-feedback/rubric-bands.ts, which the browser bundle
+ * Mirrored from src/writing-feedback/rubric/rubric-bands.ts, which the browser bundle
  * cannot import: public/scripts/ never reaches into src/. Behaviour here is
  * identical, the same way public/scripts/types.ts mirrors src/types/shared.ts.
- * Change one and change the other; src/writing-feedback/__tests__/rubric-bands.test.ts
+ * Change one and change the other; src/writing-feedback/rubric/__tests__/rubric-bands.test.ts
  * pins the behaviour both copies must have.
  * ------------------------------------------------------------------------- */
 

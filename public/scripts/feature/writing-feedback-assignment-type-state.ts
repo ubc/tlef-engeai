@@ -13,7 +13,7 @@ export type AssignmentTypeChoice = 'writing' | 'lab_report';
 export const ASSIGNMENT_TYPE_QUESTION = 'What kind of assignment is this?';
 export const WRITING_ASSIGNMENT_LABEL = 'Writing assignment';
 export const LAB_REPORT_ASSIGNMENT_LABEL = 'Lab report assignment';
-/** Server refusal when another request answered first; mirrors `src/writing-feedback/assignment-type.ts`. */
+/** Server refusal when another request answered first; mirrors `src/writing-feedback/rubric/assignment-type.ts`. */
 export const TYPE_ALREADY_CHOSEN_MESSAGE = 'The assignment type has already been chosen';
 
 export const PROCEED_TO_RUBRIC_TITLE = 'Next: approve the rubric';

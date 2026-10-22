@@ -1,7 +1,7 @@
 /**
  * Annotation fingerprint — detects whether a lens's annotations changed since a summary draft
  *
- * Browser mirror of `src/writing-feedback/annotation-fingerprint.ts`, pinned by
+ * Browser mirror of `src/writing-feedback/review/anchored-comments.ts`, pinned by
  * `annotation-fingerprint-parity.test.ts`. A change detector, not a security hash: ids,
  * authors, origin and tags are excluded so reseeding with new ids never reads as a change.
  *

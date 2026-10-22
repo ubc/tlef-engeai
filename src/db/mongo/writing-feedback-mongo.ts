@@ -34,10 +34,10 @@ import type {
     WritingSubmissionStatus
 } from '../../writing-feedback/contracts';
 import { RELEASE_LOCK_TTL_MS } from '../../writing-feedback/contracts';
-import { buildDefaultWritingAssignment } from '../../writing-feedback/default-rubric-profile';
-import { seedRubricForLens, type LabReportRouting } from '../../writing-feedback/rubric-seed';
-import type { ImportedRubricShape } from '../../writing-feedback/rubric-seed';
-import { rubricFieldPaths } from '../../writing-feedback/rubric-lens';
+import { buildDefaultWritingAssignment } from '../../writing-feedback/rubric/default-rubric-profile';
+import { seedRubricForLens, type LabReportRouting } from '../../writing-feedback/rubric/rubric-seed';
+import type { ImportedRubricShape } from '../../writing-feedback/rubric/rubric-seed';
+import { rubricFieldPaths } from '../../writing-feedback/rubric/rubric-lens';
 
 const ASSIGNMENTS = 'writing-assignments';
 const SUBMISSIONS = 'writing-submissions';

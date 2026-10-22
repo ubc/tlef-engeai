@@ -7,9 +7,9 @@
  * @description: Singleton MongoDB access layer for EngE-AI — façade delegates into `mongo/` (`./mongo/course-mongo`, `./mongo/flag-mongo`, `./mongo/chat-mongo`, …).
  */
 
-import type { ImportedRubricShape } from '../writing-feedback/rubric-seed';
+import type { ImportedRubricShape } from '../writing-feedback/rubric/rubric-seed';
 import type { CanvasRubricIdMap, CanvasRubricRefusal } from '../writing-feedback/contracts';
-import type { LabReportRouting } from '../writing-feedback/rubric-seed';
+import type { LabReportRouting } from '../writing-feedback/rubric/rubric-seed';
 import { MongoClient, Db } from 'mongodb';
 import * as dotenv from 'dotenv';
 import {

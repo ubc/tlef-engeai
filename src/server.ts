@@ -10,7 +10,7 @@ import ragAppRoutes from './routes/route-rag';
 import mongodbRoutes from './routes/route-mongo';
 // @rdschrs: Implemented the Writing Feedback API router mount.
 import writingFeedbackRoutes from './routes/route-writing-feedback';
-import { startWritingFeedbackWorker } from './writing-feedback/worker';
+import { startWritingFeedbackWorker } from './writing-feedback/jobs/worker';
 import healthRoutes from './routes/route-health';
 import versionRoutes from './routes/route-version';
 import onboardingRoutes from './routes/route-onboarding';

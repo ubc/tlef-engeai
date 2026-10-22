@@ -23,13 +23,13 @@ The risks that remain are mostly production lifecycle risks rather than simple m
 
 Evidence:
 
-- `WritingSubmissionStatus` has no release-pending/in-progress state; it moves directly through `approved` and `released` (`src/writing-feedback/contracts.ts:25`).
-- Staff edits are blocked only after `submission.status === 'released'`; an approved submission with a queued or leased release is still editable (`src/writing-feedback/writing-feedback-service.ts:392`).
+- `WritingSubmissionStatus` has no release-pending/in-progress state; it moves directly through `approved` and `released` (`src/writing-feedback/contracts/index.ts:25`).
+- Staff edits are blocked only after `submission.status === 'released'`; an approved submission with a queued or leased release is still editable (`appendReview` in `src/writing-feedback/service/writing-feedback-service.ts`).
 - Saving any review revision appends the review and resets the submission to `draft_ready` unconditionally (`src/db/mongo/writing-feedback-mongo.ts:941`).
-- `enqueueRelease` performs `findActiveWritingJob` and then `enqueueWritingJob` as separate calls, with no unique active-job index (`src/writing-feedback/writing-feedback-service.ts:582`, `src/db/mongo/writing-feedback-mongo.ts:1077`, `src/db/mongo/writing-feedback-mongo.ts:1096`).
+- `enqueueRelease` performs `findActiveWritingJob` and then `enqueueWritingJob` as separate calls, with no unique active-job index (`enqueueRelease` in `src/writing-feedback/release/release-workflow.ts`, `src/db/mongo/writing-feedback-mongo.ts:1077`, `src/db/mongo/writing-feedback-mongo.ts:1096`).
 - The releases collection has a unique `payloadFingerprint`, but no active-release lock by submission (`src/db/mongo/writing-feedback-mongo.ts:163`).
 - `finalizeWritingRelease` updates by fingerprint without an expected-current-status predicate (`src/db/mongo/writing-feedback-mongo.ts:1047`).
-- After Canvas reports success, the service sets submission status to `released` with no expected-status predicate (`src/writing-feedback/writing-feedback-service.ts:714`, `src/db/mongo/writing-feedback-mongo.ts:742`).
+- After Canvas reports success, the service sets submission status to `released` with no expected-status predicate (`releaseToCanvas` in `src/writing-feedback/release/release-workflow.ts`, `src/db/mongo/writing-feedback-mongo.ts:742`).
 
 Why this matters:
 
@@ -48,10 +48,10 @@ Recommended fix:
 
 Evidence:
 
-- Live preview persists release records with `integration: 'canvas'` (`src/writing-feedback/live-canvas-release-service.ts:206`).
-- The worker reloads the latest release, but passes only `courseId` and `queuedByUserId` to the resolver (`src/writing-feedback/writing-feedback-service.ts:615`, `src/writing-feedback/writing-feedback-service.ts:625`).
-- `resolveQueuedReleaseService` returns a mock Canvas release service whenever it cannot resolve a Canvas course id (`src/writing-feedback/queued-release-service.ts:48`).
-- The mock release service can finalize a release with synthetic Canvas ids (`src/writing-feedback/canvas-release-service.ts:144`).
+- Live preview persists release records with `integration: 'canvas'` (`src/writing-feedback/release/live-canvas-release-service.ts:206`).
+- The worker reloads the latest release, but passes only `courseId` and `queuedByUserId` to the resolver (`runQueuedRelease` in `src/writing-feedback/release/release-workflow.ts`).
+- `resolveQueuedReleaseService` returns a mock Canvas release service whenever it cannot resolve a Canvas course id (`src/writing-feedback/release/queued-release-service.ts:48`).
+- The mock release service can finalize a release with synthetic Canvas ids (`src/writing-feedback/release/canvas-release-service.ts:144`).
 
 Why this matters:
 
@@ -69,9 +69,9 @@ Recommended fix:
 Evidence:
 
 - The Canvas toolkit throws `CanvasApiError` for any non-OK HTTP response (`node_modules/@ubc/ubc-genai-toolkit-lms-integration/dist/providers/canvas/api-client.js:235`).
-- Feedback comment `PUT` treats every `CanvasApiError` as a definite failure rather than `reconciliation_required` (`src/writing-feedback/live-canvas-release-service.ts:288`).
-- Rubric assessment `PUT` does the same (`src/writing-feedback/live-canvas-release-service.ts:339`).
-- Grade `POST` treats `CanvasApiError` as definite failure instead of uncertain (`src/writing-feedback/live-canvas-release-service.ts:380`).
+- Feedback comment `PUT` treats every `CanvasApiError` as a definite failure rather than `reconciliation_required` (`src/writing-feedback/release/live-canvas-release-service.ts:288`).
+- Rubric assessment `PUT` does the same (`src/writing-feedback/release/live-canvas-release-service.ts:339`).
+- Grade `POST` treats `CanvasApiError` as definite failure instead of uncertain (`src/writing-feedback/release/live-canvas-release-service.ts:380`).
 - Canvas's own docs describe submission grade/comment updates as side-effecting APIs, and bulk grade updates return an asynchronous Progress object rather than immediate finality.
 
 Why this matters:
@@ -93,9 +93,9 @@ Evidence:
 
 - Decision D-080 says lab reports release two PDFs and the two analyses are not merged (`project-memory/01 Project Memory/Decisions.md:102`).
 - `WRITING_FEEDBACK_ARCHITECTURE.md` says writing and technical PDFs are separate, and release attaches both PDFs in one comment (`documents/WRITING_FEEDBACK_ARCHITECTURE.md:106`, `documents/WRITING_FEEDBACK_ARCHITECTURE.md:109`).
-- The live adapter supports one writing PDF plus at most one technical PDF (`src/writing-feedback/live-canvas-release-service.ts:65`).
-- Its tests build a two-artifact release input (`src/writing-feedback/__tests__/live-canvas-release-service.test.ts:51`).
-- `WritingFeedbackService.previewRelease` and `release` currently render one combined `writing-feedback-complete.pdf` with `include: 'both'` and put only that writing artifact into the release input (`src/writing-feedback/writing-feedback-service.ts:521`, `src/writing-feedback/writing-feedback-service.ts:537`, `src/writing-feedback/writing-feedback-service.ts:680`, `src/writing-feedback/writing-feedback-service.ts:696`).
+- The live adapter supports one writing PDF plus at most one technical PDF (`src/writing-feedback/release/live-canvas-release-service.ts:65`).
+- Its tests build a two-artifact release input (`src/writing-feedback/release/__tests__/live-canvas-release-service.test.ts:51`).
+- `WritingFeedbackService.previewRelease` and `release` currently render one combined `writing-feedback-complete.pdf` with `include: 'both'` and put only that writing artifact into the release input (`previewRelease` and `release` in `src/writing-feedback/release/release-workflow.ts`).
 
 Why this matters:
 
@@ -112,9 +112,9 @@ Recommended fix:
 
 Evidence:
 
-- The live release preview stores prepared PDF bytes and preflight state in a module-level `Map` with a 30-minute TTL (`src/writing-feedback/live-canvas-release-service.ts:26`, `src/writing-feedback/live-canvas-release-service.ts:46`, `src/writing-feedback/live-canvas-release-service.ts:190`).
-- The worker is started in-process at server startup (`src/writing-feedback/worker.ts:1`, `src/server.ts:340`).
-- The queued worker requires the prepared preview entry to still be present before it can attach feedback (`src/writing-feedback/live-canvas-release-service.ts:234`).
+- The live release preview stores prepared PDF bytes and preflight state in a module-level `Map` with a 30-minute TTL (`src/writing-feedback/release/live-canvas-release-service.ts:26`, `src/writing-feedback/release/live-canvas-release-service.ts:46`, `src/writing-feedback/release/live-canvas-release-service.ts:190`).
+- The worker is started in-process at server startup (`src/writing-feedback/jobs/worker.ts:1`, `src/server.ts:340`).
+- The queued worker requires the prepared preview entry to still be present before it can attach feedback (`src/writing-feedback/release/live-canvas-release-service.ts:234`).
 
 Why this matters:
 
@@ -130,8 +130,8 @@ Recommended fix:
 
 Evidence:
 
-- `enqueueRelease` checks that some latest release exists, but does not recompute the current release fingerprint and compare it with the latest preview (`src/writing-feedback/writing-feedback-service.ts:585`).
-- Live release later requires an exact fingerprint and throws if that exact preview is missing (`src/writing-feedback/live-canvas-release-service.ts:220`).
+- `enqueueRelease` checks that some latest release exists, but does not recompute the current release fingerprint and compare it with the latest preview (`enqueueRelease` in `src/writing-feedback/release/release-workflow.ts`).
+- Live release later requires an exact fingerprint and throws if that exact preview is missing (`src/writing-feedback/release/live-canvas-release-service.ts:220`).
 
 Why this matters:
 
@@ -148,7 +148,7 @@ Recommended fix:
 Evidence:
 
 - The toolkit provides `downloadSubmissionAttachment`, which resolves the attachment through course, assignment, user, and attachment ids before downloading (`node_modules/@ubc/ubc-genai-toolkit-lms-integration/dist/providers/canvas/resources/submissions.d.ts:88`).
-- The current live import gateway downloads `attachment.url` directly (`src/writing-feedback/canvas-live-import-gateway.ts:421`).
+- The current live import gateway downloads `attachment.url` directly (`src/writing-feedback/canvas/canvas-live-import-gateway.ts:421`).
 
 Why this matters:
 
@@ -164,7 +164,7 @@ Recommended fix:
 
 Evidence:
 
-- Canvas import parseable extensions are `txt`, `docx`, `pdf`, `html`, and `htm` (`src/writing-feedback/canvas-live-import-gateway.ts:64`).
+- Canvas import parseable extensions are `txt`, `docx`, `pdf`, `html`, and `htm` (`src/writing-feedback/canvas/canvas-live-import-gateway.ts:64`).
 - No `.md`/`markdown` support is present in the Writing Feedback Canvas import path.
 
 Why this matters:
@@ -180,8 +180,8 @@ Recommended fix:
 
 Evidence:
 
-- `loadAssignmentContext` catches Canvas assignment/rubric import failures and logs `error.message` (`src/writing-feedback/canvas-import-service.ts:281`).
-- The comment directly above says a Canvas payload can carry assignment text (`src/writing-feedback/canvas-import-service.ts:282`).
+- `loadAssignmentContext` catches Canvas assignment/rubric import failures and logs `error.message` (`src/writing-feedback/canvas/canvas-import-service.ts:281`).
+- The comment directly above says a Canvas payload can carry assignment text (`src/writing-feedback/canvas/canvas-import-service.ts:282`).
 
 Why this matters:
 
@@ -198,10 +198,10 @@ Command:
 
 ```bash
 npm test -- --runTestsByPath \
-  src/writing-feedback/__tests__/release-lock.test.ts \
-  src/writing-feedback/__tests__/live-canvas-release-service.test.ts \
-  src/writing-feedback/__tests__/canvas-live-import-gateway.test.ts \
-  src/writing-feedback/__tests__/canvas-rubric-write.test.ts
+  src/writing-feedback/release/__tests__/release-lock.test.ts \
+  src/writing-feedback/release/__tests__/live-canvas-release-service.test.ts \
+  src/writing-feedback/canvas/__tests__/canvas-live-import-gateway.test.ts \
+  src/writing-feedback/canvas/__tests__/canvas-rubric-write.test.ts
 ```
 
 Result: 4 suites passed, 49 tests passed.

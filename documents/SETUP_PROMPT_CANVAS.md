@@ -197,7 +197,7 @@ me the UI click path from §1.6 as the fallback.
   attachments from `/files/:id/download?verifier=...`, a web route with no scope to match against,
   so with Enforce Scopes on a request carrying a token is refused 401 no matter what the grant
   says. Adding a files scope was tried and did not help. The bytes are fetched without a token by
-  `src/writing-feedback/canvas-attachment-download.ts` instead — don't reintroduce a files scope
+  `src/writing-feedback/canvas/canvas-attachment-download.ts` instead — don't reintroduce a files scope
   to "fix" a file-upload import failure.
 - Don't paginate by hand. Canvas defaults to 10 items and reports the rest in the RFC 5988 `Link`
   header; the package already follows it.
