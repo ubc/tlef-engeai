@@ -108,7 +108,7 @@ function renderPrompts(): void {
     if (promptsToRender.length === 0) {
         container.innerHTML = `
             <div class="empty-state">
-                <p>No initial assistant prompts yet. Click "Add New Initial Assistant Prompt" to create one.</p>
+                <p>No initial assistant prompts yet. Click "Add new" to create one.</p>
             </div>
         `;
         return;
