@@ -66,14 +66,9 @@
                 </div>
 
                 <div class="sg-instructor-editor-meta-actions">
-                    <div class="sg-instructor-status-wrap sg-instructor-editor-status-wrap">
-                        <button id="sg-instructor-editor-status-btn" type="button" class="sg-instructor-status-pill sg-instructor-status-pill-draft sg-instructor-status-menu-btn" aria-haspopup="listbox" aria-expanded="false">
-                            <span id="sg-instructor-editor-status-label">Draft</span>
-                        </button>
-                        <div id="sg-instructor-editor-status-menu" class="sg-instructor-status-menu" style="display: none;" role="listbox" aria-label="Question status">
-                            <button type="button" class="sg-instructor-status-menu-option sg-instructor-status-menu-option-draft" data-status="draft">Draft</button>
-                            <button type="button" class="sg-instructor-status-menu-option sg-instructor-status-menu-option-published" data-status="published">Published</button>
-                        </div>
+                    <div id="sg-instructor-editor-status-group" class="sg-instructor-status-segmented sg-instructor-editor-status-segmented" role="group" aria-label="Question status">
+                        <button type="button" class="sg-instructor-status-segment" data-status="draft" aria-pressed="true"><span class="sg-instructor-status-segment-label">Draft</span></button>
+                        <button type="button" class="sg-instructor-status-segment" data-status="published" aria-pressed="false"><span class="sg-instructor-status-segment-label">Published</span></button>
                     </div>
                     <button id="sg-instructor-editor-delete-btn" type="button" class="sg-instructor-status-pill sg-instructor-delete-pill sg-instructor-status-menu-btn" aria-label="Delete question">
                         <i data-feather="trash-2"></i>
