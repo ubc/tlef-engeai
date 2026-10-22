@@ -2,7 +2,7 @@
  * Writing Feedback allowlist tests — the attribute check never deletes a stored field
  *
  * The attribute check (migrate op A) deletes every top-level field its allowlist does not
- * name. These read each stored Writing Feedback type straight from `contracts.ts` with the
+ * name. These read each stored Writing Feedback type straight from `writing-feedback/contracts/` with the
  * TypeScript compiler, so a field added to a type but not to its allowlist fails here rather
  * than disappearing from production records the next time someone runs the check with apply.
  *

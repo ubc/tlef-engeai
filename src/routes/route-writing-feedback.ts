@@ -24,6 +24,7 @@ import {
     REVIEW_WHILE_GENERATING_MESSAGE,
     WritingFeedbackService
 } from '../writing-feedback/service/writing-feedback-service';
+import { isDuplicateKeyError } from '../writing-feedback/service/service-helpers';
 import { BATCH_ERRORS, WritingBatchGenerationService } from '../writing-feedback/generation/batch-generation';
 import { summaryEditsInputSchema } from '../writing-feedback/review/summary';
 import { SUMMARY_REDRAFT_FAILED_MESSAGE } from '../writing-feedback/generation/summary-redraft-engine';
@@ -226,17 +227,8 @@ function cleanBoundedText(value: unknown, field: string, max: number): string {
     if (text.length > max) throw new Error(`${field} exceeds the ${max}-character limit`);
     return text;
 }
-function isDuplicateKey(error: unknown): boolean {
-    return typeof error === 'object' && error !== null
-        && 'code' in error
-        && (error as { code?: unknown }).code === 11000;
-}
 /** Shown when manual intake would give a student a second submission for one assignment. */
 const DUPLICATE_STUDENT_SUBMISSION = 'This student already has a submission for this assignment';
-
-function isDuplicateKeyError(error: unknown): boolean {
-    return typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 11000;
-}
 
 function safeError(error: unknown): string {
     const message = error instanceof Error ? error.message : 'Writing feedback request failed';
@@ -586,9 +578,9 @@ router.post('/:courseId/writing-feedback/glossary', asyncHandlerWithAuth(async (
         });
         res.status(201).json({ success: true, data: entry });
     } catch (error) {
-        res.status(isDuplicateKey(error) ? 409 : 400).json({
+        res.status(isDuplicateKeyError(error) ? 409 : 400).json({
             success: false,
-            error: isDuplicateKey(error)
+            error: isDuplicateKeyError(error)
                 ? 'A glossary entry for that term already exists'
                 : safeError(error)
         });
@@ -625,9 +617,9 @@ router.put('/:courseId/writing-feedback/glossary/:entryId', asyncHandlerWithAuth
         }
         res.json({ success: true, data: updated });
     } catch (error) {
-        res.status(isDuplicateKey(error) ? 409 : 400).json({
+        res.status(isDuplicateKeyError(error) ? 409 : 400).json({
             success: false,
-            error: isDuplicateKey(error)
+            error: isDuplicateKeyError(error)
                 ? 'A glossary entry for that term already exists'
                 : safeError(error)
         });

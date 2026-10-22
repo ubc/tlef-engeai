@@ -24,12 +24,12 @@ The risks that remain are mostly production lifecycle risks rather than simple m
 Evidence:
 
 - `WritingSubmissionStatus` has no release-pending/in-progress state; it moves directly through `approved` and `released` (`src/writing-feedback/contracts/index.ts:25`).
-- Staff edits are blocked only after `submission.status === 'released'`; an approved submission with a queued or leased release is still editable (`src/writing-feedback/service/writing-feedback-service.ts:392`).
+- Staff edits are blocked only after `submission.status === 'released'`; an approved submission with a queued or leased release is still editable (`appendReview` in `src/writing-feedback/service/writing-feedback-service.ts`).
 - Saving any review revision appends the review and resets the submission to `draft_ready` unconditionally (`src/db/mongo/writing-feedback-mongo.ts:941`).
-- `enqueueRelease` performs `findActiveWritingJob` and then `enqueueWritingJob` as separate calls, with no unique active-job index (`src/writing-feedback/service/writing-feedback-service.ts:582`, `src/db/mongo/writing-feedback-mongo.ts:1077`, `src/db/mongo/writing-feedback-mongo.ts:1096`).
+- `enqueueRelease` performs `findActiveWritingJob` and then `enqueueWritingJob` as separate calls, with no unique active-job index (`enqueueRelease` in `src/writing-feedback/release/release-workflow.ts`, `src/db/mongo/writing-feedback-mongo.ts:1077`, `src/db/mongo/writing-feedback-mongo.ts:1096`).
 - The releases collection has a unique `payloadFingerprint`, but no active-release lock by submission (`src/db/mongo/writing-feedback-mongo.ts:163`).
 - `finalizeWritingRelease` updates by fingerprint without an expected-current-status predicate (`src/db/mongo/writing-feedback-mongo.ts:1047`).
-- After Canvas reports success, the service sets submission status to `released` with no expected-status predicate (`src/writing-feedback/service/writing-feedback-service.ts:714`, `src/db/mongo/writing-feedback-mongo.ts:742`).
+- After Canvas reports success, the service sets submission status to `released` with no expected-status predicate (`releaseToCanvas` in `src/writing-feedback/release/release-workflow.ts`, `src/db/mongo/writing-feedback-mongo.ts:742`).
 
 Why this matters:
 
@@ -49,7 +49,7 @@ Recommended fix:
 Evidence:
 
 - Live preview persists release records with `integration: 'canvas'` (`src/writing-feedback/release/live-canvas-release-service.ts:206`).
-- The worker reloads the latest release, but passes only `courseId` and `queuedByUserId` to the resolver (`src/writing-feedback/service/writing-feedback-service.ts:615`, `src/writing-feedback/service/writing-feedback-service.ts:625`).
+- The worker reloads the latest release, but passes only `courseId` and `queuedByUserId` to the resolver (`runQueuedRelease` in `src/writing-feedback/release/release-workflow.ts`).
 - `resolveQueuedReleaseService` returns a mock Canvas release service whenever it cannot resolve a Canvas course id (`src/writing-feedback/release/queued-release-service.ts:48`).
 - The mock release service can finalize a release with synthetic Canvas ids (`src/writing-feedback/release/canvas-release-service.ts:144`).
 
@@ -95,7 +95,7 @@ Evidence:
 - `WRITING_FEEDBACK_ARCHITECTURE.md` says writing and technical PDFs are separate, and release attaches both PDFs in one comment (`documents/WRITING_FEEDBACK_ARCHITECTURE.md:106`, `documents/WRITING_FEEDBACK_ARCHITECTURE.md:109`).
 - The live adapter supports one writing PDF plus at most one technical PDF (`src/writing-feedback/release/live-canvas-release-service.ts:65`).
 - Its tests build a two-artifact release input (`src/writing-feedback/release/__tests__/live-canvas-release-service.test.ts:51`).
-- `WritingFeedbackService.previewRelease` and `release` currently render one combined `writing-feedback-complete.pdf` with `include: 'both'` and put only that writing artifact into the release input (`src/writing-feedback/service/writing-feedback-service.ts:521`, `src/writing-feedback/service/writing-feedback-service.ts:537`, `src/writing-feedback/service/writing-feedback-service.ts:680`, `src/writing-feedback/service/writing-feedback-service.ts:696`).
+- `WritingFeedbackService.previewRelease` and `release` currently render one combined `writing-feedback-complete.pdf` with `include: 'both'` and put only that writing artifact into the release input (`previewRelease` and `release` in `src/writing-feedback/release/release-workflow.ts`).
 
 Why this matters:
 
@@ -130,7 +130,7 @@ Recommended fix:
 
 Evidence:
 
-- `enqueueRelease` checks that some latest release exists, but does not recompute the current release fingerprint and compare it with the latest preview (`src/writing-feedback/service/writing-feedback-service.ts:585`).
+- `enqueueRelease` checks that some latest release exists, but does not recompute the current release fingerprint and compare it with the latest preview (`enqueueRelease` in `src/writing-feedback/release/release-workflow.ts`).
 - Live release later requires an exact fingerprint and throws if that exact preview is missing (`src/writing-feedback/release/live-canvas-release-service.ts:220`).
 
 Why this matters:

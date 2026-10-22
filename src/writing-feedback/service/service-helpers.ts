@@ -210,6 +210,13 @@ export function assertRunsMatchText(submission: WritingSubmission, runs: Array<W
     if (runs.some((run) => runPredatesTextEdit(submission, run))) throw new Error(TEXT_EDITED_MESSAGE);
 }
 
+/**
+ * Refuses a draft generated against a rubric version other than the assignment's current one.
+ *
+ * @param runRubricVersion - Rubric version stamped on the run; absent on legacy runs, read as version 1
+ * @param assignment - Assignment whose current writing rubric version must match
+ * @throws Error when the rubric changed after generation, so feedback must be regenerated before approval or release
+ */
 export function assertCurrentRubric(runRubricVersion: number | undefined, assignment: WritingAssignment): void {
     // Legacy runs predate explicit provenance and are treated as profile version 1.
     const effectiveRunVersion = runRubricVersion ?? 1;

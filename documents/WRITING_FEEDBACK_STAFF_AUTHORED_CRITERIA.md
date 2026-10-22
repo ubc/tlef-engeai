@@ -72,7 +72,7 @@ the level.
 
 The run result stays honest: `WritingFeedbackRun.result.criteria` contains only what
 the model actually produced. Staff rows are merged in at compose time, in
-`applySummaryToResult` (`summary-sources.ts:139`), which gains the rubric as an input
+`applySummaryToResult` (`review/summary.ts:200`), which gains the rubric as an input
 and emits a complete, rubric-ordered criteria list.
 
 Rejected alternative: inserting a placeholder `CriterionFeedback` into the run result
@@ -126,12 +126,12 @@ performance levels", which would have named the wrong cause.
 
 | File | Change |
 |---|---|
-| `summary-edits.ts:47` | The binding check rejects any `criterionExplanations` entry not in `run.result.criteria`. It must also accept ids of staff-assessed criteria on the rubric the run was generated against (`rubricForRun`, `summary-sources.ts:158`). Signature gains the rubric |
-| `summary-edits.ts:21` | `criterionExplanations` is capped `.max(10)`, matching `MAX_CRITERIA`. No change needed |
+| `review/summary.ts:381` | The binding check rejects any `criterionExplanations` entry not in `run.result.criteria`. It must also accept ids of staff-assessed criteria on the rubric the run was generated against (`rubricForRun`, `review/summary.ts:261`). Signature gains the rubric |
+| `review/summary.ts:343` | `criterionExplanations` is capped `.max(10)`, matching `MAX_CRITERIA`. No change needed |
 
 ### 3.4 Composition — merge staff rows into the released result
 
-`applySummaryToResult` (`summary-sources.ts:139`) currently maps over
+`applySummaryToResult` (`review/summary.ts:200`) currently maps over
 `result.criteria`. Change to:
 
 - take `rubric` and the bound `finalAssessment` (or the derived per-criterion level)
