@@ -33,13 +33,11 @@ export function buildPlatformPathwaySeeds(now: number = Date.now()): GuidedPathw
             notifyInstructorOnTrigger: true,
             triggerDescription:
                 'Detects if the user message expresses suicidal ideation, thoughts of self-harm, severe hopelessness, or a mental health crisis.',
-            assistantResponse: `Thank you for telling me this — it sounds like a genuinely hard moment, and I want to take it seriously rather than brush past it.
-
-I'm an AI study assistant for {courseName}, and I'm not equipped to support you through this safely. Please reach out to one of the people or services below right now.
+            assistantResponse: `Thank you for telling me this. I'm an AI study assistant for {courseName}, and I'm not equipped to support you through this safely. Please reach out to one of the resources below for immediate support.
 
 **If you're in immediate danger:** Call 911 or go to your nearest emergency room.
 
-You don't have to handle this on your own. I'll be here for the course whenever you're ready to come back to it, with no rush.`,
+I'll be here for the course whenever you're ready to come back to it, with no rush.`,
             ctas: [
                 {
                     id: 'cta-988',
@@ -70,9 +68,7 @@ You don't have to handle this on your own. I'll be here for the course whenever 
             notifyInstructorOnTrigger: true,
             triggerDescription:
                 'Detects if the user message contains harassment, hate speech, explicit content, threats, or abusive language.',
-            assistantResponse: `I'm not able to respond to that. EngE-AI is here to support your learning in {courseName}, and I need to keep our conversation focused and respectful to do that well.
-
-If there's an actual question about course material, an assignment, or an engineering concept underneath this, I'm glad to help — just rephrase it and send it my way.`,
+            assistantResponse: `I'm not able to respond to that. EngE-AI is here to support your learning in {courseName}. If you have a question about course material, an assignment, or an engineering concept, I'm glad to help.`,
             ctas: [],
             updatedAt: now,
         },
