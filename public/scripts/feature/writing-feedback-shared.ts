@@ -32,7 +32,7 @@ export type WritingLevelId = string;
 /** Staff-reviewed genre/register state used by SFL-founded feedback. */
 export type SflGenreProfileState = 'declared' | 'staff_confirmed' | 'custom' | 'composite' | 'needs_staff_input';
 
-/** Mirrors `CanvasRubricRefusal` in src/writing-feedback/contracts.ts. */
+/** Mirrors `CanvasRubricRefusal` in src/writing-feedback/contracts/index.ts. */
 export type CanvasRubricRefusal =
     | 'no_rubric'
     | 'too_few_ratings'
@@ -40,7 +40,7 @@ export type CanvasRubricRefusal =
     | 'too_many_levels';
 
 /**
- * Mirrors `CanvasRubricIdMap` in src/writing-feedback/canvas-rubric-mapping.ts.
+ * Mirrors `CanvasRubricIdMap` in src/writing-feedback/canvas/canvas-rubric-mapping.ts.
  *
  * The browser never builds one — it is written at import and read only by the release path —
  * but the assignment carries it, so the type has to exist on this side of the mirror.
@@ -106,7 +106,7 @@ export interface RubricCriterion {
 
 /**
  * Label words naming how a document looks. Mirrors FORMATTING_CRITERION_PATTERN in
- * src/writing-feedback/criterion-assessment.ts, which defaults these rows to staff on
+ * src/writing-feedback/rubric/criterion-assessment.ts, which defaults these rows to staff on
  * Canvas import; a parity test pins the two.
  */
 export const FORMATTING_CRITERION_PATTERN = /\b(?:format(?:s|ted|ting)?|layouts?|fonts?|margins?|spacing|typograph(?:y|ic|ical))\b/i;
@@ -202,11 +202,30 @@ export interface CriterionFeedback {
         revisionGuidance?: string;
         sflFindingIds?: string[];
         courseMaterialMention?: CourseMaterialMention;
+        supportingExcerptId?: string; // excerpt judged to support this passage's finding
         glossaryEntryId?: string;
         glossarySnapshot?: GlossarySnapshot;
     }>; // exact verified-text quote and the model's rationale for citing it
     explanation: string; // criterion-level formative explanation
     confidence: number; // staff-only diagnostic excluded from student output
+}
+
+/** Genres the diagnosis may say a text realizes. */
+export type RealizedGenre =
+    | 'descriptive_report' | 'data_commentary' | 'problem_solution'
+    | 'explanation' | 'recount' | 'procedure' | 'argument' | 'personal_response' | 'unclear';
+
+/** Stored gate decision: `global_revision` marks a whole-text problem. Staff-only. */
+export type FeedbackMode = 'standard' | 'global_revision';
+
+/** Whole-text diagnosis shown to staff above the review. */
+export interface TextDiagnosis {
+    realizedGenre: RealizedGenre;
+    genreFit: 'fits' | 'partial' | 'mismatch';
+    stages: Array<{ stageId: string; status: 'present' | 'weak' | 'missing'; evidence?: string }>;
+    contradictingFeatures: Array<{ quote: string; note: string }>;
+    transferableStrengths: Array<{ text: string; quote?: string }>;
+    rationale: string;
 }
 
 /** Immutable model-run snapshot displayed as the starting point for staff review. */
@@ -219,7 +238,10 @@ export interface FeedbackRun {
         schemaVersion?: string; // V2 result schema, absent on older runs
         criteria: CriterionFeedback[]; // supported criterion judgments with exact evidence
         strengths: string[]; // positive observations included in student-facing output
-        revisionGoals: Array<{ skillTag: string; goal: string; guidedQuestion: string }>; // up to three actionable, Socratic priorities
+        revisionGoals: Array<{ skillTag: string; goal: string; action?: string; guidedQuestion?: string; questionScope?: 'whole' | 'part' }>; // up to three priorities; action and question required on new runs
+        gateDecision?: FeedbackMode; // gate decision at generation; absent on older runs
+        overallMessage?: string; // opening paragraph about the whole text; whole-text problems only
+        overallMessageExcerptIds?: string[]; // genre excerpts the overall message cites
         internalFlags: string[]; // staff-only warnings excluded from PDF/release payloads
         courseMaterialMentions?: CourseMaterialMention[]; // deduplicated useful course resources
     }; // validated structured result; never edited in place by the browser
@@ -234,6 +256,10 @@ export interface FeedbackRun {
     redraftOfRunId?: string; // run this summary was redrafted from (D-125)
     sourceComments?: AnchoredComment[]; // annotations the redraft was drafted from; staff-only
     annotationsFingerprint?: string; // fingerprint of sourceComments, compared on Next
+    textDiagnosis?: TextDiagnosis; // whole-text diagnosis; staff-only
+    gateDecision?: FeedbackMode; // gate decision at generation
+    flags?: string[]; // staff-only pipeline flags, e.g. no_genre_material
+    supportedExcerptIds?: string[]; // excerpts judged to support a need
 }
 
 /** Staff-edited summary sections for one lens, bound to the run they were edited against (D-126). */
@@ -243,6 +269,7 @@ export interface StaffSummaryEdit {
     strengths: string[]; // "What you did well", 0..5
     criterionExplanations: Array<{ criterion: WritingCriterionId; explanation: string }>;
     revisionGoalsText?: string; // technical lens only
+    overallMessage?: string; // writing lens, whole-text problems only; empty string clears it
 }
 
 /** Which run a lens's summary currently comes from, and the annotations it reflects. */
@@ -266,7 +293,7 @@ export interface CourseMaterialMention {
 }
 
 /** Reusable course glossary entry returned by glossary endpoints. */
-/** Instructor-supplied assignment material, as extracted text. Mirrors src/writing-feedback/contracts.ts. */
+/** Instructor-supplied assignment material, as extracted text. Mirrors src/writing-feedback/contracts/index.ts. */
 export interface WritingSourceMaterial {
     id: string;
     courseId: string;
@@ -280,7 +307,7 @@ export interface WritingSourceMaterial {
     addedBy: string; // internal user id, never a PUID
 }
 
-/** One piece of material "Fill these in for me" can read. Mirrors src/writing-feedback/autofill-sources.ts. */
+/** One piece of material "Fill these in for me" can read. Mirrors src/writing-feedback/sources/autofill-sources.ts. */
 export interface AutofillSource {
     id: string; // 'instructions', 'canvas_description', or a source-material id
     kind: 'instructions' | 'canvas_description' | 'file' | 'paste';
@@ -291,7 +318,7 @@ export interface AutofillSource {
     edited?: boolean; // staff corrected a file's or paste's text by hand
 }
 
-/** Where the graded grid comes from. Mirrors GradedGridState in src/writing-feedback/rubric-source-choice.ts. */
+/** Where the graded grid comes from. Mirrors GradedGridState in src/writing-feedback/rubric/rubric-source-choice.ts. */
 export interface GradedGridState {
     lens: WritingFeedbackLens; // the lens that carries the grade
     current: 'builtin' | 'canvas' | 'uploaded';
@@ -376,6 +403,7 @@ export interface AnchoredComment {
     courseMaterialTitle?: string; // staff-authored lecture/reading title shown to the student
     courseMaterialId?: string; // id of the picked course material, when picked rather than typed
     courseMaterialMention?: CourseMaterialMention; // resolved course-material label preferred for V2
+    supportingExcerptId?: string; // excerpt that supported a model citation; staff-facing provenance
     glossaryDefinition?: { term: string; definition: string }; // optional disciplinary-language support
     glossaryEntryId?: string; // selected glossary entry id
     glossarySnapshot?: GlossarySnapshot; // definition retained for historical PDFs
@@ -388,6 +416,8 @@ export interface AnchoredComment {
     priority?: WfPriority;
     /** Read-time flag from the server: the verified text drifted from this anchor. */
     stale?: boolean;
+    /** Model seed withheld from the student while annotations are held back. */
+    heldBack?: boolean;
 }
 
 /** Human-readable labels for function filters. */
@@ -422,6 +452,7 @@ export interface ReviewRevision {
     feedbackRunId?: string; // linguistic run the revision was saved against
     technicalFeedbackRunId?: string; // technical run the technical summary edits were saved against
     summaryEdits?: StaffSummaryEdit[]; // editable summary sections bound to their runs (D-126)
+    holdBackAnnotations?: boolean; // staff hold-back choice ("Include annotations" unticked = true), saved only when changed
     createdAt: string; // server timestamp used to order immutable revisions
 }
 
@@ -551,6 +582,8 @@ export interface SubmissionDetail {
     workingComments?: AnchoredComment[];
     /** Per lens, the run the summary comes from and the fingerprint of annotations it reflects. */
     summarySources?: Partial<Record<WritingFeedbackLens, SummarySource>>;
+    holdBackAnnotations?: boolean; // staff hold-back choice in force ("Include annotations" unticked = true); absent means the default
+    overallMessage?: string; // overall message the student would receive (staff edit over model)
     release?: WritingReleaseSummary | null; // latest Canvas release/reconciliation state
     /** How many times this submission's feedback has reached the student in Canvas. */
     releaseCount?: number;
@@ -1189,7 +1222,7 @@ export function isLateSubmission(submission: Submission, assignment: Assignment 
 /**
  * runPredatesTextEdit - whether feedback was generated for text staff have since edited.
  *
- * Mirrors `runPredatesTextEdit` in src/writing-feedback/transcript-edit.ts.
+ * Mirrors `runPredatesTextEdit` in src/writing-feedback/intake/transcript.ts.
  *
  * @param submission - Submission carrying the last text edit time
  * @param run - Feedback run to check; an absent run never predates anything

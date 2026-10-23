@@ -25,7 +25,7 @@
  *
  * @author: @rdschrs
  * @date: 2026-07-22
- * @version: 1.0.0
+ * @version: 1.1.0
  * @description: Renders student-safe summary and interactive annotated PDF sections.
  */
 
@@ -38,6 +38,7 @@ import type {
     AnchoredComment,
     FeedbackPdfInclude,
     FeedbackPdfLens,
+    RevisionGoal,
     StaffFinalAssessment,
     WritingAssignment,
     WritingRubricDefinition,
@@ -88,6 +89,8 @@ export class StudentWritingFeedbackPdfService implements WritingFeedbackPdfServi
         lens?: FeedbackPdfLens;
         finalAssessment?: StaffFinalAssessment;
         annotationAuthor?: string;
+        /** Opening paragraph about the whole text (staff edits over the model's); whole-text problems only. */
+        overallMessage?: string;
         technicalFeedback?: WritingFeedbackResult;
         technicalRubric?: WritingRubricDefinition;
         technicalStaffFeedback?: string;
@@ -132,7 +135,8 @@ export class StudentWritingFeedbackPdfService implements WritingFeedbackPdfServi
                             input.staffFeedback,
                             input.finalAssessment,
                             input.technicalRubric,
-                            input.comments ?? []
+                            input.comments ?? [],
+                            input.overallMessage
                         );
                     }
                     if (include === 'annotated' || include === 'both') {
@@ -188,7 +192,10 @@ function bullet(doc: PDFKit.PDFDocument, text: string): void {
     body(doc).text(`•  ${text}`, { indent: 6, lineGap: 3, paragraphGap: 4 });
 }
 
-/** Summary sections: strengths, per-criterion evidence, staff feedback, and fallback goals. */
+/**
+ * Summary sections: an optional overall message, strengths, per-criterion evidence, grades,
+ * staff feedback, and fallback goals. Every submission gets this one format.
+ */
 function renderGeneralSections(
     doc: PDFKit.PDFDocument,
     assignment: WritingAssignment,
@@ -196,8 +203,15 @@ function renderGeneralSections(
     staffFeedback?: string,
     finalAssessment?: StaffFinalAssessment,
     technicalRubric?: WritingRubricDefinition,
-    comments: AnchoredComment[] = []
+    comments: AnchoredComment[] = [],
+    overallMessage?: string
 ): void {
+    // A whole-text problem opens with the teacher's note about the whole text: no heading,
+    // so it reads as an opening rather than a warning.
+    if (overallMessage?.trim()) {
+        doc.moveDown(0.5);
+        body(doc).text(overallMessage.trim(), { lineGap: 3 });
+    }
     sectionHeading(doc, 'What you did well');
     feedback.strengths.forEach((strength) => bullet(doc, strength));
 
@@ -220,7 +234,7 @@ function renderGeneralSections(
         sectionHeading(doc, 'Priority revision goals');
         body(doc).text(staffFeedback.trim(), { lineGap: 3 });
     } else {
-        renderRevisionGoals(doc, feedback);
+        renderRevisionGoals(doc, feedback.revisionGoals);
     }
 
     renderCourseMaterialSources(doc, feedback, comments);
@@ -318,16 +332,21 @@ function renderCriteriaEvidence(
  * seeded from these same goals, so printing both repeats the content to the student. The
  * technical lens has no staff-editable summary and always renders them.
  *
- * Each goal keeps its guided question so the student receives a concrete priority and a
- * Socratic prompt for thinking through the revision.
+ * Each goal prints its concrete action. A guided question prints only when the goal has
+ * one: new runs add a question only where it helps, and older runs always carry one.
  */
-function renderRevisionGoals(doc: PDFKit.PDFDocument, feedback: WritingFeedbackResult): void {
+function renderRevisionGoals(doc: PDFKit.PDFDocument, goals: RevisionGoal[]): void {
     sectionHeading(doc, 'Priority revision goals');
-    feedback.revisionGoals.slice(0, 3).forEach((goal, index) => {
+    goals.slice(0, 3).forEach((goal, index) => {
         doc.font(BOLD_FONT).fontSize(BODY_SIZE).fillColor(TEXT_COLOR)
-            .text(`${index + 1}.  ${goal.goal}`, { lineGap: 2 });
-        doc.font(ITALIC_FONT).fontSize(BODY_SIZE).fillColor(MUTED_COLOR)
-            .text(`Ask yourself: ${goal.guidedQuestion}`, { indent: 14, lineGap: 2, paragraphGap: 6 });
+            .text(`${index + 1}.  ${goal.goal}`, { lineGap: 2, paragraphGap: goal.action || goal.guidedQuestion ? 0 : 6 });
+        if (goal.action) {
+            body(doc).text(`Next step: ${goal.action}`, { indent: 14, lineGap: 2, paragraphGap: goal.guidedQuestion ? 0 : 6 });
+        }
+        if (goal.guidedQuestion) {
+            doc.font(ITALIC_FONT).fontSize(BODY_SIZE).fillColor(MUTED_COLOR)
+                .text(`Ask yourself: ${goal.guidedQuestion}`, { indent: 14, lineGap: 2, paragraphGap: 6 });
+        }
         doc.fillColor(TEXT_COLOR);
     });
 }
@@ -348,7 +367,7 @@ function renderTechnicalSections(
         sectionHeading(doc, 'Priority revision goals');
         body(doc).text(staffGoals.trim(), { lineGap: 3 });
     } else {
-        renderRevisionGoals(doc, feedback);
+        renderRevisionGoals(doc, feedback.revisionGoals);
     }
 }
 

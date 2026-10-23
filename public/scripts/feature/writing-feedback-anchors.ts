@@ -19,6 +19,7 @@ import { showConfirmModal } from '../ui/modal-overlay.js';
 import {
     AnchoredComment,
     CourseMaterialTitle,
+    FeedbackRun,
     FUNCTION_TAG_LABELS,
     FUNCTION_TAG_TONES,
     LEVEL_TAG_LABELS,
@@ -31,11 +32,14 @@ import {
     WfLevelTag,
     WfPriority,
     chip,
+    createButton,
     createText,
     field,
     jsonRequest,
     request
 } from './writing-feedback-shared.js';
+import { isHeldBack, readAgainLabel, splitHeldBack } from './writing-feedback-diagnosis-model.js';
+import { renderHeldBackGroup } from './writing-feedback-diagnosis.js';
 
 interface AnnotationContext {
     docHost: HTMLElement;
@@ -48,6 +52,10 @@ interface AnnotationContext {
      */
     lens: WritingFeedbackLens;
     markDirty: () => void;
+    /** Effective hold-back (the inverse of "Include annotations"); when true, held-back model seeds are grouped apart. */
+    holdBack?: boolean;
+    /** Latest run for this lens, used to check that a model citation was supported. */
+    run?: FeedbackRun | null;
 }
 
 /**
@@ -148,21 +156,27 @@ function anchorable(comment: AnchoredComment, verifiedText: string): boolean {
         && verifiedText.slice(comment.startOffset, comment.endOffset) === comment.quote;
 }
 
-function orderedAnchorable(lens: WritingFeedbackLens, verifiedText: string): AnchoredComment[] {
+/**
+ * Anchorable comments the document shows, in position order. While annotations are held
+ * back, the held-back ones leave the document until staff release them, so the text shows
+ * what the student will see.
+ */
+function orderedAnchorable(lens: WritingFeedbackLens, verifiedText: string, holdBack = false): AnchoredComment[] {
     return commentsFor(lens)
-        .filter((comment) => anchorable(comment, verifiedText))
+        .filter((comment) => anchorable(comment, verifiedText) && !(holdBack && isHeldBack(comment)))
         .sort((a, b) => a.startOffset - b.startOffset || a.endOffset - b.endOffset);
 }
 
 /**
- * Stable annotation numbers: position order over all anchorable comments, filter-independent.
+ * Stable annotation numbers: position order over the comments the document shows, filter-independent.
  *
  * Numbered within one lens, so each pane counts from 1 and a lab report does not present a
  * technical comment as "number 7" because six writing comments precede it in the document.
+ * Held-back comments get no number until released.
  */
-function annotationNumbers(lens: WritingFeedbackLens, verifiedText: string): Map<string, number> {
+function annotationNumbers(lens: WritingFeedbackLens, verifiedText: string, holdBack = false): Map<string, number> {
     const numbers = new Map<string, number>();
-    orderedAnchorable(lens, verifiedText).forEach((comment, index) => numbers.set(comment.id, index + 1));
+    orderedAnchorable(lens, verifiedText, holdBack).forEach((comment, index) => numbers.set(comment.id, index + 1));
     return numbers;
 }
 
@@ -215,8 +229,8 @@ function activateComment(commentId: string, rerender: () => void): void {
 function renderAnchoredText(host: HTMLElement, context: AnnotationContext, rerender: () => void): void {
     host.replaceChildren();
     const text = context.verifiedText;
-    const numbers = annotationNumbers(context.lens, text);
-    const anchored = orderedAnchorable(context.lens, text);
+    const numbers = annotationNumbers(context.lens, text, context.holdBack ?? false);
+    const anchored = orderedAnchorable(context.lens, text, context.holdBack ?? false);
 
     // Rebuild the document as alternating plain-text and anchored segments while
     // retaining absolute offsets on every segment for later selection mapping.
@@ -417,7 +431,7 @@ function renderAnnotationList(context: AnnotationContext, rerender: () => void):
 
     const list = document.createElement('div');
     list.className = 'wf-annotation-list';
-    const numbers = annotationNumbers(context.lens, context.verifiedText);
+    const numbers = annotationNumbers(context.lens, context.verifiedText, context.holdBack ?? false);
     const comments = commentsFor(context.lens);
 
     if (!comments.length) {
@@ -438,15 +452,44 @@ function renderAnnotationList(context: AnnotationContext, rerender: () => void):
     if (comments.length && !visible.length) {
         list.append(createText('p', 'No annotations match the selected filters.', 'wf-muted-note'));
     }
-    visible.forEach((comment) => list.append(renderAnnotationCard(comment, numbers.get(comment.id), context, rerender)));
+    // Model seeds the student will not see sit in their own collapsed group.
+    const holdBack = context.holdBack ?? false;
+    const setHeldBack = (id: string, heldBack: boolean) => {
+        const working = commentsFor(context.lens);
+        const at = working.findIndex((comment) => comment.id === id);
+        if (at === -1) return;
+        working[at] = { ...working[at], heldBack };
+        context.markDirty();
+        rerender();
+    };
+    const split = splitHeldBack(visible, holdBack);
+    // While annotations are not included by default, each included one can be excluded again.
+    split.visible.forEach((comment) => list.append(renderAnnotationCard(
+        comment, numbers.get(comment.id), context, rerender,
+        holdBack ? { label: 'Exclude', run: () => setHeldBack(comment.id, true) } : undefined
+    )));
     host.append(list);
+    const heldBack = renderHeldBackGroup(
+        split.heldBack,
+        (comment, onInclude) => renderAnnotationCard(comment, numbers.get(comment.id), context, rerender, onInclude ? { label: 'Include', run: onInclude } : undefined),
+        true,
+        (id) => setHeldBack(id, false)
+    );
+    if (heldBack) host.append(heldBack);
+}
+
+/** Include or Exclude, shown on a card while annotations are not included by default. */
+interface InclusionAction {
+    label: 'Include' | 'Exclude';
+    run: () => void;
 }
 
 function renderAnnotationCard(
     comment: AnchoredComment,
     number: number | undefined,
     context: AnnotationContext,
-    rerender: () => void
+    rerender: () => void,
+    inclusion?: InclusionAction
 ): HTMLElement {
     const card = document.createElement('article');
     card.className = 'wf-annotation-card';
@@ -486,7 +529,7 @@ function renderAnnotationCard(
     if (editingCommentId === comment.id) {
         renderCardEditor(card, comment, context, rerender);
     } else {
-        renderCardDisplay(card, comment, context, rerender);
+        renderCardDisplay(card, comment, context, rerender, inclusion);
     }
     return card;
 }
@@ -495,7 +538,8 @@ function renderCardDisplay(
     card: HTMLElement,
     comment: AnchoredComment,
     context: AnnotationContext,
-    rerender: () => void
+    rerender: () => void,
+    inclusion?: InclusionAction
 ): void {
     if (comment.comment) {
         const feedback = document.createElement('p');
@@ -511,9 +555,8 @@ function renderCardDisplay(
     // links: the student reads this in the workspace and on a printed PDF, where a URL is
     // not clickable and says less than the name of the lecture it points at. A legacy
     // comment that carries only a link falls back to showing it as plain text.
-    const materialName = comment.courseMaterialMention?.label
-        ?? comment.courseMaterialTitle
-        ?? comment.courseMaterialLink;
+    // A model citation prints only when its excerpt was judged to support the passage.
+    const materialName = readAgainLabel(comment, context.run ?? null);
     if (materialName) {
         const box = document.createElement('div');
         box.className = 'wf-material-box';
@@ -544,6 +587,8 @@ function renderCardDisplay(
         activeCommentId = comment.id;
         rerender();
     });
+    // Including or excluding an annotation happens on its own card, beside its other actions.
+    if (inclusion) actions.append(createButton(inclusion.label, 'outline', async () => inclusion.run()));
     actions.append(edit, deleteButton(comment, context, rerender));
     card.append(actions);
 }

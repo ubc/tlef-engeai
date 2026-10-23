@@ -23,7 +23,7 @@ import type {
     WritingRubricCriterion,
     WritingRubricLevel
 } from '../writing-feedback/contracts';
-import { earnedLevelFor } from '../writing-feedback/rubric-bands';
+import { earnedLevelFor } from '../writing-feedback/rubric/rubric-bands';
 
 /**
  * Narrowest column that still wraps a descriptor into readable lines.

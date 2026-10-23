@@ -465,15 +465,12 @@ function attachStaticListeners(): void {
     wireInlineTitleInput(signal);
 
     document.getElementById('sg-instructor-editor-save-btn')?.addEventListener('click', () => persistEditor(true), { signal });
-    document.getElementById('sg-instructor-editor-status-btn')?.addEventListener('click', (e) => {
-        e.stopPropagation();
-        toggleEditorStatusMenu();
-    }, { signal });
-    document.querySelectorAll<HTMLButtonElement>('#sg-instructor-editor-status-menu .sg-instructor-status-menu-option').forEach(btn => {
-        btn.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            const status = btn.dataset.status as ScenarioPublishableStatus;
-            if (status) await setEditorQuestionStatus(status);
+    const editorStatusGroup = document.getElementById('sg-instructor-editor-status-group');
+    editorStatusGroup?.querySelectorAll<HTMLButtonElement>('.sg-instructor-status-segment').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const status = btn.dataset.status as ScenarioPublishableStatus | undefined;
+            if (!status || btn.getAttribute('aria-pressed') === 'true') return;
+            await runWithStatusGroupBusy(editorStatusGroup, () => setEditorQuestionStatus(status));
         }, { signal });
     });
     document.getElementById('sg-instructor-editor-lo-manage-btn')?.addEventListener('click', openLearningObjectivesModal, { signal });
@@ -532,7 +529,7 @@ function attachStaticListeners(): void {
         const target = e.target as HTMLElement;
         if (!target.closest('.sg-instructor-type-add-wrap')) closeTypePopover();
         if (!target.closest('.sg-instructor-difficulty-wrap')) closeDifficultyMenu();
-        if (!target.closest('.sg-instructor-status-wrap')) closeAllStatusMenus();
+        if (!target.closest('.sg-instructor-status-wrap')) closeRowStatusMenus();
     }, { signal });
 }
 
@@ -1236,6 +1233,20 @@ function renderRowStatusControl(question: ScenarioQuestionExtended): string {
     `;
 }
 
+/** Disables the editor's status segmented control while `action` runs so a slow save can't be double-submitted. */
+async function runWithStatusGroupBusy(group: HTMLElement, action: () => Promise<void>): Promise<void> {
+    const segments = group.querySelectorAll<HTMLButtonElement>('.sg-instructor-status-segment');
+    if (group.getAttribute('aria-busy') === 'true') return;
+    group.setAttribute('aria-busy', 'true');
+    segments.forEach(s => { s.disabled = true; });
+    try {
+        await action();
+    } finally {
+        group.removeAttribute('aria-busy');
+        segments.forEach(s => { s.disabled = false; });
+    }
+}
+
 function attachQuestionRowListeners(root: ParentNode, returnTo: 'topic-detail' | 'browse'): void {
     questionListAbort?.abort();
     questionListAbort = new AbortController();
@@ -1341,7 +1352,7 @@ async function setQuestionStatus(questionId: string, status: ScenarioPublishable
             }
         }
         await patchScenarioQuestionStatus(currentCourse.id, questionId, status);
-        closeAllStatusMenus();
+        closeRowStatusMenus();
         await refreshVisibleQuestionList();
         showSuccessToast(status === 'published' ? 'Question published.' : 'Question moved to draft.');
     } catch (error) {
@@ -1358,39 +1369,14 @@ function closeRowStatusMenus(): void {
     });
 }
 
-function closeEditorStatusMenu(): void {
-    const menu = document.getElementById('sg-instructor-editor-status-menu');
-    const btn = document.getElementById('sg-instructor-editor-status-btn');
-    if (menu) menu.style.display = 'none';
-    if (btn) btn.setAttribute('aria-expanded', 'false');
-}
-
-function closeAllStatusMenus(): void {
-    closeRowStatusMenus();
-    closeEditorStatusMenu();
-}
-
 function toggleRowStatusMenu(questionId: string): void {
     const menu = document.querySelector<HTMLElement>(`.sg-instructor-row-status-menu[data-question-id="${questionId}"]`);
     const btn = document.querySelector<HTMLButtonElement>(`.sg-instructor-row-status-btn[data-question-id="${questionId}"]`);
     if (!menu || !btn) return;
 
     const willOpen = menu.style.display === 'none';
-    closeAllStatusMenus();
+    closeRowStatusMenus();
     closeDifficultyMenu();
-    if (willOpen) {
-        menu.style.display = '';
-        btn.setAttribute('aria-expanded', 'true');
-    }
-}
-
-function toggleEditorStatusMenu(): void {
-    const menu = document.getElementById('sg-instructor-editor-status-menu');
-    const btn = document.getElementById('sg-instructor-editor-status-btn');
-    if (!menu || !btn) return;
-
-    const willOpen = menu.style.display === 'none';
-    closeAllStatusMenus();
     if (willOpen) {
         menu.style.display = '';
         btn.setAttribute('aria-expanded', 'true');
@@ -1399,15 +1385,8 @@ function toggleEditorStatusMenu(): void {
 
 function updateEditorStatusButton(status: ScenarioQuestionExtended['status']): void {
     const normalized = normalizedPublishableStatus(status);
-    const btn = document.getElementById('sg-instructor-editor-status-btn');
-    const label = document.getElementById('sg-instructor-editor-status-label');
-    if (label) label.textContent = capitalize(normalized);
-    if (btn) {
-        btn.classList.remove('sg-instructor-status-pill-draft', 'sg-instructor-status-pill-published', 'sg-instructor-status-pill-rejected');
-        btn.classList.add(`sg-instructor-status-pill-${normalized}`);
-    }
-    document.querySelectorAll<HTMLButtonElement>('#sg-instructor-editor-status-menu .sg-instructor-status-menu-option').forEach(option => {
-        option.classList.toggle('sg-instructor-status-menu-option--active', option.dataset.status === normalized);
+    document.querySelectorAll<HTMLButtonElement>('#sg-instructor-editor-status-group .sg-instructor-status-segment').forEach(btn => {
+        btn.setAttribute('aria-pressed', String(btn.dataset.status === normalized));
     });
 }
 
@@ -1468,7 +1447,6 @@ async function setEditorQuestionStatus(status: ScenarioPublishableStatus): Promi
         }
     }
 
-    closeEditorStatusMenu();
     await refreshQuestions(editorQuestion?.topicOrWeekId ?? activeTopicId);
 }
 
@@ -1629,7 +1607,7 @@ function toggleDifficultyMenu(): void {
     const btn = document.getElementById('sg-instructor-difficulty-btn');
     if (!menu || !btn) return;
     const willOpen = menu.style.display === 'none';
-    closeAllStatusMenus();
+    closeRowStatusMenus();
     menu.style.display = willOpen ? '' : 'none';
     btn.setAttribute('aria-expanded', String(willOpen));
 }

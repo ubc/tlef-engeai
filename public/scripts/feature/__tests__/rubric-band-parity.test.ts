@@ -1,7 +1,7 @@
 /**
  * rubric-band-parity.test.ts
  *
- * `spaceBandsEvenly` exists twice: once in src/writing-feedback/rubric-bands.ts for
+ * `spaceBandsEvenly` exists twice: once in src/writing-feedback/rubric/rubric-bands.ts for
  * the seeded profiles and suggested grading, and again in the grid module because
  * the browser bundle cannot import from src/. The band the server seeds and the band
  * the browser derives must be the same band, and until now nothing checked that --
@@ -10,7 +10,7 @@
  * @author: @rdschrs
  */
 
-import { earnedLevelFor as backendEarned, spaceBandsEvenly as backendBands } from '../../../../src/writing-feedback/rubric-bands';
+import { earnedLevelFor as backendEarned, spaceBandsEvenly as backendBands } from '../../../../src/writing-feedback/rubric/rubric-bands';
 import { earnedLevelFor as browserEarned, spaceBandsEvenly as browserBands, formatBand, parseBand } from '../writing-feedback-grid';
 import type { RubricLevel } from '../writing-feedback-shared';
 

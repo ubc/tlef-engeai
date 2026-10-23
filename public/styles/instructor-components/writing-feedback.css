@@ -2121,7 +2121,9 @@
 
 .wf-stage-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.75fr) auto;
+    /* Fixed Required and remove tracks keep every row aligned under the heading row,
+       including read-only rows that have no remove button. */
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.75fr) 72px 36px;
     /* Stretch, not start: an input and a one-row textarea do not resolve to the
        same natural height, so side by side they sat on mismatched baselines. */
     align-items: stretch;
@@ -2129,13 +2131,57 @@
 }
 
 /* 36px is the icon button's height, so all three controls share one row height. */
-.wf-stage-row input,
+.wf-stage-row input[type="text"],
 .wf-stage-row textarea {
     min-height: 36px;
 }
 
 .wf-stage-row textarea {
     resize: vertical;
+}
+
+/* Column headings for the section rows; they share the rows' grid tracks. */
+.wf-stage-head {
+    margin-bottom: 8px;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.wf-stage-head-required {
+    text-align: center;
+}
+
+/* The checkbox is centred under its heading and on the text boxes' midline; its visible
+   text appears only in the narrow layout. The selector outranks the details form's
+   question-label rule, whose baseline alignment, space-between and padding otherwise win. */
+.wf-field .wf-stage-row > label.wf-stage-required {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 0;
+    font-weight: 400;
+    white-space: nowrap;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+/* .wf-field input sizes every input as a text field; a checkbox keeps its native size. */
+.wf-field .wf-stage-required input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    padding: 0;
+}
+
+.wf-stage-required-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
 }
 
 /*
@@ -2158,6 +2204,23 @@
 
     .wf-stage-row textarea {
         grid-column: 1 / -1;
+    }
+
+    /* Rows stack here, so the column headings no longer line up with anything. */
+    .wf-stage-head {
+        display: none;
+    }
+
+    .wf-field .wf-stage-row > label.wf-stage-required {
+        justify-content: flex-start;
+    }
+
+    .wf-stage-required-text {
+        position: static;
+        width: auto;
+        height: auto;
+        overflow: visible;
+        clip: auto;
     }
 }
 
@@ -4340,4 +4403,187 @@ mark.wf-anchor.is-filtered-out,
     border: 1px solid var(--border-1, #c9d4c9);
     border-radius: 6px;
     background: var(--background-2);
+}
+
+/* Section check: "Off-genre or missing sections" (review page, staff only, whole-text problems). Built on .wf-annotation-card. */
+.wf-diagnosis {
+    display: grid;
+    gap: 8px;
+    margin: 0 0 16px;
+    overflow-wrap: anywhere;
+}
+
+.wf-diagnosis-header {
+    justify-content: space-between;
+    margin-bottom: 0;
+}
+
+.wf-annotation-card .wf-diagnosis-headline {
+    margin: 0;
+}
+
+.wf-diagnosis-why p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.wf-diagnosis-stages {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.wf-diagnosis-stages .wf-chip {
+    white-space: normal;
+}
+
+.wf-diagnosis-required {
+    margin-left: 2px;
+    font-weight: 700;
+}
+
+.wf-annotation-card .wf-diagnosis-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.wf-diagnosis-note svg {
+    flex: none;
+    width: 14px;
+    height: 14px;
+    margin-top: 3px;
+}
+
+/* "Why EngE-AI flagged this": a small text link, matching "Reset to default". */
+.wf-diagnosis-why {
+    display: grid;
+    gap: 4px;
+}
+
+.wf-diagnosis-why__link {
+    justify-self: start;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--color-chbe-green);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+/* Only the words are underlined, so the arrow reads as an icon beside them. */
+.wf-diagnosis-why__label {
+    text-decoration: underline;
+}
+
+.wf-diagnosis-why__arrow {
+    display: inline-block;
+    font-size: 16px;
+    line-height: 1;
+    transition: transform 0.15s ease;
+}
+
+.wf-diagnosis-why__link[aria-expanded="true"] .wf-diagnosis-why__arrow {
+    transform: rotate(90deg);
+}
+
+.wf-diagnosis-why__link:focus-visible {
+    outline: 2px solid var(--color-ubc-blue);
+    outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .wf-diagnosis-why__arrow {
+        transition: none;
+    }
+}
+
+.wf-hold-back {
+    display: grid;
+    gap: 4px;
+    margin-top: 8px;
+}
+
+.wf-hold-back__option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.wf-hold-back__option input {
+    flex: none;
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    accent-color: var(--color-chbe-green);
+}
+
+.wf-annotation-card .wf-hold-back__source {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.wf-hold-back__reset {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--color-chbe-green);
+    font: inherit;
+    font-weight: 600;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.wf-hold-back__option input:focus-visible,
+.wf-hold-back__reset:focus-visible {
+    outline: 2px solid var(--color-ubc-blue);
+    outline-offset: 2px;
+}
+
+@media (hover: none) {
+    .wf-diagnosis-why__link,
+    .wf-hold-back__option,
+    .wf-hold-back__reset {
+        min-height: 44px;
+    }
+}
+
+/* Annotations withheld from the student while "Hold back annotations" is ticked. */
+.wf-held-back {
+    margin-top: 16px;
+    padding: 8px 12px;
+    border: 1px dashed var(--border-color);
+    border-radius: 8px;
+}
+
+.wf-held-back > summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.wf-held-back-item {
+    display: grid;
+    gap: 6px;
+    margin-top: 12px;
 }

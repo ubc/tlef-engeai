@@ -23,7 +23,7 @@
 
 import { showConfirmModal } from '../ui/modal-overlay.js';
 import { showSuccessToast } from '../ui/toast-notification.js';
-import { AutosaveSignedOutError, createAutosave } from './writing-feedback-autosave.js';
+import { AutosaveHeldError, AutosaveSignedOutError, createAutosave } from './writing-feedback-autosave.js';
 import type { Autosave } from './writing-feedback-autosave.js';
 import { ensureAssignmentTypeChosen } from './writing-feedback-assignment-type.js';
 import { renderSourcesPanel, type SourcesPanel } from './writing-feedback-sources.js';
@@ -101,11 +101,11 @@ const FUNCTION_OPTIONS: Array<{ value: WfFunctionTag; label: string }> = [
 /* ------------------------------------------------------------------------- *
  * Default rubric mirror
  *
- * Mirrored from src/writing-feedback/default-rubric-profile.ts and
+ * Mirrored from src/writing-feedback/rubric/default-rubric-profile.ts and
  * lab-report-profile.ts, which the browser bundle cannot import: public/scripts/
  * never reaches into src/. Behaviour here is identical to the server data; the
  * two are kept in sync by the shared points/labels asserted in
- * src/writing-feedback/__tests__/default-rubric-profile.test.ts and
+ * src/writing-feedback/rubric/__tests__/default-rubric-profile.test.ts and
  * lab-report-profile.test.ts, and by this task's requirement that both were
  * edited together (Tasks 3, 4, and this one land in the same review).
  * ------------------------------------------------------------------------- */
@@ -123,10 +123,10 @@ const DEFAULT_WRITING_CRITERIA_MIRROR: Array<{ id: string; label: string; descri
         description: 'How effectively the text is staged and held together for this task.',
         sflDimension: 'Information sequencing, theme progression, cohesive ties, and paragraph boundaries.',
         descriptors: {
-            weak: 'Ideas appear in no clear sequence, paragraph boundaries are unclear or absent, and a reader must work to find related information.',
-            developing: 'A rough sequence is visible but transitions are missing or inconsistent, and some paragraphs mix unrelated ideas.',
-            proficient: 'Information is sequenced logically with clear paragraph boundaries and cohesive ties; a reader can follow the progression without re-reading.',
-            exemplary: "The sequence builds purposefully toward the task's goal, transitions make relationships between ideas explicit, and paragraphing reinforces the structure."
+            weak: 'Ideas come in no clear order, paragraphs are unclear or missing, and the reader has to search for related information.',
+            developing: 'There is a rough order, but links between ideas are missing or uneven, and some paragraphs mix unrelated ideas.',
+            proficient: 'Ideas follow a logical order in clear paragraphs, and linking words help the reader follow without re-reading.',
+            exemplary: 'The order of ideas builds toward the purpose of the task, links between ideas are always clear, and the paragraphs support the structure.'
         }
     },
     {
@@ -134,10 +134,10 @@ const DEFAULT_WRITING_CRITERIA_MIRROR: Array<{ id: string; label: string; descri
         description: 'How accurately and completely the text represents the subject of the assignment.',
         sflDimension: 'Technical entities, processes, participants, circumstances, and the relations between them.',
         descriptors: {
-            weak: 'The subject matter is mostly inaccurate, missing, or unrelated to what the task asked for.',
-            developing: 'Core content is present but incomplete or contains inaccuracies that a reader familiar with the topic would notice.',
-            proficient: 'The subject matter is represented accurately and completely, with entities, processes, and relationships explained correctly.',
-            exemplary: 'Content is accurate, complete, and precise, with relationships between entities and processes explained in a way that shows command of the subject.'
+            weak: 'The information is mostly wrong, missing, or not what the task asked for.',
+            developing: 'The main information is there but incomplete, or has mistakes that a reader who knows the topic would notice.',
+            proficient: 'The information is accurate and complete, and the things, processes and links between them are explained correctly.',
+            exemplary: 'The information is accurate, complete and precise, and explains how things and processes connect in a way that shows strong understanding.'
         }
     },
     {
@@ -145,10 +145,10 @@ const DEFAULT_WRITING_CRITERIA_MIRROR: Array<{ id: string; label: string; descri
         description: 'How effectively the writer positions the reader for the stated audience and purpose.',
         sflDimension: 'Modality, hedging, stance, and technicality calibrated to the stated audience.',
         descriptors: {
-            weak: 'Stance and tone do not match the stated audience or purpose; claims are overstated, unsupported, or written for the wrong reader.',
-            developing: 'Stance is mostly appropriate but modality, hedging, or technicality slip out of register in places.',
-            proficient: 'Modality, hedging, and technicality are calibrated to the stated audience and purpose throughout.',
-            exemplary: 'The writer positions the reader precisely and consistently, using stance and technicality that anticipate what this audience needs to be convinced or informed.'
+            weak: 'The tone does not fit the reader or purpose; claims are too strong, unsupported, or written for the wrong reader.',
+            developing: 'The tone mostly fits, but in places claims sound too sure or too unsure, or the wording is too casual or too technical for the reader.',
+            proficient: 'Claims sound as sure as the evidence allows, and the formality and technical words fit the reader and purpose throughout.',
+            exemplary: 'The writing speaks to the reader precisely and consistently, choosing tone, certainty and technical words that give this reader exactly what they need.'
         }
     }
 ];
@@ -431,10 +431,10 @@ function renderSflProfileBox(
     const taskRequirements = namedControl(textAreaControl((sflContext?.taskRequirements ?? []).join('\n'), 3), 'sfl.taskRequirements');
     taskRequirements.placeholder = 'One per line — e.g. at least three sources';
     const glossaryTerms = namedControl(textAreaControl((sflContext?.approvedGlossaryTerms ?? []).join('\n'), 2), 'sfl.approvedGlossaryTerms');
-    glossaryTerms.placeholder = 'One per line. Leave blank if none';
+    glossaryTerms.placeholder = 'One per line. Feedback may use these terms, with a short explanation. Leave blank if none';
     body.append(sflField({ label: 'Smaller pieces of writing inside it (optional)', control: embeddedGenres }));
     body.append(sflField({ label: 'What must they include?', control: taskRequirements, required: true }));
-    body.append(sflField({ label: 'Words from your course glossary (optional)', control: glossaryTerms }));
+    body.append(sflField({ label: 'Course terms students already know (optional)', control: glossaryTerms }));
 
     [genreLabelControl, fieldControl, tenorControl, modeControl, evaluatorControl, productionControl,
         embeddedGenres, taskRequirements, glossaryTerms].forEach((control) => bindTextControl(control, canEdit, onInput));
@@ -469,20 +469,32 @@ function renderStageRepeater(
     labelEl.append(labelWithRequiredMarker('What sections should it have, in order?'));
     wrapper.append(labelEl);
 
+    // One heading row names the columns, so each row's checkbox needs no visible label.
+    const head = document.createElement('div');
+    head.className = 'wf-stage-row wf-stage-head';
+    head.setAttribute('aria-hidden', 'true');
+    head.append(createText('span', 'Section'), createText('span', 'What it is for'), createText('span', 'Required?', 'wf-stage-head-required'));
+    wrapper.append(head);
+
     const list = document.createElement('div');
     list.className = 'wf-stage-repeater';
     wrapper.append(list);
 
-    const rows: Array<{ id: string; nameLabel: HTMLInputElement; purpose: HTMLTextAreaElement }> = [];
+    const rows: Array<{ id: string; nameLabel: HTMLInputElement; purpose: HTMLTextAreaElement; required: HTMLInputElement }> = [];
 
     const renumber = (): void => {
         list.replaceChildren();
         rows.forEach((row, index) => {
             row.nameLabel.name = `sfl.stage.${index}.label`;
             row.purpose.name = `sfl.stage.${index}.purpose`;
+            row.required.name = `sfl.stage.${index}.required`;
+            const requiredLabel = document.createElement('label');
+            requiredLabel.className = 'wf-stage-required';
+            // Hidden beside the column heading; the narrow layout drops the heading and shows it.
+            requiredLabel.append(row.required, createText('span', 'Required', 'wf-stage-required-text'));
             const rowEl = document.createElement('div');
             rowEl.className = 'wf-stage-row';
-            rowEl.append(row.nameLabel, row.purpose);
+            rowEl.append(row.nameLabel, row.purpose, requiredLabel);
             if (canEdit) {
                 const remove = createIconButton('trash-2', `Remove section ${row.nameLabel.value || index + 1}`, 'danger', async () => {
                     const at = rows.indexOf(row);
@@ -497,7 +509,7 @@ function renderStageRepeater(
         });
     };
 
-    const addRow = (label: string, purpose: string): void => {
+    const addRow = (label: string, purpose: string, required: boolean): void => {
         const nameLabel = document.createElement('input');
         nameLabel.type = 'text';
         nameLabel.value = label;
@@ -510,16 +522,22 @@ function renderStageRepeater(
         purposeControl.placeholder = 'What this section is for';
         purposeControl.readOnly = !canEdit;
         purposeControl.addEventListener('input', onInput);
-        rows.push({ id: crypto.randomUUID(), nameLabel, purpose: purposeControl });
+        const requiredControl = document.createElement('input');
+        requiredControl.type = 'checkbox';
+        requiredControl.setAttribute('data-stage-required', 'true');
+        requiredControl.checked = required;
+        requiredControl.disabled = !canEdit;
+        requiredControl.addEventListener('change', onInput);
+        rows.push({ id: crypto.randomUUID(), nameLabel, purpose: purposeControl, required: requiredControl });
         renumber();
     };
 
     (initialStages.length ? initialStages : [{ id: 'main_response', label: 'Main response', purpose: '', required: true, order: 1 }])
-        .forEach((stage) => addRow(stage.label, stage.purpose));
+        .forEach((stage) => addRow(stage.label, stage.purpose, stage.required === true));
 
     if (canEdit) {
         const addButton = createButton('Add section', 'outline', async () => {
-            addRow('', '');
+            addRow('', '', false);
             onInput();
         }, false, 'plus');
         wrapper.append(addButton);
@@ -545,7 +563,10 @@ function readStageRepeaterRows(form: HTMLFormElement): SflStage[] {
         let id = slugFromLabel(label) || `stage_${index + 1}`;
         while (usedIds.has(id)) id = `${id}_${index + 1}`;
         usedIds.add(id);
-        stages.push({ id, label, purpose, required: true, order: stages.length + 1 });
+        // Only a ticked box counts: an optional stage the student skips keeps local feedback.
+        const requiredControl = form.elements.namedItem(`sfl.stage.${index}.required`);
+        const required = requiredControl instanceof HTMLInputElement && requiredControl.checked;
+        stages.push({ id, label, purpose, required, order: stages.length + 1 });
     }
     return stages;
 }
@@ -2140,6 +2161,11 @@ function renderRubricPage(
                             ? 'Changes saved as a draft.'
                             : 'All changes saved.';
                         return;
+                    case 'held':
+                        // Nothing was sent, so the page still holds unsaved work and navigation
+                        // must keep asking. The next edit tries again.
+                        saveStatus.textContent = `Not saved yet: ${autosaveState.message ?? 'review the rubric.'}`;
+                        return;
                     case 'error':
                         // Autosave does not retry an ordinary failure on its own; the next edit does.
                         saveStatus.textContent = "Your latest changes haven't been saved yet. Making another change will try again.";
@@ -2190,6 +2216,7 @@ function renderRubricPage(
 
     step3.append(step3Header, step3Body);
     root.append(step3);
+
 
     /**
      * refreshProgress - recomputes the strip, the step summaries, and the profile
@@ -2775,16 +2802,17 @@ async function saveAssignmentRubrics(context: RubricPageContext): Promise<void> 
  * form, which is right for a button and wrong for something that fires while an instructor
  * is still typing; and {@link saveAssignmentRubrics} seeds a technical rubric when a lab
  * report is missing one, which a background write must never do. So this reads through the
- * non-throwing readers, validates by attempting the same collectors inside a try, and skips
- * the cycle silently when the form is not yet writable, leaving the last good stored draft
- * where it is.
+ * non-throwing readers, validates by attempting the same collectors inside a try, and holds
+ * the cycle when the form is not yet writable, leaving the last good stored draft where it
+ * is. A held cycle throws rather than resolving, so the page never reports it as saved.
  *
  * It writes only through the per-rubric draft route, which never touches the approved
  * rubric and reuses an existing draft version, so repeating it does not walk the version
  * number forward.
  *
  * @param context - Page context holding the details form and registered editors
- * @throws AutosaveSignedOutError when the session has expired; any other transport error
+ * @throws AutosaveHeldError naming what the real save would reject, when nothing was sent;
+ *         AutosaveSignedOutError when the session has expired; any other transport error
  *         as thrown, for the status line to report
  */
 async function autosaveAssignmentRubrics(context: RubricPageContext): Promise<void> {
@@ -2792,8 +2820,9 @@ async function autosaveAssignmentRubrics(context: RubricPageContext): Promise<vo
     const storedGenreId = context.sections
         .find((section) => section.lens === 'linguistic')?.working.sflContext?.genreId;
 
-    // Step 1: refuse the cycle silently on anything the real save would reject. A background
-    // write that stored a half-typed rubric would be worse than not writing at all.
+    // Step 1: hold the cycle on anything the real save would reject. A background write that
+    // stored a half-typed rubric would be worse than not writing at all -- but resolving here
+    // would read as saved, so the reason goes back to the status line instead.
     let pending: Array<{ section: RubricSectionHandle; structure: RubricStructureInput }>;
     let sflContext: SflContextProfile;
     try {
@@ -2805,8 +2834,8 @@ async function autosaveAssignmentRubrics(context: RubricPageContext): Promise<vo
                 section,
                 structure: collectRubricStructure(section.form, section.working, section.errorLabel)
             }));
-    } catch {
-        return;
+    } catch (error) {
+        throw new AutosaveHeldError(error instanceof Error ? error.message : 'Review the rubric.');
     }
 
     const labContext = rubricTextValue(context.detailsForm, 'labContext').slice(0, MAX_LAB_CONTEXT) || undefined;

@@ -84,7 +84,7 @@ describe('test student exclusion', () => {
 describe('paths a test student cannot reach', () => {
     it('Writing Feedback keys submissions by a Canvas identity hash, never an EngE-AI userId', () => {
         const source = readFileSync(
-            join(process.cwd(), 'src/writing-feedback/canvas-import-service.ts'),
+            join(process.cwd(), 'src/writing-feedback/canvas/canvas-import-service.ts'),
             'utf8'
         );
 

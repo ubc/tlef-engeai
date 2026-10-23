@@ -9,8 +9,8 @@
  * @author: @rdschrs
  */
 
-import { buildDefaultSflContextProfile } from '../../../../src/writing-feedback/default-rubric-profile';
-import { requireCompleteSflProfile } from '../../../../src/writing-feedback/sfl-analysis';
+import { buildDefaultSflContextProfile } from '../../../../src/writing-feedback/rubric/default-rubric-profile';
+import { requireCompleteSflProfile } from '../../../../src/writing-feedback/language/sfl-analysis';
 import {
     describeDetails,
     describeProfile,

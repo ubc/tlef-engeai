@@ -56,7 +56,7 @@ export interface GridReadiness {
 
 /**
  * Fewest ratings a criterion may offer. Mirrors MIN_RATINGS_PER_CRITERION in
- * src/writing-feedback/rubric-schema.ts, which is what actually refuses the approval.
+ * src/writing-feedback/rubric/rubric-schema.ts, which is what actually refuses the approval.
  */
 export const MIN_RATINGS_PER_CRITERION = 2;
 

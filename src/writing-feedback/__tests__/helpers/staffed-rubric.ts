@@ -15,7 +15,7 @@
  * @description: Builds filled-in writing rubrics and SFL profiles for tests.
  */
 
-import { buildDefaultSflContextProfile, buildDefaultWritingRubric } from '../../default-rubric-profile';
+import { buildDefaultSflContextProfile, buildDefaultWritingRubric } from '../../rubric/default-rubric-profile';
 import type { WritingRubricDefinition, WritingSflContextProfile } from '../../contracts';
 
 /** The description values an instructor would type into step 1 of the rubric page. */

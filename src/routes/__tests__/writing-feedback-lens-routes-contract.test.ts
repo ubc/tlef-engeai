@@ -11,7 +11,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { requireCompleteRubricCells } from '../../writing-feedback/rubric-schema';
+import { requireCompleteRubricCells } from '../../writing-feedback/rubric/rubric-schema';
 import type { WritingRubricDefinition } from '../../writing-feedback/contracts';
 
 /** A one-criterion draft missing exactly one of the two things the gate requires. */
@@ -358,5 +358,27 @@ describe('POST release', () => {
         expect(body.trim().startsWith('withCanvasClientWhenLinked,')).toBe(true);
         expect(body).toContain('releaseToCanvas(');
         expect(body).toContain('resolveReleaseService(req, mongo)');
+    });
+});
+
+describe('review revision hold-back choice', () => {
+    const reviewRoute = source.match(/router\.post\('\/:courseId\/writing-feedback\/submissions\/:submissionId\/reviews'[\s\S]*?\n}\)\);/)?.[0] ?? '';
+
+    it('accepts only a boolean and refuses anything else with 400', () => {
+        expect(reviewRoute).toContain("typeof req.body.holdBackAnnotations !== 'boolean'");
+        expect(reviewRoute).toContain("'holdBackAnnotations must be true or false'");
+        expect(reviewRoute).not.toContain('modeOverride');
+    });
+
+    it('passes the choice into the append-only revision', () => {
+        // Only a boolean is passed on: Mongo would store an undefined field as null.
+        expect(reviewRoute).toContain("...(typeof holdBackAnnotations === 'boolean' ? { holdBackAnnotations } : {})");
+    });
+});
+
+describe('course-material coverage routes', () => {
+    it('are not registered: feedback runs its own course-material search', () => {
+        expect(source).not.toContain('/material-coverage');
+        expect(source).not.toContain('MaterialCoverage');
     });
 });

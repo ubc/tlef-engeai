@@ -26,6 +26,7 @@ EngE-AI is an AI-powered learning assistant for UBC Engineering courses which em
 - Assistant and system prompts configuration
 <!-- @rdschrs: Implemented the optional Writing Feedback workspace and reviewer documentation. -->
 - Optional Writing Feedback workspace for staff-reviewed, evidence-based feedback and PDFs (A2 LLED 200 MVP; Canvas/OCR production integrations are gated)
+- Scenario-based question generation
 
 ### Student
 - Course-aware AI chat

@@ -11,7 +11,7 @@
  */
 
 import zlib from 'zlib';
-import { buildDefaultWritingAssignment } from '../../writing-feedback/default-rubric-profile';
+import { buildDefaultWritingAssignment } from '../../writing-feedback/rubric/default-rubric-profile';
 import type {
     AnchoredComment,
     WritingAssignment,

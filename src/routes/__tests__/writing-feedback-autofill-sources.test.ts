@@ -37,8 +37,8 @@ jest.mock('../../middleware/async-handler', () => {
         (req: unknown, res: unknown, next: (error?: unknown) => void) => Promise.resolve(fn(req, res, next)).catch(next);
     return { asyncHandler: wrap, asyncHandlerWithAuth: wrap };
 });
-jest.mock('../../writing-feedback/rubric-autofill', () => ({
-    ...jest.requireActual('../../writing-feedback/rubric-autofill'),
+jest.mock('../../writing-feedback/rubric/rubric-autofill', () => ({
+    ...jest.requireActual('../../writing-feedback/rubric/rubric-autofill'),
     proposeRubricFromInstructions: (...args: unknown[]) => proposeRubricFromInstructions(...args),
     // The proposal is irrelevant here. The details come from a valid staffed rubric, as a real
     // proposal would fill them; the grid is whatever the route handed over.
@@ -52,19 +52,19 @@ jest.mock('../../writing-feedback/rubric-autofill', () => ({
     })
 }));
 
-jest.mock('../../writing-feedback/source-rubric-extraction', () => ({
-    ...jest.requireActual('../../writing-feedback/source-rubric-extraction'),
+jest.mock('../../writing-feedback/sources/source-rubric-extraction', () => ({
+    ...jest.requireActual('../../writing-feedback/sources/source-rubric-extraction'),
     extractRubricsFromMaterial: (...args: unknown[]) => extractRubricsFromMaterial(...args)
 }));
 
-jest.mock('../../writing-feedback/rubric-cell-proposals', () => ({
-    ...jest.requireActual('../../writing-feedback/rubric-cell-proposals'),
+jest.mock('../../writing-feedback/rubric/rubric-cell-proposals', () => ({
+    ...jest.requireActual('../../writing-feedback/rubric/rubric-cell-proposals'),
     proposeCellDescriptions: (...args: unknown[]) => proposeCellDescriptions(...args)
 }));
 
 // Imported after the mocks so the router binds to them.
 import router from '../route-writing-feedback';
-import { buildDefaultWritingAssignment } from '../../writing-feedback/default-rubric-profile';
+import { buildDefaultWritingAssignment } from '../../writing-feedback/rubric/default-rubric-profile';
 
 const ASSIGNMENT = '/api/courses/course-1/writing-feedback/assignments/assignment-1';
 
@@ -322,7 +322,7 @@ describe('auto-fill source routes', () => {
         });
 
         it('applies the held version staff choose', async () => {
-            const { convertExtractedRubric } = jest.requireActual('../../writing-feedback/source-rubric-extraction');
+            const { convertExtractedRubric } = jest.requireActual('../../writing-feedback/sources/source-rubric-extraction');
             const converted = convertExtractedRubric(reported('Final rubric'));
             mongo.getWritingAssignment.mockResolvedValue({
                 ...buildDefaultWritingAssignment('course-1', 'assignment-1', 'Essay', 'Write a memo.'),

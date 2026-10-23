@@ -23,7 +23,7 @@ import { showErrorToast, showSuccessToast } from '../ui/toast-notification.js';
 const DEFAULT_TITLE = 'Untitled';
 
 const EVAL_PROMPT_CAUTION =
-    'This Guided Pathway System prompt is carefully curated by the EngE-AI developers. Changing it can weaken safety and relevance classification for Guided Pathways. Prefer editing pathway trigger descriptions above unless you need a course-specific shell. You can Reset to platform defaults at any time.';
+    'This Guided Pathway System Prompt is carefully curated by the EngE-AI developers. Changing it can weaken safety and relevance classification for Guided Pathways. Prefer editing pathway trigger descriptions above unless you need a course-specific shell. You can Reset to platform defaults at any time.';
 
 let pathways: GuidedPathway[] = [];
 let courseId = '';
@@ -167,7 +167,7 @@ async function confirmEvaluationPromptCaution(): Promise<boolean> {
     evaluationPromptCautionInFlight = true;
     try {
         const result = await showConfirmModal(
-            'Edit curated Guided Pathway System prompt?',
+            'Edit curated Guided Pathway System Prompt?',
             EVAL_PROMPT_CAUTION,
             'Continue editing',
             'Cancel',
@@ -242,7 +242,7 @@ async function onSaveEvaluationPrompt(): Promise<void> {
     if (!textarea) return;
     const next = textarea.value.trim();
     if (!next) {
-        showErrorToast('Guided Pathway System prompt cannot be empty');
+        showErrorToast('Guided Pathway System Prompt cannot be empty');
         return;
     }
     if (next === evaluationPromptLoadedBody.trim()) {
@@ -252,7 +252,7 @@ async function onSaveEvaluationPrompt(): Promise<void> {
     if (!(await confirmEvaluationPromptCaution())) return;
 
     const confirmSave = await showConfirmModal(
-        'Save Guided Pathway System prompt?',
+        'Save Guided Pathway System Prompt?',
         'Save this course-specific classifier shell? Pathway trigger cards above are still inserted at runtime via {{pathway_trigger_sections}}.',
         'Save',
         'Cancel',
@@ -263,15 +263,15 @@ async function onSaveEvaluationPrompt(): Promise<void> {
     try {
         const saved = await updatePathwayEvaluationPrompt(courseId, next);
         applyEvaluationPromptToUi(saved);
-        showSuccessToast('Guided Pathway System prompt saved');
+        showSuccessToast('Guided Pathway System Prompt saved');
     } catch (error: any) {
-        showErrorToast(error?.message || 'Failed to save Guided Pathway System prompt');
+        showErrorToast(error?.message || 'Failed to save Guided Pathway System Prompt');
     }
 }
 
 async function onResetEvaluationPrompt(): Promise<void> {
     const result = await showConfirmModal(
-        'Reset Guided Pathway System prompt',
+        'Reset Guided Pathway System Prompt',
         'Restore the developer-curated platform default classifier shell for this course?',
         'Reset',
         'Cancel',
@@ -282,9 +282,9 @@ async function onResetEvaluationPrompt(): Promise<void> {
     try {
         const reset = await resetPathwayEvaluationPrompt(courseId);
         applyEvaluationPromptToUi(reset);
-        showSuccessToast('Guided Pathway System prompt reset to platform default');
+        showSuccessToast('Guided Pathway System Prompt reset to platform default');
     } catch (error: any) {
-        showErrorToast(error?.message || 'Failed to reset Guided Pathway System prompt');
+        showErrorToast(error?.message || 'Failed to reset Guided Pathway System Prompt');
     }
 }
 

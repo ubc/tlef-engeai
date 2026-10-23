@@ -10,6 +10,7 @@ alwaysApply: false
 - Instructors/admins configure the capability; instructors and TAs operate it.
 - Instructors/admins create, edit, and approve rubric versions; TAs may view the approved rubric but must not mutate it.
 - Keep routes thin, orchestration in `src/writing-feedback/`, and persistence in the Mongo delegate.
+- `src/writing-feedback/` is grouped by area (`contracts/`, `service/`, `generation/`, `language/`, `materials/`, `rubric/`, `sources/`, `intake/`, `review/`, `canvas/`, `release/`, `jobs/`, `eval/`, `shared/`), each with its own `__tests__/`. Put new files in the matching folder, import types from `contracts/` (never a part), and keep files around 1000 lines at most. See `documents/WRITING_FEEDBACK_FILE_MAP.md`.
 - Model output is immutable draft provenance. Staff edits are append-only revisions.
 - Approval and release are separate explicit actions; generation never releases.
 - Canvas import is an explicit staff action that writes local records only. It must not create/associate a Canvas rubric, comment, or grade.
