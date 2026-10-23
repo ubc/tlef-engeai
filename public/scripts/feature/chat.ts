@@ -2553,7 +2553,7 @@ export class ChatManager {
         // Process artefacts for all messages (including initial messages)
         if (sender === 'bot') {
             // NEW: Direct markdown + LaTeX rendering with messageId for artifacts
-            contentEl.innerHTML = this.renderMessageHtml(text);
+            contentEl.innerHTML = this.renderMessageHtml(text, messageId);
             renderLatexInHtmlContent(contentEl);
             this.appendPathwayCtas(contentEl, ctas);
         } else {
