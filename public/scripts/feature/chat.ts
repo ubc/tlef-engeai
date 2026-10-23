@@ -1390,7 +1390,9 @@ export class ChatManager {
     /**
      * After a full render, schedules focus on the heading the URL hash names, in place of the
      * usual scroll to the bottom. Runs once per URL so later re-renders of the same chat
-     * (e.g. re-selecting it) don't pull focus back.
+     * (e.g. re-selecting it) don't pull focus back, unless focus has dropped to `<body>`:
+     * the chat window can be rebuilt after the heading was focused (e.g. during page load),
+     * taking the focused heading with it.
      *
      * @param delay - Same settle time the bottom scroll uses (LaTeX changes heights)
      * @returns true when focus was scheduled and the caller should skip scrolling to the bottom
@@ -1404,8 +1406,8 @@ export class ChatManager {
         }
 
         const location = window.location.href;
-        // A chat often renders twice while loading; a render while focus is still pending re-arms it
-        if (location === this.hashFocusedLocation && this.hashFocusTimer === null) return false;
+        const focusLost = !document.activeElement || document.activeElement === document.body;
+        if (location === this.hashFocusedLocation && this.hashFocusTimer === null && !focusLost) return false;
         this.hashFocusedLocation = location;
 
         if (this.hashFocusTimer !== null) clearTimeout(this.hashFocusTimer);
