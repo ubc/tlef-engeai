@@ -146,7 +146,7 @@ export interface TextDiagnosis {
 }
 
 /** What a retrieval need is about. */
-export type RetrievalNeedKind = 'genre' | 'stage' | 'task_requirement' | 'language_function' | 'contrast' | 'finding';
+export type RetrievalNeedKind = 'genre' | 'stage' | 'task_requirement' | 'language_function' | 'contrast' | 'finding' | 'criterion';
 
 /**
  * One cell of the rubric grid: the points a criterion earns at one level, and the
@@ -232,6 +232,8 @@ export interface WritingRubricDefinition {
     labContext?: string;
     /** Staff-approved genre/register profile required by the V2 linguistic pipeline. */
     sflContext?: WritingSflContextProfile;
+    /** Course terms students were taught for this assignment; feedback may use them with a short gloss. */
+    courseTerms?: string[];
     /**
      * Where this version's grid came from, set when a fill chose its source. Kept on the version
      * rather than the assignment so a discarded draft takes its source with it and an approval

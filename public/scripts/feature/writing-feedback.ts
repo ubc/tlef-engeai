@@ -55,7 +55,8 @@ import {
     clearWorkspaceMessage,
     state,
     textAreaControl,
-    views
+    views,
+    isGeneralAnalysis
 } from './writing-feedback-shared.js';
 import { openAssignmentPage } from './writing-feedback-assignment-page.js';
 import { openRubricPage } from './writing-feedback-rubric.js';
@@ -87,8 +88,9 @@ async function loadLanding(mode: 'push' | 'replace' = 'push'): Promise<void> {
     renderLanding();
 
     // An assignment left without a type (the page was closed before staff answered) is asked
-    // about again here, oldest first, and then opened on its rubric page (D-123).
-    const pending = oldestPendingAssignment(state.assignments);
+    // about again here, oldest first, and then opened on its rubric page (D-123). General
+    // analysis has no assignment types, so nothing is pending.
+    const pending = isGeneralAnalysis() ? undefined : oldestPendingAssignment(state.assignments);
     if (pending && state.workspace?.permissions.canManageRubric) {
         await openNewAssignment(pending);
     }
@@ -233,7 +235,7 @@ async function showAddAssignment(): Promise<void> {
     }
     if (!(await confirmDiscardDirty('setup'))) return;
     state.panelDirty = false;
-    const content = openActionPanel('Add a writing assignment', ACTION_MOUNT_ID);
+    const content = openActionPanel(isGeneralAnalysis() ? 'Add an assignment' : 'Add a writing assignment', ACTION_MOUNT_ID);
     content.append(createText(
         'p',
         'Add the directions students receive. The assignment starts with an editable rubric draft that must be approved before feedback can be generated.',

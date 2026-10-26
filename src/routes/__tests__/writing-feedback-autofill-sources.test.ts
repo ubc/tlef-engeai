@@ -37,6 +37,9 @@ jest.mock('../../middleware/async-handler', () => {
         (req: unknown, res: unknown, next: (error?: unknown) => void) => Promise.resolve(fn(req, res, next)).catch(next);
     return { asyncHandler: wrap, asyncHandlerWithAuth: wrap };
 });
+jest.mock('../../writing-feedback/generation/general-feedback-engine', () => ({
+    courseTermExcerpts: jest.fn(async () => [])
+}));
 jest.mock('../../writing-feedback/rubric/rubric-autofill', () => ({
     ...jest.requireActual('../../writing-feedback/rubric/rubric-autofill'),
     proposeRubricFromInstructions: (...args: unknown[]) => proposeRubricFromInstructions(...args),

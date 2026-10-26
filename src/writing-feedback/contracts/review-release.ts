@@ -19,6 +19,7 @@ import type {
     WritingSubmission
 } from './assignment';
 import type { AnchoredComment, WritingFeedbackResult, WritingFeedbackRun } from './feedback';
+import type { WritingSourceMaterial } from './canvas';
 
 /**
  * Staff-edited summary sections for one lens, bound to the run they were edited against (D-126).
@@ -216,6 +217,10 @@ export interface WritingFeedbackEngine {
         assignment: WritingAssignment;
         verifiedText: string;
         llmCallOptions?: LLMOptions;
+        /** Rubric lens to assess against; engines bound to one lens ignore it. */
+        lens?: WritingFeedbackLens;
+        /** Instructor files and pastes for this assignment; never student work. */
+        sourceMaterials?: WritingSourceMaterial[];
     }): Promise<WritingFeedbackResult>;
 }
 

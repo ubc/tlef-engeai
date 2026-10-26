@@ -35,13 +35,14 @@ Also in `service/__tests__/`: `diagnosis-safe-log.test.ts`, `held-back-review.te
 
 ### Generation — `generation/`
 
-Model calls: diagnosis, the linguistic and technical engines, summary redraft, the rewrite gate, batch generation.
+Model calls: the general engine (default), the inactive SFL pipeline (diagnosis, the linguistic and technical engines, the rewrite gate), summary redraft, batch generation.
 
 | File | Lines | Responsibility | Tests | Open it when |
 | --- | ---: | --- | --- | --- |
 | `batch-generation.ts` | 247 | Previews, starts, and stops batch feedback generation for one assignment. | `batch-generation.test.ts` | which submissions a batch includes, or stopping, changes |
 | `feedback-engine.ts` | 638 | Generates staff-review drafts from assignment rubrics and verified text. | `feedback-engine.test.ts` | prompt or draft shape changes |
 | `feedback-gate.ts` | 93 | Pure gate decision, whole-text flag, hold-back resolution, and student-facing comment filter. | `feedback-gate.test.ts` | — |
+| `general-feedback-engine.ts` | 363 | General analysis (default): rubric, assignment material, and course material; every lens. Owns its system prompt. | `general-feedback-engine.test.ts` | the general prompt, its inputs, or its provenance change |
 | `feedback-schema.ts` | 435 | Enforces rubric-driven output, exact evidence, and safe numeric mapping. | `feedback-schema.test.ts` | model output validation changes |
 | `summary-redraft-engine.ts` | 197 | Structured summary redraft for the two-step review. | `summary-redraft-engine.test.ts` | the redraft prompt or output changes |
 | `technical-feedback-engine.ts` | 260 | Generates staff-review technical drafts for lab reports. | `technical-feedback-engine.test.ts` | lab-report technical drafts change |
@@ -100,6 +101,7 @@ Instructor material extraction and rubric extraction for autofill. Never student
 
 | File | Lines | Responsibility | Tests | Open it when |
 | --- | ---: | --- | --- | --- |
+| `assignment-context.ts` | 73 | Builds the capped, labelled assignment-material block for general feedback. | `assignment-context.test.ts` | which instructor material general feedback reads, or its cap |
 | `autofill-sources.ts` | 149 | Lists, selects, and labels the material auto-fill reads for one assignment. | `autofill-sources.test.ts` | which sources auto-fill offers or reads changes |
 | `document-extraction-service.ts` | 96 | Parses writing submissions locally and keeps scan intake staff-verified. | — | accepted upload types or extraction change |
 | `source-material-extraction.ts` | 218 | Extracts instructor-supplied assignment material, keeping table structure. | `source-material-extraction.test.ts` | accepted material types, table handling, or material limits change |
@@ -181,6 +183,7 @@ Small helpers used across areas.
 
 | File | Lines | Responsibility | Tests | Open it when |
 | --- | ---: | --- | --- | --- |
+| `analysis-mode.ts` | 52 | Reads the global `WRITING_FEEDBACK_ANALYSIS_MODE` switch (`general` default, `sfl`) and the mode-dependent profile gate. | `analysis-mode.test.ts` | what the switch turns on or off |
 | `strip-nulls.ts` | 52 | Recursively omits null-valued object keys from a structured-output result. | `strip-nulls.test.ts` | structured-output normalisation changes |
 
 ## Outside `src/writing-feedback/`

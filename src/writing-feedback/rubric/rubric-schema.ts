@@ -92,6 +92,8 @@ export const writingRubricDraftInputSchema = z.object({
     labContext: z.string().trim().max(12000).optional(),
     /** Staff-reviewed genre/register profile used by the V2 linguistic pipeline. */
     sflContext: writingSflContextProfileInputSchema.optional(),
+    /** Course terms students already know for this assignment; same limits as the old profile glossary. */
+    courseTerms: z.array(z.string().trim().min(1).max(80)).max(30).optional(),
     criteria: z.array(z.object({
         id: slug,
         label: z.string().trim().min(1).max(80),

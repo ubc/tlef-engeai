@@ -151,3 +151,20 @@ describe('wholeTextShape', () => {
         expect(checks.wholeTextShape.status).toBe('skip');
     });
 });
+
+describe('general analysis checks', () => {
+    it('skips the SFL-only expectations and keeps the shared ones', () => {
+        const output: EvalRunOutput = {
+            verifiedText: text,
+            result: {
+                criteria: [{ evidence: [{ quote: 'Sound happens when an object vibrates.' }] }],
+                strengths: [],
+                revisionGoals: [{ goal: 'Explain the cause.', action: 'Add one cause.', guidedQuestion: 'What makes the object vibrate?', questionScope: 'whole' }]
+            }
+        };
+        const checks = Object.fromEntries(runEvalChecks(output, fixture, [], { general: true }).map((check) => [check.name, check]));
+        ['mode', 'stageStatuses', 'annotationsHeldBack', 'flags'].forEach((name) => expect(checks[name].status).toBe('skip'));
+        expect(checks.quotesExact.status).toBe('pass');
+        expect(checks.goalsHaveAction.status).toBe('pass');
+    });
+});

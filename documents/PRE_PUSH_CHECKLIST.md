@@ -74,7 +74,7 @@ why rather than deleting it.
 
 ## 6. Verification ladder
 
-Run on Node 24.1.0. Record actual output; do not report a step you did not run.
+Run on Node 22.23.4. Record actual output; do not report a step you did not run.
 
 - [ ] `npx tsc --noEmit`
 - [ ] `npx tsc -p public/tsconfig.json --noEmit`

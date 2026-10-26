@@ -156,6 +156,7 @@ export interface RubricDefinition {
     learningOutcomes: string[]; // instructor-approved outcomes governing feedback
     gradingIntent: string; // states formative/summative intent and grading boundaries
     sflContext?: SflContextProfile; // V2 linguistic genre/register profile approved with the rubric
+    courseTerms?: string[]; // course terms students already know; feedback glosses them on first use
     criteria: RubricCriterion[]; // assignment-specific criteria and optional SFL lenses
     levels: RubricLevel[]; // complete ordinal scale and optional point mapping
     updatedAt: string; // server timestamp shown in rubric provenance/history
@@ -233,6 +234,7 @@ export interface FeedbackRun {
     id: string; // provenance key attached to subsequent staff revisions
     rubricVersion?: number; // approved rubric version used to detect stale runs
     lens?: WritingFeedbackLens; // which feedback lens produced this run
+    analysisMode?: 'general' | 'sfl'; // analysis that produced this run; absent on runs before the switch
     createdAt: string; // generation timestamp shown in review provenance
     result: {
         schemaVersion?: string; // V2 result schema, absent on older runs
@@ -634,6 +636,7 @@ export interface CanvasAssignment {
 export interface WorkspaceContext {
     permissions: { canManageRubric: boolean }; // controls instructor/admin rubric affordances
     canvas: CanvasStatus; // gates and labels Canvas-related actions
+    analysisMode?: 'general' | 'sfl'; // deployment-wide analysis; absent from older servers means sfl
 }
 
 /** Approved/draft rubric pair and history returned to the rubric page. */
@@ -784,6 +787,39 @@ interface WfState {
  * Reset by {@link initializeWritingFeedback} whenever the instructor shell mounts
  * the component; dirty flags protect unsaved setup and review edits.
  */
+/**
+ * isGeneralAnalysis - whether the server runs the general (rubric-grounded) analysis.
+ *
+ * In general mode the genre and register profile, the assignment-type question, and the
+ * diagnosis surfaces are hidden. A server that does not report a mode predates the switch
+ * and runs the SFL analysis.
+ *
+ * @returns True only when the workspace context says `general`
+ */
+export function isGeneralAnalysis(): boolean {
+    return state.workspace?.analysisMode === 'general';
+}
+
+/**
+ * courseTermsOf - the course terms a rubric carries, including the legacy profile glossary.
+ *
+ * Mirrors `courseTermsFor` in src/writing-feedback/language/plain-language.ts.
+ *
+ * @param rubric - Rubric being edited
+ * @returns Trimmed terms, deduplicated ignoring case, rubric list first
+ */
+export function courseTermsOf(rubric: Pick<RubricDefinition, 'courseTerms' | 'sflContext'>): string[] {
+    const seen = new Set<string>();
+    return [...(rubric.courseTerms ?? []), ...(rubric.sflContext?.approvedGlossaryTerms ?? [])]
+        .map((term) => term.trim())
+        .filter((term) => {
+            const key = term.toLowerCase();
+            if (!term || seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+}
+
 export const state: WfState = {
     course: null,
     workspace: null,

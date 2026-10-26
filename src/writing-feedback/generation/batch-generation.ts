@@ -23,7 +23,7 @@ import type {
     WritingSubmission
 } from '../contracts';
 import { selectRubric } from '../rubric/rubric-lens';
-import { requireCompleteSflProfile } from '../language/sfl-analysis';
+import { requireAnalysisProfile } from '../shared/analysis-mode';
 import { assessExtractedTranscript } from '../intake/transcript';
 import { appLogger } from '../../utils/logger';
 
@@ -66,7 +66,7 @@ const ALWAYS_QUEUED: ReadonlySet<WritingBatchCategory> = new Set(['no_draft', 'f
 export function batchBlockedReason(assignment: WritingAssignment): string | undefined {
     if (!assignment.rubric || assignment.rubric.status !== 'approved') return BATCH_ERRORS.rubricNotApproved;
     try {
-        requireCompleteSflProfile(assignment.rubric.sflContext);
+        requireAnalysisProfile(assignment.rubric.sflContext);
     } catch {
         return BATCH_ERRORS.profileIncomplete;
     }

@@ -11,7 +11,7 @@
  * @description: Shared student-reader prompt contract and deterministic plain-language lint.
  */
 
-import type { WritingSflContextProfile } from '../contracts';
+import type { WritingRubricDefinition, WritingSflContextProfile } from '../contracts';
 
 export const PLAIN_LANGUAGE_VERSION = 'plain-language-v1.0.0';
 
@@ -101,13 +101,44 @@ export function knownTermsFor(
 }
 
 /**
+ * courseTermsFor - the course terms staff approved for one rubric.
+ *
+ * Reads the rubric's own list and, for rubrics saved before the list moved out of the SFL
+ * profile, the profile's glossary. Trimmed, blanks dropped, and deduplicated ignoring case,
+ * keeping the first spelling.
+ *
+ * @param rubric - Rubric whose terms are wanted; absent when the lens has none
+ * @returns Approved course terms, rubric list first
+ */
+export function courseTermsFor(
+    rubric?: Pick<WritingRubricDefinition, 'courseTerms' | 'sflContext'>
+): string[] {
+    const seen = new Set<string>();
+    return [...(rubric?.courseTerms ?? []), ...(rubric?.sflContext?.approvedGlossaryTerms ?? [])]
+        .map((term) => term.trim())
+        .filter((term) => {
+            const key = term.toLowerCase();
+            if (!term || seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+}
+
+/**
  * buildStudentReaderContract - rules every student-facing writer follows.
  *
  * @param knownTerms - Course terms students have been taught for this assignment; glossed on first use
  * @param familiarTerms - Everyday terms of the discipline, used freely without a gloss
+ * @param options - `sflInputs: false` drops the SFL-to-plain translation table, for prompts whose
+ *   inputs carry no linguistics analysis (the general analysis)
  * @returns Prompt section; contains no student text
  */
-export function buildStudentReaderContract(knownTerms: string[], familiarTerms: ReadonlyArray<string> = []): string {
+export function buildStudentReaderContract(
+    knownTerms: string[],
+    familiarTerms: ReadonlyArray<string> = [],
+    options: { sflInputs?: boolean } = {}
+): string {
+    const sflInputs = options.sflInputs !== false;
     return [
         '<student_reader>',
         'The student is the final reader. They are a capable first-year university student writing in English as an additional language (about IELTS 5.5–6.5). Staff will review your text, but write it for the student.',
@@ -124,9 +155,16 @@ export function buildStudentReaderContract(knownTerms: string[], familiarTerms: 
             : []),
         knownTerms.length
             ? `- Known course terms you may use: ${knownTerms.map((term) => `"${term}"`).join(', ')}. Give each one a short plain explanation the first time you use it, e.g. "a general statement (your first sentence, which says what X is)".`
-            : familiarTerms.length ? '- No other course terms are listed.' : '- No course terms are listed. Use plain words only.',
-        '- Your inputs (analysis findings, the profile, the rubric) use linguistics terms. Never copy them. Translate each one:',
-        ...SFL_PLAIN_TRANSLATIONS.map(([internal, plain]) => `  ${internal} → ${plain}`),
+            : familiarTerms.length || !sflInputs ? '- No other course terms are listed.' : '- No course terms are listed. Use plain words only.',
+        ...(sflInputs
+            ? []
+            : ['- A term that the assignment material or a course material excerpt defines or teaches may also be used, with the same short explanation the first time.']),
+        ...(sflInputs
+            ? [
+                '- Your inputs (analysis findings, the profile, the rubric) use linguistics terms. Never copy them. Translate each one:',
+                ...SFL_PLAIN_TRANSLATIONS.map(([internal, plain]) => `  ${internal} → ${plain}`)
+            ]
+            : ['- If the rubric or materials use specialist terms that are not listed as known course terms, say the same thing in everyday words.']),
         '- Never use these words with the student unless they are known course terms: Theme, clause, entity, participant, process, register, stance, modality, hedging, calibrated, positioning, interpersonal, evaluative, foreground, nominalization.',
         '</student_reader>'
     ].join('\n');

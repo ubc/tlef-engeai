@@ -1,7 +1,10 @@
 /**
  * Writing Feedback live eval — runs synthetic fixtures through the real engine
  *
- * Usage: npm run wf:eval -- [--runs N] [--only fixture-id] [--lens linguistic|technical|all] [--live-rag courseId]
+ * Usage: npm run wf:eval -- [--runs N] [--only fixture-id] [--lens linguistic|technical|all] [--live-rag courseId] [--mode general|sfl]
+ *
+ * `--mode` defaults to WRITING_FEEDBACK_ANALYSIS_MODE (general when unset). General mode runs every
+ * fixture, writing and lab, through the general engine and skips the SFL-only checks.
  * Needs LLM_PROVIDER / LLM_ENDPOINT / LLM_DEFAULT_MODEL (and LLM_API_KEY if the provider
  * requires it). Fixture texts are synthetic, so full outputs are written to the report.
  *
@@ -15,6 +18,9 @@ import fs from 'fs';
 import path from 'path';
 import 'dotenv/config';
 import { RubricWritingFeedbackEngine } from '../src/writing-feedback/generation/feedback-engine';
+import { GENERAL_FEEDBACK_PROMPT_VERSION, GeneralFeedbackEngine } from '../src/writing-feedback/generation/general-feedback-engine';
+import { getAnalysisMode } from '../src/writing-feedback/shared/analysis-mode';
+import { courseTermsFor } from '../src/writing-feedback/language/plain-language';
 import type { WritingFeedbackMaterialRetriever } from '../src/writing-feedback/materials/course-material-mentions';
 import { EVAL_FIXTURES, buildEvalAssignment } from '../src/writing-feedback/__tests__/fixtures/eval/eval-fixtures';
 import { InMemoryMaterialRetriever } from '../src/writing-feedback/__tests__/fixtures/eval/eval-materials';
@@ -53,6 +59,7 @@ async function main(): Promise<void> {
     const only = arg('only');
     const liveRagCourse = arg('live-rag');
     const lens = arg('lens') ?? 'all';
+    const general = (arg('mode') ?? getAnalysisMode()) !== 'sfl';
     const assignment = buildEvalAssignment();
     if (liveRagCourse) assignment.courseId = liveRagCourse;
 
@@ -65,8 +72,9 @@ async function main(): Promise<void> {
                 : fixture.materials === 'none' ? new InMemoryMaterialRetriever([]) : new InMemoryMaterialRetriever();
             const started = Date.now();
             try {
-                const generated = await new RubricWritingFeedbackEngine(undefined, retriever)
-                    .generate({ assignment, verifiedText: fixture.text });
+                const generated = general
+                    ? await new GeneralFeedbackEngine(undefined, retriever).generate({ assignment, verifiedText: fixture.text })
+                    : await new RubricWritingFeedbackEngine(undefined, retriever).generate({ assignment, verifiedText: fixture.text });
                 const { runTrace, ...result } = generated as typeof generated & { runTrace?: EvalRunOutput['runTrace'] };
                 const output: EvalRunOutput = {
                     verifiedText: fixture.text,
@@ -74,7 +82,9 @@ async function main(): Promise<void> {
                     runTrace,
                     studentComments: await studentComments(result as Record<string, unknown>, fixture.text)
                 };
-                const checks = runEvalChecks(output, fixture, knownTermsFor(assignment.rubric.sflContext));
+                const checks = general
+                    ? runEvalChecks(output, fixture, courseTermsFor(assignment.rubric), { general })
+                    : runEvalChecks(output, fixture, knownTermsFor(assignment.rubric.sflContext));
                 const failed = checks.filter((item) => item.status === 'fail');
                 summary.push(`${failed.length ? 'FAIL' : 'PASS'}  ${fixture.id} #${run}  ${failed.map((item) => item.name).join(', ')}`);
                 report.push({ fixture: fixture.id, run, ms: Date.now() - started, checks, output });
@@ -87,14 +97,19 @@ async function main(): Promise<void> {
 
     // Technical lens: synthetic lab reports; no retrieval, diagnosis or gate on this path.
     const labAssignment = buildLabEvalAssignment();
-    const labKnownTerms = [...technicalKnownTerms(labAssignment), ...LAB_REPORT_FAMILIAR_TERMS];
+    const labKnownTerms = general
+        ? courseTermsFor(labAssignment.technicalRubric)
+        : [...technicalKnownTerms(labAssignment), ...LAB_REPORT_FAMILIAR_TERMS];
     for (const fixture of LAB_EVAL_FIXTURES.filter((candidate) => lens !== 'linguistic' && (!only || candidate.id === only))) {
         for (let run = 1; run <= runs; run += 1) {
             const started = Date.now();
             try {
-                const result = await new TechnicalWritingFeedbackEngine().generate({ assignment: labAssignment, verifiedText: fixture.text });
-                const output: EvalRunOutput = { verifiedText: fixture.text, result: result as unknown as EvalRunOutput['result'] };
-                const checks = runEvalChecks(output, fixture, labKnownTerms);
+                const generated = general
+                    ? await new GeneralFeedbackEngine(undefined, new InMemoryMaterialRetriever()).generate({ assignment: labAssignment, verifiedText: fixture.text, lens: 'technical' })
+                    : await new TechnicalWritingFeedbackEngine().generate({ assignment: labAssignment, verifiedText: fixture.text });
+                const { runTrace, ...result } = generated as typeof generated & { runTrace?: EvalRunOutput['runTrace'] };
+                const output: EvalRunOutput = { verifiedText: fixture.text, result: result as unknown as EvalRunOutput['result'], runTrace };
+                const checks = runEvalChecks(output, fixture, labKnownTerms, { general });
                 const failed = checks.filter((item) => item.status === 'fail');
                 summary.push(`${failed.length ? 'FAIL' : 'PASS'}  ${fixture.id} #${run}  ${failed.map((item) => item.name).join(', ')}`);
                 report.push({ lens: 'technical', fixture: fixture.id, run, ms: Date.now() - started, checks, output });
@@ -110,7 +125,9 @@ async function main(): Promise<void> {
     fs.mkdirSync(outDir, { recursive: true });
     const file = path.join(outDir, `wf-eval-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
     fs.writeFileSync(file, JSON.stringify({
+        analysisMode: general ? 'general' : 'sfl',
         promptVersions: {
+            general: GENERAL_FEEDBACK_PROMPT_VERSION,
             analyzer: versions.SFL_ANALYZER_PROMPT_VERSION,
             writer: versions.SFL_WRITER_PROMPT_VERSION,
             diagnosis: versions.TEXT_DIAGNOSIS_PROMPT_VERSION ?? null,

@@ -5,6 +5,7 @@
 
 import {
     buildStudentReaderContract,
+    courseTermsFor,
     LAB_REPORT_FAMILIAR_TERMS,
     knownTermsFor,
     lintFeedbackProse,
@@ -128,5 +129,18 @@ describe('overall message lint', () => {
     it('lints the overall message', () => {
         const report = lintFeedbackProse({ criteria: [], strengths: [], revisionGoals: [], overallMessage: 'Your Theme moves around.\n1. Say what sound is.' }, []);
         expect(report.bannedTerms).toContain('Theme');
+    });
+});
+
+describe('courseTermsFor', () => {
+    it('reads the rubric list first, then the legacy profile glossary, without case duplicates', () => {
+        expect(courseTermsFor({
+            courseTerms: ['Hypothesis', ' '],
+            sflContext: { approvedGlossaryTerms: ['hypothesis', 'thesis statement'] } as never
+        })).toEqual(['Hypothesis', 'thesis statement']);
+    });
+
+    it('returns nothing for a rubric with no terms', () => {
+        expect(courseTermsFor(undefined)).toEqual([]);
     });
 });

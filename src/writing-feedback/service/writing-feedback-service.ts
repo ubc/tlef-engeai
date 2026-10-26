@@ -27,6 +27,7 @@ import type {
     WritingFeedbackRun,
     WritingJob,
     WritingRubricDefinition,
+    WritingSourceMaterial,
     WritingSubmission
 } from '../contracts';
 import {
@@ -38,6 +39,7 @@ import {
     fingerprintAnnotations
 } from '../review/anchored-comments';
 import { RubricWritingFeedbackEngine } from '../generation/feedback-engine';
+import { GENERAL_FEEDBACK_PROMPT_VERSION, GeneralFeedbackEngine } from '../generation/general-feedback-engine';
 import { TECHNICAL_PROMPT_VERSION, TechnicalWritingFeedbackEngine } from '../generation/technical-feedback-engine';
 import { lensesForAssignment, selectRubric, rubricForVersion } from '../rubric/rubric-lens';
 import { ModelSelectionService } from '../../dashboard-setting/model-selection-service';
@@ -59,7 +61,7 @@ import {
     reviewsSinceTextEdit,
     runPredatesTextEdit
 } from '../intake/transcript';
-import { requireCompleteSflProfile } from '../language/sfl-analysis';
+import { getAnalysisMode, requireAnalysisProfile } from '../shared/analysis-mode';
 import { appLogger } from '../../utils/logger';
 import {
     assertSummaryEditsBound,
@@ -124,16 +126,21 @@ export class WritingFeedbackService {
      * Creates the lifecycle service with injectable generation and PDF implementations.
      *
      * @param mongo - Persistence façade for course-scoped Writing Feedback records
-     * @param engine - Structured linguistic feedback generator; defaults to the rubric-driven engine
+     * @param engine - Structured feedback generator; defaults to the general engine, or to the
+     *   SFL-founded engine when `WRITING_FEEDBACK_ANALYSIS_MODE=sfl`. In general mode it serves
+     *   every lens.
      * @param pdfService - Student-safe renderer; defaults to the PDFKit implementation
      * @param technicalEngine - Structured technical feedback generator for lab reports; a test
      *   double passed here always takes precedence. Left undefined in production so the real
      *   LLM-backed engine (and its client construction) is built lazily, only the first time a
      *   lab report's technical lens actually runs, and never for assignments that are not lab reports.
+     *   In general mode the general engine serves the technical lens too, unless a double is passed.
      */
     constructor(
         private readonly mongo: EngEAI_MongoDB,
-        private readonly engine: WritingFeedbackEngine = new RubricWritingFeedbackEngine(),
+        private readonly engine: WritingFeedbackEngine = getAnalysisMode() === 'sfl'
+            ? new RubricWritingFeedbackEngine()
+            : new GeneralFeedbackEngine(),
         private readonly pdfService = new StudentWritingFeedbackPdfService(),
         private readonly technicalEngine?: WritingFeedbackEngine,
         /**
@@ -173,6 +180,8 @@ export class WritingFeedbackService {
      */
     private getTechnicalEngine(): WritingFeedbackEngine {
         if (this.technicalEngine) return this.technicalEngine;
+        // General analysis has one engine for every rubric.
+        if (getAnalysisMode() === 'general') return this.engine;
         if (!this.lazyTechnicalEngine) this.lazyTechnicalEngine = new TechnicalWritingFeedbackEngine();
         return this.lazyTechnicalEngine;
     }
@@ -271,7 +280,7 @@ export class WritingFeedbackService {
         if (!assignment.rubric || assignment.rubric.status !== 'approved') {
             throw new Error('An approved rubric is required before feedback generation');
         }
-        requireCompleteSflProfile(assignment.rubric.sflContext);
+        requireAnalysisProfile(assignment.rubric.sflContext);
         const existing = await this.mongo.findActiveWritingJob(courseId, submissionId, 'generate');
         if (existing) return existing;
 
@@ -340,6 +349,25 @@ export class WritingFeedbackService {
     }
 
     /**
+     * The instructor files and pastes the general analysis reads for one assignment.
+     *
+     * Best-effort: a failed read leaves generation grounded in the rubric and instructions alone,
+     * and the engine flags that for staff. The error is described without content.
+     *
+     * @param courseId - Course authorization/persistence boundary
+     * @param assignmentId - Assignment whose material is read
+     * @returns Stored materials, oldest first; empty when none or unreadable
+     */
+    private async loadSourceMaterials(courseId: string, assignmentId: string): Promise<WritingSourceMaterial[]> {
+        try {
+            return await this.mongo.listWritingSourceMaterials(courseId, assignmentId);
+        } catch (error) {
+            appLogger.log('[writing-feedback] assignment material unavailable:', describeFailureSafely(error));
+            return [];
+        }
+    }
+
+    /**
      * Generates and persists one lens's immutable run against its currently-approved rubric.
      *
      * @param lens - Lens to generate; selects the engine and stamped prompt version
@@ -357,13 +385,16 @@ export class WritingFeedbackService {
             llmCallOptions: Awaited<ReturnType<ModelSelectionService['buildFeatureLlmCallOptions']>>;
         }
     ): Promise<WritingFeedbackResult> {
+        const general = getAnalysisMode() === 'general';
         const engine = lens === 'technical' ? this.getTechnicalEngine() : this.engine;
         const rubric = selectRubric(input.assignment, lens).approved;
         if (!rubric) throw new Error(`An approved ${lens} rubric is required before feedback generation`);
         const result = await engine.generate({
             assignment: input.assignment,
             verifiedText: input.verifiedText,
-            llmCallOptions: input.llmCallOptions
+            llmCallOptions: input.llmCallOptions,
+            lens,
+            ...(general ? { sourceMaterials: await this.loadSourceMaterials(input.courseId, input.assignment.id) } : {})
         }) as GeneratedFeedbackWithTrace;
         const { runTrace, ...storedResult } = result;
         // Persist immutable provenance before declaring the draft review-ready.
@@ -377,11 +408,14 @@ export class WritingFeedbackService {
             result: storedResult,
             modelMetadata: {
                 engine: engine.constructor.name,
-                promptVersion: lens === 'technical'
-                    ? TECHNICAL_PROMPT_VERSION
-                    : (runTrace?.writerPromptVersion ?? 'writing-feedback-v2')
+                promptVersion: general
+                    ? (runTrace?.writerPromptVersion ?? GENERAL_FEEDBACK_PROMPT_VERSION)
+                    : lens === 'technical'
+                        ? TECHNICAL_PROMPT_VERSION
+                        : (runTrace?.writerPromptVersion ?? 'writing-feedback-v2')
             },
-            ...(lens === 'linguistic' && runTrace ? runTrace : {})
+            // The general engine traces every lens; the SFL pipeline only the linguistic one.
+            ...((general || lens === 'linguistic') && runTrace ? runTrace : {})
         });
         return storedResult;
     }

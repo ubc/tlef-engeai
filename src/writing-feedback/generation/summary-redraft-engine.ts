@@ -19,7 +19,8 @@ import { validateSocraticQuestions, withQuestionGate } from '../language/socrati
 import { hasWholeTextProblem } from './feedback-gate';
 import { modelAssessedCriteria } from '../rubric/criterion-assessment';
 import { stripNulls } from '../shared/strip-nulls';
-import { buildStudentReaderContract, knownTermsFor, LAB_REPORT_FAMILIAR_TERMS } from '../language/plain-language';
+import { buildStudentReaderContract, courseTermsFor, knownTermsFor, LAB_REPORT_FAMILIAR_TERMS } from '../language/plain-language';
+import { getAnalysisMode, type WritingFeedbackAnalysisMode } from '../shared/analysis-mode';
 import { PRIME_DIRECTIVE, technicalKnownTerms } from './technical-feedback-engine';
 import type { SummaryRedraftOutput } from '../review/summary';
 import type {
@@ -66,19 +67,27 @@ const RULES = [
  * buildSummaryRedraftSystemPrompt - staff-approved context and rules for one lens.
  *
  * @param input - Assignment, lens and approved rubric; `wholeTextProblem` when the run's gate
- *                found one, so the restructuring goal stays first
+ *                found one, so the restructuring goal stays first; `mode` defaults to the
+ *                deployment's analysis mode. General mode uses one reader contract and the
+ *                rubric's course terms for every lens, and sends no genre profile.
  * @returns System prompt; contains no student-derived text
  */
 export function buildSummaryRedraftSystemPrompt(
-    input: Pick<SummaryRedraftInput, 'assignment' | 'lens' | 'rubric'> & { wholeTextProblem?: boolean }
+    input: Pick<SummaryRedraftInput, 'assignment' | 'lens' | 'rubric'> & { wholeTextProblem?: boolean; mode?: WritingFeedbackAnalysisMode }
 ): string {
     const { rubric } = input;
+    const general = (input.mode ?? getAnalysisMode()) === 'general';
     return [
-        ...(input.lens === 'technical' ? [PRIME_DIRECTIVE] : []),
+        ...(input.lens === 'technical' && !general ? [PRIME_DIRECTIVE] : []),
         'You redraft the summary of staff-reviewed feedback. The teaching team edits and approves it, then the student reads it, so write for the student.',
-        input.lens === 'technical'
-            ? buildStudentReaderContract(technicalKnownTerms(input.assignment), LAB_REPORT_FAMILIAR_TERMS)
-            : buildStudentReaderContract(knownTermsFor(rubric.sflContext)),
+        general
+            ? buildStudentReaderContract(courseTermsFor(rubric), [], { sflInputs: false })
+            : input.lens === 'technical'
+                ? buildStudentReaderContract(technicalKnownTerms(input.assignment), LAB_REPORT_FAMILIAR_TERMS)
+                : buildStudentReaderContract(knownTermsFor(rubric.sflContext)),
+        ...(general
+            ? ['Where the task involves data or calculations, judge claims against the student\'s own reported values, never against outside values.']
+            : []),
         SOCRATIC_QUESTION_RULES,
         `Assess every criterion below exactly once. Use only these criterion ids: ${modelAssessedCriteria(rubric).map((criterion) => criterion.id).join(', ')}.`,
         `Use only these performance-level ids: ${rubric.levels.map((level) => level.id).join(', ')}.`,
@@ -94,7 +103,7 @@ export function buildSummaryRedraftSystemPrompt(
             purpose: rubric.purpose,
             criteria: modelAssessedCriteria(rubric).map(({ id, label, description }) => ({ id, label, description })),
             levels: rubric.levels.map(({ id, label, description, rank }) => ({ id, label, description, rank })),
-            ...(input.lens === 'linguistic' && rubric.sflContext ? { writingProfile: rubric.sflContext } : {})
+            ...(input.lens === 'linguistic' && rubric.sflContext && !general ? { writingProfile: rubric.sflContext } : {})
         })}</approved_rubric>`,
         ...(input.lens === 'technical' && rubric.labContext ? [`<lab_context>${rubric.labContext}</lab_context>`] : [])
     ].join('\n');

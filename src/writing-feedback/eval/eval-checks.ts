@@ -63,9 +63,16 @@ function normalize(text: string): string {
  * @param knownTerms - Course terms students were taught; allowed by the plainLanguage check
  * @returns One result per check, in a fixed order
  */
-export function runEvalChecks(output: EvalRunOutput, fixture: EvalFixture, knownTerms: string[] = []): EvalCheckResult[] {
+export function runEvalChecks(
+    output: EvalRunOutput,
+    fixture: EvalFixture,
+    knownTerms: string[] = [],
+    options: { general?: boolean } = {}
+): EvalCheckResult[] {
     const { result, runTrace } = output;
-    const expectation = fixture.expect;
+    // The general analysis has no gate, diagnosis, or SFL analysis, so the fixture's SFL
+    // expectations (mode, stages, hold-back, stage-first goal, Theme finding, flags) are skipped.
+    const expectation = options.general !== true ? fixture.expect : { minSupportedCitations: fixture.expect.minSupportedCitations };
     const mode = runTrace?.gateDecision ?? result.gateDecision;
     const stages = new Map((runTrace?.textDiagnosis?.stages ?? []).map((stage) => [stage.stageId, stage.status]));
     const contradicting = (runTrace?.textDiagnosis?.contradictingFeatures ?? []).map((feature) => normalize(feature.quote));

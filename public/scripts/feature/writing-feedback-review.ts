@@ -1615,8 +1615,8 @@ function renderSummaryLens(input: {
     rubricSection.append(criterionList);
     element.append(rubricSection);
 
-    // Step 5: readings (writing lens), under the levels they qualify.
-    if (lens === 'linguistic') element.append(...renderReadings(run));
+    // Step 5: readings under the levels they qualify: the writing lens, or any general run.
+    if (lens === 'linguistic' || run.analysisMode === 'general') element.append(...renderReadings(run));
 
     // Step 6: revision goals. Writing keeps the student-feedback textarea and its binding rule.
     const goalsSection = document.createElement('section');

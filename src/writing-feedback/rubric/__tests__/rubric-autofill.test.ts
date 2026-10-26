@@ -7,6 +7,7 @@
 import type { LLMModule } from 'ubc-genai-toolkit-llm';
 import {
     autofillMergeRules,
+    buildAutofillPrompt,
     gridSourceFor,
     mergeAutofill,
     proposeRubricFromInstructions
@@ -367,7 +368,7 @@ describe('proposeRubricFromInstructions', () => {
             ]
         };
 
-        const result = await proposeRubricFromInstructions('i', draft(knownCriteria), fakeLlm(bodyWithNulls));
+        const result = await proposeRubricFromInstructions('i', draft(knownCriteria), fakeLlm(bodyWithNulls), { mode: 'sfl' });
 
         // The property must be ABSENT, not present-with-undefined — `in` distinguishes
         // the two the same way MongoDB's serializer does; `toBeUndefined()` alone would not.
@@ -382,5 +383,39 @@ describe('proposeRubricFromInstructions', () => {
         // check alone is necessary-but-not-sufficient — the `in` checks above are the
         // ones that actually pin the key-omission behavior this bug required).
         expect(JSON.stringify(result)).not.toContain('null');
+    });
+});
+
+describe('auto-fill in general analysis', () => {
+    const generalDraft = (): WritingRubricDefinition => ({
+        ...draft([{ id: 'organization', label: 'Organization', description: 'd' }]),
+        courseTerms: ['Hypothesis']
+    });
+
+    it('asks for course terms instead of an SFL profile', () => {
+        const prompt = buildAutofillPrompt('Write a lab report.', generalDraft(), { mode: 'general', courseExcerpts: ['A hypothesis is a testable prediction.'] });
+        expect(prompt).toContain('courseTerms');
+        expect(prompt).toContain('A hypothesis is a testable prediction.');
+        expect(prompt).not.toContain('SFL context profile');
+        expect(prompt).not.toContain('Ferreira');
+    });
+
+    it('keeps the SFL profile request in sfl mode and ignores course excerpts there', () => {
+        const prompt = buildAutofillPrompt('Write a lab report.', generalDraft(), { mode: 'sfl', courseExcerpts: ['A hypothesis is a testable prediction.'] });
+        expect(prompt).toContain('SFL context profile');
+        expect(prompt).not.toContain('A hypothesis is a testable prediction.');
+    });
+
+    it('discards a returned SFL profile and keeps the proposed course terms', async () => {
+        const body = { ...proposal, courseTerms: ['uncertainty'], sflContext: null, criteria: [] };
+        const llm = { sendStructuredConversation: jest.fn(async () => ({ parsed: body })) } as unknown as LLMModule;
+        const result = await proposeRubricFromInstructions('i', generalDraft(), llm, { mode: 'general' });
+        expect(result.sflContext).toBeUndefined();
+        expect(result.courseTerms).toEqual(['uncertainty']);
+    });
+
+    it('adds proposed terms to the ones staff listed, ignoring case duplicates', () => {
+        const merged = mergeAutofill(generalDraft(), { ...proposal, criteria: [], courseTerms: ['hypothesis', 'uncertainty'] }, autofillMergeRules('canvas'));
+        expect(merged.courseTerms).toEqual(['Hypothesis', 'uncertainty']);
     });
 });

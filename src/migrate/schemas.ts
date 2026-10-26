@@ -487,6 +487,7 @@ export const writingFeedbackRunSchema: FieldSpec[] = [
     { key: 'flags', kind: 'opaque', optional: true },
     { key: 'diagnosisPromptVersion', optional: true },
     { key: 'relevancePromptVersion', optional: true },
+    { key: 'analysisMode', optional: true },
 ];
 
 export const writingReleaseSchema: FieldSpec[] = [

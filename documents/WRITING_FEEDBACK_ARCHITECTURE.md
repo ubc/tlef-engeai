@@ -23,6 +23,23 @@ The workspace keeps configuration and operation separate:
 
 Canvas grade permission remains a separate release prerequisite. A staff role inside EngE-AI does not imply that Canvas will accept a grade write.
 
+## Analysis mode (2026-10-26, D-161)
+
+One global switch, `WRITING_FEEDBACK_ANALYSIS_MODE`, read by `src/writing-feedback/shared/analysis-mode.ts`.
+
+- **`general` (default, also any value other than `sfl`).** Every assignment is analyzed the same way, whatever its subject. `GeneralFeedbackEngine` (`generation/general-feedback-engine.ts`) makes one writer call per approved rubric. Its sources, highest authority first:
+  1. the approved rubric;
+  2. the assignment details (instructions, Canvas description) and every instructor file or paste (`sources/assignment-context.ts`, capped at 60,000 characters and flagged when cut);
+  3. published course material judged relevant to a rubric criterion. The relevance check (`general-relevance-v1.0.0`) reads the assignment's title, task and purpose, works out what kind of work it is, and judges each excerpt against what that criterion asks for. It never assumes the criterion is about writing.
+
+  Course-material queries are built from rubric criteria and the assignment title only, never from student text. In this mode:
+  - there is no genre profile gate, assignment-type question, diagnosis, SFL analysis, rewrite gate, or overall message;
+  - an existing lab report keeps both of its rubrics, and the general engine serves both lenses;
+  - course terms come from the rubric's `courseTerms`, and auto-fill proposes them from the assignment material and course excerpts.
+- **`sfl`.** The SFL-founded pipeline, unchanged: genre and register profile, text diagnosis, SFL analyzer, rewrite gate, assignment types, and the technical engine.
+
+The SFL code is inactive, not deleted. Stored SFL profiles and SFL-era runs stay readable in both modes.
+
 ## Components and boundaries
 
 ```mermaid

@@ -6,6 +6,8 @@ alwaysApply: false
 
 # Rubric and SFL Feedback
 
+> The SFL rules below apply only in `sfl` analysis mode. In the default `general` mode the engine is `generation/general-feedback-engine.ts`: authority is rubric > assignment details and instructor materials > course material; no genre profile, diagnosis, gate, or overall message; course terms come from the rubric's `courseTerms` (legacy profile glossary as fallback) plus terms the materials define, glossed on first use; course-material queries come from rubric criteria only, never student text (D-161).
+
 - The assignment's current approved rubric governs generation, PDF, and release; a saved draft never changes active behavior.
 - Native Canvas rubrics may initialize a local definition with provenance, but import never approves changes or writes a rubric back to Canvas.
 - Only instructors/admins may save or approve a rubric draft. TAs have read-only rubric access.

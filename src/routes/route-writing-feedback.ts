@@ -69,13 +69,15 @@ import {
     rubricContentEquals,
     writingRubricDraftInputSchema
 } from '../writing-feedback/rubric/rubric-schema';
-import { requireCompleteSflProfile } from '../writing-feedback/language/sfl-analysis';
+import { carriedSflProfile, getAnalysisMode, requireAnalysisProfile } from '../writing-feedback/shared/analysis-mode';
+import { courseTermExcerpts } from '../writing-feedback/generation/general-feedback-engine';
 import { listCriterionLibrary, suggestScale } from '../writing-feedback/rubric/rubric-presets';
 import { isCourseStaff } from '../utils/course-staff';
 import { parseLens, rubricGridSource, selectRubric, storedGridSource } from '../writing-feedback/rubric/rubric-lens';
 import { seedRubricForLens } from '../writing-feedback/rubric/rubric-seed';
 import {
     AssignmentTypeService,
+    ASSIGNMENT_TYPES_INACTIVE_MESSAGE,
     CHOOSE_TYPE_BEFORE_APPROVAL_MESSAGE,
     assignmentTypeErrorStatus,
     isAssignmentTypeChoice
@@ -542,7 +544,9 @@ router.get('/:courseId/writing-feedback/workspace-context', asyncHandlerWithAuth
         success: true,
         data: {
             permissions: { canManageRubric: Boolean(currentCourse && isCourseStaff(currentCourse, globalUser)) },
-            canvas
+            canvas,
+            // Staff-only: which analysis generation runs, so the UI hides SFL-only surfaces.
+            analysisMode: getAnalysisMode()
         }
     });
 }));
@@ -847,7 +851,11 @@ router.put(
         } catch {
             return res.status(400).json({ success: false, error: 'Unknown feedback lens' });
         }
-        const parsed = writingRubricDraftInputSchema.safeParse(req.body);
+        // General analysis never edits the inactive SFL profile, so one sent in is ignored
+        // rather than validated; the stored one is carried forward below.
+        const general = getAnalysisMode() === 'general';
+        const body = general && req.body && typeof req.body === 'object' ? { ...req.body, sflContext: undefined } : req.body;
+        const parsed = writingRubricDraftInputSchema.safeParse(body);
         if (!parsed.success) {
             return res.status(400).json({
                 success: false,
@@ -878,9 +886,11 @@ router.put(
         // Where the grid came from is the server's to record, not the editor's, so a draft saved
         // from the page keeps the source of the version it was edited from.
         const keptSource = (selected.draft ?? currentApproved)?.gridSource;
+        const keptProfile = general ? carriedSflProfile((selected.draft ?? currentApproved)?.sflContext) : undefined;
         const draft = {
             ...buildRubricDraft(parsed.data, version, globalUser.userId),
-            ...(keptSource ? { gridSource: keptSource } : {})
+            ...(keptSource ? { gridSource: keptSource } : {}),
+            ...(keptProfile ? { sflContext: keptProfile } : {})
         };
 
         // A draft that says the same as the approved rubric is no change at all -- staff who
@@ -1051,7 +1061,9 @@ router.post(
             // to be built from material. A failed extraction leaves the grid alone, not the fill.
             let extractionFailed = false;
             const [proposal, extracted] = await Promise.all([
-                proposeRubricFromInstructions(material, draft),
+                proposeRubricFromInstructions(material, draft, undefined, {
+                    courseExcerpts: getAnalysisMode() === 'general' ? await courseTermExcerpts(assignment, draft) : []
+                }),
                 rubricMaterial && !awaitingConfirmation
                     ? extractRubricsFromMaterial(rubricMaterial.text).catch(() => { extractionFailed = true; return undefined; })
                     : Promise.resolve(undefined)
@@ -1141,7 +1153,9 @@ router.post(
             // Reuse the same validation the PUT path enforces (band ordering, cells keyed
             // to real levels) rather than writing a second one; a proposal that would leave
             // the draft invalid is refused before it is ever saved.
-            if (!writingRubricDraftInputSchema.safeParse(merged).success) {
+            // In general mode the inactive SFL profile is carried, not validated (see the PUT route).
+            const generalFill = getAnalysisMode() === 'general';
+            if (!writingRubricDraftInputSchema.safeParse(generalFill ? { ...merged, sflContext: undefined } : merged).success) {
                 throw new Error('Auto-fill response was not usable');
             }
 
@@ -1243,7 +1257,8 @@ router.post(
         if (!assignment) return res.status(404).json({ success: false, error: 'Writing assignment not found' });
         // A pending assignment has no settled type, so which rubric it is graded on is not
         // known yet. Refused here so a direct link cannot approve around the modal (D-123).
-        if (assignment.assignmentTypePending === true) {
+        // General analysis has no assignment types: every assignment uses its one rubric.
+        if (getAnalysisMode() === 'sfl' && assignment.assignmentTypePending === true) {
             return res.status(409).json({ success: false, error: CHOOSE_TYPE_BEFORE_APPROVAL_MESSAGE });
         }
         if (lens === 'technical' && !assignment.isLabReport) {
@@ -1268,7 +1283,7 @@ router.post(
 
         // Promote only the persisted draft version; the delegate rejects concurrent rubric changes.
         try {
-            if (lens === 'linguistic') requireCompleteSflProfile(selected.draft.sflContext);
+            if (lens === 'linguistic') requireAnalysisProfile(selected.draft.sflContext);
             requireCompleteRubricCells(selected.draft);
         } catch (error) {
             return res.status(400).json({ success: false, error: safeError(error) });
@@ -1302,11 +1317,15 @@ router.post(
  * Records the one-time assignment type (D-123).
  *
  * `lab_report` also moves an imported Canvas grid to the technical rubric and returns the
- * writing rubric to the default profile. Refused with 409 once the type has been chosen.
+ * writing rubric to the default profile. Refused with 409 once the type has been chosen, and
+ * in general analysis mode, which has no assignment types.
  */
 router.put(
     '/:courseId/writing-feedback/assignments/:assignmentId/type',
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
+        if (getAnalysisMode() !== 'sfl') {
+            return res.status(409).json({ success: false, error: ASSIGNMENT_TYPES_INACTIVE_MESSAGE });
+        }
         const type = req.body?.type;
         if (!isAssignmentTypeChoice(type)) {
             return res.status(400).json({ success: false, error: 'type must be writing or lab_report' });

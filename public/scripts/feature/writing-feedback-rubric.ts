@@ -68,6 +68,7 @@ import {
     WritingFeedbackLens,
     chip,
     confirmDiscardDirty,
+    courseTermsOf,
     createBackBar,
     createButton,
     createIconButton,
@@ -78,6 +79,7 @@ import {
     field,
     formatDate,
     inputControl,
+    isGeneralAnalysis,
     jsonRequest,
     labelWithRequiredMarker,
     refreshIcons,
@@ -240,6 +242,7 @@ interface RubricStructureInput {
 type RubricDraftInput = AssignmentDetailsInput & RubricStructureInput & {
     labContext?: string;
     sflContext?: SflContextProfile;
+    courseTerms?: string[];
 };
 
 type RubricControl = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
@@ -445,6 +448,25 @@ function renderSflProfileBox(
 }
 
 /**
+ * renderCourseTermsField - the general analysis's course-terms box, outside any profile.
+ *
+ * Terms differ per course and per assignment, so staff list the ones this assignment's course
+ * material, details, and handouts have taught. Feedback may use them with a short explanation.
+ * Prefilled from the rubric's own list and any glossary kept in an older genre profile.
+ *
+ * @param draft - Rubric whose terms are shown
+ * @param canEdit - Whether the current staff member may edit
+ * @param onInput - Called on every edit, for autosave and progress
+ * @returns Detached field; its control is named `courseTerms`
+ */
+function renderCourseTermsField(draft: RubricDefinition, canEdit: boolean, onInput: () => void): HTMLDivElement {
+    const control = namedControl(textAreaControl(courseTermsOf(draft).join('\n'), 3), 'courseTerms');
+    control.placeholder = 'One per line — terms this course has taught for this assignment, from its materials, details, or handouts. Feedback may use them, with a short explanation. Leave blank if none';
+    bindTextControl(control, canEdit, onInput);
+    return field('Course terms students already know (optional)', control, undefined, true, false);
+}
+
+/**
  * renderStageRepeater - editable list of assignment stages, replacing the old
  * pipe-delimited textarea with real add/remove/reorder controls
  *
@@ -615,6 +637,7 @@ function detachedRubric(source: RubricDefinition): RubricDefinition {
                     : {})
             }
         } : {}),
+        ...(source.courseTerms ? { courseTerms: [...source.courseTerms] } : {}),
         criteria: source.criteria.map((criterion) => ({ ...criterion })),
         levels: source.levels
             .map((level) => ({ ...level }))
@@ -1547,7 +1570,8 @@ export async function openRubricPage(assignmentId: string): Promise<void> {
     let assignment = state.assignments.find((item) => item.id === assignmentId);
     if (!assignment) throw new Error('Writing assignment not found');
     // A deep link or Edit rubric on a pending assignment asks for its type first (D-123).
-    if (assignment.assignmentTypePending) {
+    // General analysis has no assignment types, so nothing is asked.
+    if (assignment.assignmentTypePending && !isGeneralAnalysis()) {
         assignment = await ensureAssignmentTypeChosen(assignment);
     }
     let linguisticData = await request<RubricResponse>(`/assignments/${encodeURIComponent(assignmentId)}/rubric?lens=linguistic`);
@@ -1821,8 +1845,9 @@ function renderRubricPage(
     const readDetailsNow = (): DetailsValues => readAssignmentDetails(detailsForm);
     const readProfileNow = (): SflContextProfile =>
         readSflContext(detailsForm, readDetailsNow(), writingSource.sflContext?.genreId);
-    const describedComplete = (): boolean =>
-        describeDetails(readDetailsNow()).complete && describeProfile(readProfileNow(), readDetailsNow()).complete;
+    // General analysis has no genre profile, so the details alone describe the assignment.
+    const profileComplete = (): boolean => isGeneralAnalysis() || describeProfile(readProfileNow(), readDetailsNow()).complete;
+    const describedComplete = (): boolean => describeDetails(readDetailsNow()).complete && profileComplete();
 
     // The material step opens for an assignment still waiting to be described; once the
     // description is complete it stays closed, so an approved rubric never looks unfinished.
@@ -2231,7 +2256,7 @@ function renderRubricPage(
         const detailsNow = describeDetails(details);
         const profileNow = describeProfile(readProfileNow(), details);
         const gridNow = describeAllGrids(pageContext.sections);
-        const describedDone = detailsNow.complete && profileNow.complete;
+        const describedDone = detailsNow.complete && (isGeneralAnalysis() || profileNow.complete);
 
         // Material is optional -- a description can be typed by hand -- so the step counts as
         // done once there is any, or once the description it feeds is complete.
@@ -2631,7 +2656,9 @@ function renderAssignmentDetails(
         grid.append(wrapper);
     });
 
-    grid.append(renderSflProfileBox(draft.sflContext, detailsFromDraft(draft), options.canEdit, options.onInput));
+    grid.append(isGeneralAnalysis()
+        ? renderCourseTermsField(draft, options.canEdit, options.onInput)
+        : renderSflProfileBox(draft.sflContext, detailsFromDraft(draft), options.canEdit, options.onInput));
 
     // The lab handout is versioned and approval-gated on the technical rubric,
     // so it is edited here but never sent with the writing rubric.
@@ -2734,7 +2761,11 @@ async function saveAssignmentRubrics(context: RubricPageContext): Promise<void> 
     // serializes that as BSON null): coerce it to undefined so a save can never send
     // `"genreId": null` back to a server schema that only accepts a string or absence.
     const storedGenreId = context.sections.find((section) => section.lens === 'linguistic')?.working.sflContext?.genreId;
-    const sflContext = collectSflContext(context.detailsForm, details, storedGenreId ?? undefined);
+    const sflContext = isGeneralAnalysis()
+        // General analysis leaves the inactive profile to the server, which carries it forward.
+        ? undefined
+        : collectSflContext(context.detailsForm, details, storedGenreId ?? undefined);
+    const courseTerms = isGeneralAnalysis() ? rubricLines(context.detailsForm, 'courseTerms') : undefined;
     const labContext = rubricTextValue(context.detailsForm, 'labContext').slice(0, MAX_LAB_CONTEXT) || undefined;
 
     // Validate every rubric before writing any of them. Validating inside the write
@@ -2780,8 +2811,9 @@ async function saveAssignmentRubrics(context: RubricPageContext): Promise<void> 
         const input: RubricDraftInput = {
             ...details,
             ...structure,
-            ...(section.lens === 'linguistic' ? { sflContext } : {}),
-            ...(section.lens === 'technical' ? { labContext } : {})
+            ...(section.lens === 'linguistic' && sflContext ? { sflContext } : {}),
+            ...(section.lens === 'technical' ? { labContext } : {}),
+            ...(courseTerms ? { courseTerms } : {})
         };
         const updated = await jsonRequest<Assignment>(
             `/assignments/${encodeURIComponent(context.assignment.id)}/rubric-draft${section.lens === 'technical' ? '?lens=technical' : ''}`,
@@ -2824,10 +2856,12 @@ async function autosaveAssignmentRubrics(context: RubricPageContext): Promise<vo
     // stored a half-typed rubric would be worse than not writing at all -- but resolving here
     // would read as saved, so the reason goes back to the status line instead.
     let pending: Array<{ section: RubricSectionHandle; structure: RubricStructureInput }>;
-    let sflContext: SflContextProfile;
+    let sflContext: SflContextProfile | undefined;
     try {
         collectAssignmentDetails(context.detailsForm);
-        sflContext = collectSflContext(context.detailsForm, details, storedGenreId ?? undefined);
+        sflContext = isGeneralAnalysis()
+            ? undefined
+            : collectSflContext(context.detailsForm, details, storedGenreId ?? undefined);
         pending = context.sections
             .filter((section) => section.canEdit)
             .map((section) => ({
@@ -2839,14 +2873,16 @@ async function autosaveAssignmentRubrics(context: RubricPageContext): Promise<vo
     }
 
     const labContext = rubricTextValue(context.detailsForm, 'labContext').slice(0, MAX_LAB_CONTEXT) || undefined;
+    const courseTerms = isGeneralAnalysis() ? rubricLines(context.detailsForm, 'courseTerms') : undefined;
 
     // Step 2: write each editable rubric. Nothing is seeded and nothing is approved here.
     for (const { section, structure } of pending) {
         const input: RubricDraftInput = {
             ...details,
             ...structure,
-            ...(section.lens === 'linguistic' ? { sflContext } : {}),
-            ...(section.lens === 'technical' ? { labContext } : {})
+            ...(section.lens === 'linguistic' && sflContext ? { sflContext } : {}),
+            ...(section.lens === 'technical' ? { labContext } : {}),
+            ...(courseTerms ? { courseTerms } : {})
         };
         try {
             const updated = await jsonRequest<Assignment>(
