@@ -139,6 +139,16 @@
     outline-offset: -3px;
 }
 
+/* Delete sits flush against the title link, so it needs the full 24px target (WCAG 2.5.8) */
+.chat-list .chat-item .icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    min-height: 24px;
+    padding: 3px;
+}
+
 /* ======== CHAT WINDOW STYLES ========== */
 
 .chat-window { 
@@ -412,6 +422,7 @@
     text-decoration: none;
     display: inline-flex;
     align-items: center;
+    min-height: 24px; /* WCAG 2.5.8 target size */
 }
 
 .message .message-actions .message-action-btn:hover,
@@ -732,6 +743,9 @@
 
 .latest-message-link {
     align-self: center;
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px; /* WCAG 2.5.8: the disclaimer link below is too close to rely on spacing */
     margin-top: 4px;
     font-size: 0.75rem;
     font-weight: 500;
@@ -846,6 +860,9 @@
     white-space: nowrap;
     width: auto;
     height: auto;
+    min-height: 24px; /* WCAG 2.5.8: sits inside the clickable pinned line */
+    display: inline-flex;
+    align-items: center;
     background-color: transparent;
     max-width: fit-content;
 }

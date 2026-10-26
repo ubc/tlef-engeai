@@ -23,6 +23,7 @@ import {
 import { ConversationModePicker } from "./conversation-mode-picker.js";
 import { RenderChat } from "./render-chat.js";
 import { showDeleteConfirmationModal, showSimpleErrorModal } from "../ui/modal-overlay.js";
+import { showToast } from "../ui/toast-notification.js";
 import { getCourseIdFromURL, navigateToStudentScenarios, buildInstructorURL, buildStudentURL } from "../utils/url-parser.js";
 import { bindSpaLink } from "../utils/spa-link.js";
 import { pushHashLocation } from "../utils/hash-navigation.js";
@@ -748,6 +749,9 @@ export class ChatManager {
 
         // Show loading state immediately
         onChunk?.('Thinking...', false);
+        // Announced now, not on the server's reply: that arrives as the reply starts streaming,
+        // and VoiceOver tends to drop announcements made while the page keeps changing.
+        showToast('Message sent.');
         let requestProcessed = false;
 
         try {
@@ -823,6 +827,8 @@ export class ChatManager {
                     data.assistantMessage.id,
                     () => {
                         // Streaming complete - message already has full text in array
+                        // Matches the reply's heading so screen reader users can find it by name
+                        showToast(`New message: "EngE-AI (${this.formatFullTimestamp(data.assistantMessage.timestamp)})".`);
                         onComplete?.(data.assistantMessage);
                     }
                 );
@@ -2362,7 +2368,6 @@ export class ChatManager {
 
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'icon-btn';
-        deleteBtn.style.padding = '0';
         deleteBtn.type = 'button';
         deleteBtn.title = 'Delete chat';
         deleteBtn.setAttribute('aria-label', `Delete chat: ${metadata.itemTitle || 'Untitled chat'}`);

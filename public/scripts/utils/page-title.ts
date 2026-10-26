@@ -4,7 +4,14 @@
  * Both shells are single-page apps, so `document.title` must be updated whenever the view
  * changes; otherwise every view shares the shell's static title. Titles follow
  * "<Page> | EngE-AI (Instructor Mode)" / "<Page> | EngE-AI (Student Mode)".
+ *
+ * The same sync marks the chat page on `<body>` so page-specific styles can follow the view.
  */
+
+/** Body class present while the "Chat with EngE-AI" page is showing. */
+export const CHAT_PAGE_BODY_CLASS = 'chat-page';
+
+const CHAT_VIEWS = new Set(['chat', 'welcoming-message']);
 
 const INSTRUCTOR_VIEW_TITLES: Record<string, string> = {
     'dashboard': 'Dashboard',
@@ -44,7 +51,7 @@ function titleCaseSlug(slug: string): string {
  *
  * @param pathname - e.g. `/course/abc123def456/instructor/documents`
  */
-function getPageNameForPath(pathname: string): { page: string | null; mode: 'Instructor' | 'Student' } | null {
+function getPageNameForPath(pathname: string): { page: string | null; view: string | null; mode: 'Instructor' | 'Student' } | null {
     // Onboarding: /course/:id/instructor/onboarding/<stage> and /instructor/onboarding/new-course
     const onboarding = pathname.match(/\/(instructor|student)\/onboarding\/([^/]+)/);
     if (onboarding) {
@@ -53,26 +60,30 @@ function getPageNameForPath(pathname: string): { page: string | null; mode: 'Ins
         const page = stage === 'new-course' ? 'New Course Setup'
             : stage === 'student' ? 'Onboarding'
             : titleCaseSlug(stage);
-        return { page, mode };
+        return { page, view: null, mode };
     }
 
     const view = pathname.match(/^\/course\/[a-f0-9]{12}\/(instructor|student)(?:\/([^/]+))?/);
     if (!view) return null;
 
     if (view[1] === 'instructor') {
-        return { page: view[2] ? INSTRUCTOR_VIEW_TITLES[view[2]] ?? null : null, mode: 'Instructor' };
+        const slug = view[2] ?? null;
+        return { page: slug ? INSTRUCTOR_VIEW_TITLES[slug] ?? null : null, view: slug, mode: 'Instructor' };
     }
     // The bare student URL opens the chat
-    return { page: STUDENT_VIEW_TITLES[view[2] ?? 'chat'] ?? null, mode: 'Student' };
+    const slug = view[2] ?? 'chat';
+    return { page: STUDENT_VIEW_TITLES[slug] ?? null, view: slug, mode: 'Student' };
 }
 
 /**
  * Sets `document.title` from the current URL, e.g. "Documents | EngE-AI (Instructor Mode)".
  * Unknown views fall back to "EngE-AI (Instructor Mode)" / "EngE-AI (Student Mode)".
+ * Also toggles `CHAT_PAGE_BODY_CLASS` on `<body>` while the chat page is showing.
  * Call on load and after every view change (each in-app navigation fires `popstate`).
  */
 export function syncPageTitleFromURL(): void {
     const result = getPageNameForPath(window.location.pathname);
+    document.body.classList.toggle(CHAT_PAGE_BODY_CLASS, Boolean(result?.view && CHAT_VIEWS.has(result.view)));
     if (!result) return;
 
     const suffix = `EngE-AI (${result.mode} Mode)`;

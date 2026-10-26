@@ -28,6 +28,7 @@
     <link rel="stylesheet" href="/styles/student-components/student-view-banner.css" />
     <link rel="stylesheet" href="/styles/scenario-generation/sg-shared.css" />
     <link rel="stylesheet" href="/styles/about.css" />
+    <link rel="stylesheet" href="/styles/toast-notification.css" />
     
     <!-- KaTeX CSS for LaTeX rendering -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css" integrity="sha384-GvrOXuhMATgEsSwCs4smul74iXGOixntILdUW9XmUC6+HX0sLNAK3q71HotJqlAn" crossorigin="anonymous">
@@ -191,7 +192,9 @@
         </div>
     </div>
 
-    
+    <!-- Toast live region: ships empty so screen readers announce messages added later -->
+    <div id="toast-region" class="toast-region toast-top-right" role="status"></div>
+
     <script>mermaid.initialize({ startOnLoad: false, theme: 'default' });</script>
     <script type="module" src="/dist/public/scripts/entry/student-mode.js"></script>
     <script>
