@@ -27,6 +27,7 @@ import type {
     ModalResult,
 } from '../types.js';
 import { renderFeatherIcons } from '../api/api.js';
+import { nameAfterFilePick } from '../utils/material-name.js';
 import {
     openCatalogEditModal,
     type CatalogEditModalOptions,
@@ -1355,6 +1356,7 @@ export async function openContentInputModal(options: ContentInputModalOptions): 
     const headerFileIcon = document.createElement('span');
     headerFileIcon.className = 'toggle-icon';
     headerFileIcon.textContent = '📁';
+    headerFileIcon.setAttribute('aria-hidden', 'true');
     const headerFileText = document.createElement('span');
     headerFileText.className = 'toggle-text';
     headerFileText.textContent = 'File';
@@ -1368,6 +1370,7 @@ export async function openContentInputModal(options: ContentInputModalOptions): 
     const headerTextIcon = document.createElement('span');
     headerTextIcon.className = 'toggle-icon';
     headerTextIcon.textContent = '📝';
+    headerTextIcon.setAttribute('aria-hidden', 'true');
     const headerTextText = document.createElement('span');
     headerTextText.className = 'toggle-text';
     headerTextText.textContent = 'Text';
@@ -1435,6 +1438,7 @@ export async function openContentInputModal(options: ContentInputModalOptions): 
     uploadFileBtn.id = 'upload-file-btn';
     const uploadIcon = document.createElement('span');
     uploadIcon.className = 'upload-icon';
+    uploadIcon.setAttribute('aria-hidden', 'true');
     uploadIcon.textContent = '📁';
     const uploadText = document.createElement('span');
     uploadText.className = 'upload-text';
@@ -1480,8 +1484,8 @@ export async function openContentInputModal(options: ContentInputModalOptions): 
 
     const formColumn = document.createElement('div');
     formColumn.className = 'upload-form-column';
-    formColumn.appendChild(headerSection);
     formColumn.appendChild(uploadMethodContent);
+    formColumn.appendChild(headerSection);
     content.appendChild(formColumn);
 
     const footer = document.createElement('div');
@@ -1519,6 +1523,7 @@ export async function openContentInputModal(options: ContentInputModalOptions): 
     const snapshotText = isEditMode && options.initialValues ? options.initialValues.text : '';
 
     let selectedFile: File | null = null;
+    let autoFilledName: string | null = null;
     let currentMethod: 'file' | 'text' = initialMethod;
 
     const close = () => {
@@ -1638,6 +1643,12 @@ export async function openContentInputModal(options: ContentInputModalOptions): 
         const f = hiddenInputElement.files && hiddenInputElement.files[0] ? hiddenInputElement.files[0] : null;
         selectedFile = f;
         selectedFileNameElement.textContent = f ? f.name : 'No file selected';
+        // Name the material after the file unless the user typed their own name
+        const nextName = nameAfterFilePick(nameInput.value, autoFilledName, f ? f.name : null);
+        if (nextName !== nameInput.value) {
+            nameInput.value = nextName;
+            autoFilledName = nextName;
+        }
         updateDirtyState();
     });
 

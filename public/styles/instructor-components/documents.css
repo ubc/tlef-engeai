@@ -187,8 +187,11 @@
     transition: max-height 0.3s ease;
 }
 
+/* An open section scrolls inside itself so long ones (many subsections) still reach the upload action */
 .topic-or-week-item.expanded {
-    max-height: 2000px;
+    max-height: 70vh;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
 }
 
 .content-item {

@@ -20,6 +20,7 @@ import { showConfirmModal,
 import { startInactivityTracking } from '../services/inactivity-tracker.js';
 import { authService } from '../services/auth-service.js';
 import { initCanvasConnect, openCanvasConnectModal } from './canvas-connect.js';
+import { currentAcademicPeriodId } from '../utils/current-academic-period.js';
 
 // Store current user's affiliation to check if they're an instructor
 let currentUserAffiliation: 'student' | 'faculty' | null = null;
@@ -144,8 +145,10 @@ async function loadCourses(): Promise<void> {
             return;
         }
 
+        // Open only the period running today; with none running, every period starts closed
+        const openPeriodId = currentAcademicPeriodId(courseSelectionData.periods);
         container.innerHTML = courseSelectionData.periods
-            .map((period) => renderPeriodSection(period, courseSelectionData!.defaultPeriodId))
+            .map((period) => renderPeriodSection(period, openPeriodId))
             .join('');
 
         if (typeof (window as any).feather !== 'undefined') {
@@ -161,15 +164,15 @@ async function loadCourses(): Promise<void> {
     }
 }
 
-function renderPeriodSection(period: CourseSelectionPeriodSection, defaultPeriodId: string): string {
-    const isDefault = period.id === defaultPeriodId;
-    const collapsed = !isDefault;
+function renderPeriodSection(period: CourseSelectionPeriodSection, openPeriodId: string | null): string {
+    const isOpen = period.id === openPeriodId;
+    const collapsed = !isOpen;
     const courseRows = period.courses.map((course) => createCourseCard(course)).join('');
     return `
         <section class="course-selection-container period-section" data-period-id="${period.id}">
             <header class="course-selection-header period-section-header">
                 <div class="period-header-left">
-                    <button type="button" class="period-collapse-btn" aria-expanded="${isDefault ? 'true' : 'false'}" data-period-id="${period.id}">
+                    <button type="button" class="period-collapse-btn" aria-expanded="${isOpen ? 'true' : 'false'}" data-period-id="${period.id}">
                         <i data-feather="chevron-down" class="period-chevron"></i>
                     </button>
                     <h2 class="course-selection-title period-title">${escapeHtml(period.title)}</h2>
