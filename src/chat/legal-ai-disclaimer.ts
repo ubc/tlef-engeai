@@ -17,7 +17,7 @@ export const LEGAL_AI_DISCLAIMER_PAGE_PATH = '/pages/ai-disclaimer.html';
  * Short Counsel disclaimer appended to the opening assistant message.
  * Markdown link opens the static long-form page in a new tab via chat render.
  */
-export const LEGAL_AI_DISCLAIMER_SHORT = `This AI tool generates responses using a large language model. It may provide information that is inaccurate, incomplete or outdated. All users are responsible for verifying content against official UBC sources before relying on it. You may not put others’ personal information into this tool. By using this tool, you agree to the terms outlined here: [here](${LEGAL_AI_DISCLAIMER_PAGE_PATH}).`;
+export const LEGAL_AI_DISCLAIMER_SHORT = `This AI tool generates responses using a large language model. It may provide information that is inaccurate, incomplete or outdated. All users are responsible for verifying content against official UBC sources before relying on it. You may not put others’ personal information into this tool. By using this tool, you agree to the terms outlined [here](${LEGAL_AI_DISCLAIMER_PAGE_PATH}).`;
 
 /**
  * appendLegalAiDisclaimer - Appends the Counsel short disclaimer when missing.

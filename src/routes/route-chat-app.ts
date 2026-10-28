@@ -653,20 +653,6 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
             });
         }
 
-        
-        if (conversationMode !== undefined) {
-            try {
-                conversationModePrompts.assertModeActiveForNewChat(
-                    conversationModePrompts.resolveModeId(conversationMode)
-                );
-            } catch (modeError) {
-                return res.status(400).json({
-                    success: false,
-                    error: modeError instanceof Error ? modeError.message : 'Invalid conversation mode',
-                });
-            }
-        }
-
         // Validate chat exists (or restore from database if evicted from memory)
         if (!chatApp.validateChatExists(chatId)) {
             // Attempt to restore chat from database before returning 404
@@ -702,6 +688,25 @@ router.post('/:chatId', asyncHandlerWithAuth(async (req: Request, res: Response)
                 success: false,
                 error: RETIRED_CONVERSATION_MODE_MESSAGE
             });
+        }
+
+        // Catalog availability only gates the first send, which picks the chat's mode. Chats that
+        // already declared a mode keep it even if that mode is no longer selectable.
+        const persistedMode = chatApp.getPersistedConversationMode(chatId);
+        if (
+            conversationMode !== undefined &&
+            (persistedMode === undefined || persistedMode === 'undeclared')
+        ) {
+            try {
+                conversationModePrompts.assertModeActiveForNewChat(
+                    conversationModePrompts.resolveModeId(conversationMode)
+                );
+            } catch (modeError) {
+                return res.status(400).json({
+                    success: false,
+                    error: modeError instanceof Error ? modeError.message : 'Invalid conversation mode',
+                });
+            }
         }
 
         const finalizedMode = await chatApp.finalizeUndeclaredConversationModeBeforeFirstUserMessage(

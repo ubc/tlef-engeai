@@ -8,7 +8,7 @@
  */
 
 import { loadComponentHTML, renderFeatherIcons } from "../api/api.js";
-import { createNewChat, deleteChat, dismissUnstruggleBlock, updateChatConversationMode } from "../api/chat-api.js";
+import { createNewChat, deleteChat, dismissUnstruggleBlock, fetchConversationModes, updateChatConversationMode } from "../api/chat-api.js";
 import {
     Chat,
     ChatMessage,
@@ -1663,7 +1663,8 @@ export class ChatManager {
      * Caller loads chat-window and calls applyPendingChatDraftPrefill after DOM is ready.
      *
      * @param options.text - Structured composer prefill from the scenario workspace
-     * @param options.conversationMode - Teaching mode to persist (default explanatory)
+     * @param options.conversationMode - Teaching mode to persist (default explanatory; falls back
+     *   to the course default when that mode is not selectable)
      * @returns success flag; clears stash on chat creation failure
      */
     public async openScenarioHandoff(options: {
@@ -1675,7 +1676,9 @@ export class ChatManager {
             return { success: false, error: 'No course in URL' };
         }
 
-        const conversationMode = options.conversationMode ?? 'explanatory';
+        const conversationMode = await this.resolveSelectableConversationMode(
+            options.conversationMode ?? 'explanatory'
+        );
         stashChatDraftPrefill(courseId, options.text, conversationMode);
 
         const created = await this.createNewChat();
@@ -1700,6 +1703,28 @@ export class ChatManager {
 
         this.notifyUIUpdate();
         return { success: true };
+    }
+
+    /**
+     * resolveSelectableConversationMode - Falls back to the course default when the requested
+     * mode is not selectable for new chats (e.g. Explanatory while it is locked).
+     *
+     * @param requested - Preferred teaching mode
+     * @returns The requested mode when active, else the active default; the requested mode when
+     *   the catalog cannot be loaded (the server still rejects unavailable modes)
+     */
+    private async resolveSelectableConversationMode(
+        requested: ConversationModeId
+    ): Promise<ConversationModeId> {
+        const catalog = await fetchConversationModes();
+        if (!catalog.success || !catalog.modes?.length) {
+            return requested;
+        }
+        const activeModes = catalog.modes.filter((mode) => mode.status === 'active');
+        if (activeModes.some((mode) => mode.id === requested)) {
+            return requested;
+        }
+        return (activeModes.find((mode) => mode.isDefault) ?? activeModes[0])?.id ?? 'socratic';
     }
 
     /**

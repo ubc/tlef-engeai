@@ -52,9 +52,10 @@ export type PersistedConversationModeId = ConversationModeId | RetiredConversati
 
 /**
  * Catalog availability for a {@link ConversationModeId} (GET /api/chat/conversation-modes).
- * Not stored on MongoDB chat documents.
+ * Not stored on MongoDB chat documents. `coming_soon` is listed but disabled in the picker;
+ * `locked` is omitted from the picker entirely. Neither can be chosen for new chats.
  */
-export type ConversationModeStatus = 'active' | 'coming_soon';
+export type ConversationModeStatus = 'active' | 'coming_soon' | 'locked';
 
 /** Request body for changing a welcome-only chat's teaching mode. */
 export interface UpdateChatConversationModeRequest {
