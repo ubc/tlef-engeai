@@ -4,7 +4,6 @@
  */
 
 declare module 'passport-ubcshib' {
-    import { Strategy as SamlStrategy } from 'passport-saml';
     import { Request } from 'express';
 
     export interface UbcShibStrategyOptions {
@@ -33,7 +32,12 @@ declare module 'passport-ubcshib' {
 
     export type UbcShibVerifyCallback = (profile: UbcShibProfile, done: (error: any, user?: any) => void) => void;
 
-    export class Strategy extends SamlStrategy {
+    /**
+     * Standalone by design: do not re-add `extends` from the underlying SAML
+     * package. It is a transitive dependency we do not declare, and
+     * `skipLibCheck` would hide the broken import rather than failing the build.
+     */
+    export class Strategy {
         constructor(options: UbcShibStrategyOptions, verify: UbcShibVerifyCallback);
         logout(req: Request, callback: (err: any, requestUrl?: string | null) => void): void;
     }
