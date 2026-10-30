@@ -395,7 +395,12 @@ async function wireAdvancedSettings(currentClass: activeCourse, canManage: boole
     bindAccordionToggle('dashboard-features-accordion', 'dashboard-features-toggle', 'dashboard-features-body', canManage);
     bindAccordionToggle('dashboard-course-info-accordion', 'dashboard-course-info-toggle', 'dashboard-course-info-body', true);
 
-    if (featuresTaNote) featuresTaNote.hidden = canManage;
+    if (featuresTaNote) {
+        featuresTaNote.hidden = canManage;
+        if (!canManage) {
+            document.getElementById('dashboard-features-toggle')?.setAttribute('aria-describedby', featuresTaNote.id);
+        }
+    }
 
     await wireFeatureToggles(currentClass, canManage);
     wireCanvasRosterSync(currentClass, canManage);

@@ -456,6 +456,11 @@
     color: var(--text-secondary, #6c757d);
 }
 
+.dashboard-accordion-note--locked {
+    margin: 0;
+    padding: 0 1.1rem 0.9rem;
+}
+
 .dashboard-accordion-body {
     display: grid;
     grid-template-rows: 0fr;
