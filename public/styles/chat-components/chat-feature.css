@@ -230,8 +230,9 @@
     flex-grow: 1;
     width: 100%; 
     /* Same width and side gutter as .chat-footer-content so bubbles line up with the composer.
-       The right side subtracts the scrollbar width (set by ChatManager) but keeps 8px for the bubble tail. */
-    padding: 0 max(8px, calc(max(16px, (100% - 820px) / 2) - var(--message-area-scrollbar-width, 0px))) 160px max(16px, calc((100% - 820px) / 2));
+       The right side subtracts the scrollbar width (set by ChatManager) but keeps 8px for the bubble tail.
+       The bottom clears the overlaid .chat-footer-content (~156px with a one-line input). */
+    padding: 0 max(8px, calc(max(16px, (100% - 820px) / 2) - var(--message-area-scrollbar-width, 0px))) 180px max(16px, calc((100% - 820px) / 2));
     margin: 0;
     list-style: none;
     display: flex;
@@ -649,12 +650,41 @@
     animation: slideInUp 0.5s 0.1s forwards;
 }
 
+/* A CHBE-green tab flush with the card's left edge, open at the bottom so it sits on the card's top border.
+   Its text starts at the textarea's text inset (card's 1px border + 0.85rem padding). */
+.chat-input-label {
+    align-self: flex-start;
+    margin-top: 0.75rem;
+    padding: 0.15rem 0.6rem 0.2rem calc(0.85rem - 1px);
+    font-size: 0.75rem;
+    font-weight: 600;
+    border: 1px solid var(--color-chbe-green, #4d7a2f);
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    background-color: #e8f0e1;
+    /* 5.22:1 on #e8f0e1 (--text-secondary is only 4.02:1 here); keep any replacement at 4.5:1 or above */
+    color: #5c636a;
+    cursor: text;
+    padding-inline:15px;
+}
+
+.input-area:has(#chat-input:focus) .chat-input-label {
+    color: var(--text-primary);
+}
+
+/* The textarea drops its own outline, so ring the whole card while typing */
+.composer-card:has(#chat-input:focus) {
+    outline: 3px solid var(--color-ubc-blue, #2f5f8f);
+    outline-offset: -1px;
+}
+
 .composer-card {
     width: 100%;
     display: flex;
     flex-direction: column;
     border: 1px solid var(--border-color);
-    border-radius: 10px;
+    /* Square top-left so the label tab's left edge runs straight into the card's */
+    border-radius: 0 10px 10px 10px;
     background-color: var(--background-2);
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
     overflow: visible;
