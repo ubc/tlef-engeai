@@ -18,7 +18,8 @@
     width: 100%;
     max-width: var(--page-shell-max-width);
     margin: 0 auto;
-    padding: 0 var(--page-shell-pad-x) var(--page-shell-pad-bottom);
+    /* --course-summary-fab-clearance is set by instructor-mode.css while the course summary button shows */
+    padding: 0 var(--page-shell-pad-x) calc(var(--page-shell-pad-bottom) + var(--course-summary-fab-clearance, 0px));
     box-sizing: border-box;
     overflow-y: auto;
     scrollbar-gutter: stable;
@@ -120,7 +121,7 @@
         --page-shell-pad-x: 1rem;
         --page-header-pad-top: 1.25rem;
         --page-header-pad-bottom: 0.75rem;
-        padding: 0 var(--page-shell-pad-x) 2rem;
+        --page-shell-pad-bottom: 2rem;
     }
 }
 

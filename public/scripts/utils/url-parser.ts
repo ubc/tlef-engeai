@@ -9,6 +9,7 @@ import {
     FEATURE_ONBOARDING_STAGES,
     type InstructorOnboardingStage
 } from './onboarding-stage-order.js';
+import { syncPageTitleFromURL } from './page-title.js';
 
 /** Every stage slug the instructor onboarding router accepts. */
 const VALID_INSTRUCTOR_ONBOARDING_STAGES: ReadonlyArray<InstructorOnboardingStage> = [
@@ -63,6 +64,8 @@ export function replaceInstructorViewURL(view: string): void {
     if (window.location.pathname + window.location.search === url) return;
 
     window.history.replaceState({ view }, '', url);
+    // replaceState doesn't fire popstate, so the title listener won't see this change
+    syncPageTitleFromURL();
 }
 
 /**

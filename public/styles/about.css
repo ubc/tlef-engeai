@@ -33,6 +33,7 @@
 .about-content-inner {
     flex: 1;
     padding: 2rem;
+    padding-bottom: calc(2rem + var(--course-summary-fab-clearance, 0px));
     overflow-y: auto;
     display: flex;
     flex-direction: column;
