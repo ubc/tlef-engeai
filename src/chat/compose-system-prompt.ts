@@ -9,7 +9,7 @@ import { CONVERSATION_MODE_IDS, ConversationModeId } from '../types/shared';
 
 export type { ConversationModeId };
 
-export type ConversationModeStatus = 'active' | 'coming_soon';
+export type ConversationModeStatus = 'active' | 'coming_soon' | 'locked';
 
 /** Catalog row returned by GET /api/chat/conversation-modes (no prompt bodies). */
 export interface ApiConversationModeListItem {
@@ -41,7 +41,9 @@ const MODE_CATALOG: ApiConversationModeListItem[] = [
         shortDescription: 'Clear explanations with optional check-in questions',
         longDescription:
             'EngE-AI explains concepts directly using the PROSE framework, then optionally checks your understanding.',
-        status: 'active',
+        // Locked at instructor request: hidden from the picker and rejected for new chats.
+        // Existing Explanatory chats keep working. Set back to 'active' to re-enable.
+        status: 'locked',
         isDefault: false,
         sortOrder: 1,
     },

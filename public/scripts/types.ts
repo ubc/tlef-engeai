@@ -35,7 +35,7 @@ export type RetiredConversationModeId = (typeof RETIRED_CONVERSATION_MODE_IDS)[n
 export type PersistedConversationModeId = ConversationModeId | RetiredConversationModeId | 'undeclared';
 
 /** Must match src/types/shared.ts */
-export type ConversationModeStatus = 'active' | 'coming_soon';
+export type ConversationModeStatus = 'active' | 'coming_soon' | 'locked';
 
 /** Must match src/types/shared.ts. */
 export interface PathwayCta {

@@ -20,11 +20,19 @@
  * decision. Keep the two wordings in sync when either changes.
  */
 const SOCRATIC_ADAPTIVE_GUIDANCE =
-    'On the Socratic path, preserve student ownership: increase help after repeated impasse ' +
-    '(prompt, hint, partial representation, one modelled step, brief explanation), then require ' +
-    'the student to explain, complete, or apply the next step. LaTeX, lists, diagrams, and concise ' +
-    'explanations are allowed when they make that next contribution possible. Answer course ' +
-    'logistics, policy, and schedule questions directly; scaffold only course content.';
+    'On the Socratic path, preserve student ownership: the student makes the decisions (the approach, the ' +
+    'system and variables, which principle or relationship applies, the setup or equation itself); ' +
+    'mechanical work on a setup you wrote is never their contribution. Before sending, remove any step the ' +
+    'student has not attempted yet and ask for it instead. Start each step with a prompt and increase help ' +
+    'one level only after impasse or a wrong answer (prompt, hint, partial representation, one modelled ' +
+    'step, brief explanation). Wrong answers: on the first miss name only the earliest error and have them ' +
+    'redo it, with no corrected working; on a repeat miss or "I don\'t know" add one rung of help; on a ' +
+    'third miss or frustration, model that one step, finish its arithmetic yourself, and hand back the next ' +
+    'decision, never the calculation you just set up. These limits hold at every rung: a stuck student gets a ' +
+    'smaller decision (choose between two options you name, or say why a step works), not arithmetic. Never stay on one rung for more ' +
+    'than two replies. Then require the student to explain, complete, or apply the next step. LaTeX, lists, ' +
+    'diagrams, and concise explanations are allowed when they make that next contribution possible. Answer ' +
+    'course logistics, policy, and schedule questions directly; scaffold only course content.';
 
 /**
  * formatStruggleTopicsUserBridge - build user-turn struggle list context (no reveal tags).

@@ -1,6 +1,8 @@
 /**
  * Conversation mode picker — pill beside send.
  * Unlocked: label + CSS chevron. Locked: label + Feather lock (CSS toggled via `.is-locked`).
+ * The pill is also locked when the catalog leaves only one selectable mode; `locked` modes are
+ * never listed.
  */
 
 import { fetchConversationModes } from '../api/chat-api.js';
@@ -84,6 +86,7 @@ export class ConversationModePicker {
 
         this.renderPopover();
         this.syncTriggerLabel();
+        this.applyLockedPresentation(this.isLocked);
         this.options.onCatalogLoaded?.();
     }
 
@@ -121,7 +124,19 @@ export class ConversationModePicker {
         this.applyLockedPresentation(this.isLocked);
     }
 
-    private applyLockedPresentation(isLocked: boolean): void {
+    /** True when the chat is locked or the catalog offers nothing to switch to. */
+    private isEffectivelyLocked(): boolean {
+        if (this.isLocked) {
+            return true;
+        }
+        return this.catalogLoaded && this.modes.filter((m) => m.status === 'active').length <= 1;
+    }
+
+    private applyLockedPresentation(isChatLocked: boolean): void {
+        const isLocked = isChatLocked || this.isEffectivelyLocked();
+        if (isLocked) {
+            this.closePopover();
+        }
         this.trigger?.classList.toggle('is-locked', isLocked);
         this.trigger?.setAttribute('aria-disabled', isLocked ? 'true' : 'false');
         this.trigger?.setAttribute('aria-busy', this.isPending ? 'true' : 'false');
@@ -137,7 +152,7 @@ export class ConversationModePicker {
     private bindTrigger(): void {
         this.trigger?.addEventListener('click', (e) => {
             e.stopPropagation();
-            if (this.isLocked || this.isPending) {
+            if (this.isEffectivelyLocked() || this.isPending) {
                 return;
             }
             this.popoverOpen = !this.popoverOpen;
@@ -172,13 +187,14 @@ export class ConversationModePicker {
     }
 
     private renderPopover(): void {
-        if (!this.popover || this.isLocked) {
+        if (!this.popover || this.isEffectivelyLocked()) {
             return;
         }
         this.popover.innerHTML = '';
         this.popover.setAttribute('role', 'listbox');
 
-        for (const mode of this.modes) {
+        // Locked modes stay in `this.modes` so existing chats in them still get a display label.
+        for (const mode of this.modes.filter((m) => m.status !== 'locked')) {
             const option = document.createElement('button');
             option.type = 'button';
             option.className = 'conversation-mode-option';
