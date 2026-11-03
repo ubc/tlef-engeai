@@ -101,10 +101,17 @@
 
 
 /* Documents Content */
-.documents-container {
+ul.documents-container {
     background: var(--chat-bg);
     overflow: hidden;
+    padding-left: 0;
     /* animation: slideInUp 0.3s 0.1s forwads; */
+}
+
+ul.documents-container > li::marker {
+    /* 0.01px */
+    font-size: 0.000625rem;
+    color: transparent;
 }
 
 .topic-or-week-instance {
@@ -139,6 +146,11 @@
     font-weight: 600;
     display: flex;
     align-items: center;
+}
+
+.topic-or-week-title > :is(h2, h3, h4, h5, h6).topic-or-week-title-heading {
+    margin-block: 0;
+    font-size: 18px;
 }
 
 .topic-or-week-status {
@@ -181,14 +193,21 @@
     transition: transform 0.3s ease;
 }
 
-.topic-or-week-item {
+ul.topic-or-week-item {
     max-height: 0;
     overflow: hidden;
     transition: max-height 0.3s ease;
+    padding-left: 0;
+}
+
+ul.topic-or-week-item > li::marker {
+    /* 0.01px */
+    font-size: 0.000625rem;
+    color: transparent;
 }
 
 /* An open section scrolls inside itself so long ones (many subsections) still reach the upload action */
-.topic-or-week-item.expanded {
+ul.topic-or-week-item.expanded {
     max-height: 70vh;
     overflow-y: auto;
     scrollbar-gutter: stable;
@@ -217,6 +236,12 @@
     font-weight: 500;
     display: flex;
     align-items: center;
+}
+
+.content-title > :is(h2, h3, h4, h5, h6).content-title-heading {
+    margin-block: 0;
+    font-size: 16px;
+    font-weight: 500;
 }
 
 .content-status {
@@ -667,10 +692,11 @@ button.content-status {
     background: var(--gingham-color);
 }
 
-.objectives-title {
+:is(h2, h3, h4, h5).objectives-title {
     color: var(--text-primary);
     font-size: 14px;
     font-weight: 500;
+    margin-block: 0;
 }
 
 .objectives-count {
@@ -702,6 +728,16 @@ button.content-status {
 .objectives-content-inner {
     overflow: hidden;
     min-height: 0;
+}
+
+.objectives-content-inner > ul {
+    padding-left: 0;
+}
+
+.objectives-content-inner > ul > li::marker {
+    /* 0.01px */
+    font-size: 0.000625rem;
+    color: transparent;
 }
 
 .objectives-content.expanded {
