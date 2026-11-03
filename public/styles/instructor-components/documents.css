@@ -547,7 +547,14 @@ button.content-status {
     box-shadow: 0 2px 4px rgba(77, 122, 47, 0.3);
 }
 
-.status-copy-materials:focus-visible {
+.status-copy-materials:focus-visible,
+.status-arrange-order:focus-visible,
+.status-add-division:focus-visible,
+.status-delete-all-divisions:focus-visible,
+.status-delete-all-documents:focus-visible,
+.status-add-session:focus-visible,
+.status-delete-instance:focus-visible,
+.status-delete-section:focus-visible {
     outline: 2px solid var(--color-chbe-green);
     outline-offset: 2px;
 }

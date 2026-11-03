@@ -1025,18 +1025,21 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         right.style.flex = '0 0 auto';
 
         // Add Session badge/button
-        const addSessionBadge = document.createElement('div');
+        const addSessionBadge = document.createElement('button');
+        addSessionBadge.type = 'button';
         addSessionBadge.className = 'content-status status-add-session';
-        addSessionBadge.setAttribute('title', 'Add Section');
-        addSessionBadge.setAttribute('aria-label', 'Add Section');
         const addSectionIcon = document.createElement('i');
         addSectionIcon.setAttribute('data-feather', 'plus');
         addSectionIcon.setAttribute('aria-hidden', 'true');
         const addSectionText = document.createElement('span');
         addSectionText.className = 'status-text';
         addSectionText.textContent = 'Add Section';
+        const addSectionTextVisuallyHidden = document.createElement('span');
+        addSectionTextVisuallyHidden.className = 'visually-hidden';
+        addSectionTextVisuallyHidden.textContent = ` (${instance_topicOrWeek.title})`;
         addSessionBadge.appendChild(addSectionIcon);
         addSessionBadge.appendChild(addSectionText);
+        addSessionBadge.appendChild(addSectionTextVisuallyHidden);
         // Prevent header toggle when clicking Add Section
         addSessionBadge.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -1066,20 +1069,23 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         expandIcon.textContent = '▼';
 
         // Delete instance badge
-        const deleteInstanceBadge = document.createElement('div');
+        const deleteInstanceBadge = document.createElement('button');
+        deleteInstanceBadge.type = 'button';
         deleteInstanceBadge.className = 'content-status status-delete-instance';
         deleteInstanceBadge.setAttribute('data-action', 'delete-instance');
         deleteInstanceBadge.setAttribute('data-topic-or-week-instance-id', instance_topicOrWeek.id);
-        deleteInstanceBadge.setAttribute('title', 'Delete');
-        deleteInstanceBadge.setAttribute('aria-label', 'Delete');
         const deleteInstanceIcon = document.createElement('i');
         deleteInstanceIcon.setAttribute('data-feather', 'trash-2');
         deleteInstanceIcon.setAttribute('aria-hidden', 'true');
         const deleteInstanceText = document.createElement('span');
         deleteInstanceText.className = 'status-text';
         deleteInstanceText.textContent = 'Delete';
+        const deleteInstanceTextVisuallyHidden = document.createElement('span');
+        deleteInstanceTextVisuallyHidden.className = 'visually-hidden';
+        deleteInstanceTextVisuallyHidden.textContent = ` (${instance_topicOrWeek.title})`;
         deleteInstanceBadge.appendChild(deleteInstanceIcon);
         deleteInstanceBadge.appendChild(deleteInstanceText);
+        deleteInstanceBadge.appendChild(deleteInstanceTextVisuallyHidden);
         deleteInstanceBadge.addEventListener('click', (e) => {
             e.stopPropagation();
             deleteTopicOrWeekInstance(instance_topicOrWeek);
@@ -2267,10 +2273,9 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         statusRow.className = 'content-status-row';
         // Right side does not grow
         statusRow.style.flex = '0 0 auto';
-        const deleteBadge = document.createElement('div');
+        const deleteBadge = document.createElement('button');
+        deleteBadge.type = 'button';
         deleteBadge.className = 'content-status status-delete-section';
-        deleteBadge.setAttribute('title', 'Delete Section');
-        deleteBadge.setAttribute('aria-label', 'Delete Section');
         deleteBadge.dataset.action = 'delete-section';
         const deleteSectionIcon = document.createElement('i');
         deleteSectionIcon.setAttribute('data-feather', 'trash-2');
@@ -2278,8 +2283,12 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const deleteSectionText = document.createElement('span');
         deleteSectionText.className = 'status-text';
         deleteSectionText.textContent = 'Delete Section';
+        const deleteSectionTextVisuallyHidden = document.createElement('span');
+        deleteSectionTextVisuallyHidden.className = 'visually-hidden';
+        deleteSectionTextVisuallyHidden.textContent = ` (${content.title})`;
         deleteBadge.appendChild(deleteSectionIcon);
         deleteBadge.appendChild(deleteSectionText);
+        deleteBadge.appendChild(deleteSectionTextVisuallyHidden);
         deleteBadge.dataset.topicOrWeekInstanceId = topicOrWeekId;
         deleteBadge.dataset.contentId = content.id;
         statusRow.appendChild(deleteBadge);
