@@ -956,7 +956,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     function createDivisionElement(instance_topicOrWeek: TopicOrWeekInstance): HTMLElement {
 
         // create the wrapper for the topic/week instance
-        const wrapper = document.createElement('div');
+        const wrapper = document.createElement('li');
         wrapper.className = 'topic-or-week-instance';
 
         // create the header for the topic/week instance
@@ -983,7 +983,8 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         title.style.gap = '8px';
         
         // Create title text span
-        const titleText = document.createElement('span');
+        const titleText = document.createElement('h2');
+        titleText.classList.add('topic-or-week-title-heading');
         titleText.textContent = instance_topicOrWeek.title;
         title.appendChild(titleText);
         
@@ -1094,7 +1095,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         header.appendChild(right);
 
         // create the content for the topic/week instance
-        const contentEl = document.createElement('div');
+        const contentEl = document.createElement('ul');
         contentEl.className = 'topic-or-week-item';
         contentEl.id = `content-topic-or-week-instance-${instance_topicOrWeek.id}`;
 
@@ -2223,7 +2224,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
      */
     function buildContentItemDOM(topicOrWeekId: string, content: TopicOrWeekItem): HTMLElement {
         // Reuse the createContentItemElement pattern used at page render time
-        const item = document.createElement('div');
+        const item = document.createElement('li');
         item.className = 'content-item';
         item.id = `content-item-${topicOrWeekId}-${content.id}`;
         // Header
@@ -2245,7 +2246,8 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         title.style.minWidth = '0';
         
         // Create title text span
-        const titleText = document.createElement('span');
+        const titleText = document.createElement('h3');
+        titleText.classList.add('content-title-heading');
         titleText.textContent = content.title;
         title.appendChild(titleText);
         
