@@ -1030,6 +1030,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         addSessionBadge.setAttribute('aria-label', 'Add Section');
         const addSectionIcon = document.createElement('i');
         addSectionIcon.setAttribute('data-feather', 'plus');
+        addSectionIcon.setAttribute('aria-hidden', 'true');
         const addSectionText = document.createElement('span');
         addSectionText.className = 'status-text';
         addSectionText.textContent = 'Add Section';
@@ -1046,6 +1047,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         publishBtn.className = 'content-status publish-status-btn status-draft';
         const statusIcon = document.createElement('i');
         statusIcon.setAttribute('data-feather', 'file-text');
+        statusIcon.setAttribute('aria-hidden', 'true');
         const statusText = document.createElement('span');
         statusText.className = 'status-text';
         statusText.textContent = 'Draft';
@@ -1071,6 +1073,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         deleteInstanceBadge.setAttribute('aria-label', 'Delete');
         const deleteInstanceIcon = document.createElement('i');
         deleteInstanceIcon.setAttribute('data-feather', 'trash-2');
+        deleteInstanceIcon.setAttribute('aria-hidden', 'true');
         const deleteInstanceText = document.createElement('span');
         deleteInstanceText.className = 'status-text';
         deleteInstanceText.textContent = 'Delete';
@@ -2269,6 +2272,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         deleteBadge.dataset.action = 'delete-section';
         const deleteSectionIcon = document.createElement('i');
         deleteSectionIcon.setAttribute('data-feather', 'trash-2');
+        deleteSectionIcon.setAttribute('aria-hidden', 'true');
         const deleteSectionText = document.createElement('span');
         deleteSectionText.className = 'status-text';
         deleteSectionText.textContent = 'Delete Section';
