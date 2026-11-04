@@ -102,6 +102,22 @@
   - **Roster** (`{courseName}_users` / `course-user-mongo.ts`): **`countCourseStudentsAndActiveChats`** — student row count (`affiliation: 'student'`) and count of **non-deleted** embedded chat threads, aligned with conversation ZIP export filters (`conversation-export-mongo.ts`).
   - **HTTP**: `GET /api/courses/:courseId/course-summary/status` in `src/routes/route-mongo.ts` (instructor RBAC) composes the JSON envelope; façade exposes **`countCourseStudentsAndActiveChats`**.
 
+## Field-level encryption at rest
+
+`@ubc/genai-toolkit-encryption` encrypts configured fields before they reach MongoDB and decrypts them on read. Field choices and the query audit are in [ENCRYPTION_FIELD_INVENTORY.md](ENCRYPTION_FIELD_INVENTORY.md).
+
+- **Config:** `encryption.config.cjs` at the repository root (CommonJS, also used by the operator CLI). Namespace `ubc.engeai`, permanent. Keys come from `ENGEAI_DATA_ENCRYPTION_KEY` and `ENGEAI_BLIND_INDEX_KEY`; the server refuses to start without them.
+- **Wrap point:** `EngEAI_MongoDB.getInstance()` passes the connected `Db` to `wrapDbWithEncryption` (`src/db/encrypted-db.ts`). `MongoDalContext.db` is a `Db` view whose `collection()` and `createCollection()` go through the protected wrapper; administrative methods (`dropCollection`, `listCollections`, `admin`) stay on the raw handle. Every `.db.collection(...)` caller, including routes, migrations and the LMS token store, is therefore covered. Startup also fails if a collection the code relies on is missing from the config.
+- **Protected (phase 1):** `writing-submissions` (`originalText`, `verifiedText`, `studentLabel`, review `studentFeedback`/`internalNote`/`comments`/`summaryEdits`), `writing-feedback-runs` (`result`, `sflAnalysis`, `textDiagnosis`, `sourceComments`), and Canvas/Moodle OAuth tokens (`tokens.accessToken`, `tokens.refreshToken`, `tokens.token`).
+- **Rules for code touching those collections:**
+  - Aggregations are limited to `$match`, `$sort`, `$skip`, `$limit` and a plain inclusion/exclusion `$project`. Use a projected `find` and reduce in code instead.
+  - No `$regex`, range, `$ne`, or sort on an encrypted field.
+  - No `arrayFilters` or positional (`$`) updates reaching an encrypted path, and no `updateMany` that touches one.
+  - Never write `undefined` inside an encrypted value; `writing-feedback-mongo.ts` strips it with `encryptedFieldsWithoutUndefined`.
+  - Never `$lookup`/`$unionWith` into these collections from an unconfigured one: the joined documents would come back still encrypted.
+- **PUIDs stay plaintext for now** (`active-users`, `instructor-period-allowances`) so staff can still find them in Mongo Express. They will be encrypted, with a blind index for login lookups, once an admin-facing user directory exists. `ENGEAI_BLIND_INDEX_KEY` is already required so every environment has it by then.
+- **Not yet protected:** per-course collections (`{courseName}_users` chats, flags, memory agent, scenarios). The toolkit needs exact collection names; see the inventory for the options.
+
 ## Cross-cutting orchestration
 
 <!-- @rdschrs: Implemented Writing Feedback persistence and lifecycle records. -->
@@ -438,6 +454,7 @@ identifier cannot collide with. Pinned by `student-view-exclusion-guard.test.ts`
 ## Tests and coverage
 
 - Tests live under `src/db/mongo/__tests__/`.
+- `src/db/__tests__/encrypted-db.integration.test.ts` runs the real encryption config against MongoDB with throwaway keys. It is skipped unless `ENCRYPTION_TEST_MONGO_URI` points at a local, disposable server, and it creates and drops its own uniquely named database.
 - **TBD**: Mock strategy, optional integration gate, npm/jest snippets (`npm test`, `jest --coverage`).
 
 ## Operations and troubleshooting

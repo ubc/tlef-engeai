@@ -15,6 +15,7 @@ import type {
     CanvasRubricIdMap,
     ImportedRubricShape,
     WritingAssignment,
+    WritingFeedbackRun,
     WritingRubricDefinition
 } from '../../../writing-feedback/contracts';
 import {
@@ -26,8 +27,10 @@ import {
     chooseWritingAssignmentType,
     completeWritingJob,
     countFeedbackStaleOnApproval,
+    countWritingSubmissionsByAssignment,
     createCanvasWritingAssignment,
     createManualWritingAssignment,
+    createWritingSubmission,
     deleteWritingAssignment,
     deleteWritingSourceMaterial,
     discardWritingRubricDraft,
@@ -633,53 +636,121 @@ describe('createCanvasWritingAssignment', () => {
     });
 });
 
+/**
+ * Mock `writing-feedback-runs` exposing `find(filter, options).sort().toArray()`, returning `rows`
+ * as the newest-first result. Neither collection offers `aggregate`, because both are encrypted
+ * and the encryption layer rejects `$group`/`$lookup`.
+ */
+function runsFindCollection(rows: Array<Partial<WritingFeedbackRun>>) {
+    const sort = jest.fn(() => ({ toArray: jest.fn().mockResolvedValue(rows) }));
+    return { find: jest.fn((_filter: object, _options?: object) => ({ sort })), sort };
+}
+
 describe('countFeedbackStaleOnApproval', () => {
-    // Typed parameter, so the recorded pipeline can be read back without a cast.
-    function runsWithAggregate(rows: Array<{ total: number }>) {
-        const toArray = jest.fn().mockResolvedValue(rows);
-        return { aggregate: jest.fn((_pipeline: object[]) => ({ toArray })) };
+    function submissionsCounting(count: number) {
+        return { countDocuments: jest.fn((_filter: object) => Promise.resolve(count)) };
     }
 
     it('counts each unreleased submission once, by its latest run at the approved version', async () => {
-        const runs = runsWithAggregate([{ total: 3 }]);
-        const ctx = contextWithCollections({ 'writing-feedback-runs': runs });
+        const runs = runsFindCollection([
+            { submissionId: 'sub-1', lens: 'technical', rubricVersion: 2 },
+            { submissionId: 'sub-1', lens: 'technical', rubricVersion: 1 },
+            { submissionId: 'sub-2', lens: 'technical', rubricVersion: 1 },
+            { submissionId: 'sub-3', lens: 'technical', rubricVersion: 2 }
+        ]);
+        const submissions = submissionsCounting(2);
+        const ctx = contextWithCollections({ 'writing-feedback-runs': runs, 'writing-submissions': submissions });
 
-        await expect(countFeedbackStaleOnApproval(ctx, 'course-1', 'assignment-1', 'technical', 2)).resolves.toBe(3);
+        await expect(countFeedbackStaleOnApproval(ctx, 'course-1', 'assignment-1', 'technical', 2)).resolves.toBe(2);
 
-        const pipeline = runs.aggregate.mock.calls[0][0];
-        expect(pipeline[0]).toEqual({ $match: { courseId: 'course-1', assignmentId: 'assignment-1', lens: 'technical' } });
-        expect(pipeline).toContainEqual({ $sort: { createdAt: -1 } });
-        expect(pipeline).toContainEqual({ $group: { _id: '$submissionId', rubricVersion: { $first: '$rubricVersion' } } });
-        expect(pipeline).toContainEqual({ $match: { rubricVersion: 2 } });
-        expect(pipeline).toContainEqual({
-            $lookup: { from: 'writing-submissions', localField: '_id', foreignField: 'id', as: 'submission' }
-        });
+        expect(runs.find.mock.calls[0][0]).toEqual({ courseId: 'course-1', assignmentId: 'assignment-1', lens: 'technical' });
+        expect(runs.sort).toHaveBeenCalledWith({ createdAt: -1 });
         // Released feedback is exempt from staleness, so approving a new version costs it nothing.
-        expect(pipeline).toContainEqual({
-            $match: { 'submission.courseId': 'course-1', 'submission.status': { $ne: 'released' } }
+        expect(submissions.countDocuments.mock.calls[0][0]).toEqual({
+            id: { $in: ['sub-1', 'sub-3'] }, courseId: 'course-1', status: { $ne: 'released' }
         });
     });
 
     it('treats a run with no recorded lens as writing, and no recorded version as version 1', async () => {
-        const runs = runsWithAggregate([{ total: 1 }]);
-        const ctx = contextWithCollections({ 'writing-feedback-runs': runs });
+        const runs = runsFindCollection([{ submissionId: 'sub-1' }, { submissionId: 'sub-2', rubricVersion: 2 }]);
+        const submissions = submissionsCounting(1);
+        const ctx = contextWithCollections({ 'writing-feedback-runs': runs, 'writing-submissions': submissions });
 
         await countFeedbackStaleOnApproval(ctx, 'course-1', 'assignment-1', 'linguistic', 1);
 
-        const pipeline = runs.aggregate.mock.calls[0][0];
-        expect(pipeline[0]).toEqual({
-            $match: {
-                courseId: 'course-1',
-                assignmentId: 'assignment-1',
-                $or: [{ lens: 'linguistic' }, { lens: { $exists: false } }]
-            }
+        expect(runs.find.mock.calls[0][0]).toEqual({
+            courseId: 'course-1',
+            assignmentId: 'assignment-1',
+            $or: [{ lens: 'linguistic' }, { lens: { $exists: false } }]
         });
-        expect(pipeline).toContainEqual({ $match: { rubricVersion: { $in: [1, null] } } });
+        expect(submissions.countDocuments.mock.calls[0][0]).toMatchObject({ id: { $in: ['sub-1'] } });
     });
 
-    it('returns 0 when no unreleased feedback used the approved version', async () => {
-        const ctx = contextWithCollections({ 'writing-feedback-runs': runsWithAggregate([]) });
+    it('returns 0 without counting submissions when no latest run used the approved version', async () => {
+        const submissions = submissionsCounting(5);
+        const ctx = contextWithCollections({
+            'writing-feedback-runs': runsFindCollection([{ submissionId: 'sub-1', lens: 'technical', rubricVersion: 3 }]),
+            'writing-submissions': submissions
+        });
         await expect(countFeedbackStaleOnApproval(ctx, 'course-1', 'assignment-1', 'technical', 4)).resolves.toBe(0);
+        expect(submissions.countDocuments).not.toHaveBeenCalled();
+    });
+});
+
+describe('countWritingSubmissionsByAssignment', () => {
+    it('counts active-slot submissions per assignment without aggregation', async () => {
+        const find = jest.fn((_filter: object, _options?: object) => ({
+            toArray: jest.fn().mockResolvedValue([
+                { assignmentId: 'a-1' }, { assignmentId: 'a-1' }, { assignmentId: 'a-2' }
+            ])
+        }));
+        const ctx = contextWithCollections({ 'writing-submissions': { find } });
+
+        await expect(countWritingSubmissionsByAssignment(ctx, 'course-1')).resolves.toEqual({ 'a-1': 2, 'a-2': 1 });
+        expect(find.mock.calls[0][0]).toEqual({ courseId: 'course-1', slot: { $in: ['active', null] } });
+    });
+});
+
+describe('writes into encrypted fields omit undefined values', () => {
+    it('createWritingSubmission drops an undefined label or verified text instead of writing it', async () => {
+        const insertOne = jest.fn().mockResolvedValue({ acknowledged: true });
+        const ctx = contextWithCollections({
+            'writing-assignments': indexOnlyCollection(),
+            'writing-submissions': { ...indexOnlyCollection(), insertOne },
+            'writing-feedback-runs': indexOnlyCollection(),
+            'writing-releases': indexOnlyCollection(),
+            'writing-jobs': indexOnlyCollection(),
+            'writing-glossary-entries': indexOnlyCollection(),
+            'canvas-connections': indexOnlyCollection()
+        });
+
+        await createWritingSubmission(ctx, {
+            courseId: 'course-1', assignmentId: 'a-1', studentId: 'student-1', attempt: 1,
+            studentLabel: undefined, sourceType: 'digital_file', originalText: 'Draft text.',
+            verifiedText: undefined, requiresVerification: true, status: 'verification_needed'
+        });
+
+        const written = insertOne.mock.calls[0][0] as Record<string, unknown>;
+        expect(written).toMatchObject({ originalText: 'Draft text.', requiresVerification: true });
+        expect('studentLabel' in written).toBe(false);
+        expect('verifiedText' in written).toBe(false);
+    });
+
+    it('appendWritingReview strips undefined properties nested in encrypted review fields', async () => {
+        const updateOne = jest.fn().mockResolvedValue({ matchedCount: 1 });
+        const ctx = contextWithCollections({ 'writing-submissions': { updateOne } });
+
+        await appendWritingReview(ctx, 'course-1', 'sub-1', {
+            feedbackRunId: 'run-1', staffUserId: 'staff-1', studentFeedback: 'Good.', internalNote: undefined,
+            comments: [{
+                id: 'c-1', lens: 'linguistic', criterion: undefined, quote: 'text',
+                startOffset: 0, endOffset: 4, comment: 'Clear.', origin: 'staff'
+            }]
+        });
+
+        const pushed = (updateOne.mock.calls[0][1] as { $push: { reviews: Record<string, unknown> } }).$push.reviews;
+        expect('internalNote' in pushed).toBe(false);
+        expect(pushed.comments).toEqual([{ id: 'c-1', lens: 'linguistic', quote: 'text', startOffset: 0, endOffset: 4, comment: 'Clear.', origin: 'staff' }]);
     });
 });
 
@@ -989,21 +1060,19 @@ describe('editWritingTranscript', () => {
 
 describe('listLatestWritingRunVersions', () => {
     it('maps each submission to its latest rubric version per lens, defaulting legacy runs', async () => {
-        const runsCollection = {
-            aggregate: jest.fn(() => ({
-                toArray: jest.fn().mockResolvedValue([
-                    { _id: { submissionId: 'sub-1', lens: 'linguistic' }, rubricVersion: 3 },
-                    { _id: { submissionId: 'sub-1', lens: 'technical' }, rubricVersion: 2 },
-                    { _id: { submissionId: 'sub-2', lens: 'linguistic' }, rubricVersion: null }
-                ])
-            }))
-        };
+        // Newest first, as the sorted query returns them.
+        const runsCollection = runsFindCollection([
+            { submissionId: 'sub-1', lens: 'linguistic', rubricVersion: 3 },
+            { submissionId: 'sub-1', lens: 'technical', rubricVersion: 2 },
+            { submissionId: 'sub-1', lens: 'linguistic', rubricVersion: 1 },
+            { submissionId: 'sub-2' }
+        ]);
         const ctx = contextWithCollections({ 'writing-feedback-runs': runsCollection });
 
         const versions = await listLatestWritingRunVersions(ctx, 'course-1', 'assignment-1');
         expect(versions.get('sub-1')).toEqual({ linguistic: 3, technical: 2 });
         expect(versions.get('sub-2')).toEqual({ linguistic: 1 });
-        const [pipeline] = runsCollection.aggregate.mock.calls[0] as unknown as [Array<Record<string, unknown>>];
-        expect(pipeline[0]).toEqual({ $match: { courseId: 'course-1', assignmentId: 'assignment-1' } });
+        expect(runsCollection.find.mock.calls[0][0]).toEqual({ courseId: 'course-1', assignmentId: 'assignment-1' });
+        expect(runsCollection.sort).toHaveBeenCalledWith({ createdAt: -1 });
     });
 });

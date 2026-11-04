@@ -37,6 +37,7 @@ import {
 } from '../types/shared';
 import { IDGenerator } from '../utils/unique-id-generator';
 import { appLogger } from '../utils/logger';
+import { wrapDbWithEncryption } from './encrypted-db';
 import type {
     CreateGuidedPathwayFlagInput,
     GuidedPathwayFlagListFilters,
@@ -139,8 +140,9 @@ export class EngEAI_MongoDB {
 
             try {
                 await EngEAI_MongoDB.instance.client.connect();
-                EngEAI_MongoDB.instance.db = EngEAI_MongoDB.instance.client.db(process.env.MONGO_DB_NAME);
-                appLogger.log('✅ MongoDB connected successfully');
+                const rawDb = EngEAI_MongoDB.instance.client.db(process.env.MONGO_DB_NAME);
+                EngEAI_MongoDB.instance.db = await wrapDbWithEncryption(rawDb);
+                appLogger.log('✅ MongoDB connected successfully (field encryption active)');
             } catch (error) {
                 appLogger.error('❌ Failed to connect to MongoDB:', error);
                 throw new Error(`MongoDB connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`);

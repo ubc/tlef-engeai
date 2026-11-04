@@ -62,6 +62,42 @@ function jobs(ctx: MongoDalContext): Collection<WritingJob> { return ctx.db.coll
 function glossary(ctx: MongoDalContext): Collection<WritingGlossaryEntry> { return ctx.db.collection(GLOSSARY); }
 function sourceMaterials(ctx: MongoDalContext): Collection<WritingSourceMaterial> { return ctx.db.collection(SOURCE_MATERIALS); }
 
+/**
+ * Fields stored encrypted (see `encryption.config.cjs`). The encryption layer rejects `undefined`
+ * anywhere inside an encrypted value, where the driver would have written `null`.
+ */
+const ENCRYPTED_SUBMISSION_FIELDS = ['originalText', 'verifiedText', 'studentLabel'] as const;
+const ENCRYPTED_REVIEW_FIELDS = ['studentFeedback', 'internalNote', 'comments', 'summaryEdits'] as const;
+const ENCRYPTED_RUN_FIELDS = ['result', 'sflAnalysis', 'textDiagnosis', 'sourceComments'] as const;
+
+/** Copy of a plain object or array with every `undefined` property removed, at any depth. */
+function withoutUndefined<T>(value: T): T {
+    if (Array.isArray(value)) return value.map((item) => withoutUndefined(item)) as T;
+    if (value === null || typeof value !== 'object') return value;
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return value; // Date, ObjectId, Buffer
+    const copy: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value)) {
+        if (item !== undefined) copy[key] = withoutUndefined(item);
+    }
+    return copy as T;
+}
+
+/**
+ * Shallow copy of `doc` safe to write into encrypted fields: each listed field is dropped when
+ * `undefined` and otherwise has its nested `undefined` properties removed. Other fields are
+ * untouched, so their stored shape does not change.
+ */
+function encryptedFieldsWithoutUndefined<T extends object>(doc: T, fields: readonly string[]): T {
+    const copy = { ...doc } as Record<string, unknown>;
+    for (const field of fields) {
+        if (!(field in copy)) continue;
+        if (copy[field] === undefined) delete copy[field];
+        else copy[field] = withoutUndefined(copy[field]);
+    }
+    return copy as T;
+}
+
 let indexesEnsured = false;
 
 /**
@@ -316,11 +352,14 @@ export async function countWritingSubmissionsByAssignment(
     ctx: MongoDalContext,
     courseId: string
 ): Promise<Record<string, number>> {
-    const rows = await submissions(ctx).aggregate<{ _id: string; count: number }>([
-        { $match: { courseId, ...ACTIVE_SLOT_FILTER } },
-        { $group: { _id: '$assignmentId', count: { $sum: 1 } } }
-    ]).toArray();
-    return Object.fromEntries(rows.map((row) => [row._id, row.count]));
+    // Counted here rather than with `$group`: the collection is encrypted, and the toolkit only
+    // permits pipelines that cannot move a value.
+    const rows = await submissions(ctx)
+        .find({ courseId, ...ACTIVE_SLOT_FILTER }, { projection: { _id: 0, assignmentId: 1 } })
+        .toArray();
+    const counts: Record<string, number> = {};
+    for (const row of rows) counts[row.assignmentId] = (counts[row.assignmentId] ?? 0) + 1;
+    return counts;
 }
 
 /**
@@ -762,7 +801,7 @@ export async function createWritingSubmission(
     await ensureWritingFeedbackIndexes(ctx);
     const now = new Date();
     const submission: WritingSubmission = { slot: 'active', ...input, id: randomUUID(), createdAt: now, updatedAt: now };
-    await submissions(ctx).insertOne(submission);
+    await submissions(ctx).insertOne(encryptedFieldsWithoutUndefined(submission, ENCRYPTED_SUBMISSION_FIELDS));
     return submission;
 }
 
@@ -1119,7 +1158,7 @@ export async function createWritingFeedbackRun(
     input: Omit<WritingFeedbackRun, 'id' | 'createdAt'>
 ): Promise<WritingFeedbackRun> {
     const run: WritingFeedbackRun = { ...input, id: randomUUID(), createdAt: new Date() };
-    await runs(ctx).insertOne(run);
+    await runs(ctx).insertOne(encryptedFieldsWithoutUndefined(run, ENCRYPTED_RUN_FIELDS));
     return run;
 }
 
@@ -1199,24 +1238,44 @@ export async function countFeedbackStaleOnApproval(
     const lensFilter: Filter<WritingFeedbackRun> = lens === 'linguistic'
         ? { $or: [{ lens: 'linguistic' }, { lens: { $exists: false } }] }
         : { lens };
-    const versionFilter = approvedVersion === 1
-        ? { rubricVersion: { $in: [1, null] } }
-        : { rubricVersion: approvedVersion };
-    const [counted] = await runs(ctx).aggregate<{ total: number }>([
-        // Step 1: this assignment's runs for the lens, newest first.
-        { $match: { courseId, assignmentId, ...lensFilter } },
-        { $sort: { createdAt: -1 } },
-        // Step 2: one row per submission, carrying its latest run's rubric version.
-        { $group: { _id: '$submissionId', rubricVersion: { $first: '$rubricVersion' } } },
-        // Step 3: keep the submissions whose latest run used the approved version.
-        { $match: versionFilter },
-        // Step 4: drop released and deleted submissions, then count what is left.
-        { $lookup: { from: SUBMISSIONS, localField: '_id', foreignField: 'id', as: 'submission' } },
-        { $unwind: '$submission' },
-        { $match: { 'submission.courseId': courseId, 'submission.status': { $ne: 'released' } } },
-        { $count: 'total' }
-    ]).toArray();
-    return counted?.total ?? 0;
+    // Step 1: each submission's latest run for the lens. Reduced here rather than with
+    // `$group`/`$lookup`, which the encrypted runs and submissions collections do not permit.
+    const latest = await latestRunVersions(ctx, { courseId, assignmentId, ...lensFilter }, (run) => run.submissionId);
+
+    // Step 2: keep the submissions whose latest run used the approved version.
+    const staleSubmissionIds = latest
+        .filter((run) => (run.rubricVersion ?? 1) === approvedVersion)
+        .map((run) => run.submissionId);
+    if (staleSubmissionIds.length === 0) return 0;
+
+    // Step 3: drop released and deleted submissions, then count what is left.
+    return submissions(ctx).countDocuments({ id: { $in: staleSubmissionIds }, courseId, status: { $ne: 'released' } });
+}
+
+/**
+ * latestRunVersions - the rubric version of the newest run in each group of matching runs.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param filter - Runs to consider
+ * @param groupKey - Groups runs; the newest run by `createdAt` wins each group
+ * @returns One entry per group; `lens` defaults to linguistic, `rubricVersion` is `null` when unrecorded
+ */
+async function latestRunVersions(
+    ctx: MongoDalContext,
+    filter: Filter<WritingFeedbackRun>,
+    groupKey: (run: { submissionId: string; lens: WritingFeedbackLens }) => string
+): Promise<Array<{ submissionId: string; lens: WritingFeedbackLens; rubricVersion: number | null }>> {
+    const rows = await runs(ctx)
+        .find(filter, { projection: { _id: 0, submissionId: 1, lens: 1, rubricVersion: 1 } })
+        .sort({ createdAt: -1 })
+        .toArray();
+    const latest = new Map<string, { submissionId: string; lens: WritingFeedbackLens; rubricVersion: number | null }>();
+    for (const row of rows) {
+        const run = { submissionId: row.submissionId, lens: row.lens ?? 'linguistic', rubricVersion: row.rubricVersion ?? null };
+        const key = groupKey(run);
+        if (!latest.has(key)) latest.set(key, run);
+    }
+    return [...latest.values()];
 }
 
 function normalizeGlossaryTerm(term: string): string {
@@ -1347,7 +1406,7 @@ export async function appendWritingReview(
     const result = await submissions(ctx).updateOne(
         { id: submissionId, courseId, status: { $ne: 'generating' } },
         {
-            $push: { reviews: stored },
+            $push: { reviews: encryptedFieldsWithoutUndefined(stored, ENCRYPTED_REVIEW_FIELDS) },
             // Any staff edit after approval requires a new explicit approval.
             $set: { status: 'draft_ready', updatedAt: new Date() }
         }
@@ -1667,23 +1726,12 @@ export async function listLatestWritingRunVersions(
     courseId: string,
     assignmentId: string
 ): Promise<Map<string, Partial<Record<WritingFeedbackLens, number>>>> {
-    const rows = await runs(ctx).aggregate<{ _id: { submissionId: string; lens: WritingFeedbackLens }; rubricVersion: number | null }>([
-        // Step 1: this assignment's runs, newest first.
-        { $match: { courseId, assignmentId } },
-        { $sort: { createdAt: -1 } },
-        // Step 2: one row per submission and lens, carrying its latest run's rubric version.
-        {
-            $group: {
-                _id: { submissionId: '$submissionId', lens: { $ifNull: ['$lens', 'linguistic'] } },
-                rubricVersion: { $first: '$rubricVersion' }
-            }
-        }
-    ]).toArray();
+    const latest = await latestRunVersions(ctx, { courseId, assignmentId }, (run) => `${run.lens}/${run.submissionId}`);
     const versions = new Map<string, Partial<Record<WritingFeedbackLens, number>>>();
-    for (const row of rows) {
-        const entry = versions.get(row._id.submissionId) ?? {};
-        entry[row._id.lens] = row.rubricVersion ?? 1;
-        versions.set(row._id.submissionId, entry);
+    for (const run of latest) {
+        const entry = versions.get(run.submissionId) ?? {};
+        entry[run.lens] = run.rubricVersion ?? 1;
+        versions.set(run.submissionId, entry);
     }
     return versions;
 }
