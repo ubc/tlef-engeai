@@ -27,6 +27,7 @@ All API routes are prefixed with `/api/`. Page routes are served from `/` and `/
 | `/api/courses` | mongodbRoutes | Courses, flags, objectives, materials, monitor |
 | `/api/courses` | writingFeedbackRoutes | Optional staff writing-feedback workspace |
 | `/api/admin` | adminCourseRoutes | Platform-admin course catalog and cross-course Guided Pathway review |
+| `/api/admin/user-directory` | adminUserDirectoryRoutes | Platform-admin user directory |
 | `/api/course` | courseEntryRoutes | Course entry, enter-by-code, current course |
 | `/api/user` | userManagementRoutes | User profile, onboarding, activity |
 | `/api/health` | healthRoutes | Health check |
@@ -384,6 +385,8 @@ render its banner; the test student's own id is never sent to the browser.
 | PUT | `/api/admin/courses/:id` | Yes | Admin | Edit course name, period, merge-add instructors (`instructorUserIds`), remove instructors (`removeInstructorUserIds` — admin-only; blocks self-removal and platform-admin removal; pulls `coursesEnrolled`, preserves `{courseName}_users` history) |
 | POST | `/api/admin/courses/:id/ensure-enrollment` | Yes | Admin | Idempotent admin roster enroll on enter |
 | GET | `/api/admin/users/search?q=` | Yes | Admin | Faculty search for instructor picker |
+| GET | `/admin/users` | Yes | Admin | User directory HTML (linked from the admin course page header) |
+| GET | `/api/admin/user-directory?q=&affiliation=&page=&pageSize=` | Yes | Admin | Read-only user directory page (`UserDirectoryPage`): `q` matches a name substring (case-insensitive) or an exact PUID / `userId`; `affiliation` is `student`/`faculty`/`staff`/`empty`; `pageSize` defaults to 50, max 100. Rows are an allow-list of `active-users` fields with course ids resolved to names and the person's role in each (`instructor`/`ta`/`student`, from the course's staff lists), plus `lmsConnections` (whether a Canvas / Moodle token record exists for the user — never the token); Student View test students are excluded. Carries PUIDs, so responses are `Cache-Control: no-store` and the search text is never logged. 400 on invalid parameters |
 | PUT | `/api/admin/instructor-allowances` | Yes | Admin | Set allowed course names per puid + period |
 | GET | `/api/academic-periods` | Yes | Admin | List periods |
 | POST | `/api/academic-periods` | Yes | Admin | Create period |

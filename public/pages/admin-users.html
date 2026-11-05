@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EngE-AI - User Directory</title>
+    <link rel="icon" href="/assets/brand/engeai-logo.svg" type="image/svg+xml" />
+    <link rel="icon" href="/assets/brand/engeai-logo.png" type="image/png" sizes="512x512" />
+    <link rel="apple-touch-icon" href="/assets/brand/engeai-logo.png" />
+    <link rel="stylesheet" href="/styles/style.css">
+    <link rel="stylesheet" href="/styles/course-selection.css">
+    <link rel="stylesheet" href="/styles/admin-users.css">
+    <script src="/vendor/feather/feather.min.js"></script>
+</head>
+<body>
+    <header class="top-branding">
+        <div class="branding-content">
+            <div class="brand-logo">
+                <i data-feather="box"></i>
+                <span>TLEF EngE-AI</span>
+            </div>
+            <div class="top-branding-right">
+                <span class="welcome-text">Welcome, <span id="user-name"></span></span>
+                <a href="/admin/course-selection" class="admin-header-link" aria-label="Courses" title="Courses">
+                    <i data-feather="grid"></i>
+                    <span class="btn-text">Courses</span>
+                </a>
+                <button type="button" class="logout-btn" id="logout-btn" aria-label="Logout" title="Logout">
+                    <i data-feather="log-out"></i>
+                    <span class="btn-text">Logout</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="course-selection-wrapper admin-users-wrapper">
+        <section class="admin-users" aria-labelledby="admin-users-title">
+            <h1 id="admin-users-title" class="admin-users__title">Users</h1>
+
+            <form id="admin-users-filters" class="admin-users__filters" role="search" aria-label="Find users">
+                <div class="admin-users__field admin-users__field--search">
+                    <label for="admin-users-search">Search</label>
+                    <input
+                        id="admin-users-search"
+                        name="q"
+                        type="search"
+                        maxlength="200"
+                        autocomplete="off"
+                        spellcheck="false"
+                        aria-describedby="admin-users-search-hint"
+                    >
+                    <p id="admin-users-search-hint" class="admin-users__hint">Part of a name, or a full PUID or user ID.</p>
+                </div>
+                <div class="admin-users__field">
+                    <label for="admin-users-affiliation">Affiliation</label>
+                    <select id="admin-users-affiliation" name="affiliation">
+                        <option value="">All</option>
+                        <option value="student">Student</option>
+                        <option value="faculty">Faculty</option>
+                        <option value="staff">Staff</option>
+                        <option value="empty">None</option>
+                    </select>
+                </div>
+                <button type="submit" class="admin-users__button admin-users__button--primary">
+                    <i data-feather="search" aria-hidden="true"></i>
+                    <span>Search</span>
+                </button>
+            </form>
+
+            <p id="admin-users-status" class="admin-users__status" role="status" aria-live="polite">Loading users…</p>
+
+            <div class="admin-users__error" id="admin-users-error" role="alert" hidden>
+                <p>Unable to load users. Please try again.</p>
+                <button type="button" id="admin-users-retry" class="admin-users__button">Retry</button>
+            </div>
+
+            <div
+                id="admin-users-table-region"
+                class="admin-users__table-scroll"
+                role="region"
+                aria-labelledby="admin-users-title"
+                tabindex="0"
+            >
+                <table class="admin-users__table">
+                    <caption class="visually-hidden">Users, sorted by name. Use the Details button in each row for dates, onboarding, LMS connections, and every course with the person's role.</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">Name</th>
+                            <th scope="col">PUID</th>
+                            <th scope="col">Affiliation</th>
+                            <th scope="col">Status</th>
+                            <th scope="col">Courses</th>
+                            <th scope="col">Admin</th>
+                            <th scope="col"><span class="visually-hidden">Details</span></th>
+                        </tr>
+                    </thead>
+                    <tbody id="admin-users-rows"></tbody>
+                </table>
+            </div>
+
+            <nav class="admin-users__pagination" aria-label="User pages">
+                <button type="button" id="admin-users-prev" class="admin-users__button" disabled>
+                    <i data-feather="chevron-left" aria-hidden="true"></i>
+                    <span>Previous</span>
+                </button>
+                <span id="admin-users-page-label" class="admin-users__page-label"></span>
+                <button type="button" id="admin-users-next" class="admin-users__button" disabled>
+                    <span>Next</span>
+                    <i data-feather="chevron-right" aria-hidden="true"></i>
+                </button>
+            </nav>
+        </section>
+    </main>
+
+    <script>
+        feather.replace();
+    </script>
+    <script type="module" src="/dist/public/scripts/entry/admin-users.js"></script>
+</body>
+</html>
