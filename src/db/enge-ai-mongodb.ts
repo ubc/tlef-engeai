@@ -68,6 +68,7 @@ import * as ReportPdfMongo from './mongo/report-pdf-mongo';
 import * as AcademicPeriodMongo from './mongo/academic-period-mongo';
 import * as CourseEnrollmentMongo from './mongo/course-enrollment-mongo';
 import * as CourseLmsLinkMongo from './mongo/course-lms-link-mongo';
+import * as LmsConnectionMongo from './mongo/lms-connection-mongo';
 import * as CourseRosterMongo from './mongo/course-roster-mongo';
 import * as CourseLmsRosterMongo from './mongo/course-lms-roster-mongo';
 import * as InstructorPeriodAllowanceMongo from './mongo/instructor-period-allowance-mongo';
@@ -1472,6 +1473,12 @@ export class EngEAI_MongoDB {
     ) => GlobalUserMongo.updateGlobalUserAffiliation(this.ctx(), userId, affiliation);
 
     public findAdminGlobalUsers = async () => GlobalUserMongo.findAdminGlobalUsers(this.ctx());
+
+    public listGlobalUsersForDirectory = async (query: GlobalUserMongo.GlobalUserDirectoryQuery) =>
+        GlobalUserMongo.listGlobalUsersForDirectory(this.ctx(), query);
+
+    public findLmsConnectedUserIds = async (userIds: string[]) =>
+        LmsConnectionMongo.findLmsConnectedUserIds(this.ctx(), userIds);
 
     /**
      * #########################################################

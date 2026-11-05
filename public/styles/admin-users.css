@@ -1,0 +1,359 @@
+/**
+ * ADMIN USER DIRECTORY
+ *
+ * Cream panel on the green course-selection background (the app's `#ECE5DD`, lightened, so the
+ * edge against the green is gentle); the table inside stays white. Contents: filters, a result status, a table whose
+ * rows expand into a details row, and pagination. The table scrolls sideways on narrow screens
+ * instead of squeezing its columns.
+ */
+
+.admin-users-wrapper {
+    padding: 1.5rem 10% 2.5rem;
+    box-sizing: border-box;
+}
+
+.admin-users {
+    --admin-users-panel-bg: #F5F1EB;
+    --admin-users-cream: #ECE5DD;
+    --admin-users-line: #DDD5CA;
+    --admin-users-row-line: #EEE8E0;
+    --admin-users-expanded-bg: #FBF9F6;
+
+    background: var(--admin-users-panel-bg);
+    border-radius: 10px;
+    padding: 1.5rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+/* Author `display` rules below must not defeat the hidden attribute. */
+.admin-users [hidden] {
+    display: none !important;
+}
+
+.admin-users__title {
+    margin: 0 0 1rem;
+    font-size: 1.5rem;
+    color: #1a3d5c;
+}
+
+/*
+ * Filters: one grid with a label row, a control row, and a hint row. The field wrappers use
+ * `display: contents`, so every label, control, and the Search button share rows and line up at
+ * any text size; the hint sits under the search box without pushing the button down.
+ */
+.admin-users__filters {
+    display: grid;
+    grid-template-columns: minmax(0, 28rem) auto auto;
+    justify-content: start;
+    column-gap: 1rem;
+    row-gap: 0.3rem;
+    margin-bottom: 0.75rem;
+}
+
+.admin-users__field {
+    display: contents;
+}
+
+.admin-users__field label {
+    grid-row: 1;
+}
+
+.admin-users__field input,
+.admin-users__field select,
+.admin-users__button--primary {
+    grid-row: 2;
+}
+
+.admin-users__hint {
+    grid-row: 3;
+    grid-column: 1;
+}
+
+.admin-users__field--search > * {
+    grid-column: 1;
+}
+
+.admin-users__field:not(.admin-users__field--search) > * {
+    grid-column: 2;
+}
+
+.admin-users__button--primary {
+    grid-column: 3;
+}
+
+.admin-users__field label {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #333;
+}
+
+.admin-users__field input,
+.admin-users__field select {
+    min-height: 2.5rem;
+    padding: 0.4rem 0.6rem;
+    border: 1px solid #767676;
+    border-radius: 6px;
+    font: inherit;
+    font-size: 0.95rem;
+    background: #fff;
+    color: #222;
+}
+
+.admin-users__field input:focus-visible,
+.admin-users__field select:focus-visible {
+    outline: 2px solid var(--color-ubc-blue);
+    outline-offset: 1px;
+}
+
+.admin-users__hint {
+    margin: 0;
+    font-size: 0.8rem;
+    color: #555;
+}
+
+/* Buttons */
+.admin-users__button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-height: 2.5rem;
+    padding: 0 0.9rem;
+    border: 1px solid #1a3d5c;
+    border-radius: 6px;
+    background: #fff;
+    color: #1a3d5c;
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.admin-users__button:hover:not(:disabled) {
+    background: #eef3f8;
+}
+
+.admin-users__button:focus-visible,
+.admin-users__details-toggle:focus-visible,
+.admin-users__table-scroll:focus-visible {
+    outline: 2px solid var(--color-ubc-blue);
+    outline-offset: 2px;
+}
+
+.admin-users__button:disabled {
+    border-color: #b8b8b8;
+    color: #6b6b6b;
+    cursor: not-allowed;
+}
+
+.admin-users__button--primary {
+    background: #1a3d5c;
+    color: #fff;
+}
+
+.admin-users__button--primary:hover:not(:disabled) {
+    background: var(--color-navy-blue);
+}
+
+.admin-users__button .feather {
+    width: 1rem;
+    height: 1rem;
+    stroke: currentColor;
+}
+
+/* Status and errors */
+.admin-users__status {
+    margin: 0 0 0.75rem;
+    font-size: 0.9rem;
+    color: #444;
+}
+
+.admin-users__error {
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border: 1px solid var(--color-eng-red);
+    border-radius: 6px;
+    background: #fdf2f2;
+}
+
+.admin-users__error p {
+    margin: 0 0 0.5rem;
+    color: var(--color-eng-red);
+}
+
+/* Table */
+.admin-users__table-scroll {
+    overflow-x: auto;
+    background: #fff;
+    border: 1px solid var(--admin-users-line);
+    border-radius: 6px;
+    /* No scrollbar-gutter: this only scrolls sideways, and a reserved vertical gutter leaves an unpainted strip beside the header. */
+    scrollbar-color: rgba(0, 0, 0, 0.22) transparent;
+}
+
+.admin-users__table-scroll::-webkit-scrollbar,
+.admin-users__table-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.admin-users__table-scroll::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.22);
+    border-radius: 4px;
+}
+
+.admin-users__table {
+    width: 100%;
+    min-width: 48rem;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.admin-users__table th,
+.admin-users__table td {
+    padding: 0.6rem 0.75rem;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid var(--admin-users-row-line);
+}
+
+.admin-users__table thead th {
+    background: var(--admin-users-cream);
+    color: #333;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.admin-users__row th[scope='row'] {
+    font-weight: 600;
+    color: #222;
+}
+
+.admin-users__puid {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    /* A PUID split across lines is easy to misread or mis-copy; the table scrolls instead. */
+    white-space: nowrap;
+}
+
+.admin-users__details-toggle {
+    min-height: 2rem;
+    padding: 0 0.7rem;
+    border: 1px solid #767676;
+    border-radius: 6px;
+    background: #fff;
+    color: #1a3d5c;
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.admin-users__details-toggle:hover {
+    background: #eef3f8;
+}
+
+.admin-users__details-toggle[aria-expanded='true'] {
+    background: #1a3d5c;
+    border-color: #1a3d5c;
+    color: #fff;
+}
+
+/* Expanded details row */
+.admin-users__row:has(+ .admin-users__details-row:not([hidden])) th,
+.admin-users__row:has(+ .admin-users__details-row:not([hidden])) td {
+    border-bottom: none;
+    background: var(--admin-users-expanded-bg);
+}
+
+.admin-users__details-row td {
+    background: var(--admin-users-expanded-bg);
+}
+
+.admin-users__details {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+    gap: 0.75rem 1.5rem;
+    margin: 0;
+}
+
+.admin-users__detail dt {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #555;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.admin-users__field-name {
+    font-size: 0.75rem;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+    color: #555;
+    overflow-wrap: anywhere;
+}
+
+.admin-users__detail dd {
+    margin: 0.15rem 0 0;
+    color: #222;
+    overflow-wrap: anywhere;
+}
+
+.admin-users__detail-list {
+    margin: 0;
+    padding-left: 1.1rem;
+}
+
+/* Pagination */
+.admin-users__pagination {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    margin-top: 1rem;
+}
+
+.admin-users__page-label {
+    font-size: 0.9rem;
+    color: #444;
+}
+
+@media (max-width: 768px) {
+    .admin-users-wrapper {
+        padding: 1rem 1rem 2rem;
+    }
+
+    .admin-users {
+        padding: 1rem;
+    }
+
+    .admin-users__filters {
+        grid-template-columns: minmax(0, 1fr) auto auto;
+    }
+
+    .admin-users__pagination {
+        justify-content: space-between;
+    }
+}
+
+@media (max-width: 480px) {
+    /* One column, in source order: label, search, hint, label, affiliation, Search. */
+    .admin-users__filters {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    /* Specific enough to override the per-column placement above. */
+    .admin-users__filters > *,
+    .admin-users__filters .admin-users__field > * {
+        grid-row: auto;
+        grid-column: 1;
+    }
+
+    .admin-users__field:not(.admin-users__field--search) > label {
+        margin-top: 0.6rem;
+    }
+
+    .admin-users__button--primary {
+        margin-top: 0.75rem;
+        justify-content: center;
+    }
+}
