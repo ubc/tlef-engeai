@@ -142,10 +142,19 @@ export async function seedReportFixture(
     const memoryAgentCollection = ctx.db.collection(collectionNames.memoryAgent);
     const memDeleteResult = await memoryAgentCollection.deleteMany({});
 
+    // `puid` is encrypted, so it cannot be prefix-matched in a query. Every earlier synthetic user
+    // was enrolled in this course by the previous seed (and unenrolled only after this delete), so
+    // select the course's students and match the prefix after decryption.
     const activeUsersCollection = activeUsersMongoCollection(ctx.db);
-    const syntheticGlobalDeleteResult = await activeUsersCollection.deleteMany({
-        puid: { $regex: `^${REPORT_FIXTURE_PUID_PREFIX}` }
-    });
+    const enrolledStudents = await activeUsersCollection
+        .find({ affiliation: 'student', coursesEnrolled: courseId }, { projection: { _id: 0, userId: 1, puid: 1 } })
+        .toArray();
+    const syntheticUserIds = enrolledStudents
+        .filter((doc) => typeof doc.puid === 'string' && doc.puid.startsWith(REPORT_FIXTURE_PUID_PREFIX))
+        .map((doc) => doc.userId as string);
+    const syntheticGlobalDeleteResult = syntheticUserIds.length > 0
+        ? await activeUsersCollection.deleteMany({ userId: { $in: syntheticUserIds } })
+        : { deletedCount: 0 };
     const globalStudentsUnenrolledResult = await activeUsersCollection.updateMany(
         { affiliation: 'student', coursesEnrolled: courseId },
         { $pull: { coursesEnrolled: courseId }, $set: { updatedAt: new Date() } } as any

@@ -67,8 +67,9 @@ function sourceMaterials(ctx: MongoDalContext): Collection<WritingSourceMaterial
  * anywhere inside an encrypted value, where the driver would have written `null`.
  */
 const ENCRYPTED_SUBMISSION_FIELDS = ['originalText', 'verifiedText', 'studentLabel'] as const;
-const ENCRYPTED_REVIEW_FIELDS = ['studentFeedback', 'internalNote', 'comments', 'summaryEdits'] as const;
+const ENCRYPTED_REVIEW_FIELDS = ['studentFeedback', 'internalNote', 'comments', 'summaryEdits', 'finalAssessment', 'assessmentDraft'] as const;
 const ENCRYPTED_RUN_FIELDS = ['result', 'sflAnalysis', 'textDiagnosis', 'sourceComments'] as const;
+const ENCRYPTED_RELEASE_FIELDS = ['grade'] as const;
 
 /** Copy of a plain object or array with every `undefined` property removed, at any depth. */
 function withoutUndefined<T>(value: T): T {
@@ -1458,7 +1459,7 @@ export async function approveWritingSubmission(ctx: MongoDalContext, courseId: s
 export async function createWritingRelease(ctx: MongoDalContext, release: Omit<WritingRelease, 'id' | 'createdAt' | 'updatedAt'>): Promise<WritingRelease> {
     const now = new Date();
     const stored: WritingRelease = { ...release, id: randomUUID(), createdAt: now, updatedAt: now };
-    await releases(ctx).insertOne(stored);
+    await releases(ctx).insertOne(encryptedFieldsWithoutUndefined(stored, ENCRYPTED_RELEASE_FIELDS));
     return stored;
 }
 

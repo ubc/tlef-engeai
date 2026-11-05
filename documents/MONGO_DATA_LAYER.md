@@ -110,14 +110,14 @@
 
 - **Config:** `encryption.config.cjs` at the repository root (CommonJS, also used by the operator CLI). Namespace `ubc.engeai`, permanent. Keys come from `ENGEAI_DATA_ENCRYPTION_KEY` and `ENGEAI_BLIND_INDEX_KEY`; the server refuses to start without them.
 - **Wrap point:** `EngEAI_MongoDB.getInstance()` passes the connected `Db` to `wrapDbWithEncryption` (`src/db/encrypted-db.ts`). `MongoDalContext.db` is a `Db` view whose `collection()` and `createCollection()` go through the protected wrapper; administrative methods (`dropCollection`, `listCollections`, `admin`) stay on the raw handle. Every `.db.collection(...)` caller, including routes, migrations and the LMS token store, is therefore covered. Startup also fails if a collection the code relies on is missing from the config.
-- **Protected (phase 1):** `writing-submissions` (`originalText`, `verifiedText`, `studentLabel`, review `studentFeedback`/`internalNote`/`comments`/`summaryEdits`), `writing-feedback-runs` (`result`, `sflAnalysis`, `textDiagnosis`, `sourceComments`), and Canvas/Moodle OAuth tokens (`tokens.accessToken`, `tokens.refreshToken`, `tokens.token`).
+- **Protected (phase 1):** `writing-submissions` (`originalText`, `verifiedText`, `studentLabel`, review `studentFeedback`/`internalNote`/`comments`/`summaryEdits`/`finalAssessment`/`assessmentDraft`), `writing-releases.grade`, `writing-feedback-runs` (`result`, `sflAnalysis`, `textDiagnosis`, `sourceComments`), `active-users.puid` and `instructor-period-allowances.puid` (blind index `puid__bidx`, unique on `active-users`, so `{ puid }` equality lookups and upserts still work), and Canvas/Moodle OAuth tokens (`tokens.accessToken`, `tokens.refreshToken`, `tokens.token`).
 - **Rules for code touching those collections:**
   - Aggregations are limited to `$match`, `$sort`, `$skip`, `$limit` and a plain inclusion/exclusion `$project`. Use a projected `find` and reduce in code instead.
   - No `$regex`, range, `$ne`, or sort on an encrypted field.
   - No `arrayFilters` or positional (`$`) updates reaching an encrypted path, and no `updateMany` that touches one.
   - Never write `undefined` inside an encrypted value; `writing-feedback-mongo.ts` strips it with `encryptedFieldsWithoutUndefined`.
   - Never `$lookup`/`$unionWith` into these collections from an unconfigured one: the joined documents would come back still encrypted.
-- **PUIDs stay plaintext for now** (`active-users`, `instructor-period-allowances`) so staff can still find them in Mongo Express. They will be encrypted, with a blind index for login lookups, once an admin-facing user directory exists. `ENGEAI_BLIND_INDEX_KEY` is already required so every environment has it by then.
+- **Looking up a PUID:** Mongo Express shows an envelope for `puid` and cannot filter by it once data is migrated. Staff use the admin user directory (`/admin/users`), which searches by exact PUID through the blind index. Partial-PUID matches are impossible by design.
 - **Not yet protected:** per-course collections (`{courseName}_users` chats, flags, memory agent, scenarios). The toolkit needs exact collection names; see the inventory for the options.
 
 ## Cross-cutting orchestration

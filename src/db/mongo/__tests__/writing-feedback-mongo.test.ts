@@ -30,6 +30,7 @@ import {
     countWritingSubmissionsByAssignment,
     createCanvasWritingAssignment,
     createManualWritingAssignment,
+    createWritingRelease,
     createWritingSubmission,
     deleteWritingAssignment,
     deleteWritingSourceMaterial,
@@ -751,6 +752,35 @@ describe('writes into encrypted fields omit undefined values', () => {
         const pushed = (updateOne.mock.calls[0][1] as { $push: { reviews: Record<string, unknown> } }).$push.reviews;
         expect('internalNote' in pushed).toBe(false);
         expect(pushed.comments).toEqual([{ id: 'c-1', lens: 'linguistic', quote: 'text', startOffset: 0, endOffset: 4, comment: 'Clear.', origin: 'staff' }]);
+    });
+
+    it('appendWritingReview strips undefined properties nested in encrypted grades', async () => {
+        const updateOne = jest.fn().mockResolvedValue({ matchedCount: 1 });
+        const ctx = contextWithCollections({ 'writing-submissions': { updateOne } });
+
+        await appendWritingReview(ctx, 'course-1', 'sub-1', {
+            feedbackRunId: 'run-1', staffUserId: 'staff-1', studentFeedback: 'Good.',
+            finalAssessment: { lens: undefined, rubricVersion: 1, criteria: [{ criterionId: 'c-1', points: 4 }], totalPoints: 4, maxPoints: 5 },
+            assessmentDraft: undefined
+        } as Parameters<typeof appendWritingReview>[3]);
+
+        const pushed = (updateOne.mock.calls[0][1] as { $push: { reviews: Record<string, unknown> } }).$push.reviews;
+        expect('assessmentDraft' in pushed).toBe(false);
+        expect(pushed.finalAssessment).toEqual({ rubricVersion: 1, criteria: [{ criterionId: 'c-1', points: 4 }], totalPoints: 4, maxPoints: 5 });
+    });
+
+    it('createWritingRelease drops an undefined grade instead of writing it', async () => {
+        const insertOne = jest.fn().mockResolvedValue({ acknowledged: true });
+        const ctx = contextWithCollections({ 'writing-releases': { insertOne } });
+
+        const created = await createWritingRelease(ctx, {
+            courseId: 'course-1', submissionId: 'sub-1', feedbackRunId: 'run-1', payloadFingerprint: 'fp-1', status: 'previewed', grade: undefined
+        });
+
+        const written = insertOne.mock.calls[0][0] as Record<string, unknown>;
+        expect(written).toMatchObject({ payloadFingerprint: 'fp-1', status: 'previewed' });
+        expect('grade' in written).toBe(false);
+        expect(created.id).toEqual(written.id);
     });
 });
 

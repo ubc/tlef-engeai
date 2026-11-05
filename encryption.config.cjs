@@ -24,13 +24,19 @@ const { defineEncryptionConfig, EnvironmentKeyProvider } = require('@ubc/genai-t
 const canvasTokenCollection = process.env.CANVAS_TOKEN_COLLECTION_NAME || 'canvas_tokens';
 const moodleTokenCollection = process.env.MOODLE_TOKEN_COLLECTION_NAME || 'moodle_tokens';
 
+/** PUID lookups are exact-match: CWL PUIDs are opaque, case-sensitive identifiers. */
+const puidBlindIndex = (unique) => ({
+  field: 'puid__bidx',
+  keyId: 'lookup-2026-10',
+  normalize: 'exact',
+  unique,
+});
+
 module.exports = defineEncryptionConfig({
   // Permanent. Authenticated into every ciphertext; changing it makes existing data
   // undecryptable. Identical in every environment — environments differ by their keys.
   namespace: 'ubc.engeai',
 
-  // The blind-index key is unused until PUIDs are encrypted (deferred until staff have an
-  // in-app user directory); it is required now so every environment already has it.
   keyProvider: new EnvironmentKeyProvider({
     activeEncryptionKey: { id: 'data-2026-10', env: 'ENGEAI_DATA_ENCRYPTION_KEY' },
     decryptionKeys: [],
@@ -53,6 +59,17 @@ module.exports = defineEncryptionConfig({
         'reviews.$[].internalNote': { encrypt: true },
         'reviews.$[].comments': { encrypt: true },
         'reviews.$[].summaryEdits': { encrypt: true },
+        // Staff grades. Never queried, sorted, or indexed in MongoDB.
+        'reviews.$[].finalAssessment': { encrypt: true },
+        'reviews.$[].assessmentDraft': { encrypt: true },
+      },
+    },
+
+    // The staff-final total sent to Canvas, copied from the review. `payloadFingerprint` (the
+    // unique idempotency key) is a separate hash and stays plaintext.
+    'writing-releases': {
+      fields: {
+        grade: { encrypt: true },
       },
     },
 
@@ -62,6 +79,20 @@ module.exports = defineEncryptionConfig({
         sflAnalysis: { encrypt: true },
         textDiagnosis: { encrypt: true },
         sourceComments: { encrypt: true },
+      },
+    },
+
+    // Staff find PUIDs through the admin user directory (`/admin/users`), not Mongo Express.
+    'active-users': {
+      fields: {
+        puid: { encrypt: true, blindIndex: puidBlindIndex(true) },
+      },
+    },
+
+    // One allow-list row per instructor per academic period, so the PUID repeats here.
+    'instructor-period-allowances': {
+      fields: {
+        puid: { encrypt: true, blindIndex: puidBlindIndex(false) },
       },
     },
 

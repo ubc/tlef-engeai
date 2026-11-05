@@ -129,15 +129,21 @@ function makeCtx(state: {
                     insertOne: async (doc: GlobalUserDoc) => {
                         state.globalUsers.push(doc);
                     },
-                    deleteMany: async (filter: { puid?: { $regex?: string } }) => {
-                        const pattern = filter.puid?.$regex;
-                        if (!pattern) {
-                            const count = state.globalUsers.length;
-                            state.globalUsers.length = 0;
-                            return { deletedCount: count };
+                    find: (filter: { affiliation?: string; coursesEnrolled?: string }) => ({
+                        toArray: async () =>
+                            state.globalUsers
+                                .filter((g) => g.affiliation === filter.affiliation)
+                                .filter((g) => g.coursesEnrolled.includes(filter.coursesEnrolled ?? ''))
+                                .map((g) => ({ userId: g.userId, puid: g.puid }))
+                    }),
+                    // `puid` is encrypted, so the seed must select by `userId`; a `$regex` on
+                    // `puid` would be rejected by the encryption layer.
+                    deleteMany: async (filter: { userId?: { $in?: string[] }; puid?: unknown }) => {
+                        if (filter.puid !== undefined || !filter.userId?.$in) {
+                            throw new Error('expected deleteMany({ userId: { $in } })');
                         }
-                        const regex = new RegExp(pattern);
-                        const kept = state.globalUsers.filter((g) => !regex.test(g.puid));
+                        const ids = new Set(filter.userId.$in);
+                        const kept = state.globalUsers.filter((g) => !ids.has(g.userId));
                         const removed = state.globalUsers.length - kept.length;
                         state.globalUsers.length = 0;
                         state.globalUsers.push(...kept);

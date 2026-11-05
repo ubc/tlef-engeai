@@ -8,6 +8,7 @@
 
 import type { Collection, CreateCollectionOptions, Db, Document } from 'mongodb';
 import { createEncryptedDb, type EncryptionConfigInput, type ProtectedDb } from '@ubc/genai-toolkit-encryption';
+import { ACTIVE_USERS_COLLECTION, INSTRUCTOR_PERIOD_ALLOWANCES_COLLECTION } from './mongo/mongo-constants';
 
 /**
  * Collections the code relies on being encrypted.
@@ -20,6 +21,9 @@ function requiredProtectedCollections(): string[] {
     return [
         'writing-submissions',
         'writing-feedback-runs',
+        'writing-releases',
+        ACTIVE_USERS_COLLECTION,
+        INSTRUCTOR_PERIOD_ALLOWANCES_COLLECTION,
         process.env.CANVAS_TOKEN_COLLECTION_NAME || 'canvas_tokens',
         process.env.MOODLE_TOKEN_COLLECTION_NAME || 'moodle_tokens'
     ];
