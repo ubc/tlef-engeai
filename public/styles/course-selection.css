@@ -76,6 +76,38 @@
     stroke: currentColor;
 }
 
+/* Admin header navigation between the course page and the user directory */
+.admin-header-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 2.5rem;
+    padding: 0 0.875rem;
+    border: 1px solid rgba(255, 255, 255, 0.62);
+    border-radius: 6px;
+    color: #fff;
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.admin-header-link:hover {
+    border-color: #fff;
+    background: rgba(255, 255, 255, 0.14);
+}
+
+.admin-header-link:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
+}
+
+.admin-header-link .feather {
+    width: 1.1rem;
+    height: 1.1rem;
+    stroke: currentColor;
+}
+
 .admin-notification-count {
     position: absolute;
     top: -0.45rem;
@@ -1060,6 +1092,15 @@ body:has(.admin-course-selection-wrapper) .top-branding {
         width: 2.25rem;
         height: 2.25rem;
         flex: 0 0 2.25rem;
+    }
+
+    .admin-header-link {
+        min-height: 2.25rem;
+        padding: 0 0.6rem;
+    }
+
+    .admin-header-link .btn-text {
+        display: none;
     }
     
     .welcome-text {
