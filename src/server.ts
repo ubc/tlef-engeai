@@ -24,6 +24,7 @@ import { sendHtmlPageWithBuildComment } from './utils/build-info';
 import academicPeriodRoutes from './routes/mongo/academic-period-routes';
 import adminCourseRoutes from './routes/mongo/admin-course-routes';
 import adminGuidedPathwayFlagRoutes from './routes/mongo/admin-guided-pathway-flag-routes';
+import adminUserDirectoryRoutes from './routes/mongo/admin-user-directory-routes';
 import adminManualFlagRoutes from './routes/mongo/admin-manual-flag-routes';
 
 // Import SAML authentication middleware
@@ -183,6 +184,22 @@ app.get('/admin/course-selection', (req: any, res: any) => {
     sendHtmlPageWithBuildComment(res, path.join(publicPath, 'pages/admin-course-selection.html'));
 });
 
+// Platform-admin user directory; same gate as the admin course page.
+app.get('/admin/users', (req: any, res: any) => {
+    if (!req.session?.passport?.user) {
+        return res.redirect('/');
+    }
+    const globalUser = (req.session as any)?.globalUser;
+    if (!isAdminUser(globalUser)) {
+        const affiliation = globalUser?.affiliation as AffiliationValue | undefined;
+        if (affiliation && isAppEntryBlockedAffiliation(affiliation)) {
+            return res.redirect('/role-restricted');
+        }
+        return res.redirect('/course-selection');
+    }
+    sendHtmlPageWithBuildComment(res, path.join(publicPath, 'pages/admin-users.html'));
+});
+
 app.get('/settings', (req: any, res: any) => {
     const globalUser = (req.session as any)?.globalUser;
     const affiliation = globalUser?.affiliation as AffiliationValue | undefined;
@@ -201,6 +218,7 @@ app.use('/api/courses', writingFeedbackRoutes);
 app.use('/api/academic-periods', academicPeriodRoutes);
 app.use('/api/admin', adminCourseRoutes);
 app.use('/api/admin/guided-pathway-flags', adminGuidedPathwayFlagRoutes);
+app.use('/api/admin/user-directory', adminUserDirectoryRoutes);
 app.use('/api/admin/manual-flags', adminManualFlagRoutes);
 app.use('/api/course', courseEntryRoutes);  // Course entry routes
 app.use('/api/course', studentViewRoutes);  // Student View controls (enter, exit, reset)

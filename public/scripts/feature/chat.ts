@@ -8,7 +8,7 @@
  */
 
 import { loadComponentHTML, renderFeatherIcons } from "../api/api.js";
-import { createNewChat, deleteChat, dismissUnstruggleBlock, updateChatConversationMode } from "../api/chat-api.js";
+import { createNewChat, deleteChat, dismissUnstruggleBlock, fetchConversationModes, updateChatConversationMode } from "../api/chat-api.js";
 import {
     Chat,
     ChatMessage,
@@ -23,7 +23,10 @@ import {
 import { ConversationModePicker } from "./conversation-mode-picker.js";
 import { RenderChat } from "./render-chat.js";
 import { showDeleteConfirmationModal, showSimpleErrorModal } from "../ui/modal-overlay.js";
-import { getCourseIdFromURL, navigateToStudentScenarios } from "../utils/url-parser.js";
+import { showToast } from "../ui/toast-notification.js";
+import { getCourseIdFromURL, navigateToStudentScenarios, buildInstructorURL, buildStudentURL } from "../utils/url-parser.js";
+import { bindSpaLink } from "../utils/spa-link.js";
+import { pushHashLocation } from "../utils/hash-navigation.js";
 import {
     clearChatDraftPrefill,
     peekChatDraftPrefill,
@@ -40,6 +43,19 @@ interface ChatMetadata {
     pinnedMessageId: string | null;
     lastMessageTimestamp: number;
     messageCount: number;
+}
+
+const MESSAGE_HEADING_ID_PREFIX = 'message-heading-';
+
+/**
+ * Returns the id of a message's heading, the target of `#message-heading-…` links.
+ * Built from the saved message id, so it is the same every time the chat loads. The prefix
+ * keeps it a valid CSS selector (message ids can start with a digit) and apart from other ids.
+ *
+ * @param messageId - Saved (server-issued) message id
+ */
+export function messageHeadingId(messageId: string): string {
+    return `${MESSAGE_HEADING_ID_PREFIX}${messageId}`;
 }
 
 /**
@@ -176,7 +192,14 @@ export class ChatManager {
     
     // Incremental update tracking
     private domMessageIds: Set<string> = new Set(); // Track which messages are in DOM
+    private pendingMessageIds: Set<string> = new Set(); // Local placeholders shown until the server replies
     private lastRenderedMessageCount: number = 0; // Track last rendered count for active chat
+
+    // Hash links to message headings (#message-heading-…)
+    private hashFocusedLocation: string | null = null; // URL (with hash) whose heading was last focused on render
+    private hashFocusTimer: ReturnType<typeof setTimeout> | null = null;
+    private messageAreaResizeObserver: ResizeObserver | null = null;
+    private observedMessageArea: HTMLElement | null = null;
     
     // Streaming configuration
     private readonly STREAM_DELAY_MS = 15; // Delay between words (milliseconds) - adjust for faster/slower streaming
@@ -237,6 +260,7 @@ export class ChatManager {
     private constructor(config: ChatManagerConfig) {
         this.config = config;
         this.renderChat = new RenderChat();
+        this.bindMessageHeadingLinks();
     }
 
     /**
@@ -550,6 +574,15 @@ export class ChatManager {
     }
 
     /**
+     * Moves focus to the chat title (`#chat-title`, the page's h1) so keyboard and screen
+     * reader users land on the newly opened chat instead of staying on the button that
+     * created it. Call after the chat window has been loaded and rendered.
+     */
+    public focusChatTitle(): void {
+        document.getElementById('chat-title')?.focus();
+    }
+
+    /**
      * Create a new chat
      */
     public async createNewChat(): Promise<{ success: boolean; error?: string; chat?: Chat }> {
@@ -699,6 +732,8 @@ export class ChatManager {
             timestamp: Date.now(),
         } as ChatMessage & { artefact?: any };
         activeChat.messages.push(botMessage);
+        this.pendingMessageIds.add(userMessage.id);
+        this.pendingMessageIds.add(botMessageId);
 
         // Add messages to DOM incrementally
         this.addMessageToDOM(userMessage, activeChat);
@@ -714,6 +749,9 @@ export class ChatManager {
 
         // Show loading state immediately
         onChunk?.('Thinking...', false);
+        // Announced now, not on the server's reply: that arrives as the reply starts streaming,
+        // and VoiceOver tends to drop announcements made while the page keeps changing.
+        showToast('Message sent.');
         let requestProcessed = false;
 
         try {
@@ -789,6 +827,8 @@ export class ChatManager {
                     data.assistantMessage.id,
                     () => {
                         // Streaming complete - message already has full text in array
+                        // Matches the reply's heading so screen reader users can find it by name
+                        showToast(`New message: "EngE-AI (${this.formatFullTimestamp(data.assistantMessage.timestamp)})".`);
                         onComplete?.(data.assistantMessage);
                     }
                 );
@@ -920,6 +960,31 @@ export class ChatManager {
     }
 
     /**
+     * Exposes the message area's scrollbar width as `--message-area-scrollbar-width`.
+     * The composer is centred on the full width, but a classic (always-visible) scrollbar
+     * narrows the message area, so the CSS subtracts this from the right padding to keep
+     * message bubbles aligned with the composer. Overlay scrollbars measure 0.
+     */
+    private trackMessageAreaScrollbarWidth(messageAreaEl: HTMLElement): void {
+        if (this.observedMessageArea === messageAreaEl) return;
+
+        // The chat window component is re-inserted when navigating, so drop the old element's observer
+        this.messageAreaResizeObserver?.disconnect();
+        this.observedMessageArea = messageAreaEl;
+
+        const update = () => {
+            const scrollbarWidth = messageAreaEl.offsetWidth - messageAreaEl.clientWidth;
+            messageAreaEl.style.setProperty('--message-area-scrollbar-width', `${scrollbarWidth}px`);
+        };
+        update();
+
+        if (typeof ResizeObserver !== 'undefined') {
+            this.messageAreaResizeObserver = new ResizeObserver(update);
+            this.messageAreaResizeObserver.observe(messageAreaEl);
+        }
+    }
+
+    /**
      * Render active chat (Full render - for initial load or when switching chats)
      */
     public renderActiveChat(): void {
@@ -930,6 +995,7 @@ export class ChatManager {
         if (!activeChat || !chatTitleEl || !messageAreaEl) return;
 
         this.ensureChatHeaderStructure();
+        this.trackMessageAreaScrollbarWidth(messageAreaEl);
 
         chatTitleEl.textContent = activeChat.itemTitle;
 
@@ -940,13 +1006,16 @@ export class ChatManager {
         activeChat.messages.forEach(msg => {
             this.addMessageToDOM(msg, activeChat);
         });
+        this.syncLatestMessageLink(); // covers a chat with no messages
 
         this.lastRenderedMessageCount = activeChat.messages.length;
-        
+
         // Wait for LaTeX rendering to complete before scrolling
         // LaTeX rendering is asynchronous and can change element heights
         // Delay ensures layout is stable before scrolling
-        this.scrollToBottom(150);
+        if (!this.focusHashTargetAfterRender(150)) {
+            this.scrollToBottom(150);
+        }
         
         this.renderPinnedBanner(activeChat);
         this.syncConversationModeComposer();
@@ -972,6 +1041,7 @@ export class ChatManager {
         }
 
         this.ensureChatHeaderStructure();
+        this.trackMessageAreaScrollbarWidth(messageAreaEl);
 
         chatTitleEl.textContent = activeChat.itemTitle;
 
@@ -1047,6 +1117,7 @@ export class ChatManager {
         
         messageAreaEl.appendChild(messageEl);
         this.domMessageIds.add(msg.id);
+        this.syncLatestMessageLink();
     }
 
     /**
@@ -1103,6 +1174,8 @@ export class ChatManager {
             messageEl.remove();
             this.domMessageIds.delete(messageId);
         }
+        this.pendingMessageIds.delete(messageId);
+        this.syncLatestMessageLink();
     }
 
     /**
@@ -1242,6 +1315,121 @@ export class ChatManager {
         } else {
             performScroll();
         }
+    }
+
+    // ===== MESSAGE HEADING LINKS =====
+
+    /**
+     * Handles `#message-heading-…` links. Following a hash link doesn't move focus on its own,
+     * so this focuses the heading when the "View latest message" link is used and on Back/Forward
+     * between hash entries. The shell routers skip hash-only popstates (`isHashOnlyNavigation`),
+     * so the chat isn't rebuilt. Bound once: ChatManager is a singleton and the link is
+     * re-inserted with the chat window, hence the document-level delegation.
+     */
+    private bindMessageHeadingLinks(): void {
+        document.addEventListener('click', (e: MouseEvent) => {
+            if (!(e.target instanceof Element)) return;
+            const link = e.target.closest<HTMLAnchorElement>('#latest-message-link');
+            // Modified clicks (new tab/window) are left to the browser; the page load focuses the heading
+            if (!link || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
+                return;
+            }
+            const heading = this.getMessageHeadingForHash(link.hash);
+            if (!heading) return;
+
+            // pushState (not the default navigation) adds the history entry without firing popstate
+            e.preventDefault();
+            pushHashLocation(link.hash);
+            this.hashFocusedLocation = window.location.href;
+            this.focusMessageHeading(heading);
+        });
+
+        window.addEventListener('popstate', (e: PopStateEvent) => {
+            // In-app navigation dispatches synthetic popstates; only Back/Forward and edited hashes count
+            if (!e.isTrusted) return;
+            const heading = this.getMessageHeadingForHash(window.location.hash);
+            if (heading) this.focusMessageHeading(heading);
+        });
+    }
+
+    /**
+     * Points "View latest message" at the newest saved message's heading, or hides the link
+     * when there is none. Placeholders have no heading id, so the link never targets them.
+     */
+    private syncLatestMessageLink(): void {
+        const link = document.getElementById('latest-message-link') as HTMLAnchorElement | null;
+        if (!link) return;
+
+        const headings = document.querySelectorAll<HTMLElement>('#message-area .message-heading[id]');
+        const latest = headings[headings.length - 1];
+        if (latest) {
+            link.setAttribute('href', `#${latest.id}`);
+            link.hidden = false;
+        } else {
+            link.removeAttribute('href');
+            link.hidden = true;
+        }
+    }
+
+    /**
+     * Returns the rendered message heading a URL hash names, or null when the hash isn't a
+     * message heading link or that message isn't in the open chat.
+     */
+    private getMessageHeadingForHash(hash: string): HTMLElement | null {
+        let id: string;
+        try {
+            id = decodeURIComponent(hash.slice(1));
+        } catch {
+            return null;
+        }
+        if (!id.startsWith(MESSAGE_HEADING_ID_PREFIX)) return null;
+
+        const heading = document.getElementById(id);
+        return heading?.closest('#message-area') ? heading : null;
+    }
+
+    private focusMessageHeading(heading: HTMLElement): void {
+        heading.scrollIntoView({ block: 'start' });
+        heading.focus({ preventScroll: true });
+    }
+
+    /**
+     * After a full render, schedules focus on the heading the URL hash names, in place of the
+     * usual scroll to the bottom. Runs once per URL so later re-renders of the same chat
+     * (e.g. re-selecting it) don't pull focus back, unless focus has dropped to `<body>`:
+     * the chat window can be rebuilt after the heading was focused (e.g. during page load),
+     * taking the focused heading with it.
+     *
+     * @param delay - Same settle time the bottom scroll uses (LaTeX changes heights)
+     * @returns true when focus was scheduled and the caller should skip scrolling to the bottom
+     */
+    private focusHashTargetAfterRender(delay: number): boolean {
+        const heading = this.getMessageHeadingForHash(window.location.hash);
+        if (!heading) {
+            // Leaving the target's chat means coming back to it (e.g. Back) should focus it again
+            this.hashFocusedLocation = null;
+            return false;
+        }
+
+        const location = window.location.href;
+        const focusLost = !document.activeElement || document.activeElement === document.body;
+        if (location === this.hashFocusedLocation && this.hashFocusTimer === null && !focusLost) return false;
+        this.hashFocusedLocation = location;
+
+        if (this.hashFocusTimer !== null) clearTimeout(this.hashFocusTimer);
+        const headingId = heading.id;
+        this.hashFocusTimer = setTimeout(() => {
+            // Same two frames as scrollToBottom, so a bottom scroll scheduled earlier lands first
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    this.hashFocusTimer = null;
+                    // Look it up again: a later render may have replaced the element
+                    const target = document.getElementById(headingId);
+                    if (target) this.focusMessageHeading(target);
+                });
+            });
+        }, delay);
+        return true;
     }
 
     // Artefact panel loading removed - now embedded in chat-window.html
@@ -1465,7 +1653,7 @@ export class ChatManager {
         const messageAreaEl = document.getElementById('message-area');
         if (messageAreaEl) {
             messageAreaEl.innerHTML = `
-                <div style="text-align: center; padding: 2rem; color: #525252;">
+                <li style="text-align: center; padding: 2rem; color: #525252;">
                     <div class="spinner" style="
                         width: 40px;
                         height: 40px;
@@ -1482,7 +1670,7 @@ export class ChatManager {
                             100% { transform: rotate(360deg); }
                         }
                     </style>
-                </div>
+                </li>
             `;
         }
     }
@@ -1494,7 +1682,7 @@ export class ChatManager {
         const messageAreaEl = document.getElementById('message-area');
         if (messageAreaEl) {
             messageAreaEl.innerHTML = `
-                <div style="text-align: center; padding: 2rem; color: #dc3545;">
+                <li style="text-align: center; padding: 2rem; color: #dc3545;">
                     <p>⚠️ Failed to load conversation</p>
                     <button onclick="window.location.reload()" style="
                         background: #007bff;
@@ -1505,7 +1693,7 @@ export class ChatManager {
                         cursor: pointer;
                         margin-top: 1rem;
                     ">Retry</button>
-                </div>
+                </li>
             `;
         }
     }
@@ -1599,7 +1787,7 @@ export class ChatManager {
         chatListEl?.addEventListener('click', async (e) => {
             const target = e.target as HTMLElement;
             const li = target.closest('.chat-item') as HTMLLIElement | null;
-            if (li && !((target as HTMLElement).closest('button'))) {
+            if (li && !((target as HTMLElement).closest('button, a'))) {
                 const chatId = li.dataset.chatId || null;
                 if (chatId) {
                     // This now triggers lazy loading if needed
@@ -1663,7 +1851,8 @@ export class ChatManager {
      * Caller loads chat-window and calls applyPendingChatDraftPrefill after DOM is ready.
      *
      * @param options.text - Structured composer prefill from the scenario workspace
-     * @param options.conversationMode - Teaching mode to persist (default explanatory)
+     * @param options.conversationMode - Teaching mode to persist (default explanatory; falls back
+     *   to the course default when that mode is not selectable)
      * @returns success flag; clears stash on chat creation failure
      */
     public async openScenarioHandoff(options: {
@@ -1675,7 +1864,9 @@ export class ChatManager {
             return { success: false, error: 'No course in URL' };
         }
 
-        const conversationMode = options.conversationMode ?? 'explanatory';
+        const conversationMode = await this.resolveSelectableConversationMode(
+            options.conversationMode ?? 'explanatory'
+        );
         stashChatDraftPrefill(courseId, options.text, conversationMode);
 
         const created = await this.createNewChat();
@@ -1700,6 +1891,28 @@ export class ChatManager {
 
         this.notifyUIUpdate();
         return { success: true };
+    }
+
+    /**
+     * resolveSelectableConversationMode - Falls back to the course default when the requested
+     * mode is not selectable for new chats (e.g. Explanatory while it is locked).
+     *
+     * @param requested - Preferred teaching mode
+     * @returns The requested mode when active, else the active default; the requested mode when
+     *   the catalog cannot be loaded (the server still rejects unavailable modes)
+     */
+    private async resolveSelectableConversationMode(
+        requested: ConversationModeId
+    ): Promise<ConversationModeId> {
+        const catalog = await fetchConversationModes();
+        if (!catalog.success || !catalog.modes?.length) {
+            return requested;
+        }
+        const activeModes = catalog.modes.filter((mode) => mode.status === 'active');
+        if (activeModes.some((mode) => mode.id === requested)) {
+            return requested;
+        }
+        return (activeModes.find((mode) => mode.isDefault) ?? activeModes[0])?.id ?? 'socratic';
     }
 
     /**
@@ -2150,9 +2363,14 @@ export class ChatManager {
         li.style.justifyContent = 'space-between';
         li.style.alignItems = 'center';
 
-        const titleSpan = document.createElement('span');
-        titleSpan.className = 'chat-title';
+        // The title is a link to the chat so keyboard and screen reader users can open it
+        const isActive = metadata.id === this.activeChatId;
+        const titleSpan = document.createElement('a');
+        titleSpan.className = 'chat-title chat-item-link';
         titleSpan.textContent = metadata.itemTitle;
+        if (isActive) {
+            titleSpan.setAttribute('aria-current', 'page');
+        }
 
         // Add loading indicator if chat is not fully loaded
         const isLoaded = this.loadedChatIds.has(metadata.id);
@@ -2175,10 +2393,12 @@ export class ChatManager {
 
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'icon-btn';
-        deleteBtn.style.padding = '0';
+        deleteBtn.type = 'button';
         deleteBtn.title = 'Delete chat';
+        deleteBtn.setAttribute('aria-label', `Delete chat: ${metadata.itemTitle || 'Untitled chat'}`);
         const trashIcon = document.createElement('i');
         trashIcon.setAttribute('data-feather', 'trash-2');
+        trashIcon.setAttribute('aria-hidden', 'true');
         deleteBtn.appendChild(trashIcon);
         deleteBtn.addEventListener('click', async (ev) => {
             ev.stopPropagation();
@@ -2217,16 +2437,27 @@ export class ChatManager {
         rightSide.style.gap = '6px';
         rightSide.appendChild(actions);
 
-        li.addEventListener('mouseenter', () => {
+        // Show the delete button on hover or while the row has keyboard focus. visibility:hidden
+        // also removes it from the tab order, so it must be visible before focus can reach it.
+        const showActions = () => {
             actions.style.visibility = 'visible';
             actions.style.opacity = '1';
-        });
-        li.addEventListener('mouseleave', () => {
+        };
+        const hideActions = () => {
             actions.style.opacity = '0';
             actions.style.visibility = 'hidden';
+        };
+        li.addEventListener('mouseenter', showActions);
+        li.addEventListener('mouseleave', () => {
+            if (!li.contains(document.activeElement)) hideActions();
+        });
+        li.addEventListener('focusin', showActions);
+        li.addEventListener('focusout', (e: FocusEvent) => {
+            // relatedTarget is where focus is going; stay visible when it moves within the row
+            if (!li.contains(e.relatedTarget as Node | null) && !li.matches(':hover')) hideActions();
         });
 
-        li.addEventListener('click', async () => {
+        const openChat = async () => {
             try {
                 // Wait for chat to be fully loaded
                 await this.setActiveChatId(metadata.id);
@@ -2247,6 +2478,18 @@ export class ChatManager {
                     error: error 
                 });
             }
+        };
+
+        const courseId = getCourseIdFromURL();
+        const chatHref = courseId
+            ? (this.config.isInstructor ? buildInstructorURL(courseId, 'chat', metadata.id) : buildStudentURL(courseId, 'chat', metadata.id))
+            : null;
+        bindSpaLink(titleSpan, chatHref, openChat);
+
+        // Mouse clicks elsewhere on the row; the link and delete button handle their own clicks
+        li.addEventListener('click', (e) => {
+            if ((e.target as HTMLElement).closest('a, button')) return;
+            void openChat();
         });
 
         li.appendChild(titleSpan);
@@ -2332,7 +2575,7 @@ export class ChatManager {
         onTogglePin: () => void,
         ctas?: PathwayCta[]
     ): HTMLElement {
-        const messageWrapper = document.createElement('div');
+        const messageWrapper = document.createElement('li');
         messageWrapper.classList.add('message', `${sender}-message`);
         messageWrapper.id = `msg-${messageId}`;
         
@@ -2349,37 +2592,49 @@ export class ChatManager {
             // User messages don't have artefacts
             renderLatexInElement(text, contentEl);
         }
-        
-        messageWrapper.appendChild(contentEl);
 
-        const timeEl = document.createElement('div');
-        timeEl.className = 'message-timestamp';
-        
-        const clockIcon = document.createElement('i');
-        clockIcon.setAttribute('data-feather', 'clock');
-        clockIcon.classList.add('timestamp-clock');
-        const timeTextEl = document.createElement('span');
-        timeTextEl.className = 'timestamp-text';
-        timeTextEl.textContent = this.formatFullTimestamp(timestamp);
-        timeEl.appendChild(clockIcon);
-        timeEl.appendChild(timeTextEl);
+        const heading = document.createElement('h2');
+        heading.className = 'message-heading';
+        // Placeholders are swapped for the server's copy, so only saved messages get a linkable id
+        if (!this.pendingMessageIds.has(messageId)) {
+            heading.id = messageHeadingId(messageId);
+        }
+        heading.setAttribute('tabindex', '-1');
+        heading.appendChild(document.createTextNode(`${sender === 'user' ? 'You' : 'EngE-AI'} (${this.formatFullTimestamp(timestamp)})`));
+        messageWrapper.appendChild(heading);
+
+        // Bubble wraps the content so its tail isn't clipped by .message-content's overflow (needed for LaTeX)
+        const bubbleEl = document.createElement('div');
+        bubbleEl.className = 'message-bubble';
+        bubbleEl.appendChild(contentEl);
+        messageWrapper.appendChild(bubbleEl);
+
+        const actionsEl = document.createElement('div');
+        actionsEl.className = 'message-actions';
 
         const actionsInline = document.createElement('span');
-        actionsInline.className = 'timestamp-actions';
+        actionsInline.className = 'message-action-group';
 
         const pinBtn = document.createElement('button');
         pinBtn.type = 'button';
-        pinBtn.className = 'timestamp-action-btn pin-action-btn';
-        pinBtn.title = isPinned ? 'Unpin this message' : 'Pin this message';
-        pinBtn.setAttribute('aria-label', pinBtn.title);
+        pinBtn.className = 'message-action-btn pin-action-btn';
+        // pinBtn.title = isPinned ? 'Unpin this message' : 'Pin this message';
+        // pinBtn.setAttribute('aria-label', pinBtn.title);
         const pinIconEl = document.createElement('i');
         pinIconEl.setAttribute('data-feather', 'map-pin');
+        pinIconEl.setAttribute('aria-hidden', 'true');
         if (isPinned) {
             pinIconEl.classList.add('pinned');
         }
         const pinLabelEl = document.createElement('span');
-        pinLabelEl.textContent = isPinned ? 'Unpin' : 'Pin';
-        pinLabelEl.className = 'timestamp-action-label';
+        const pinLabelElVisuallyHidden = document.createElement('span');
+        pinLabelElVisuallyHidden.className = 'visually-hidden';
+
+        pinLabelEl.appendChild(document.createTextNode(isPinned ? 'Unpin' : 'Pin'));
+        pinLabelEl.appendChild(pinLabelElVisuallyHidden);
+        const visuallyHiddenText = document.createTextNode(` (${sender === 'user' ? 'You' : 'EngE-AI'} | ${this.formatFullTimestamp(timestamp)})`);
+        pinLabelElVisuallyHidden.appendChild(visuallyHiddenText);
+        pinLabelEl.className = 'message-action-label';
         pinLabelEl.style.marginLeft = '4px';
         pinBtn.appendChild(pinIconEl);
         pinBtn.appendChild(pinLabelEl);
@@ -2392,15 +2647,21 @@ export class ChatManager {
         if (sender === 'bot') {
             const flagBtn = document.createElement('button');
             flagBtn.type = 'button';
-            flagBtn.className = 'timestamp-action-btn flag-action-btn';
-            flagBtn.title = 'Flag this message';
-            flagBtn.setAttribute('aria-label', 'Flag this message');
+            flagBtn.className = 'message-action-btn flag-action-btn';
+            // flagBtn.title = 'Flag this message';
+            // flagBtn.setAttribute('aria-label', 'Flag this message');
             flagBtn.style.marginLeft = '6px';
             const flagIconEl = document.createElement('i');
             flagIconEl.setAttribute('data-feather', 'flag');
+            flagIconEl.setAttribute('aria-hidden', 'true');
             const flagLabelEl = document.createElement('span');
-            flagLabelEl.textContent = 'Flag';
-            flagLabelEl.className = 'timestamp-action-label';
+            const flagLabelElVisuallyHidden = document.createElement('span');
+            flagLabelElVisuallyHidden.className = 'visually-hidden';
+
+            flagLabelEl.appendChild(document.createTextNode('Flag'));
+            flagLabelEl.appendChild(flagLabelElVisuallyHidden);
+            flagLabelElVisuallyHidden.appendChild(document.createTextNode(` (EngE-AI | ${this.formatFullTimestamp(timestamp)})`));
+            flagLabelEl.className = 'message-action-label';
             flagLabelEl.style.marginLeft = '4px';
             flagBtn.appendChild(flagIconEl);
             flagBtn.appendChild(flagLabelEl);
@@ -2411,8 +2672,8 @@ export class ChatManager {
             actionsInline.appendChild(flagBtn);
         }
 
-        timeEl.appendChild(actionsInline);
-        messageWrapper.appendChild(timeEl);
+        actionsEl.appendChild(actionsInline);
+        messageWrapper.appendChild(actionsEl);
 
         return messageWrapper;
     }

@@ -956,7 +956,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     function createDivisionElement(instance_topicOrWeek: TopicOrWeekInstance): HTMLElement {
 
         // create the wrapper for the topic/week instance
-        const wrapper = document.createElement('div');
+        const wrapper = document.createElement('li');
         wrapper.className = 'topic-or-week-instance';
 
         // create the header for the topic/week instance
@@ -983,7 +983,8 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         title.style.gap = '8px';
         
         // Create title text span
-        const titleText = document.createElement('span');
+        const titleText = document.createElement('h2');
+        titleText.classList.add('topic-or-week-title-heading');
         titleText.textContent = instance_topicOrWeek.title;
         title.appendChild(titleText);
         
@@ -1024,17 +1025,21 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         right.style.flex = '0 0 auto';
 
         // Add Session badge/button
-        const addSessionBadge = document.createElement('div');
+        const addSessionBadge = document.createElement('button');
+        addSessionBadge.type = 'button';
         addSessionBadge.className = 'content-status status-add-session';
-        addSessionBadge.setAttribute('title', 'Add Section');
-        addSessionBadge.setAttribute('aria-label', 'Add Section');
         const addSectionIcon = document.createElement('i');
         addSectionIcon.setAttribute('data-feather', 'plus');
+        addSectionIcon.setAttribute('aria-hidden', 'true');
         const addSectionText = document.createElement('span');
         addSectionText.className = 'status-text';
         addSectionText.textContent = 'Add Section';
+        const addSectionTextVisuallyHidden = document.createElement('span');
+        addSectionTextVisuallyHidden.className = 'visually-hidden';
+        addSectionTextVisuallyHidden.textContent = ` (${instance_topicOrWeek.title})`;
         addSessionBadge.appendChild(addSectionIcon);
         addSessionBadge.appendChild(addSectionText);
+        addSessionBadge.appendChild(addSectionTextVisuallyHidden);
         // Prevent header toggle when clicking Add Section
         addSessionBadge.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -1046,6 +1051,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         publishBtn.className = 'content-status publish-status-btn status-draft';
         const statusIcon = document.createElement('i');
         statusIcon.setAttribute('data-feather', 'file-text');
+        statusIcon.setAttribute('aria-hidden', 'true');
         const statusText = document.createElement('span');
         statusText.className = 'status-text';
         statusText.textContent = 'Draft';
@@ -1063,19 +1069,23 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         expandIcon.textContent = '▼';
 
         // Delete instance badge
-        const deleteInstanceBadge = document.createElement('div');
+        const deleteInstanceBadge = document.createElement('button');
+        deleteInstanceBadge.type = 'button';
         deleteInstanceBadge.className = 'content-status status-delete-instance';
         deleteInstanceBadge.setAttribute('data-action', 'delete-instance');
         deleteInstanceBadge.setAttribute('data-topic-or-week-instance-id', instance_topicOrWeek.id);
-        deleteInstanceBadge.setAttribute('title', 'Delete');
-        deleteInstanceBadge.setAttribute('aria-label', 'Delete');
         const deleteInstanceIcon = document.createElement('i');
         deleteInstanceIcon.setAttribute('data-feather', 'trash-2');
+        deleteInstanceIcon.setAttribute('aria-hidden', 'true');
         const deleteInstanceText = document.createElement('span');
         deleteInstanceText.className = 'status-text';
         deleteInstanceText.textContent = 'Delete';
+        const deleteInstanceTextVisuallyHidden = document.createElement('span');
+        deleteInstanceTextVisuallyHidden.className = 'visually-hidden';
+        deleteInstanceTextVisuallyHidden.textContent = ` (${instance_topicOrWeek.title})`;
         deleteInstanceBadge.appendChild(deleteInstanceIcon);
         deleteInstanceBadge.appendChild(deleteInstanceText);
+        deleteInstanceBadge.appendChild(deleteInstanceTextVisuallyHidden);
         deleteInstanceBadge.addEventListener('click', (e) => {
             e.stopPropagation();
             deleteTopicOrWeekInstance(instance_topicOrWeek);
@@ -1091,7 +1101,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         header.appendChild(right);
 
         // create the content for the topic/week instance
-        const contentEl = document.createElement('div');
+        const contentEl = document.createElement('ul');
         contentEl.className = 'topic-or-week-item';
         contentEl.id = `content-topic-or-week-instance-${instance_topicOrWeek.id}`;
 
@@ -2220,7 +2230,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
      */
     function buildContentItemDOM(topicOrWeekId: string, content: TopicOrWeekItem): HTMLElement {
         // Reuse the createContentItemElement pattern used at page render time
-        const item = document.createElement('div');
+        const item = document.createElement('li');
         item.className = 'content-item';
         item.id = `content-item-${topicOrWeekId}-${content.id}`;
         // Header
@@ -2242,7 +2252,8 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         title.style.minWidth = '0';
         
         // Create title text span
-        const titleText = document.createElement('span');
+        const titleText = document.createElement('h3');
+        titleText.classList.add('content-title-heading');
         titleText.textContent = content.title;
         title.appendChild(titleText);
         
@@ -2262,18 +2273,22 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         statusRow.className = 'content-status-row';
         // Right side does not grow
         statusRow.style.flex = '0 0 auto';
-        const deleteBadge = document.createElement('div');
+        const deleteBadge = document.createElement('button');
+        deleteBadge.type = 'button';
         deleteBadge.className = 'content-status status-delete-section';
-        deleteBadge.setAttribute('title', 'Delete Section');
-        deleteBadge.setAttribute('aria-label', 'Delete Section');
         deleteBadge.dataset.action = 'delete-section';
         const deleteSectionIcon = document.createElement('i');
         deleteSectionIcon.setAttribute('data-feather', 'trash-2');
+        deleteSectionIcon.setAttribute('aria-hidden', 'true');
         const deleteSectionText = document.createElement('span');
         deleteSectionText.className = 'status-text';
         deleteSectionText.textContent = 'Delete Section';
+        const deleteSectionTextVisuallyHidden = document.createElement('span');
+        deleteSectionTextVisuallyHidden.className = 'visually-hidden';
+        deleteSectionTextVisuallyHidden.textContent = ` (${content.title})`;
         deleteBadge.appendChild(deleteSectionIcon);
         deleteBadge.appendChild(deleteSectionText);
+        deleteBadge.appendChild(deleteSectionTextVisuallyHidden);
         deleteBadge.dataset.topicOrWeekInstanceId = topicOrWeekId;
         deleteBadge.dataset.contentId = content.id;
         statusRow.appendChild(deleteBadge);

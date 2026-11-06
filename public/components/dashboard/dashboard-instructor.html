@@ -121,11 +121,12 @@
                             <span>Manage features</span>
                             <i data-feather="chevron-down" class="dashboard-accordion-chevron" aria-hidden="true"></i>
                         </button>
+                        <!-- Outside the body: the accordion stays closed for TAs, so a note inside it would never show. -->
+                        <p id="dashboard-features-ta-note" class="dashboard-accordion-note dashboard-accordion-note--locked" hidden>
+                            Only an instructor or platform admin can manage features.
+                        </p>
                         <div class="dashboard-accordion-body" id="dashboard-features-body">
                             <div class="dashboard-accordion-body-inner">
-                                <p id="dashboard-features-ta-note" class="dashboard-accordion-note" hidden>
-                                    Only an instructor or platform admin can change extra features.
-                                </p>
                                 <fieldset class="form-group dashboard-features">
                                     <label class="dashboard-feature-row" for="settingsScenarioGeneration">
                                         <span class="dashboard-feature-title">Scenario Questions</span>

@@ -35,7 +35,7 @@ export type RetiredConversationModeId = (typeof RETIRED_CONVERSATION_MODE_IDS)[n
 export type PersistedConversationModeId = ConversationModeId | RetiredConversationModeId | 'undeclared';
 
 /** Must match src/types/shared.ts */
-export type ConversationModeStatus = 'active' | 'coming_soon';
+export type ConversationModeStatus = 'active' | 'coming_soon' | 'locked';
 
 /** Must match src/types/shared.ts. */
 export interface PathwayCta {
@@ -962,6 +962,47 @@ export interface GlobalUser {
     isTestStudent?: boolean;
     /** userId of the staff member this test student belongs to; staff-gated, never student-facing. */
     testStudentOwnerUserId?: string;
+}
+
+/** Must match src/types/shared.ts. One course a directory user is enrolled in; `courseName` is null when the course no longer exists. */
+export interface UserDirectoryCourse {
+    id: string;
+    courseName: string | null;
+    /** From the course's `instructors` / `teachingAssistants` lists; `student` otherwise; null when the course is gone. */
+    role: 'instructor' | 'ta' | 'student' | null;
+}
+
+/**
+ * Must match src/types/shared.ts.
+ * One `active-users` row in the platform-admin user directory.
+ *
+ * Admin-only: carries the PUID, so it must never reach a non-admin response or a log line.
+ * Dates are ISO strings.
+ */
+export interface UserDirectoryEntry {
+    userId: string;
+    name: string;
+    puid: string;
+    affiliation: GlobalUser['affiliation'];
+    status: GlobalUser['status'];
+    isAdmin: boolean;
+    courses: UserDirectoryCourse[];
+    createdAt: string | null;
+    updatedAt: string | null;
+    studentOnboardingCompleted: boolean;
+    instructorOnboarding: InstructorOnboardingProgress;
+    canvasVerifiedUserId: string | null;
+    canvasVerifiedAt: string | null;
+    /** Whether a token record exists for each LMS; never the token itself. */
+    lmsConnections: { canvas: boolean; moodle: boolean };
+}
+
+/** Must match src/types/shared.ts. Paginated response of `GET /api/admin/user-directory`. */
+export interface UserDirectoryPage {
+    items: UserDirectoryEntry[];
+    page: number; // one-based page number
+    pageSize: number; // rows per page
+    total: number; // users matching the filters
 }
 
 /**

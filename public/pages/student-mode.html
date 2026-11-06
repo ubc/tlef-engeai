@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>EngE-AI | Student Mode</title>
+    <title>EngE-AI (Student Mode)</title>
     <link rel="icon" href="/assets/brand/engeai-logo.svg" type="image/svg+xml" />
     <link rel="icon" href="/assets/brand/engeai-logo.png" type="image/png" sizes="512x512" />
     <link rel="apple-touch-icon" href="/assets/brand/engeai-logo.png" />
@@ -28,6 +28,7 @@
     <link rel="stylesheet" href="/styles/student-components/student-view-banner.css" />
     <link rel="stylesheet" href="/styles/scenario-generation/sg-shared.css" />
     <link rel="stylesheet" href="/styles/about.css" />
+    <link rel="stylesheet" href="/styles/toast-notification.css" />
     
     <!-- KaTeX CSS for LaTeX rendering -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css" integrity="sha384-GvrOXuhMATgEsSwCs4smul74iXGOixntILdUW9XmUC6+HX0sLNAK3q71HotJqlAn" crossorigin="anonymous">
@@ -72,10 +73,10 @@
                 </div>
                 <nav class="chat-list">
                     <div class="student-tools-box" hidden>
-                        <button type="button" class="student-tool-btn" id="practice-scenarios-btn" hidden>
-                            <i data-feather="clipboard"></i>
+                        <a class="student-tool-btn" id="practice-scenarios-btn" hidden>
+                            <i data-feather="clipboard" aria-hidden="true"></i>
                             <p>Scenario Questions</p>
-                        </button>
+                        </a>
                         <!-- <button type="button" class="student-tool-btn" id="writing-analysis-btn">
                             <i data-feather="edit-3"></i>
                             <p>Writing Feedback</p>
@@ -92,18 +93,18 @@
                 </nav>
             </div>
             <div class="sidebar-footer">
-                <button class="about-btn" id="about-btn">
-                    <i data-feather="info"></i>
+                <a class="about-btn" id="about-btn">
+                    <i data-feather="info" aria-hidden="true"></i>
                     <span>About</span>
-                </button>
-                <button class="flag-history-btn" id="profile-btn">
-                    <i data-feather="file-text"></i>
+                </a>
+                <a class="flag-history-btn" id="profile-btn">
+                    <i data-feather="file-text" aria-hidden="true"></i>
                     <span>Flag History</span>
-                </button>
-                <button class="course-selection-btn" id="course-selection-btn">
-                    <i data-feather="book-open"></i>
+                </a>
+                <a class="course-selection-btn" id="course-selection-btn" href="/course-selection">
+                    <i data-feather="book-open" aria-hidden="true"></i>
                     <span>Course Selection</span>
-                </button>
+                </a>
                 <button class="logout-btn" id="logout-btn">
                     <i data-feather="log-out"></i>
                     <span>Log Out</span>
@@ -191,7 +192,9 @@
         </div>
     </div>
 
-    
+    <!-- Toast live region: ships empty so screen readers announce messages added later -->
+    <div id="toast-region" class="toast-region toast-top-right" role="status"></div>
+
     <script>mermaid.initialize({ startOnLoad: false, theme: 'default' });</script>
     <script type="module" src="/dist/public/scripts/entry/student-mode.js"></script>
     <script>

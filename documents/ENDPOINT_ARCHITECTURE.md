@@ -27,6 +27,7 @@ All API routes are prefixed with `/api/`. Page routes are served from `/` and `/
 | `/api/courses` | mongodbRoutes | Courses, flags, objectives, materials, monitor |
 | `/api/courses` | writingFeedbackRoutes | Optional staff writing-feedback workspace |
 | `/api/admin` | adminCourseRoutes | Platform-admin course catalog and cross-course Guided Pathway review |
+| `/api/admin/user-directory` | adminUserDirectoryRoutes | Platform-admin user directory |
 | `/api/course` | courseEntryRoutes | Course entry, enter-by-code, current course |
 | `/api/user` | userManagementRoutes | User profile, onboarding, activity |
 | `/api/health` | healthRoutes | Health check |
@@ -343,10 +344,10 @@ Live Canvas OAuth is provided by `/api/lms/canvas/*`. Writing Feedback release r
 
 #### Student View (`/api/course/:courseId/student-view`)
 
-Lets a faculty instructor or platform admin open their own course as a brand-new student,
-using a private per-staff test student. Guarded by `requireRosterManageAPI(['params'])` —
-faculty listed in `course.instructors[]` plus platform admins; **teaching assistants are
-refused**. Admitting TAs later is a change of guard on these three routes only.
+Lets course staff open their course as a brand-new student, using a private per-staff test
+student. Guarded by `requireInstructorForCourseAPI(['params'])` (`isCourseStaff`) — faculty
+listed in `course.instructors[]`, anyone listed in `course.teachingAssistants[]`, and platform
+admins.
 
 These are the only routes exempt from the `studentViewImpersonation` middleware
 (`src/middleware/student-view.ts`), so their guard always authorizes the **real** staff
@@ -354,9 +355,9 @@ member, including while that person is already previewing.
 
 | Method | Path | Auth | Role | Description |
 |--------|------|------|------|-------------|
-| POST | `/api/course/:courseId/student-view/enter` | Yes | Roster manage | Creates the caller's test student on first use, sets `session.studentView`, returns `{ success, redirectTo: '/course/:courseId/student' }`. Entering for a second course replaces the first. |
-| POST | `/api/course/:courseId/student-view/exit` | Yes | Roster manage | Clears `session.studentView`, restores the staff `session.globalUser`, returns `{ success, redirectTo: '/course/:courseId/instructor/dashboard' }` |
-| POST | `/api/course/:courseId/student-view/reset` | Yes | Roster manage | Purges everything the test student produced and recreates it; returns `{ success, testStudentUserId }`. The purge asserts `isTestStudent` before any delete. |
+| POST | `/api/course/:courseId/student-view/enter` | Yes | Course staff | Creates the caller's test student on first use, sets `session.studentView`, returns `{ success, redirectTo: '/course/:courseId/student' }`. Entering for a second course replaces the first. |
+| POST | `/api/course/:courseId/student-view/exit` | Yes | Course staff | Clears `session.studentView`, restores the staff `session.globalUser`, returns `{ success, redirectTo: '/course/:courseId/instructor/dashboard' }` |
+| POST | `/api/course/:courseId/student-view/reset` | Yes | Course staff | Purges everything the test student produced and recreates it; returns `{ success, testStudentUserId }`. The purge asserts `isTestStudent` before any delete. |
 
 No request body. Logout clears Student View, because `teardownSession` destroys the session.
 `GET /api/user/current` carries `studentView: { active, courseId }` so the student shell can
@@ -384,6 +385,8 @@ render its banner; the test student's own id is never sent to the browser.
 | PUT | `/api/admin/courses/:id` | Yes | Admin | Edit course name, period, merge-add instructors (`instructorUserIds`), remove instructors (`removeInstructorUserIds` — admin-only; blocks self-removal and platform-admin removal; pulls `coursesEnrolled`, preserves `{courseName}_users` history) |
 | POST | `/api/admin/courses/:id/ensure-enrollment` | Yes | Admin | Idempotent admin roster enroll on enter |
 | GET | `/api/admin/users/search?q=` | Yes | Admin | Faculty search for instructor picker |
+| GET | `/admin/users` | Yes | Admin | User directory HTML (linked from the admin course page header) |
+| GET | `/api/admin/user-directory?q=&affiliation=&page=&pageSize=` | Yes | Admin | Read-only user directory page (`UserDirectoryPage`): `q` matches a name substring (case-insensitive) or an exact PUID / `userId`; `affiliation` is `student`/`faculty`/`staff`/`empty`; `pageSize` defaults to 50, max 100. Rows are an allow-list of `active-users` fields with course ids resolved to names and the person's role in each (`instructor`/`ta`/`student`, from the course's staff lists), plus `lmsConnections` (whether a Canvas / Moodle token record exists for the user — never the token); Student View test students are excluded. Carries PUIDs, so responses are `Cache-Control: no-store` and the search text is never logged. 400 on invalid parameters |
 | PUT | `/api/admin/instructor-allowances` | Yes | Admin | Set allowed course names per puid + period |
 | GET | `/api/academic-periods` | Yes | Admin | List periods |
 | POST | `/api/academic-periods` | Yes | Admin | Create period |
@@ -671,11 +674,11 @@ Chat metadata is ordered by most recent activity and contains no conversation-le
 |--------|------|------|------|-------------|
 | GET | `/api/chat/user/chats/metadata` | Yes | Any | List chat metadata |
 | GET | `/api/chat/user/chats` | Yes | Any | List full chats |
-| GET | `/api/chat/conversation-modes` | Yes | Any | List teaching mode catalog (labels only); includes `defaultConversationMode` when session/query course is known |
+| GET | `/api/chat/conversation-modes` | Yes | Any | List teaching mode catalog (labels only); includes `defaultConversationMode` when session/query course is known. Modes with `status: 'coming_soon'` are shown disabled; `status: 'locked'` (currently `explanatory`) is hidden from the picker. Neither can be chosen for new chats |
 | POST | `/api/chat/newchat` | Yes | Any | Create new welcome-only chat with persisted `conversationMode: 'undeclared'` |
 | POST | `/api/chat/restore/:chatId` | Yes | Any | Restore chat into server memory; lazy mode migration uses message history |
-| PATCH | `/api/chat/:chatId/conversation-mode` | Yes | Any | Update teaching mode before the first user message; rejects chats that already contain a user turn |
-| POST | `/api/chat/:chatId` | Yes | Any (admin for `/DEBUG` and sticky-DEBUG `/scenario`) | Send message; first user message finalizes an undeclared chat to `socratic` or `explanatory` before LLM processing. Platform admins may send `/DEBUG` to toggle sticky prompt-engineer inspection for that chat only. While sticky DEBUG is on, admins may send `/scenario` or `/scenario <topic>` to short-circuit into the unstruggle-Yes practice suggestion path (chips). Unstruggle **Yes** (`yes, I am confident with "topic"`) removes the struggle label, strips the prior bot `<questionUnstruggle>` tag, runs a forked LLM call to pick up to 3 verbatim learning-objective **texts** (not ids), randomly samples up to 3 published scenario questions matching those LO texts, and returns a bot message with a random preconfigured encouragement (`{topic}` substitution) plus optional `<scenarioSuggestions>` JSON tag (no main chat LLM). |
+| PATCH | `/api/chat/:chatId/conversation-mode` | Yes | Any | Update teaching mode before the first user message; rejects chats that already contain a user turn and modes that are not `active` in the catalog |
+| POST | `/api/chat/:chatId` | Yes | Any (admin for `/DEBUG` and sticky-DEBUG `/scenario`) | Send message; first user message finalizes an undeclared chat to an `active` catalog mode before LLM processing (400 for a non-active mode); chats that already declared a mode keep it, so existing `explanatory` chats keep working while that mode is locked. Platform admins may send `/DEBUG` to toggle sticky prompt-engineer inspection for that chat only. While sticky DEBUG is on, admins may send `/scenario` or `/scenario <topic>` to short-circuit into the unstruggle-Yes practice suggestion path (chips). Unstruggle **Yes** (`yes, I am confident with "topic"`) removes the struggle label, strips the prior bot `<questionUnstruggle>` tag, runs a forked LLM call to pick up to 3 verbatim learning-objective **texts** (not ids), randomly samples up to 3 published scenario questions matching those LO texts, and returns a bot message with a random preconfigured encouragement (`{topic}` substitution) plus optional `<scenarioSuggestions>` JSON tag (no main chat LLM). |
 | POST | `/api/chat/:chatId/dismiss-unstruggle` | Yes | Any | Dismiss unstruggle |
 | GET | `/api/chat/:chatId/history` | Yes | Any | Get chat history |
 | GET | `/api/chat/:chatId/message/:messageId` | Yes | Any | Get single message |

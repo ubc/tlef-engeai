@@ -345,3 +345,54 @@ export async function findAdminGlobalUsers(ctx: MongoDalContext): Promise<Global
     const docs = await collection.find({ isAdmin: true }).toArray();
     return docs as unknown as GlobalUser[];
 }
+
+/** Filters for the platform-admin user directory; see {@link listGlobalUsersForDirectory}. */
+export interface GlobalUserDirectoryQuery {
+    /** Case-insensitive substring of `name`, or an exact `puid` or `userId`. */
+    search?: string;
+    affiliation?: GlobalUser['affiliation'];
+    /** One-based page number. */
+    page: number;
+    pageSize: number;
+}
+
+/**
+ * listGlobalUsersForDirectory
+ *
+ * One page of `active-users` for the platform-admin directory, sorted by name. Student View test
+ * students are excluded, as from every staff-facing listing. `puid` and `userId` match exactly,
+ * never partially, so this query keeps working once `puid` is encrypted behind a blind index.
+ *
+ * @param ctx - MongoDalContext
+ * @param query - Search text, affiliation filter, and page
+ * @returns The page of users and the total matching the filters
+ */
+export async function listGlobalUsersForDirectory(
+    ctx: MongoDalContext,
+    query: GlobalUserDirectoryQuery
+): Promise<{ users: GlobalUser[]; total: number }> {
+    const filter: Record<string, unknown> = { isTestStudent: { $ne: true } };
+    if (query.affiliation) {
+        filter.affiliation = query.affiliation;
+    }
+    const search = query.search?.trim();
+    if (search) {
+        filter.$or = [
+            { name: { $regex: search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } },
+            { puid: search },
+            { userId: search }
+        ];
+    }
+
+    const collection = activeUsersMongoCollection(ctx.db);
+    const [docs, total] = await Promise.all([
+        collection
+            .find(filter)
+            .sort({ name: 1, userId: 1 })
+            .skip((query.page - 1) * query.pageSize)
+            .limit(query.pageSize)
+            .toArray(),
+        collection.countDocuments(filter)
+    ]);
+    return { users: docs as unknown as GlobalUser[], total };
+}

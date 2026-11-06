@@ -42,10 +42,10 @@ const INLINE_ADD_CONFIG: Record<
 
 /** Read-only list rows (no per-row edit/delete). */
 export function buildCatalogListRows(items: Array<{ label: string }>): HTMLElement {
-    const wrapper = document.createElement('div');
+    const wrapper = document.createElement('ul');
 
     items.forEach((item) => {
-        const row = document.createElement('div');
+        const row = document.createElement('li');
         row.className = 'objective-item';
 
         const header = document.createElement('div');
@@ -116,7 +116,7 @@ export function buildCatalogSection(config: CatalogSectionConfig): HTMLElement {
     headerRow.setAttribute('data-content', String(config.contentId));
     headerRow.dataset.catalogKind = config.kind;
 
-    const headerTitle = document.createElement('div');
+    const headerTitle = document.createElement('h4');
     headerTitle.className = 'objectives-title';
     headerTitle.textContent = config.sectionTitle;
 

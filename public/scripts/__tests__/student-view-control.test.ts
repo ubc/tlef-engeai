@@ -16,11 +16,11 @@ import {
 } from '../instructor/student-view-control';
 
 describe('student view sidebar control', () => {
-    it('is hidden from anyone who cannot manage the course, which is who the endpoint refuses', () => {
+    it('is hidden from anyone not on the course staff, which is who the endpoint refuses', () => {
         expect(shouldShowStudentViewControl(false)).toBe(false);
     });
 
-    it('is shown to a faculty instructor or platform admin', () => {
+    it('is shown to course staff: faculty instructors, teaching assistants and platform admins', () => {
         expect(shouldShowStudentViewControl(true)).toBe(true);
     });
 

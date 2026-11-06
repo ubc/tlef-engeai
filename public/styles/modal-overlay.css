@@ -808,7 +808,6 @@ body.onboarding-active .upload-modal-overlay {
 .upload-method-content.active {
     display: flex;
     flex-direction: column;
-    margin-top: 0.5rem;
 }
 
 /* File and Text sections within upload method content */
@@ -853,7 +852,6 @@ body.onboarding-active .upload-modal-overlay {
     gap: 16px;
     background: #fafbfc;
     transition: all 0.2s ease;
-    min-height: 120px;
     width: 100%;
 }
 
@@ -1069,18 +1067,29 @@ body.modal-open {
 
 /* Responsive Design for Upload Modal */
 @media (max-width: 768px) {
+    /* Size to the content, as on desktop; a fixed height leaves the file card floating in empty space */
     .upload-modal-overlay .modal-container {
         width: 95vw;
-        height: 80vh;
         max-width: 500px;
-        max-height: 600px;
+        max-height: 85vh;
     }
 
     .upload-method-toggle {
         flex-direction: column;
         gap: 4px;
     }
-    
+
+    /* The header toggle fits beside the title, so keep File and Text side by side */
+    .upload-modal-overlay .upload-header-toggle {
+        flex-direction: row;
+        gap: 0;
+    }
+
+    .upload-modal-overlay .modal-footer {
+        flex-direction: row;
+        justify-content: flex-end;
+    }
+
     .toggle-option {
         padding: 10px 12px;
         font-size: 13px;
@@ -1088,7 +1097,6 @@ body.modal-open {
     
     .modal-upload-card {
         padding: 16px;
-        min-height: 100px;
     }
     
     .upload-file-btn {

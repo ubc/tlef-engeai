@@ -181,6 +181,8 @@ body {
     font-size: 0.8rem;
     color: inherit;
     text-align: left;
+    text-decoration: none;
+    line-height: normal;
     overflow: hidden;
     transition: background-color 0.1s ease-in-out,
                 padding 0.28s cubic-bezier(0.4, 0, 0.2, 1),
@@ -379,6 +381,18 @@ body {
     flex-direction: column;
     gap: 0.5rem;
     flex-shrink: 0; /* Prevent footer from shrinking */
+}
+
+/* About, Flag History and Course Selection are links, Log Out is a button; same font and colour for all */
+.about-btn,
+.flag-history-btn,
+.course-selection-btn,
+.logout-btn {
+    font-family: inherit;
+    font-size: 0.8333rem;
+    line-height: normal;
+    color: #000000;
+    text-decoration: none;
 }
 
 .about-btn {

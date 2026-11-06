@@ -1,15 +1,24 @@
 /**
  * TOAST NOTIFICATION SYSTEM
  *
- * A transient notification (toast) that appears in the top-right corner,
- * auto-dismisses after a configurable duration, similar to modal-overlay.
- * Supports success (green), error (red), and default variants.
+ * A transient notification (toast) that appears in the top-right corner and
+ * auto-dismisses after a configurable duration. Supports success (green),
+ * error (red), and default variants.
+ *
+ * Every toast is written into one live region (`#toast-region`, `role="status"`) that the page
+ * ships empty. Screen readers only announce changes to a live region that already exists, so the
+ * region is never created alongside its message; each new toast replaces the previous one.
  *
  * @author: EngE-AI Team
- * @version: 1.0.0
+ * @version: 2.0.0
  */
 
 import type { ToastPosition, ToastType, ToastConfig } from '../types.js';
+
+const TOAST_REGION_ID = 'toast-region';
+
+/** Timer that dismisses the toast currently on screen; cleared when a newer toast replaces it. */
+let dismissTimeoutId: ReturnType<typeof setTimeout> | undefined;
 
 /**
  * readingDurationMs - how long a toast stays up when its caller does not say.
@@ -27,7 +36,24 @@ export function readingDurationMs(message: string, minimumMs = 4000): number {
 }
 
 /**
- * Shows a toast notification that auto-dismisses after the specified duration.
+ * Returns the page's toast live region. Pages that show toasts include it in their HTML; if one
+ * does not, the region is created here, though its first message may then go unannounced.
+ */
+function getToastRegion(): HTMLElement {
+    const existing = document.getElementById(TOAST_REGION_ID);
+    if (existing) return existing;
+
+    const region = document.createElement('div');
+    region.id = TOAST_REGION_ID;
+    region.className = 'toast-region';
+    region.setAttribute('role', 'status');
+    document.body.appendChild(region);
+    return region;
+}
+
+/**
+ * Shows a toast notification that auto-dismisses after the specified duration, replacing any
+ * toast already on screen.
  *
  * @param message - The message to display
  * @param durationMs - Duration in milliseconds (default: long enough to read the message)
@@ -40,51 +66,27 @@ export function showToast(
     position: ToastPosition = 'top-right',
     type: ToastType = 'default'
 ): void {
-    const container = document.createElement('div');
-    container.className = `toast-container toast-${position}`;
+    const region = getToastRegion();
+    clearTimeout(dismissTimeoutId);
+    region.className = `toast-region toast-${position}`;
 
     const toast = document.createElement('div');
     toast.className = `toast-notification toast-${type}`;
-    // @rdschrs: Added accessible live-region and dismiss controls for feature workflows.
-    toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
-    toast.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
-    toast.setAttribute('aria-atomic', 'true');
+    toast.textContent = message;
 
-    const messageElement = document.createElement('span');
-    messageElement.className = 'toast-message';
-    messageElement.textContent = message;
-
-    const dismissButton = document.createElement('button');
-    dismissButton.type = 'button';
-    dismissButton.className = 'toast-dismiss';
-    dismissButton.setAttribute('aria-label', 'Dismiss notification');
-    dismissButton.textContent = '\u00d7';
-
-    toast.append(messageElement, dismissButton);
-
-    container.appendChild(toast);
-    document.body.appendChild(container);
+    // Remove whatever the region holds, then add the new message in the same step.
+    region.replaceChildren(toast);
 
     requestAnimationFrame(() => {
         toast.classList.add('show');
     });
 
-    const dismiss = () => {
+    dismissTimeoutId = setTimeout(() => {
         toast.classList.remove('show');
         toast.classList.add('hide');
-        setTimeout(() => {
-            if (container.parentNode) {
-                container.parentNode.removeChild(container);
-            }
-        }, 300);
-    };
-
-    const timeoutId = setTimeout(dismiss, durationMs);
-
-    toast.addEventListener('click', () => {
-        clearTimeout(timeoutId);
-        dismiss();
-    });
+        // Leave the region empty once the slide-out finishes.
+        setTimeout(() => toast.remove(), 300);
+    }, durationMs);
 }
 
 /**

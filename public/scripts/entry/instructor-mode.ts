@@ -40,7 +40,7 @@ import { initializeSystemPrompts, flushSystemPromptOnLeave } from '../feature/sy
 import { initializeScenarioQuestionsInstructor, isScenarioQuestionsMounted, syncScenarioQuestionsFromURL } from '../feature/scenario-questions-instructor.js';
 import { initializePathwayLibrary } from '../feature/pathway-library.js';
 import { initializeDashboard, renderDashboardCards } from '../feature/dashboard.js';
-import { canManageCourseRoster, canManageGuidedPathways } from '../utils/course-permissions.js';
+import { canManageGuidedPathways, isCourseStaff } from '../utils/course-permissions.js';
 import { initStudentViewControl } from '../instructor/student-view-control.js';
 import { isBrowserCourseFeatureEnabled } from '../utils/course-features.js';
 import { 
@@ -51,8 +51,12 @@ import {
     navigateToChat,
     getInstructorOnboardingStageFromURL,
     isNewCourseOnboardingURL,
-    replaceInstructorViewURL
+    replaceInstructorViewURL,
+    buildInstructorURL
 } from '../utils/url-parser.js';
+import { bindSpaLink } from '../utils/spa-link.js';
+import { isHashOnlyNavigation } from '../utils/hash-navigation.js';
+import { syncPageTitleFromURL } from '../utils/page-title.js';
 import {
     buildOnboardingStagePath,
     FEATURE_ONBOARDING_STAGES,
@@ -504,11 +508,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Sidebar header: `{firstName} (Instructor|TA)`
     const authUser = authService.getAuthState().user;
     const canManageGuidedPathwayFeatures = canManageGuidedPathways(currentClass, authUser);
-    // Student View is offered to the same group the endpoint authorizes: faculty
-    // instructors of this course and platform admins.
+    // Student View is offered to the same group the endpoint authorizes: course staff.
     initStudentViewControl({
         courseId: currentClass.id,
-        canManageCourse: canManageCourseRoster(currentClass, authUser)
+        isCourseStaff: isCourseStaff(currentClass, authUser)
     });
     if (authUser) {
         updateSidebarCompanionText(authUser.name, authUser.userId, currentClass);
@@ -754,11 +757,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Close sidebar when clicking any sidebar menu item or footer button
     sidebarEl?.addEventListener('click', (e: MouseEvent) => {
         const target = e.target as HTMLElement;
-        if (target.closest('.menu-list-item') || target.closest('.instructor-sidebar-footer button') ||
+        if (target.closest('.menu-list-item') || target.closest('.instructor-sidebar-footer button, .instructor-sidebar-footer a') ||
             target.closest('.chat-item') || target.closest('.add-chat-btn')) {
             if (isMobileView()) closeMobileSidebar();
         }
     });
+
+    // Every in-app navigation fires popstate, so this keeps <title> in step with the view
+    syncPageTitleFromURL();
+    window.addEventListener('popstate', syncPageTitleFromURL);
 
     // Current State
     let currentState: StateEvent = StateEvent.Dashboard;
@@ -841,48 +848,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     const scenarioQuestionsStateEl = document.getElementById('scenario-questions-state');
     const pathwayLibraryStateEl = document.getElementById('pathway-library-state');
 
-    dashboardStateEl?.addEventListener('click', () => {
-        navigateToInstructorView('dashboard');
-    });
-
-    chatStateEl?.addEventListener('click', async () => {
-        navigateToInstructorView('chat');
-    });
-
-    flagStateEl?.addEventListener('click', () => {
-        navigateToInstructorView('flags');
-    });
-
-    monitorStateEl?.addEventListener('click', () => {
-        navigateToInstructorView('monitor');
-    });
-
-    documentsStateEl?.addEventListener('click', () => {
-        navigateToInstructorView('documents');
-    });
-
-    writingFeedbackStateEl?.addEventListener('click', () => {
-        navigateToInstructorView('writing-feedback');
-    });
-
-    assistantPromptsStateEl?.addEventListener('click', () => {
-        navigateToInstructorView('assistant-prompts');
-    });
-
-    systemPromptsStateEl?.addEventListener('click', () => {
-        navigateToInstructorView('system-prompts');
-    });
-
-    scenarioQuestionsStateEl?.addEventListener('click', () => {
-        navigateToInstructorView('scenario-questions');
-    });
-
-    pathwayLibraryStateEl?.addEventListener('click', () => {
-        navigateToInstructorView('pathway-library');
-    });
+    // Sidebar items are links: real hrefs for new-tab/copy, in-app navigation on plain clicks
+    const bindInstructorViewLink = (link: HTMLElement | null, view: string) => {
+        bindSpaLink(link, courseIdFromURL ? buildInstructorURL(courseIdFromURL, view) : null, () => navigateToInstructorView(view));
+    };
+    bindInstructorViewLink(dashboardStateEl, 'dashboard');
+    bindInstructorViewLink(chatStateEl, 'chat');
+    bindInstructorViewLink(flagStateEl, 'flags');
+    bindInstructorViewLink(monitorStateEl, 'monitor');
+    bindInstructorViewLink(documentsStateEl, 'documents');
+    bindInstructorViewLink(writingFeedbackStateEl, 'writing-feedback');
+    bindInstructorViewLink(assistantPromptsStateEl, 'assistant-prompts');
+    bindInstructorViewLink(systemPromptsStateEl, 'system-prompts');
+    bindInstructorViewLink(scenarioQuestionsStateEl, 'scenario-questions');
+    bindInstructorViewLink(pathwayLibraryStateEl, 'pathway-library');
     
     // Handle browser back/forward navigation
-    window.addEventListener('popstate', async () => {
+    window.addEventListener('popstate', async (event: PopStateEvent) => {
+        // Same view, new #fragment (e.g. a message heading link): rebuilding would destroy its target
+        if (isHashOnlyNavigation(event)) return;
+
         const view = getInstructorViewFromURL();
         const chatId = getChatIdFromURL();
 
@@ -895,6 +880,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             !(await confirmLeaveWritingFeedbackPage())
         ) {
             restoreWritingFeedbackUrl();
+            syncPageTitleFromURL();
             return;
         }
         
@@ -1422,7 +1408,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 navigateToChat(courseId, newChatId);
                             }
                         }
-                        loadChatWindow();
+                        void loadChatWindow().then(() => chatManager?.focusChatTitle());
                         
                         //START DEBUG LOG : DEBUG-CODE(015)
                         console.log('🆕 New chat created from sidebar, loading chat window');
@@ -1665,6 +1651,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                         
                         // Re-bind message events after creating new chat
                         chatManager.rebindMessageEvents();
+
+                        chatManager.focusChatTitle();
                     }
                 }
             });
@@ -1676,7 +1664,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <div class="error-message">
                     <h2>Welcome to Instructor Chat</h2>
                     <p>Click the button below to start a new chat session.</p>
-                    <button class="welcome-add-btn" onclick="if(window.chatManager) { window.chatManager.createNewChat().then(async result => { if(result.success) { await window.loadChatWindow(); window.chatManager.renderChatList(); } }); }">
+                    <button class="welcome-add-btn" onclick="if(window.chatManager) { window.chatManager.createNewChat().then(async result => { if(result.success) { await window.loadChatWindow(); window.chatManager.renderChatList(); window.chatManager.focusChatTitle(); } }); }">
                         Start New Chat
                     </button>
                 </div>
@@ -1837,12 +1825,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         logoutBtn.addEventListener('click', handleInstructorLogout);
 
         // About button listener
-        const aboutBtn = document.getElementById('instructor-about-btn');
-        if (aboutBtn) {
-            aboutBtn.addEventListener('click', async () => {
-                navigateToInstructorView('about');
-            });
-        }
+        const aboutLink = document.getElementById('instructor-about-btn');
+        const aboutCourseId = getCourseIdFromURL();
+        bindSpaLink(aboutLink, aboutCourseId ? buildInstructorURL(aboutCourseId, 'about') : null, () => navigateToInstructorView('about'));
 
         const courseSummaryFab = document.getElementById('course-summary-summon-fab');
         if (courseSummaryFab) {
@@ -1857,9 +1842,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         // Course Selection button listener
-        const courseSelectionBtn = document.getElementById('instructor-course-selection-btn');
-        if (courseSelectionBtn) {
-            courseSelectionBtn.addEventListener('click', async () => {
+        // Plain clicks clear frontend state first; Ctrl/Cmd-click opens the link in a new tab as-is
+        const courseSelectionLink = document.getElementById('instructor-course-selection-btn');
+        if (courseSelectionLink) {
+            bindSpaLink(courseSelectionLink, '/course-selection', () => {
 
                 // Clear all frontend state
                 try {

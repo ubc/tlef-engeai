@@ -52,9 +52,10 @@ export type PersistedConversationModeId = ConversationModeId | RetiredConversati
 
 /**
  * Catalog availability for a {@link ConversationModeId} (GET /api/chat/conversation-modes).
- * Not stored on MongoDB chat documents.
+ * Not stored on MongoDB chat documents. `coming_soon` is listed but disabled in the picker;
+ * `locked` is omitted from the picker entirely. Neither can be chosen for new chats.
  */
-export type ConversationModeStatus = 'active' | 'coming_soon';
+export type ConversationModeStatus = 'active' | 'coming_soon' | 'locked';
 
 /** Request body for changing a welcome-only chat's teaching mode. */
 export interface UpdateChatConversationModeRequest {
@@ -1023,6 +1024,46 @@ export interface GlobalUser {
     isTestStudent?: boolean;
     /** userId of the staff member this test student belongs to; staff-gated, never student-facing. */
     testStudentOwnerUserId?: string;
+}
+
+/** One course a directory user is enrolled in; `courseName` is null when the course no longer exists. */
+export interface UserDirectoryCourse {
+    id: string;
+    courseName: string | null;
+    /** From the course's `instructors` / `teachingAssistants` lists; `student` otherwise; null when the course is gone. */
+    role: 'instructor' | 'ta' | 'student' | null;
+}
+
+/**
+ * One `active-users` row in the platform-admin user directory.
+ *
+ * Admin-only: carries the PUID, so it must never reach a non-admin response or a log line.
+ * Dates are ISO strings.
+ */
+export interface UserDirectoryEntry {
+    userId: string;
+    name: string;
+    puid: string;
+    affiliation: GlobalUser['affiliation'];
+    status: GlobalUser['status'];
+    isAdmin: boolean;
+    courses: UserDirectoryCourse[];
+    createdAt: string | null;
+    updatedAt: string | null;
+    studentOnboardingCompleted: boolean;
+    instructorOnboarding: InstructorOnboardingProgress;
+    canvasVerifiedUserId: string | null;
+    canvasVerifiedAt: string | null;
+    /** Whether a token record exists for each LMS; never the token itself. */
+    lmsConnections: { canvas: boolean; moodle: boolean };
+}
+
+/** Paginated response of `GET /api/admin/user-directory`. */
+export interface UserDirectoryPage {
+    items: UserDirectoryEntry[];
+    page: number; // one-based page number
+    pageSize: number; // rows per page
+    total: number; // users matching the filters
 }
 
 /**
