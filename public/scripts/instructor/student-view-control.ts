@@ -29,14 +29,13 @@ export function studentViewEnterPath(courseId: string): string {
 /**
  * shouldShowStudentViewControl — whether this viewer sees the sidebar item at all.
  *
- * Deliberately the same predicate the endpoint authorizes (`canManageCourseRoster`), so the
- * button never appears where the request would be refused. Admitting teaching assistants
- * later is a change to what the caller passes, not to this function.
+ * Deliberately the same predicate the endpoint authorizes (`isCourseStaff`), so the button
+ * never appears where the request would be refused.
  *
- * @param canManageCourse - Whether the viewer may manage this course
+ * @param isCourseStaff - Whether the viewer is on this course's staff
  */
-export function shouldShowStudentViewControl(canManageCourse: boolean): boolean {
-    return canManageCourse === true;
+export function shouldShowStudentViewControl(isCourseStaff: boolean): boolean {
+    return isCourseStaff === true;
 }
 
 /**
@@ -62,17 +61,17 @@ export async function enterStudentView(courseId: string): Promise<string> {
 /**
  * initStudentViewControl — show and wire the sidebar item.
  *
- * @param options - Course being viewed and whether the viewer may manage it
+ * @param options - Course being viewed and whether the viewer is on its staff
  */
 export function initStudentViewControl(options: {
     courseId: string;
-    canManageCourse: boolean;
+    isCourseStaff: boolean;
 }): void {
     const button = document.getElementById('student-view-btn') as HTMLButtonElement | null;
     if (!button) {
         return;
     }
-    if (!shouldShowStudentViewControl(options.canManageCourse)) {
+    if (!shouldShowStudentViewControl(options.isCourseStaff)) {
         button.hidden = true;
         return;
     }

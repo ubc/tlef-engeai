@@ -5,15 +5,15 @@
  *
  * These three endpoints are the only ones exempt from `studentViewImpersonation`, so their
  * guard always authorizes the real staff member — including while they are already previewing.
- * Authority is `requireRosterManageAPI`: faculty instructors of the course and platform
- * admins. Teaching assistants are refused; admitting them later is a change of guard here.
+ * Authority is `requireInstructorForCourseAPI`, which despite its name admits all course
+ * staff: faculty instructors, teaching assistants and platform admins.
  */
 
 import express, { Request, Response } from 'express';
 import { EngEAI_MongoDB } from '../db/enge-ai-mongodb';
 import { asRouteParam } from '../helpers/route-params';
 import { asyncHandlerWithAuth } from '../middleware/async-handler';
-import { requireRosterManageAPI } from '../middleware/require-course-role';
+import { requireInstructorForCourseAPI } from '../middleware/require-course-role';
 import type { StudentViewSession } from '../middleware/student-view';
 import type { activeCourse, GlobalUser } from '../types/shared';
 import { appLogger } from '../utils/logger';
@@ -27,7 +27,7 @@ type StudentViewSessionStore = {
 
 /**
  * Resolve the course and the acting staff member, after the guard has already proved
- * both exist and that this person may manage the course.
+ * both exist and that this person is on the course staff.
  */
 async function loadActor(req: Request): Promise<{
     mongoDB: EngEAI_MongoDB;
@@ -54,7 +54,7 @@ async function loadActor(req: Request): Promise<{
  */
 router.post(
     '/:courseId/student-view/enter',
-    requireRosterManageAPI(['params']),
+    requireInstructorForCourseAPI(['params']),
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
         const { mongoDB, course, courseId, globalUser } = await loadActor(req);
         if (!globalUser) {
@@ -80,7 +80,7 @@ router.post(
  */
 router.post(
     '/:courseId/student-view/exit',
-    requireRosterManageAPI(['params']),
+    requireInstructorForCourseAPI(['params']),
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
         const { courseId, globalUser } = await loadActor(req);
         const session = req.session as unknown as StudentViewSessionStore;
@@ -106,7 +106,7 @@ router.post(
  */
 router.post(
     '/:courseId/student-view/reset',
-    requireRosterManageAPI(['params']),
+    requireInstructorForCourseAPI(['params']),
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
         const { mongoDB, course, courseId, globalUser } = await loadActor(req);
         if (!globalUser) {

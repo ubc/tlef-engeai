@@ -259,6 +259,11 @@ body {
     transition: background-color 0.2s, color 0.2s, border-color 0.2s;
 }
 
+/* The display: flex above would otherwise override the hidden attribute */
+.instructor-sidebar-footer .instructor-about-btn[hidden] {
+    display: none;
+}
+
 .instructor-sidebar-footer .instructor-about-btn .feather,
 .instructor-sidebar-footer .instructor-logout-btn .feather,
 .instructor-sidebar-footer .instructor-course-selection-btn .feather {

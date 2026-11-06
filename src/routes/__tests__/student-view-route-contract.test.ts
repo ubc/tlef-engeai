@@ -2,8 +2,8 @@
  * student-view-route-contract.test.ts
  *
  * Pins who may drive Student View. The guard is the product decision under test, so it runs
- * for real: faculty instructors of the course and platform admins pass, teaching assistants
- * and students are refused.
+ * for real: faculty instructors of the course, its teaching assistants and platform admins
+ * pass; students and faculty from outside the course are refused.
  */
 
 import express from 'express';
@@ -13,12 +13,14 @@ const course = {
     id: 'course-1',
     courseName: 'DemoCourse',
     instructors: [{ userId: 'prof-1' }],
-    teachingAssistants: [{ userId: 'ta-1' }]
+    teachingAssistants: [{ userId: 'ta-1' }, { userId: 'ta-2' }]
 };
 
 const globalUsers: Record<string, Record<string, unknown>> = {
     PROF: { userId: 'prof-1', puid: 'PROF', affiliation: 'faculty', name: 'Prof' },
     TA: { userId: 'ta-1', puid: 'TA', affiliation: 'faculty', name: 'Teaching Assistant' },
+    OUTSIDE_FACULTY: { userId: 'prof-2', puid: 'OUTSIDE_FACULTY', affiliation: 'faculty', name: 'Other Prof' },
+    STUDENT_AFFILIATED_TA: { userId: 'ta-2', puid: 'STUDENT_AFFILIATED_TA', affiliation: 'student', name: 'Grad TA' },
     STUDENT: { userId: 'stu-1', puid: 'STUDENT', affiliation: 'student', name: 'Student' },
     ADMIN: { userId: 'admin-1', puid: 'ADMIN', affiliation: 'staff', name: 'Admin', isAdmin: true }
 };
@@ -81,17 +83,32 @@ describe('student view route contract', () => {
         expect(res.status).toBe(200);
     });
 
-    it('refuses a teaching assistant', async () => {
+    it('lets a teaching assistant enter with a test student of their own', async () => {
         const res = await request(appAs('TA')).post('/api/course/course-1/student-view/enter');
 
+        expect(res.status).toBe(200);
+        expect(res.body).toMatchObject({ success: true, redirectTo: '/course/course-1/student' });
+        expect(ensureTestStudent).toHaveBeenCalledWith(course, 'ta-1');
+    });
+
+    it('lets a teaching assistant with a student affiliation enter', async () => {
+        const res = await request(appAs('STUDENT_AFFILIATED_TA')).post('/api/course/course-1/student-view/enter');
+
+        expect(res.status).toBe(200);
+        expect(ensureTestStudent).toHaveBeenCalledWith(course, 'ta-2');
+    });
+
+    it('refuses faculty who are not on this course', async () => {
+        const res = await request(appAs('OUTSIDE_FACULTY')).post('/api/course/course-1/student-view/enter');
+
         expect(res.status).toBe(403);
-        expect(ensureTestStudent).not.toHaveBeenCalled();
     });
 
     it('refuses a student', async () => {
         const res = await request(appAs('STUDENT')).post('/api/course/course-1/student-view/enter');
 
         expect(res.status).toBe(403);
+        expect(ensureTestStudent).not.toHaveBeenCalled();
     });
 
     it('exit returns the instructor dashboard', async () => {
@@ -101,10 +118,18 @@ describe('student view route contract', () => {
         expect(res.body.redirectTo).toBe('/course/course-1/instructor/dashboard');
     });
 
-    it('refuses a teaching assistant an exit as well', async () => {
+    it('lets a teaching assistant exit back to the instructor dashboard', async () => {
         const res = await request(appAs('TA')).post('/api/course/course-1/student-view/exit');
 
-        expect(res.status).toBe(403);
+        expect(res.status).toBe(200);
+        expect(res.body.redirectTo).toBe('/course/course-1/instructor/dashboard');
+    });
+
+    it('resets only the teaching assistant\'s own test student', async () => {
+        const res = await request(appAs('TA')).post('/api/course/course-1/student-view/reset');
+
+        expect(res.status).toBe(200);
+        expect(findTestStudent).toHaveBeenCalledWith('course-1', 'ta-1');
     });
 
     it('reset purges the existing test student before recreating it', async () => {

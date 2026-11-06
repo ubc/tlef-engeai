@@ -344,10 +344,10 @@ Live Canvas OAuth is provided by `/api/lms/canvas/*`. Writing Feedback release r
 
 #### Student View (`/api/course/:courseId/student-view`)
 
-Lets a faculty instructor or platform admin open their own course as a brand-new student,
-using a private per-staff test student. Guarded by `requireRosterManageAPI(['params'])` —
-faculty listed in `course.instructors[]` plus platform admins; **teaching assistants are
-refused**. Admitting TAs later is a change of guard on these three routes only.
+Lets course staff open their course as a brand-new student, using a private per-staff test
+student. Guarded by `requireInstructorForCourseAPI(['params'])` (`isCourseStaff`) — faculty
+listed in `course.instructors[]`, anyone listed in `course.teachingAssistants[]`, and platform
+admins.
 
 These are the only routes exempt from the `studentViewImpersonation` middleware
 (`src/middleware/student-view.ts`), so their guard always authorizes the **real** staff
@@ -355,9 +355,9 @@ member, including while that person is already previewing.
 
 | Method | Path | Auth | Role | Description |
 |--------|------|------|------|-------------|
-| POST | `/api/course/:courseId/student-view/enter` | Yes | Roster manage | Creates the caller's test student on first use, sets `session.studentView`, returns `{ success, redirectTo: '/course/:courseId/student' }`. Entering for a second course replaces the first. |
-| POST | `/api/course/:courseId/student-view/exit` | Yes | Roster manage | Clears `session.studentView`, restores the staff `session.globalUser`, returns `{ success, redirectTo: '/course/:courseId/instructor/dashboard' }` |
-| POST | `/api/course/:courseId/student-view/reset` | Yes | Roster manage | Purges everything the test student produced and recreates it; returns `{ success, testStudentUserId }`. The purge asserts `isTestStudent` before any delete. |
+| POST | `/api/course/:courseId/student-view/enter` | Yes | Course staff | Creates the caller's test student on first use, sets `session.studentView`, returns `{ success, redirectTo: '/course/:courseId/student' }`. Entering for a second course replaces the first. |
+| POST | `/api/course/:courseId/student-view/exit` | Yes | Course staff | Clears `session.studentView`, restores the staff `session.globalUser`, returns `{ success, redirectTo: '/course/:courseId/instructor/dashboard' }` |
+| POST | `/api/course/:courseId/student-view/reset` | Yes | Course staff | Purges everything the test student produced and recreates it; returns `{ success, testStudentUserId }`. The purge asserts `isTestStudent` before any delete. |
 
 No request body. Logout clears Student View, because `teardownSession` destroys the session.
 `GET /api/user/current` carries `studentView: { active, courseId }` so the student shell can
