@@ -3,7 +3,7 @@
  * exact opt-in value, and the SFL profile gate applied only in SFL mode.
  */
 
-import { carriedSflProfile, getAnalysisMode, requireAnalysisProfile } from '../analysis-mode';
+import { carriedSflProfile, draftForValidation, getAnalysisMode, requireAnalysisProfile } from '../analysis-mode';
 import { buildDefaultSflContextProfile } from '../../rubric/default-rubric-profile';
 
 describe('getAnalysisMode', () => {
@@ -46,5 +46,18 @@ describe('carriedSflProfile', () => {
 
     it('returns nothing when there is no stored profile', () => {
         expect(carriedSflProfile(undefined)).toBeUndefined();
+    });
+});
+
+describe('draftForValidation', () => {
+    const draft = { title: 'Essay', sflContext: buildDefaultSflContextProfile() };
+
+    it('leaves the profile out in general mode, without changing the draft', () => {
+        expect(draftForValidation(draft, 'general').sflContext).toBeUndefined();
+        expect(draft.sflContext).toBeDefined();
+    });
+
+    it('keeps the profile in sfl mode', () => {
+        expect(draftForValidation(draft, 'sfl')).toBe(draft);
     });
 });

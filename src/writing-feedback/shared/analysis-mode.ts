@@ -66,3 +66,20 @@ export function carriedSflProfile(stored: WritingSflContextProfile | undefined):
     const { approvedGlossaryTerms: _moved, ...rest } = stored;
     return rest;
 }
+
+/**
+ * draftForValidation - the form of a stored draft that the draft schema should check.
+ *
+ * In general mode the SFL profile is carried but never edited, so a blank one must not fail
+ * validation. Validate this value and save the original, which keeps the profile.
+ *
+ * @param draft - Draft about to be validated
+ * @param mode - Active analysis mode
+ * @returns A copy without the profile in `general` mode; the draft itself in `sfl` mode
+ */
+export function draftForValidation<T extends object>(
+    draft: T,
+    mode: WritingFeedbackAnalysisMode = getAnalysisMode()
+): T {
+    return mode === 'general' ? { ...draft, sflContext: undefined } : draft;
+}

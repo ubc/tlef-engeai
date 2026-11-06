@@ -69,7 +69,7 @@ import {
     rubricContentEquals,
     writingRubricDraftInputSchema
 } from '../writing-feedback/rubric/rubric-schema';
-import { carriedSflProfile, getAnalysisMode, requireAnalysisProfile } from '../writing-feedback/shared/analysis-mode';
+import { carriedSflProfile, draftForValidation, getAnalysisMode, requireAnalysisProfile } from '../writing-feedback/shared/analysis-mode';
 import { courseTermExcerpts } from '../writing-feedback/generation/general-feedback-engine';
 import { listCriterionLibrary, suggestScale } from '../writing-feedback/rubric/rubric-presets';
 import { isCourseStaff } from '../utils/course-staff';
@@ -1140,7 +1140,7 @@ router.post(
                 if (!retiredIdsOk(withExtracted)) {
                     gridOutcome = 'failed';
                     gridMessage = GRID_REUSES_RETIRED_IDS;
-                } else if (!writingRubricDraftInputSchema.safeParse(withExtracted).success) {
+                } else if (!writingRubricDraftInputSchema.safeParse(draftForValidation(withExtracted)).success) {
                     gridOutcome = 'failed';
                     gridMessage = `The rubric in ${rubricMaterial.label} could not be turned into a rubric grid. The grid is unchanged.`;
                 } else {
@@ -1153,9 +1153,7 @@ router.post(
             // Reuse the same validation the PUT path enforces (band ordering, cells keyed
             // to real levels) rather than writing a second one; a proposal that would leave
             // the draft invalid is refused before it is ever saved.
-            // In general mode the inactive SFL profile is carried, not validated (see the PUT route).
-            const generalFill = getAnalysisMode() === 'general';
-            if (!writingRubricDraftInputSchema.safeParse(generalFill ? { ...merged, sflContext: undefined } : merged).success) {
+            if (!writingRubricDraftInputSchema.safeParse(draftForValidation(merged)).success) {
                 throw new Error('Auto-fill response was not usable');
             }
 
@@ -1224,7 +1222,7 @@ router.post(
                 return res.status(409).json({ success: false, error: GRID_REUSES_RETIRED_IDS });
             }
         }
-        if (!writingRubricDraftInputSchema.safeParse(draft).success) {
+        if (!writingRubricDraftInputSchema.safeParse(draftForValidation(draft)).success) {
             return res.status(409).json({ success: false, error: `This version of the rubric in ${pending.sourceLabel} could not be turned into a rubric grid.` });
         }
         const saved = await mongo.saveWritingRubricDraft(courseId(req), assignment.id, draft, lens, { pendingRubricExtraction: null });
