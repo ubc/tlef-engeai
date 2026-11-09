@@ -156,7 +156,8 @@
 .catalog-modal__meta {
     flex: 0 0 auto;
     font-size: 13px;
-    color: var(--text-secondary);
+    /* --text-secondary is 4.08:1 on a hovered row; this is 5.9:1 */
+    color: #555c63;
     white-space: nowrap;
     padding-right: 10px;
 }
@@ -305,9 +306,18 @@
     filter: brightness(0.95);
 }
 
+/* Visibly inactive without fading the label: opacity left white text at 1.9:1 */
 .catalog-modal__dismiss:disabled,
 .catalog-modal__save:disabled {
-    opacity: 0.45;
+    background: #e2e2e2;
+    color: #4d4d4d;
     cursor: not-allowed;
     filter: none;
+}
+
+/* Offset ring sits on the modal background, not against the red/green fill */
+.catalog-modal__dismiss:focus-visible,
+.catalog-modal__save:focus-visible {
+    outline: 2px solid var(--color-navy-blue, #1b365d);
+    outline-offset: 2px;
 }

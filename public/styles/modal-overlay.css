@@ -279,8 +279,9 @@
 }
 
 /* Warning Modal */
+/* Dark amber: #ffc107 was 1.6:1 on the white dialog */
 .modal-warning .modal-title {
-    color: #ffc107;
+    color: #8a6d00;
 }
 
 .modal-warning .modal-header {

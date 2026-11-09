@@ -449,7 +449,7 @@ button.content-status {
 
 .publish-status-btn.status-draft {
     background: rgba(255, 152, 0, 0.1);
-    color: #e67e22;
+    color: #9a3d00;
     border: 1px solid #e67e22;
 }
 
@@ -470,14 +470,15 @@ button.content-status {
 
 .publish-status-btn.status-published {
     background: rgba(76, 175, 80, 0.1);
-    color: var(--pinned-color, #3d5a26);
+    /* Explicit: --pinned-color resolves to a lighter green that fails 4.5:1 on the header */
+    color: #3d5a26;
     border: 1px solid var(--pinned-color, #3d5a26);
 }
 
 .publish-status-btn.status-draft:hover {
     background: rgba(255, 152, 0, 0.2);
     border-color: #d35400;
-    color: #a84300;
+    color: #8a3700;
     transform: translateY(-1px);
     box-shadow: 0 2px 4px rgba(255, 152, 0, 0.3);
 }
@@ -632,7 +633,8 @@ button.content-status {
 
 .status-copy-materials {
     background: rgba(77, 122, 47, 0.1);
-    color: var(--color-chbe-green);
+    /* Darker than --color-chbe-green so the label stays above 4.5:1 on the hover tint */
+    color: #3a5f22;
     border: 1px solid var(--color-chbe-green);
     cursor: pointer;
     transition: all 0.3s ease;
@@ -1068,16 +1070,15 @@ button.content-status {
 /* Publish toggle removed — publish/schedule uses modal + status buttons */
 
 /* Rename Icon Styles */
+/* Full opacity and a darker grey keep the icon above 3:1 on the beige week header */
 .rename-icon {
     cursor: pointer;
     margin-left: 8px;
-    opacity: 0.6;
-    transition: opacity 0.2s ease, color 0.2s ease;
-    color: var(--text-secondary);
+    transition: color 0.2s ease;
+    color: #5f666d;
 }
 
 .rename-icon:hover {
-    opacity: 1;
     color: var(--color-chbe-green);
 }
 
