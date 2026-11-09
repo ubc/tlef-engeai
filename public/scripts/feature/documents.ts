@@ -966,6 +966,39 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     }
 
     /**
+     * Builds the pencil button that renames a week/topic or a section in place.
+     * Clicks are handled by the delegated listener in setupEventListeners, which reads the
+     * data attributes; the visible icon is decorative and the hidden text names the target.
+     *
+     * @param topicOrWeekId - The ID of the topic/week instance
+     * @param itemId - The section ID, or null for the topic/week title itself
+     * @param title - The current title, used in the button's accessible name
+     * @returns The rename button
+     */
+    function createRenameButton(topicOrWeekId: string, itemId: string | null, title: string): HTMLButtonElement {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'rename-icon';
+        button.setAttribute('data-topic-or-week-instance-id', topicOrWeekId);
+        if (itemId) {
+            button.setAttribute('data-item-id', itemId);
+        }
+
+        const icon = document.createElement('i');
+        icon.setAttribute('data-feather', 'edit-2');
+        icon.setAttribute('aria-hidden', 'true');
+        button.appendChild(icon);
+
+        const targetLabel = itemId ? 'Section' : currentClass.frameType === 'byWeek' ? 'Week' : 'Topic';
+        const name = document.createElement('span');
+        name.className = 'visually-hidden';
+        name.textContent = `Edit ${targetLabel} Name (${title})`;
+        button.appendChild(name);
+
+        return button;
+    }
+
+    /**
      * Create a topic/week instance (week/topic) section element
      * 
      * @param instance_topicOrWeek the topic/week instance to create an element for
@@ -1004,16 +1037,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         titleText.textContent = instance_topicOrWeek.title;
         title.appendChild(titleText);
         
-        // Create rename icon (handled via delegated listener in setupEventListeners)
-        const renameIcon = document.createElement('i');
-        renameIcon.setAttribute('data-feather', 'edit-2');
-        renameIcon.className = 'rename-icon';
-        renameIcon.setAttribute('data-topic-or-week-instance-id', instance_topicOrWeek.id);
-        renameIcon.style.cursor = 'pointer';
-        renameIcon.style.marginLeft = '8px';
-        renameIcon.style.width = '16px';
-        renameIcon.style.height = '16px';
-        title.appendChild(renameIcon);
+        title.appendChild(createRenameButton(instance_topicOrWeek.id, null, instance_topicOrWeek.title));
         
         const status = document.createElement('div');
         status.className = 'completion-status';
@@ -2253,17 +2277,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         titleText.textContent = content.title;
         title.appendChild(titleText);
         
-        // Create rename icon (handled via delegated listener in setupEventListeners)
-        const renameIcon = document.createElement('i');
-        renameIcon.setAttribute('data-feather', 'edit-2');
-        renameIcon.className = 'rename-icon';
-        renameIcon.setAttribute('data-topic-or-week-instance-id', topicOrWeekId);
-        renameIcon.setAttribute('data-item-id', content.id);
-        renameIcon.style.cursor = 'pointer';
-        renameIcon.style.marginLeft = '8px';
-        renameIcon.style.width = '16px';
-        renameIcon.style.height = '16px';
-        title.appendChild(renameIcon);
+        title.appendChild(createRenameButton(topicOrWeekId, content.id, content.title));
         
         const statusRow = document.createElement('div');
         statusRow.className = 'content-status-row';
@@ -2581,24 +2595,37 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
      * @param itemId - Optional item ID (if editing an item title)
      * @param currentTitle - The current title text
      */
+    /**
+     * Finds the title row and its heading (week/topic h2 or section h3) for inline renaming.
+     *
+     * @param topicOrWeekId - The ID of the topic/week instance
+     * @param itemId - The section ID, or null for the topic/week title itself
+     * @returns The title container and heading, or nulls when not rendered
+     */
+    function findEditableTitle(
+        topicOrWeekId: string,
+        itemId: string | null
+    ): { titleContainer: HTMLElement | null; heading: HTMLElement | null } {
+        const titleContainer = itemId
+            ? document.querySelector<HTMLElement>(`#content-item-${topicOrWeekId}-${itemId} .content-title`)
+            : document.querySelector<HTMLElement>(
+                  `.topic-or-week-header[data-topic-or-week-instance="${topicOrWeekId}"] .topic-or-week-title`
+              );
+        const heading = titleContainer?.querySelector<HTMLElement>(
+            itemId ? '.content-title-heading' : '.topic-or-week-title-heading'
+        ) ?? null;
+        return { titleContainer: titleContainer ?? null, heading };
+    }
+
     function enterEditMode(topicOrWeekId: string, itemId: string | null, currentTitle: string): void {
-        let titleSpan: HTMLElement | null = null;
-        let titleContainer: HTMLElement | null = null;
-        
-        if (itemId) {
-            // Editing an item title
-            titleSpan = document.querySelector(`#content-item-${topicOrWeekId}-${itemId} .content-title span`) as HTMLElement | null;
-            titleContainer = document.querySelector(`#content-item-${topicOrWeekId}-${itemId} .content-title`) as HTMLElement | null;
-        } else {
-            // Editing a topic/week instance title
-            titleSpan = document.querySelector(`.topic-or-week-header[data-topic-or-week-instance="${topicOrWeekId}"] .topic-or-week-title span`) as HTMLElement | null;
-            titleContainer = document.querySelector(`.topic-or-week-header[data-topic-or-week-instance="${topicOrWeekId}"] .topic-or-week-title`) as HTMLElement | null;
-        }
-        
-        if (!titleSpan || !titleContainer) {
+        const { titleContainer, heading } = findEditableTitle(topicOrWeekId, itemId);
+
+        if (!heading || !titleContainer) {
             console.error('Title element not found for edit mode');
             return;
         }
+        // Already editing this title
+        if (titleContainer.querySelector('.title-edit-input')) return;
         
         // Store original title for cancel
         const originalTitle = currentTitle;
@@ -2659,20 +2686,21 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         buttonContainer.appendChild(okButton);
         buttonContainer.appendChild(cancelButton);
         
-        // Replace span with input
-        titleSpan.replaceWith(input);
+        // Hide the heading rather than replacing it: its id names the week's disclosure
+        // <summary> (aria-labelledby), and it is restored with the saved text on exit
+        heading.hidden = true;
+        heading.after(input);
         renameIcon.replaceWith(buttonContainer);
         
         // Focus and select input text
         input.focus();
         input.select();
         
-        // Re-render feather icons
+        // Re-render feather icons. This swaps the <i> buttons for <svg>s, so their clicks are
+        // handled by the delegated listener in setupEventListeners, not listeners on these nodes.
         renderFeatherIcons();
         
-        // Handle OK button click
-        okButton.addEventListener('click', async (e) => {
-            e.stopPropagation();
+        const submitTitleEdit = async (): Promise<void> => {
             const newTitle = input.value.trim();
             
             // Validate input
@@ -2696,13 +2724,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             
             // Save the title change
             await saveTitleChange(topicOrWeekId, itemId, newTitle);
-        });
-        
-        // Handle Cancel button click
-        cancelButton.addEventListener('click', (e) => {
-            e.stopPropagation();
-            exitEditMode(topicOrWeekId, itemId, originalTitle);
-        });
+        };
         
         // Handle Escape key
         const escapeHandler = (e: KeyboardEvent) => {
@@ -2718,7 +2740,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 e.stopPropagation();
-                okButton.click();
+                await submitTitleEdit();
             }
         });
         
@@ -2734,15 +2756,9 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
      * @param title - The title to display
      */
     function exitEditMode(topicOrWeekId: string, itemId: string | null, title: string): void {
-        let titleContainer: HTMLElement | null = null;
+        const { titleContainer, heading } = findEditableTitle(topicOrWeekId, itemId);
         
-        if (itemId) {
-            titleContainer = document.querySelector(`#content-item-${topicOrWeekId}-${itemId} .content-title`) as HTMLElement | null;
-        } else {
-            titleContainer = document.querySelector(`.topic-or-week-header[data-topic-or-week-instance="${topicOrWeekId}"] .topic-or-week-title`) as HTMLElement | null;
-        }
-        
-        if (!titleContainer) return;
+        if (!titleContainer || !heading) return;
         
         // Find input field
         const input = titleContainer.querySelector('.title-edit-input') as HTMLInputElement | null;
@@ -2756,26 +2772,24 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             document.removeEventListener('keydown', escapeHandler);
         }
         
-        // Create title span
-        const titleSpan = document.createElement('span');
-        titleSpan.textContent = title;
-        
-        // Create rename icon
-        const renameIcon = document.createElement('i');
-        renameIcon.setAttribute('data-feather', 'edit-2');
-        renameIcon.className = 'rename-icon';
-        renameIcon.setAttribute('data-topic-or-week-instance-id', topicOrWeekId);
-        if (itemId) {
-            renameIcon.setAttribute('data-item-id', itemId);
-        }
-        renameIcon.style.cursor = 'pointer';
-        renameIcon.style.marginLeft = '8px';
-        renameIcon.style.width = '16px';
-        renameIcon.style.height = '16px';
-        
-        // Replace input with span and restore rename icon (handled via delegated listener)
-        input.replaceWith(titleSpan);
-        buttonContainer.replaceWith(renameIcon);
+        // Show the heading with the current title and restore the rename button
+        const renameButton = createRenameButton(topicOrWeekId, itemId, title);
+        heading.textContent = title;
+        heading.hidden = false;
+        input.remove();
+        buttonContainer.replaceWith(renameButton);
+        // The text box that had focus is gone; return keyboard users to the control they started from
+        renameButton.focus();
+
+        // Buttons name their target in hidden text, e.g. "Delete (Week 1)"; keep it in step
+        const actionRow = itemId
+            ? document.querySelector(`#content-item-${topicOrWeekId}-${itemId} .content-status-row`)
+            : document.querySelector(
+                  `.topic-or-week-header[data-topic-or-week-instance="${topicOrWeekId}"] .topic-or-week-status`
+              );
+        actionRow?.querySelectorAll(':scope > button > .visually-hidden').forEach((hiddenName) => {
+            hiddenName.textContent = ` (${title})`;
+        });
         
         // Re-render feather icons
         renderFeatherIcons();

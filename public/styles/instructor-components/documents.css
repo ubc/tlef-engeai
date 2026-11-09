@@ -1071,15 +1071,33 @@ button.content-status {
 
 /* Rename Icon Styles */
 /* Full opacity and a darker grey keep the icon above 3:1 on the beige week header */
+/* Pencil button: looks like the bare icon; padding brings the target to 24px (WCAG 2.5.8) */
 .rename-icon {
+    appearance: none;
+    background: none;
+    border: none;
+    border-radius: 4px;
+    padding: 4px;
+    margin: 0 0 0 4px;
+    font: inherit;
     cursor: pointer;
-    margin-left: 8px;
     transition: color 0.2s ease;
     color: #5f666d;
 }
 
+.rename-icon svg {
+    display: block;
+    width: 16px;
+    height: 16px;
+}
+
 .rename-icon:hover {
     color: var(--color-chbe-green);
+}
+
+.rename-icon:focus-visible {
+    outline: 2px solid var(--color-chbe-green);
+    outline-offset: 0;
 }
 
 .topic-or-week-title .rename-icon,
