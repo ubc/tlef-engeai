@@ -126,17 +126,37 @@ ul.documents-container > li::marker {
     margin-bottom: 0;
 }
 
+/*
+ * The week's sections live inside the header's <details> (so the <summary> can sit with the
+ * other header buttons), but they must render as a full-width row below the header.
+ * Row 1 is the title block plus four controls; row 2 holds the opened sections.
+ * The status group and <details> are subgrids spanning both rows, so the buttons, the
+ * <summary> and the <details> content box all line up on this grid's tracks.
+ */
 .topic-or-week-header {
-    padding: 10px 20px;
+    /* Containing block for the <summary>'s header-wide click area */
+    position: relative;
+    --topic-or-week-header-pad-y: 10px;
+    --topic-or-week-header-pad-x: 20px;
+    padding: var(--topic-or-week-header-pad-y) var(--topic-or-week-header-pad-x);
     background: var(--background-2);
-    cursor: pointer;
     transition: all 0.3s ease;
-    display: flex;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) repeat(4, auto);
+    grid-template-rows: auto auto;
+    column-gap: 10px;
     align-items: center;
 }
 
-.topic-or-week-header:hover {
+/* Keep the original 12px between the title block and the first button */
+.topic-or-week-header > :first-child {
+    grid-column: 1;
+    grid-row: 1;
+    margin-inline-end: 2px;
+}
+
+/* Hovering the opened sections shouldn't tint the header row */
+.topic-or-week-header:hover:not(:has(.topic-or-week-disclosure > :not(summary):hover)) {
     background: var(--hover-bg);
 }
 
@@ -153,10 +173,57 @@ ul.documents-container > li::marker {
     font-size: 18px;
 }
 
-.topic-or-week-status {
-    display: flex;
+/*
+ * Both subgrids cover the title block's cell too. They paint no background, and
+ * pointer-events: none lets clicks through to the title and rename icon underneath;
+ * each real control turns pointer events back on.
+ */
+.topic-or-week-status,
+.topic-or-week-disclosure {
+    grid-column: 1 / -1;
+    grid-row: 1 / -1;
+    display: grid;
+    grid-template-columns: subgrid;
+    grid-template-rows: subgrid;
     align-items: center;
-    gap: 10px;
+    pointer-events: none;
+}
+
+.topic-or-week-status > .status-add-session { grid-area: 1 / 2; }
+.topic-or-week-status > .publish-status-btn { grid-area: 1 / 3; }
+.topic-or-week-status > .status-delete-instance { grid-area: 1 / 4; }
+
+.topic-or-week-status > button,
+.topic-or-week-disclosure > summary,
+.topic-or-week-disclosure::details-content {
+    pointer-events: auto;
+}
+
+/*
+ * Clicking anywhere on the header background toggles the week: the <summary>'s ::after
+ * covers the whole header (z-index 0), and everything visible in the header is lifted
+ * above it so it keeps its own clicks and text selection.
+ * The text blocks shrink to their content so the gaps beside them still reach the click area.
+ */
+.topic-or-week-title > *,
+.completion-status,
+.topic-or-week-meta-line,
+.topic-or-week-status > button,
+ul.topic-or-week-item {
+    position: relative;
+    z-index: 1;
+}
+
+.completion-status,
+.topic-or-week-meta-line {
+    width: fit-content;
+}
+
+.topic-or-week-disclosure > summary::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
 }
 
 /* Same vertical metrics across chips in topic header and session status row */
@@ -190,13 +257,43 @@ ul.documents-container > li::marker {
 .expand-icon {
     color: var(--text-primary);
     font-size: 20px;
+}
+
+.topic-or-week-disclosure > summary {
+    grid-area: 1 / 5;
+    list-style: none;
+    cursor: pointer;
+}
+
+.topic-or-week-disclosure > summary::-webkit-details-marker {
+    display: none;
+}
+
+/*
+ * Rotate the arrow, never the <summary>: a transform on the summary would make it the
+ * containing block for its ::after and shrink the click area down to the arrow.
+ */
+.topic-or-week-disclosure-arrow {
+    display: inline-block;
     transition: transform 0.3s ease;
 }
 
+.topic-or-week-disclosure[open] .topic-or-week-disclosure-arrow {
+    transform: rotate(180deg);
+}
+
+/* The browser hides the content while <details> is closed; open, it spans the full header width */
+.topic-or-week-disclosure::details-content {
+    grid-column: 1 / -1;
+    grid-row: 2;
+}
+
+/* Bleed out of the header's padding so the open list sits flush against the card edges */
 ul.topic-or-week-item {
-    max-height: 0;
-    overflow: hidden;
-    transition: max-height 0.3s ease;
+    margin: var(--topic-or-week-header-pad-y)
+        calc(-1 * var(--topic-or-week-header-pad-x))
+        calc(-1 * var(--topic-or-week-header-pad-y));
+    background: var(--chat-bg);
     padding-left: 0;
 }
 
@@ -207,7 +304,7 @@ ul.topic-or-week-item > li::marker {
 }
 
 /* An open section scrolls inside itself so long ones (many subsections) still reach the upload action */
-ul.topic-or-week-item.expanded {
+ul.topic-or-week-item {
     max-height: 70vh;
     overflow-y: auto;
     scrollbar-gutter: stable;
@@ -1020,7 +1117,8 @@ button.content-status {
 
     .topic-or-week-header {
         min-height: 44px;
-        padding: 0.75rem 1rem;
+        --topic-or-week-header-pad-y: 0.75rem;
+        --topic-or-week-header-pad-x: 1rem;
     }
 
     .content-header {

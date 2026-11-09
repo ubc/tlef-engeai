@@ -963,11 +963,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const header = document.createElement('div');
         header.className = 'topic-or-week-header';
         header.setAttribute('data-topic-or-week-instance', instance_topicOrWeek.id);
-        // Layout: make header a flexible row so left area can grow
-        header.style.display = 'flex';
-        header.style.alignItems = 'center';
-        header.style.justifyContent = 'space-between';
-        header.style.gap = '12px';
+        // Layout is a CSS grid (documents.css) so the opened <details> content can span below
 
         // create the left side of the header
         // display the title and the completed status of the topic/week instance
@@ -985,6 +981,8 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         // Create title text span
         const titleText = document.createElement('h2');
         titleText.classList.add('topic-or-week-title-heading');
+        // The disclosure <summary> takes its accessible name from this id
+        titleText.id = `topic-or-week-heading-${instance_topicOrWeek.id}`;
         titleText.textContent = instance_topicOrWeek.title;
         title.appendChild(titleText);
         
@@ -1021,8 +1019,6 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         // create the right side of the header (add session, publish status, delete, expand)
         const right = document.createElement('div');
         right.className = 'topic-or-week-status';
-        // Right side does not grow
-        right.style.flex = '0 0 auto';
 
         // Add Session badge/button
         const addSessionBadge = document.createElement('button');
@@ -1062,11 +1058,20 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             void openPublishDecisionModal(instance_topicOrWeek, wrapper);
         });
 
-        // Expand icon (arrow)
-        const expandIcon = document.createElement('div');
-        expandIcon.className = 'expand-icon';
-        expandIcon.id = `icon-${instance_topicOrWeek.id}`;
-        expandIcon.textContent = '▼';
+        // Disclosure: the <summary> holds only the arrow and is named by the week heading;
+        // the week's sections live inside <details> so the browser owns open/closed state
+        const disclosure = document.createElement('details');
+        disclosure.className = 'topic-or-week-disclosure';
+        const disclosureSummary = document.createElement('summary');
+        disclosureSummary.className = 'expand-icon';
+        disclosureSummary.setAttribute('aria-labelledby', titleText.id);
+        // The arrow rotates on its own element: a transform on <summary> would become the
+        // containing block for its header-wide click area (::after) and shrink it to the arrow
+        const disclosureArrow = document.createElement('span');
+        disclosureArrow.className = 'topic-or-week-disclosure-arrow';
+        disclosureArrow.textContent = '▼';
+        disclosureSummary.appendChild(disclosureArrow);
+        disclosure.appendChild(disclosureSummary);
 
         // Delete instance badge
         const deleteInstanceBadge = document.createElement('button');
@@ -1094,27 +1099,24 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         right.appendChild(addSessionBadge);
         right.appendChild(publishBtn);
         right.appendChild(deleteInstanceBadge);
-        right.appendChild(expandIcon);
-
-        // append the left and right sides to the header
-        header.appendChild(left);
-        header.appendChild(right);
+        right.appendChild(disclosure);
 
         // create the content for the topic/week instance
         const contentEl = document.createElement('ul');
         contentEl.className = 'topic-or-week-item';
         contentEl.id = `content-topic-or-week-instance-${instance_topicOrWeek.id}`;
 
-        //TODO: append all the content of the topic/week instance.
         instance_topicOrWeek.items.forEach((content) => {
             const item = buildContentItemDOM(instance_topicOrWeek.id, content);
             contentEl.appendChild(item);
         });
+        disclosure.appendChild(contentEl);
 
+        // append the left and right sides to the header
+        header.appendChild(left);
+        header.appendChild(right);
 
-        // append the header and the content to the wrapper
         wrapper.appendChild(header);
-        wrapper.appendChild(contentEl);
         syncTopicOrWeekPublishHeader(wrapper, instance_topicOrWeek);
         return wrapper;
     }
@@ -1298,16 +1300,6 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                     if (instance_topicOrWeek) exitEditMode(topicOrWeekId, null, instance_topicOrWeek.title);
                 }
                 return; // Avoid header toggle
-            }
-
-            // Topic/Week Instance header toggles (accordion)
-            const divisionHeader = target.closest('.topic-or-week-header') as HTMLElement | null;
-            if (divisionHeader) {
-                const topicOrWeekId = divisionHeader.getAttribute('data-topic-or-week-instance') || '0';
-                if (!topicOrWeekId) return;
-                // console.log('🔍 TOPIC/WEEK INSTANCE CLICKED - Topic/Week ID:', topicOrWeekId); // 🟡 HIGH: Topic/Week ID exposure
-                toggleDivision(topicOrWeekId);
-                return;
             }
 
             // Objectives accordion toggles
@@ -1968,20 +1960,6 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             await showSimpleErrorModal('An error occurred during upload. Please try again.', 'Upload Error');
             throw error; // Re-throw so modal handler can catch it
         }
-    }
-
-    /**
-     * Toggle the expansion state of a topic/week instance
-     * 
-     * @param topicOrWeekId the id of the topic/week instance to toggle
-     * @returns null
-     */
-    function toggleDivision(topicOrWeekId: string) {
-        const content = document.getElementById(`content-topic-or-week-instance-${topicOrWeekId}`);
-        const icon = document.getElementById(`icon-${topicOrWeekId}`);
-        if (!content || !icon) return;
-            content.classList.toggle('expanded');
-            icon.style.transform = content.classList.contains('expanded') ? 'rotate(180deg)' : 'rotate(0deg)';
     }
 
     /**
