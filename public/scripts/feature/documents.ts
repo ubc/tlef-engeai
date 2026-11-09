@@ -212,6 +212,22 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         return topicScheduleFmt.format(d);
     }
 
+    /**
+     * How long to wait after closing a dialog before showing its confirmation toast.
+     * Closing returns focus to the button that opened the dialog, and VoiceOver drops a
+     * live-region update that arrives while it is announcing that focus change.
+     */
+    const TOAST_AFTER_DIALOG_CLOSE_MS = 500;
+
+    /**
+     * Shows a success toast once a just-closed dialog's focus change has been announced.
+     *
+     * @param message - The toast text
+     */
+    function showSuccessToastAfterDialogClose(message: string): void {
+        setTimeout(() => showSuccessToast(message), TOAST_AFTER_DIALOG_CLOSE_MS);
+    }
+
     function buildLocalDateFromParts(dateYmd: string, hour12: number, minute: number, isPm: boolean): Date | null {
         const segs = dateYmd.split('-').map((x) => parseInt(x, 10));
         if (segs.length !== 3 || segs.some((n) => Number.isNaN(n))) return null;
@@ -603,8 +619,8 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             }
             syncTopicOrWeekPublishHeader(wrapper, tw);
             renderFeatherIcons();
-            showToast(`Updated schedule to ${formatScheduleLine(when)}`, 3500, 'top-right');
             closeModal('scheduled-topic');
+            showSuccessToastAfterDialogClose(`Updated schedule to ${formatScheduleLine(when)}.`);
         }
 
         rescheduleBtn.addEventListener('click', () => {
@@ -650,8 +666,8 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                         }
                         syncTopicOrWeekPublishHeader(wrapper, tw);
                         renderFeatherIcons();
-                        showToast('Scheduled publish cancelled.', 2500, 'top-right');
                         closeModal('scheduled-topic');
+                        showSuccessToastAfterDialogClose('Scheduled publish cancelled.');
                     }
                 }
             ]
@@ -746,8 +762,9 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                             }
                             syncTopicOrWeekPublishHeader(wrapper, tw);
                             renderFeatherIcons();
-                            showToast(`Published "${tw.title}"`, 3000, 'top-right');
+                            // Close first: screen readers ignore the toast region while an aria-modal dialog is open
                             closeModal('publish-now');
+                            showSuccessToastAfterDialogClose(`Published "${tw.title}".`);
                             return;
                         }
 
@@ -779,8 +796,8 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                         }
                         syncTopicOrWeekPublishHeader(wrapper, tw);
                         renderFeatherIcons();
-                        showToast(`Scheduled "${tw.title}" to publish ${formatScheduleLine(when)}`, 3500, 'top-right');
                         closeModal('publish-now');
+                        showSuccessToastAfterDialogClose(`Scheduled "${tw.title}" to publish ${formatScheduleLine(when)}.`);
                     }
                 }
             ]
@@ -815,7 +832,8 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             }
             syncTopicOrWeekPublishHeader(wrapper, tw);
             renderFeatherIcons();
-            showToast(`"${tw.title}" is now a draft.`, 2800, 'top-right');
+            // The dialog closed before the request; a fast response would otherwise land on its focus change
+            showSuccessToastAfterDialogClose(`"${tw.title}" is now a draft.`);
             return;
         }
 
@@ -902,7 +920,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             syncTopicOrWeekPublishHeader(wrapper, tw);
             renderFeatherIcons();
         }
-        showToast(`Published "${tw.title}"`, 3000, 'top-right');
+        showSuccessToast(`Published "${tw.title}".`);
     }
 
     function prefersReducedMotion(): boolean {

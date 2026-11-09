@@ -556,6 +556,11 @@ export class ModalOverlay {
         // Hide modal with animation
         this.overlay.classList.remove('show');
         this.overlay.classList.add('hide');
+        // The overlay lingers for the fade-out; while it still says aria-modal, screen readers
+        // ignore the rest of the page, so a toast shown right after closing goes unannounced
+        this.overlay.removeAttribute('aria-modal');
+        this.overlay.setAttribute('aria-hidden', 'true');
+        this.overlay.inert = true;
 
         // Keep the page locked until the final stacked modal closes.
         const nextTop = visibleModalStack[visibleModalStack.length - 1];
