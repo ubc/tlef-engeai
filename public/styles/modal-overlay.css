@@ -1372,3 +1372,143 @@ body.modal-open {
         -webkit-backdrop-filter: none;
     }
 }
+
+/* ===========================================
+   NATIVE DIALOG (app-dialog)
+   For <dialog> elements opened with commandfor/command; see public/scripts/ui/dialog.ts.
+   The browser supplies focus handling, Escape and the top layer, so only visuals live here.
+   Buttons reuse .modal-btn variants.
+   =========================================== */
+
+.app-dialog {
+    width: min(500px, calc(100vw - 32px));
+    max-height: 90vh;
+    padding: 0;
+    border: none;
+    border-radius: 12px;
+    background-color: white;
+    color: #495057;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.app-dialog::backdrop {
+    background-color: rgba(0, 0, 0, 0.5);
+}
+
+body:has(.app-dialog[open]) {
+    overflow: hidden;
+}
+
+.app-dialog__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.5rem 2rem 1rem 2rem;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.app-dialog__title {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+/*
+ * The heading takes focus on open so screen readers start there. Mouse users get no ring; keyboard
+ * users (:focus-visible) get a 2px solid outline at least as large as a 2px perimeter, offset onto
+ * the white dialog: #4d7a2f on white is about 5:1, above the 3:1 WCAG 2.2 asks of focus indicators.
+ */
+.app-dialog__title:focus {
+    outline: none;
+}
+
+.app-dialog__title:focus-visible {
+    outline: 2px solid var(--color-chbe-green);
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+
+.app-dialog__close {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: none;
+    color: #6c757d;
+    cursor: pointer;
+}
+
+.app-dialog__close:hover {
+    background-color: #f8f9fa;
+    color: #495057;
+}
+
+.app-dialog__close:focus-visible {
+    outline: 2px solid var(--color-chbe-green);
+    outline-offset: 2px;
+}
+
+.app-dialog__body {
+    padding: 1.5rem 2rem;
+    font-size: 1rem;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+}
+
+.app-dialog__body p {
+    margin: 0 0 1rem 0;
+}
+
+.app-dialog__body p:last-child {
+    margin-bottom: 0;
+}
+
+.app-dialog__actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 1rem;
+    padding: 1rem 2rem 1.5rem 2rem;
+    border-top: 1px solid #e9ecef;
+}
+
+@media (max-width: 480px) {
+    .app-dialog__header,
+    .app-dialog__body,
+    .app-dialog__actions {
+        padding-left: 1.5rem;
+        padding-right: 1.5rem;
+    }
+
+    .app-dialog__title {
+        font-size: 1.25rem;
+    }
+
+    .app-dialog__actions {
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .app-dialog__actions .modal-btn {
+        width: 100%;
+    }
+}
+
+@media (prefers-contrast: high) {
+    .app-dialog {
+        border: 2px solid #000;
+    }
+}
+
+.app-dialog__list {
+    margin: 0;
+    padding-left: 1.5em;
+    list-style: disc;
+}
