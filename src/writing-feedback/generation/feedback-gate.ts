@@ -28,10 +28,14 @@ export const REWRITE_STAGE_SHARE = 0.75;
  * required stage has one only on a genre mismatch.
  *
  * @param diagnosis - Validated whole-text diagnosis
- * @param profile - Approved genre profile whose stages the diagnosis covers
+ * @param profile - The stages the diagnosis covers: an approved genre profile, or the required
+ *                  sections a general check found
  * @returns `global_revision` on a mismatch or when most required stages fail, else `standard`
  */
-export function resolveGateDecision(diagnosis: TextDiagnosis, profile: WritingSflContextProfile): FeedbackMode {
+export function resolveGateDecision(
+    diagnosis: TextDiagnosis,
+    profile: { stages: ReadonlyArray<Pick<WritingSflContextProfile['stages'][number], 'id' | 'required'>> }
+): FeedbackMode {
     if (diagnosis.genreFit === 'mismatch') return 'global_revision';
     const required = new Set(profile.stages.filter((stage) => stage.required === true).map((stage) => stage.id));
     if (!required.size) return 'standard';

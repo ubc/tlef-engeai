@@ -70,8 +70,8 @@ import { describeApprovalBlocker, type GradeProgress } from './writing-feedback-
 import { changedLenses, decideNextAction, stepBarState, type ReviewStep } from './writing-feedback-review-steps.js';
 import { SummaryEditor, seedSummaryText, type SummaryBaseline } from './writing-feedback-summary-editor.js';
 import { fingerprintAnnotations } from './writing-feedback-annotation-fingerprint.js';
-import { hasWholeTextProblem, resolveHoldBack, sectionCheckView } from './writing-feedback-diagnosis-model.js';
-import { renderOverallMessageEditor, renderSectionCheck } from './writing-feedback-diagnosis.js';
+import { hasWholeTextProblem, resolveHoldBack, sectionCheckView, staffFlagNotes } from './writing-feedback-diagnosis-model.js';
+import { renderOverallMessageEditor, renderSectionCheck, renderStaffFlags } from './writing-feedback-diagnosis.js';
 
 function latestReview(submission: Submission): ReviewRevision | undefined {
     return submission.reviews?.[submission.reviews.length - 1];
@@ -1614,6 +1614,9 @@ function renderSummaryLens(input: {
     });
     rubricSection.append(criterionList);
     element.append(rubricSection);
+
+    // Staff-only, directly under the levels they qualify and before Approve (D-114).
+    element.append(...renderStaffFlags(staffFlagNotes(run)));
 
     // Step 5: readings under the levels they qualify: the writing lens, or any general run.
     if (lens === 'linguistic' || run.analysisMode === 'general') element.append(...renderReadings(run));

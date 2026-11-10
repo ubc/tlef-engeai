@@ -656,7 +656,7 @@ describe('two-lens generation', () => {
 
     it.each([
         ['sfl', 'lab-report-technical-v1.5.1'],
-        ['general', 'general-feedback-v1.0.0']
+        ['general', 'general-feedback-v1.1.0']
     ])('stamps the %s prompt version on the technical run', async (mode, promptVersion) => {
         const original = process.env.WRITING_FEEDBACK_ANALYSIS_MODE;
         process.env.WRITING_FEEDBACK_ANALYSIS_MODE = mode;

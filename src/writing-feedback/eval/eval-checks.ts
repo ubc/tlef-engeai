@@ -70,9 +70,12 @@ export function runEvalChecks(
     options: { general?: boolean } = {}
 ): EvalCheckResult[] {
     const { result, runTrace } = output;
-    // The general analysis has no gate, diagnosis, or SFL analysis, so the fixture's SFL
-    // expectations (mode, stages, hold-back, stage-first goal, Theme finding, flags) are skipped.
-    const expectation = options.general !== true ? fixture.expect : { minSupportedCitations: fixture.expect.minSupportedCitations };
+    // The general analysis runs the same gate from its own whole-text check, so the expected
+    // mode and hold-back still apply. Its section ids and flags differ and it has no SFL
+    // analysis, so the SFL-only expectations (stages, stage-first goal, Theme finding, flags) are skipped.
+    const expectation = options.general !== true
+        ? fixture.expect
+        : { mode: fixture.expect.mode, minSupportedCitations: fixture.expect.minSupportedCitations };
     const mode = runTrace?.gateDecision ?? result.gateDecision;
     const stages = new Map((runTrace?.textDiagnosis?.stages ?? []).map((stage) => [stage.stageId, stage.status]));
     const contradicting = (runTrace?.textDiagnosis?.contradictingFeatures ?? []).map((feature) => normalize(feature.quote));

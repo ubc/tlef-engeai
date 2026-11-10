@@ -1,7 +1,7 @@
 /**
  * @fileoverview DOM for the review page's section check: the staff-only card shown for a
  * whole-text problem with its "Include annotations" checkbox, the group of annotations not
- * included, and the overall-message editor.
+ * included, the overall-message editor, and the staff-only internal review flags.
  */
 
 import type { AnchoredComment } from './writing-feedback-shared.js';
@@ -22,6 +22,28 @@ export interface HoldBackState {
 }
 
 /**
+ * renderStaffFlags - what EngE-AI could not check or judge for a draft, one per line (D-114).
+ *
+ * @param notes - From staffFlagNotes
+ * @returns The staff-only section, or nothing when there are no notes
+ */
+export function renderStaffFlags(notes: string[]): HTMLElement[] {
+    if (!notes.length) return [];
+    const section = document.createElement('section');
+    section.className = 'wf-feedback-section';
+    section.setAttribute('aria-label', 'Internal review flags');
+    section.append(
+        createText('h3', 'Internal review flags'),
+        createText('p', 'What EngE-AI could not check or judge for this draft. Staff-only; never in the student PDF.', 'wf-muted-note')
+    );
+    const list = document.createElement('ul');
+    list.className = 'wf-strength-list';
+    notes.forEach((note) => list.append(createText('li', note)));
+    section.append(list);
+    return [section];
+}
+
+/**
  * renderSectionCheck - staff-only section check for a whole-text problem.
  *
  * @param view - From sectionCheckView
@@ -39,11 +61,11 @@ export function renderSectionCheck(
     // Built on the annotation card so the panel reads as one family (D-155).
     const card = document.createElement('section');
     card.className = 'wf-annotation-card wf-diagnosis';
-    card.setAttribute('aria-label', 'Off-genre or missing sections');
+    card.setAttribute('aria-label', view.title);
 
     const header = document.createElement('div');
     header.className = 'wf-annotation-header wf-diagnosis-header';
-    header.append(createText('span', 'OFF-GENRE OR MISSING SECTIONS', 'wf-filter-label'));
+    header.append(createText('span', view.title.toUpperCase(), 'wf-filter-label'));
     card.append(header);
 
     card.append(createText('h4', view.headline, 'wf-diagnosis-headline'));
@@ -65,7 +87,8 @@ export function renderSectionCheck(
         item.append(node);
         stages.append(item);
     });
-    card.append(stages);
+    // A general check lists no sections when the assignment names none.
+    if (view.stageChips.length) card.append(stages);
 
     view.warnings.forEach((warning) => {
         const note = document.createElement('p');

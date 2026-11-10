@@ -203,6 +203,17 @@ describe('single release source contract', () => {
     });
 });
 
+describe('internal review flags on the review page (D-114)', () => {
+    it('renders them directly under the criterion levels, before Approve can be reached', () => {
+        const levels = source.indexOf('element.append(rubricSection);');
+        const flags = source.indexOf('element.append(...renderStaffFlags(staffFlagNotes(run)));');
+        const readings = source.indexOf('element.append(...renderReadings(run));');
+        expect(levels).toBeGreaterThan(-1);
+        expect(flags).toBeGreaterThan(levels);
+        expect(flags).toBeLessThan(readings);
+    });
+});
+
 describe('section check on the review page', () => {
     it('shows the section check only through its view, which is null without a whole-text problem', () => {
         expect(source).toContain('sectionCheckView(feedbackRun, profileStages)');

@@ -35,18 +35,19 @@ Also in `service/__tests__/`: `diagnosis-safe-log.test.ts`, `held-back-review.te
 
 ### Generation — `generation/`
 
-Model calls: the general engine (default), the inactive SFL pipeline (diagnosis, the linguistic and technical engines, the rewrite gate), summary redraft, batch generation.
+Model calls: the general engine (default) with its whole-text check, the inactive SFL pipeline (diagnosis, the linguistic and technical engines, the rewrite gate), summary redraft, batch generation.
 
 | File | Lines | Responsibility | Tests | Open it when |
 | --- | ---: | --- | --- | --- |
 | `batch-generation.ts` | 247 | Previews, starts, and stops batch feedback generation for one assignment. | `batch-generation.test.ts` | which submissions a batch includes, or stopping, changes |
 | `feedback-engine.ts` | 638 | Generates staff-review drafts from assignment rubrics and verified text. | `feedback-engine.test.ts` | prompt or draft shape changes |
 | `feedback-gate.ts` | 93 | Pure gate decision, whole-text flag, hold-back resolution, and student-facing comment filter. | `feedback-gate.test.ts` | — |
-| `general-feedback-engine.ts` | 363 | General analysis (default): rubric, assignment material, and course material; every lens. Owns its system prompt. | `general-feedback-engine.test.ts` | the general prompt, its inputs, or its provenance change |
+| `general-feedback-engine.ts` | 453 | General analysis (default): rubric, assignment material, and course material; every lens. Owns its system prompt. | `general-feedback-engine.test.ts` | the general prompt, its inputs, or its provenance change |
+| `general-whole-text-check.ts` | 148 | General analysis's whole-text check: prompt, schema, validation, gate decision. | `general-whole-text-check.test.ts` | what counts as off-task or a required section changes |
 | `feedback-schema.ts` | 435 | Enforces rubric-driven output, exact evidence, and safe numeric mapping. | `feedback-schema.test.ts` | model output validation changes |
 | `summary-redraft-engine.ts` | 197 | Structured summary redraft for the two-step review. | `summary-redraft-engine.test.ts` | the redraft prompt or output changes |
 | `technical-feedback-engine.ts` | 260 | Generates staff-review technical drafts for lab reports. | `technical-feedback-engine.test.ts` | lab-report technical drafts change |
-| `text-diagnosis.ts` | 160 | Diagnosis schema, prompt, and deterministic validation. | `text-diagnosis.test.ts` | — |
+| `text-diagnosis.ts` | 174 | Diagnosis schema, prompt, and deterministic validation. | `text-diagnosis.test.ts` | — |
 
 Also in `generation/__tests__/`: `feedback-engine-pipeline.test.ts`, `prompt-contract.test.ts`, `structured-output-schema.test.ts`, `writer-guards.test.ts`.
 

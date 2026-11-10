@@ -223,7 +223,7 @@ export type FeedbackMode = 'standard' | 'global_revision';
 export interface TextDiagnosis {
     realizedGenre: RealizedGenre;
     genreFit: 'fits' | 'partial' | 'mismatch';
-    stages: Array<{ stageId: string; status: 'present' | 'weak' | 'missing'; evidence?: string }>;
+    stages: Array<{ stageId: string; label?: string; status: 'present' | 'weak' | 'missing'; evidence?: string }>;
     contradictingFeatures: Array<{ quote: string; note: string }>;
     transferableStrengths: Array<{ text: string; quote?: string }>;
     rationale: string;
@@ -790,8 +790,8 @@ interface WfState {
 /**
  * isGeneralAnalysis - whether the server runs the general (rubric-grounded) analysis.
  *
- * In general mode the genre and register profile, the assignment-type question, and the
- * diagnosis surfaces are hidden. A server that does not report a mode predates the switch
+ * In general mode the genre and register profile and the assignment-type question are
+ * hidden. A server that does not report a mode predates the switch
  * and runs the SFL analysis.
  *
  * @returns True only when the workspace context says `general`

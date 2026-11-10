@@ -10,7 +10,7 @@
  * @description: Versioned few-shot examples for the analyzer and writer prompts.
  */
 
-export const PROMPT_EXAMPLES_VERSION = 'prompt-examples-v1.6.0';
+export const PROMPT_EXAMPLES_VERSION = 'prompt-examples-v1.7.0';
 
 /** Socratic question rules shared by the writer, technical and redraft prompts (D-153). */
 export const SOCRATIC_QUESTION_RULES = [
@@ -49,6 +49,11 @@ export const GENERAL_WRITER_EXAMPLES = [
     'Good revision goal (part): { "skillTag": "use-of-evidence", "goal": "Support each main claim with a named source.", "action": "For each claim in your second paragraph, add the source from the course readings that supports it.", "guidedQuestion": "Which reading from the course best supports your claim about fatigue?", "questionScope": "part" }',
     'Good revision goal (whole): { "skillTag": "purpose", "goal": "Make every section serve the question the assignment asks.", "action": "Write the assignment question at the top of your plan and check each section against it.", "guidedQuestion": "What question does the assignment ask, and where does your submission answer it?", "questionScope": "whole" }',
     'Weak question (avoid): "Is your evidence strong?" — a yes/no question. "Did you forget to cite?" — gives the answer away.'
+].join('\n');
+
+export const GENERAL_WHOLE_TEXT_EXAMPLE = [
+    'Submission (synthetic) recounts what happened during a site visit, while the assignment asks for a comparison of two beam designs.',
+    '{ "overallMessage": "You describe the site clearly and use accurate words such as cantilever. But your text tells the story of the visit in order. The assignment asks you to compare two beam designs.", "strengths": ["You use accurate terms such as cantilever."], "revisionGoals": [{ "skillTag": "assignment-fit", "goal": "Make the text compare the two beam designs.", "action": "Write one sentence that names the two designs and the point you will compare first.", "guidedQuestion": "Which difference between the two designs matters most to your reader?", "questionScope": "whole" }] }'
 ].join('\n');
 
 export const WRITER_GLOBAL_EXAMPLE = [

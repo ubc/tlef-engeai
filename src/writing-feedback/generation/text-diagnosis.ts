@@ -109,12 +109,6 @@ function diagnosisError(): Error {
  */
 export function validateTextDiagnosis(raw: unknown, verifiedText: string, profile: WritingSflContextProfile): TextDiagnosis {
     const parsed = stripNulls(textDiagnosisSchema.parse(raw)) as TextDiagnosis;
-    const relocate = createQuoteRelocator(verifiedText);
-    const exact = (value: string): string => {
-        const located = relocate(value);
-        if (located === undefined) throw diagnosisError();
-        return located;
-    };
 
     // Step 1: the gate reads stage statuses by id, so a partial or invented set is unusable.
     const expected = profile.stages.map((stage) => stage.id);
@@ -124,7 +118,27 @@ export function validateTextDiagnosis(raw: unknown, verifiedText: string, profil
         throw new Error('Diagnosis must cover each profile stage exactly once');
     }
 
-    // Step 2: exact quotes everywhere; a missing stage cannot carry evidence.
+    // Step 2: exact quotes everywhere.
+    return withExactDiagnosisQuotes(parsed, verifiedText);
+}
+
+/**
+ * withExactDiagnosisQuotes - replaces every quote with its exact verified-text form.
+ *
+ * A missing stage cannot carry evidence, so any it was given is dropped.
+ *
+ * @param parsed - Diagnosis whose structure is already valid
+ * @param verifiedText - Staff-verified text every quote must come from
+ * @returns The diagnosis with exact quotes
+ * @throws Error when a quote cannot be located in the verified text
+ */
+export function withExactDiagnosisQuotes(parsed: TextDiagnosis, verifiedText: string): TextDiagnosis {
+    const relocate = createQuoteRelocator(verifiedText);
+    const exact = (value: string): string => {
+        const located = relocate(value);
+        if (located === undefined) throw diagnosisError();
+        return located;
+    };
     return {
         ...parsed,
         stages: parsed.stages.map((stage) => {

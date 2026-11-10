@@ -10,7 +10,8 @@ import {
     resolveHoldBack,
     sectionCheckView,
     showReadAgain,
-    splitHeldBack
+    splitHeldBack,
+    staffFlagNotes
 } from '../writing-feedback-diagnosis-model';
 import type { AnchoredComment, FeedbackRun } from '../writing-feedback-shared';
 
@@ -34,7 +35,77 @@ const comment = (id: string, extra: Partial<AnchoredComment> = {}): AnchoredComm
     id, lens: 'linguistic', quote: 'q', startOffset: 0, endOffset: 1, comment: 'c', origin: 'model_seed', ...extra
 });
 
+describe('staffFlagNotes', () => {
+    const withFlags = (flags: string[], internalFlags: string[] = []): FeedbackRun => ({
+        id: 'run-1', createdAt: 'x', flags,
+        result: { criteria: [], strengths: [], revisionGoals: [], internalFlags }
+    } as unknown as FeedbackRun);
+
+    it('says the whole-text check did not run when there was no assignment material', () => {
+        expect(staffFlagNotes(withFlags(['no_assignment_material']))[0]).toContain('could not check whether this submission does what the assignment asks or is missing sections');
+    });
+
+    it('lists pipeline notes first, then what the model could not judge', () => {
+        expect(staffFlagNotes(withFlags(['assignment_material_truncated'], ['Could not read the figure.']))).toEqual([
+            'The assignment material was too long, so EngE-AI read only part of it.',
+            'Could not read the figure.'
+        ]);
+    });
+
+    it('names a missing reading once when retrieval itself failed', () => {
+        const notes = staffFlagNotes(withFlags(['relevance_unavailable', 'no_course_material']));
+        expect(notes).toEqual(['Course materials could not be checked for this run, so no readings were cited.']);
+    });
+
+    it('explains an empty reading list when retrieval worked', () => {
+        expect(staffFlagNotes(withFlags(['no_course_material']))).toEqual(['No published course material supported this feedback, so no readings were cited.']);
+    });
+
+    it('leaves out a course-setup gap and any flag it has no wording for', () => {
+        expect(staffFlagNotes(withFlags(['no_genre_material', 'some_future_flag']))).toEqual([]);
+    });
+
+    it('returns nothing for a run with no flags', () => {
+        expect(staffFlagNotes({ id: 'run-1', result: { internalFlags: [] } } as unknown as FeedbackRun)).toEqual([]);
+    });
+});
+
 describe('sectionCheckView', () => {
+    const generalRun = (statuses: string[], genreFit = 'partial'): FeedbackRun => ({
+        ...run,
+        analysisMode: 'general',
+        textDiagnosis: {
+            ...run.textDiagnosis!,
+            genreFit,
+            stages: statuses.map((status, index) => ({ stageId: `section-${index + 1}`, label: `Part ${index + 1}`, status }))
+        }
+    } as unknown as FeedbackRun);
+
+    it('builds a general run\'s chips from the sections the check found, not the inactive profile', () => {
+        const view = sectionCheckView(generalRun(['missing', 'weak']), stages)!;
+        expect(view.headline).toBe('This submission is missing several sections.');
+        expect(view.stageChips).toEqual([
+            { label: 'Part 1', status: 'Missing', required: true, tone: 'red' },
+            { label: 'Part 2', status: 'Weak', required: true, tone: 'amber' }
+        ]);
+    });
+
+    it('uses assignment wording, not genre wording, on a general run', () => {
+        const both = sectionCheckView(generalRun(['missing', 'missing'], 'mismatch'), stages)!;
+        expect(both.title).toBe('Off-task or missing sections');
+        expect(both.headline).toBe('This submission does not do what the assignment asks and is missing several sections.');
+    });
+
+    it('keeps the genre wording on an SFL run', () => {
+        expect(sectionCheckView(run, stages)!.title).toBe('Off-genre or missing sections');
+    });
+
+    it('shows an off-task general run with no named sections and no chips', () => {
+        const view = sectionCheckView(generalRun([], 'mismatch'), stages)!;
+        expect(view.headline).toBe('This submission does not do what the assignment asks.');
+        expect(view.stageChips).toEqual([]);
+    });
+
     it('names both problems when the text is off-genre and missing most required sections', () => {
         const view = sectionCheckView(run, stages)!;
         expect(view.headline).toBe('This submission is off-genre and missing several sections.');

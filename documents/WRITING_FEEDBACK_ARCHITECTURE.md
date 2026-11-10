@@ -33,7 +33,10 @@ One global switch, `WRITING_FEEDBACK_ANALYSIS_MODE`, read by `src/writing-feedba
   3. published course material judged relevant to a rubric criterion. The relevance check (`general-relevance-v1.0.0`) reads the assignment's title, task and purpose, works out what kind of work it is, and judges each excerpt against what that criterion asks for. It never assumes the criterion is about writing.
 
   Course-material queries are built from rubric criteria and the assignment title only, never from student text. In this mode:
-  - there is no genre profile gate, assignment-type question, diagnosis, SFL analysis, rewrite gate, or overall message;
+  - there is no genre profile gate, assignment-type question, or SFL analysis;
+  - a whole-text check (`generation/general-whole-text-check.ts`) reads the rubric and instructor material on the writing lens, lists only the sections they require, and feeds the shared gate (a mismatch, or 75% or more of required sections weak or missing). It is skipped when there is no assignment material, and a check that cannot complete fails the run with a fixed message;
+  - a whole-text problem adds the same things as in `sfl` mode: General feedback (`overallMessage`), a restructuring first goal, the staff-only card (titled "Off-task or missing sections" on general runs, because the comparison is with the assignment's own requirements, not a genre), and annotations not included by default;
+  - the review page's Summary step lists staff-only "Internal review flags" under the criterion levels: pipeline notes (`staffFlagNotes`), including a whole-text check that could not run, and the model's `internalFlags`. They never reach the PDF or release payload;
   - an existing lab report keeps both of its rubrics, and the general engine serves both lenses;
   - course terms come from the rubric's `courseTerms`, and auto-fill proposes them from the assignment material and course excerpts.
 - **`sfl`.** The SFL-founded pipeline, unchanged: genre and register profile, text diagnosis, SFL analyzer, rewrite gate, assignment types, and the technical engine.

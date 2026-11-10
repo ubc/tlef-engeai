@@ -4,12 +4,13 @@
  * The default analysis (`WRITING_FEEDBACK_ANALYSIS_MODE` unset or `general`). It grounds every
  * judgment in four sources only: the approved rubric, the assignment details, the instructor's
  * handouts and other uploaded material, and published course material judged relevant to a
- * rubric criterion. There is no genre profile, text diagnosis, SFL analysis, or rewrite gate,
- * so the same pipeline serves an essay, a lab report, or a short technical answer.
+ * rubric criterion. There is no genre profile or SFL analysis, so the same pipeline serves an
+ * essay, a lab report, or a short technical answer. A whole-text check against the assignment's
+ * own requirements feeds the shared gate, so an off-task submission is still flagged for staff.
  *
  * @author: @rdschrs
  * @date: 2026-10-26
- * @version: 1.0.0
+ * @version: 1.1.0
  * @description: Generates staff-review drafts from the rubric, assignment material, and course material.
  */
 
@@ -17,13 +18,16 @@ import { LLMModule, type LLMOptions } from 'ubc-genai-toolkit-llm';
 import { isMockResponse } from '../../helpers/mock-response';
 import {
     applyCriterionExcerptCitations,
+    applyGlobalExcerptCitations,
     buildFeedbackSchema,
+    guardStrengths,
     MAX_EVIDENCE_PER_CRITERION,
     MAX_EVIDENCE_QUOTE_LENGTH,
     reconcileExactEvidence
 } from './feedback-schema';
 import type {
     CourseMaterialMention,
+    TextDiagnosis,
     WritingAssignment,
     WritingFeedbackEngine,
     WritingFeedbackLens,
@@ -47,15 +51,30 @@ import {
     WRITING_FEEDBACK_COURSE_SOURCE_VERSION
 } from '../materials/course-material-mentions';
 import { SanitizedJobError } from '../jobs/job-runner';
-import { GENERAL_WRITER_EXAMPLES, SOCRATIC_QUESTION_RULES } from '../language/prompt-examples';
+import { GENERAL_WHOLE_TEXT_EXAMPLE, GENERAL_WRITER_EXAMPLES, SOCRATIC_QUESTION_RULES } from '../language/prompt-examples';
 import { validateSocraticQuestions, withQuestionGate } from '../language/socratic-questions';
 import { buildStudentReaderContract, courseTermsFor } from '../language/plain-language';
 import { buildRelevancePairs, GENERAL_RELEVANCE_PROMPT_VERSION, judgeRelevance, supportedByNeed } from '../materials/material-relevance';
 import { ASSIGNMENT_CONTEXT_FLAGS, buildAssignmentContext, type AssignmentContext } from '../sources/assignment-context';
 import { NO_REVISION_GOALS_MESSAGE } from './feedback-engine';
+import {
+    buildGeneralWholeTextSystemPrompt,
+    deterministicGeneralWholeText,
+    GENERAL_WHOLE_TEXT_FAILED_MESSAGE,
+    GENERAL_WHOLE_TEXT_PROMPT_VERSION,
+    generalGateDecision,
+    generalWholeTextSchema,
+    validateGeneralWholeText
+} from './general-whole-text-check';
 
 /** Immutable provenance stamped on every general run. */
-export const GENERAL_FEEDBACK_PROMPT_VERSION = 'general-feedback-v1.0.0';
+export const GENERAL_FEEDBACK_PROMPT_VERSION = 'general-feedback-v1.1.0';
+
+/**
+ * What the writer is told about the whole-text check: it did not run, it found no whole-text
+ * problem, or it found one.
+ */
+export type GeneralWholeTextState = 'unchecked' | 'checked' | 'problem';
 
 /** Most characters of course material shown to the writer. */
 export const GENERAL_EXCERPT_BUDGET_CHARS = 5000;
@@ -123,14 +142,17 @@ export async function courseTermExcerpts(
  * @param assignment - Assignment being assessed
  * @param rubric - Approved rubric for the lens being generated
  * @param context - Instructor material from {@link buildAssignmentContext}
+ * @param wholeText - What the whole-text check found, which changes the goals and strengths asked for
  * @returns System instruction
  */
 export function buildGeneralFeedbackSystemPrompt(
     assignment: WritingAssignment,
     rubric: WritingRubricDefinition,
-    context: AssignmentContext
+    context: AssignmentContext,
+    wholeText: GeneralWholeTextState = 'unchecked'
 ): string {
     const criteria = modelAssessedCriteria(rubric);
+    const problem = wholeText === 'problem';
     return [
         'You draft formative feedback on one student submission for a university course. Staff review and edit your draft before anything is released, and the student is its final reader.',
         'Authority, highest first: (1) the approved rubric; (2) the assignment details and instructor materials; (3) the course material excerpts. Judge only what these ask for. Never add a requirement, criterion, or expectation of your own, and never use course material as a hidden criterion.',
@@ -143,10 +165,32 @@ export function buildGeneralFeedbackSystemPrompt(
         `3. Support each criterion with at most ${MAX_EVIDENCE_PER_CRITERION} evidence items: the passages that most affect its rating. Three is a ceiling, not a target: each one becomes an annotation the student reads.`,
         '4. Each evidence.rationale names the specific strength or problem in that passage; it does not restate the quote or the criterion explanation. Each evidence.revisionGuidance gives one concrete next action for that exact passage.',
         '5. Each explanation synthesizes the criterion\'s evidence as a whole: the pattern across the passages and why the submission sits at that rating.',
+        ...(problem
+            ? ['   Where the whole-text problem is the reason for a rating, say so plainly. Do not suggest polishing passages that work of the kind asked for would not keep.']
+            : []),
         '6. Where a course material excerpt teaches the point an evidence item makes, set supportingExcerptId to that excerpt id. Otherwise leave it null. Never cite for decoration.',
         '7. Return one to three revision goals, ordered by their effect on the rubric, each with a concrete action, a guidedQuestion and a questionScope. At least one has questionScope "whole".',
-        '8. Return zero to two strengths the student should keep.',
+        ...(problem
+            ? ['   whole_text_check found a whole-text problem: the submission does a different kind of work from what was asked, or most required sections are weak or missing. Your first revision goal is the restructuring goal: make the submission do the work the assignment asks for. Its action names the first section or part to write, its guidedQuestion is about the whole submission, its questionScope is "whole", and its skillTag is "assignment-fit". It must not repeat the overallMessage.']
+            : wholeText === 'checked'
+                ? ['   Read whole_text_check first. If a required section is weak or missing, your first revision goal addresses it: name the section, say what to add or fix, and set skillTag to that section\'s id. When several are, take the earliest. Otherwise, if fit is "partial", your first revision goal addresses the weakest part.']
+                : []),
+        problem
+            ? '8. Return zero to two strengths, chosen from transferableStrengths in whole_text_check: what is worth keeping whatever the student writes next. Never praise a contradicting feature.'
+            : wholeText === 'checked'
+                ? '8. Return zero to two strengths the student should keep. Never praise a contradicting feature.'
+                : '8. Return zero to two strengths the student should keep.',
+        ...(problem
+            ? [
+                '9. Write overallMessage, the general feedback the student reads before anything else:',
+                '   - One short paragraph: open with what is worth keeping, then say plainly what the submission does compared with what the assignment asks. Quote at most two contradicting features as examples.',
+                '   - No list and no numbered steps: the revision goals carry the next steps.',
+                '   - Write it so it helps whether the student revises this submission or writes the next one. Never say "rewrite", "resubmit" or "start again".',
+                '   - Set overallMessageExcerptIds to any course material excerpt ids that explain what the assignment asks. Otherwise leave it null.'
+            ]
+            : []),
         `<worked_examples>\n${GENERAL_WRITER_EXAMPLES}\n</worked_examples>`,
+        ...(problem ? [`<worked_example_whole_text_problem>\n${GENERAL_WHOLE_TEXT_EXAMPLE}\n</worked_example_whole_text_problem>`] : []),
         'Constraints:',
         `- Assess every criterion exactly once, using only these criterion ids: ${criteria.map((criterion) => criterion.id).join(', ')}; and only these level ids: ${rubric.levels.map((level) => level.id).join(', ')}.`,
         `- Every evidence.quote is copied exactly from the student submission: the shortest clause or single sentence that shows the point, at most ${MAX_EVIDENCE_QUOTE_LENGTH} characters.`,
@@ -312,8 +356,23 @@ export class GeneralFeedbackEngine implements WritingFeedbackEngine {
         const citable = retrieval.excerpts.filter((excerpt) => supportedIds.has(excerpt.id));
         if (!citable.length) flags.push('no_course_material');
 
-        // Step 3: one writer call; the question gate gives it one corrective retry (D-153).
+        // Step 3: the whole-text check. It needs something saying what was asked, and it
+        // feeds the writing lens only; the technical lens has no gate in either mode.
+        const diagnosis = (input.lens ?? 'linguistic') === 'linguistic' && !context.empty
+            ? await this.checkWholeText(input.assignment, rubric, context, input.verifiedText, mock, input.llmCallOptions)
+            : undefined;
+        const gateDecision = diagnosis ? generalGateDecision(diagnosis) : undefined;
+        const wholeTextProblem = gateDecision === 'global_revision';
+        const wholeTextState: GeneralWholeTextState = wholeTextProblem ? 'problem' : diagnosis ? 'checked' : 'unchecked';
+
+        // Step 4: one writer call; the question gate gives it one corrective retry (D-153).
         const writerUserContent = [
+            ...(diagnosis ? [`<whole_text_check>${JSON.stringify({
+                fit: diagnosis.genreFit,
+                sections: diagnosis.stages.map(({ stageId, label, status, evidence }) => ({ id: stageId, label, status, evidence })),
+                contradictingFeatures: diagnosis.contradictingFeatures,
+                transferableStrengths: diagnosis.transferableStrengths
+            })}</whole_text_check>`] : []),
             `<course_material_excerpts>${JSON.stringify(citable.map(({ id, text }) => ({ id, text })))}</course_material_excerpts>`,
             `<excerpts_by_criterion>${JSON.stringify(Object.fromEntries([...allowedByCriterion].map(([criterionId, ids]) => [criterionId, [...ids]])))}</excerpts_by_criterion>`,
             `<student_submission>\n${input.verifiedText}\n</student_submission>`
@@ -322,36 +381,44 @@ export class GeneralFeedbackEngine implements WritingFeedbackEngine {
             ? deterministicGeneralFeedback(rubric, input.verifiedText)
             : await withQuestionGate(
                 async (correction) => stripNulls((await this.llm!.sendStructuredConversation([
-                    { role: 'system', content: buildGeneralFeedbackSystemPrompt(input.assignment, rubric, context) },
+                    { role: 'system', content: buildGeneralFeedbackSystemPrompt(input.assignment, rubric, context, wholeTextState) },
                     { role: 'user', content: writerUserContent },
                     ...(correction ? [{ role: 'user' as const, content: correction }] : [])
-                ], buildFeedbackSchema(rubric), { structuredOutputName: 'general_feedback', ...input.llmCallOptions })).parsed) as WritingFeedbackResult,
-                (parsed) => validateSocraticQuestions(parsed.revisionGoals ?? [], { firstGoalWhole: false })
+                ], buildFeedbackSchema(rubric, { wholeTextProblem }), { structuredOutputName: 'general_feedback', ...input.llmCallOptions })).parsed) as WritingFeedbackResult,
+                (parsed) => validateSocraticQuestions(parsed.revisionGoals ?? [], { firstGoalWhole: wholeTextProblem })
             );
         if (!writerResult.revisionGoals?.length) throw new SanitizedJobError(NO_REVISION_GOALS_MESSAGE);
 
-        // Step 4: exact evidence and evidence-backed citations; no overall message without a gate.
+        // Step 5: exact evidence, evidence-backed citations, and the strengths guard.
         const result = reconcileExactEvidence(writerResult, input.verifiedText) as GeneralFeedbackResultWithTrace;
         const excerptsById = new Map<string, GroundingExcerpt>(retrieval.excerpts.map((excerpt) => [excerpt.id, excerpt]));
         const dropped = applyCriterionExcerptCitations(result, allowedByCriterion, excerptsById);
         if (dropped) result.internalFlags.push(`${dropped} course-material citation(s) were removed for lack of supporting material.`);
-        delete result.overallMessage;
-        delete result.overallMessageExcerptIds;
+        applyGlobalExcerptCitations(result, supportedIds, excerptsById);
+        if (diagnosis) result.internalFlags.push(...guardStrengths(result, diagnosis));
+        // Only a whole-text problem carries an overall message, whatever the model returned.
+        if (!wholeTextProblem) {
+            delete result.overallMessage;
+            delete result.overallMessageExcerptIds;
+        }
+        if (gateDecision) result.gateDecision = gateDecision;
         result.schemaVersion = WRITING_FEEDBACK_SCHEMA_V2;
 
-        // Step 5: the student reading list is the published material actually cited.
-        const citedMentions = uniqueByMentionId(
-            result.criteria.flatMap((criterion) => criterion.evidence.map((evidence) => evidence.courseMaterialMention))
-        );
+        // Step 6: the student reading list is the published material actually cited.
+        const citedMentions = uniqueByMentionId([
+            ...result.criteria.flatMap((criterion) => criterion.evidence.map((evidence) => evidence.courseMaterialMention)),
+            ...(result.overallMessageExcerptIds ?? []).map((excerptId) => excerptsById.get(excerptId)?.mention)
+        ]);
         if (citedMentions.length) result.courseMaterialMentions = citedMentions.slice(0, 5);
         else delete result.courseMaterialMentions;
 
-        // Step 6: staff-only provenance; no prompt bodies and no student text.
+        // Step 7: staff-only provenance; no prompt bodies and no student text.
         result.runTrace = {
             schemaVersion: WRITING_FEEDBACK_SCHEMA_V2,
             analysisMode: 'general',
             writerPromptVersion: GENERAL_FEEDBACK_PROMPT_VERSION,
             relevancePromptVersion: GENERAL_RELEVANCE_PROMPT_VERSION,
+            ...(diagnosis ? { diagnosisPromptVersion: GENERAL_WHOLE_TEXT_PROMPT_VERSION, textDiagnosis: diagnosis, gateDecision } : {}),
             courseMaterialMentions: result.courseMaterialMentions ?? [],
             courseMaterialExcerpts: toExcerpts(citable),
             staffCourseMaterialMentions: uniqueByMentionId(retrieval.excerpts.map((excerpt) => excerpt.staffMention)),
@@ -361,5 +428,26 @@ export class GeneralFeedbackEngine implements WritingFeedbackEngine {
             courseSourceVersion: WRITING_FEEDBACK_COURSE_SOURCE_VERSION
         };
         return result;
+    }
+
+    /** The gate's only input, so it fails the run rather than silently skipping the flag. */
+    private async checkWholeText(
+        assignment: WritingAssignment,
+        rubric: WritingRubricDefinition,
+        context: AssignmentContext,
+        verifiedText: string,
+        mock: boolean,
+        llmCallOptions?: LLMOptions
+    ): Promise<TextDiagnosis> {
+        if (mock) return deterministicGeneralWholeText();
+        try {
+            const response = await this.llm!.sendStructuredConversation([
+                { role: 'system', content: buildGeneralWholeTextSystemPrompt(assignment, rubric, context) },
+                { role: 'user', content: `<student_submission>\n${verifiedText}\n</student_submission>` }
+            ], generalWholeTextSchema, { structuredOutputName: 'general_whole_text', ...llmCallOptions });
+            return validateGeneralWholeText(response.parsed, verifiedText);
+        } catch {
+            throw new SanitizedJobError(GENERAL_WHOLE_TEXT_FAILED_MESSAGE);
+        }
     }
 }

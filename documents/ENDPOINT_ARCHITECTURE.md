@@ -214,7 +214,7 @@ Canvas endpoints report their integration mode honestly. `demo` with `integratio
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/workspace-context` | Returns UI permissions (including rubric management), non-secret integration context, and `analysisMode` (`general` \| `sfl`, from `WRITING_FEEDBACK_ANALYSIS_MODE`; default `general`) for the current staff member. The UI hides the genre profile, assignment-type question, and diagnosis surfaces in `general` mode |
+| GET | `/workspace-context` | Returns UI permissions (including rubric management), non-secret integration context, and `analysisMode` (`general` \| `sfl`, from `WRITING_FEEDBACK_ANALYSIS_MODE`; default `general`) for the current staff member. The UI hides the genre profile and assignment-type question in `general` mode; the staff whole-text card shows in both modes, titled "Off-task or missing sections" on general runs and "Off-genre or missing sections" on SFL runs |
 | GET | `/assignments` | Lists assignments with per-assignment `submissionCount`; an empty course stays empty until an explicit create/import action |
 | POST | `/assignments` | Creates a manual assignment from `{ title, dueAt?, instructions? }` with a neutral, unapproved rubric draft; any course staff |
 | POST | `/instructions/extract` | Multipart `file` extraction for assignment directions (TXT, DOCX, text-PDF, HTML/HTM, or Markdown); returns text for staff review before create; any course staff |

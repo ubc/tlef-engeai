@@ -163,8 +163,19 @@ describe('general analysis checks', () => {
             }
         };
         const checks = Object.fromEntries(runEvalChecks(output, fixture, [], { general: true }).map((check) => [check.name, check]));
-        ['mode', 'stageStatuses', 'annotationsHeldBack', 'flags'].forEach((name) => expect(checks[name].status).toBe('skip'));
+        ['stageStatuses', 'flags', 'firstGoalAddressesStage', 'themeFinding'].forEach((name) => expect(checks[name].status).toBe('skip'));
         expect(checks.quotesExact.status).toBe('pass');
         expect(checks.goalsHaveAction.status).toBe('pass');
+    });
+
+    it('still holds general runs to the whole-text decision the fixture expects', () => {
+        const output: EvalRunOutput = {
+            verifiedText: text,
+            result: { gateDecision: 'standard', criteria: [], strengths: [], revisionGoals: [] },
+            studentComments: [{ quote: 'x' }] as never
+        };
+        const checks = Object.fromEntries(runEvalChecks(output, fixture, [], { general: true }).map((check) => [check.name, check]));
+        expect(checks.mode.status).toBe('fail');
+        expect(checks.annotationsHeldBack.status).toBe('fail');
     });
 });

@@ -1,5 +1,5 @@
 /**
- * @fileoverview Pure model for the review page's "Off-genre or missing sections" card: whether
+ * @fileoverview Pure model for the review page's whole-text card: whether
  * the run has a whole-text problem, its copy, held-back annotations, and when a course reading
  * is shown.
  */
@@ -50,33 +50,71 @@ export function resolveHoldBack(run: FeedbackRun | null, staffChoice?: boolean):
 export function sectionCheckView(
     run: FeedbackRun,
     stages: Array<{ id: string; label: string; required?: boolean }>
-): { headline: string; stageChips: Array<{ label: string; status: string; required: boolean; tone: 'green' | 'amber' | 'red' | 'neutral' }>; warnings: string[]; rationale: string } | null {
+): { title: string; headline: string; stageChips: Array<{ label: string; status: string; required: boolean; tone: 'green' | 'amber' | 'red' | 'neutral' }>; warnings: string[]; rationale: string } | null {
     const diagnosis = run.textDiagnosis;
     if (!diagnosis || !hasWholeTextProblem(run)) return null;
     const byId = new Map(diagnosis.stages.map((stage) => [stage.stageId, stage.status]));
+    // A general run's sections come from its own check; any stored profile is inactive.
+    const sections = run.analysisMode === 'general'
+        ? diagnosis.stages.map((stage) => ({ id: stage.stageId, label: stage.label ?? stage.stageId, required: true }))
+        : stages;
     // Two things trip the gate, alone or together, and the fixed headline names which did.
-    const required = stages.filter((stage) => stage.required === true);
+    const required = sections.filter((stage) => stage.required === true);
     const failing = required.filter((stage) => byId.has(stage.id) && byId.get(stage.id) !== 'present');
     const offGenre = diagnosis.genreFit === 'mismatch';
+    // A general run is compared with the assignment's own requirements, not with a genre.
+    const general = run.analysisMode === 'general';
+    const offTaskPhrase = general ? 'does not do what the assignment asks' : 'is off-genre';
     const missingSections = required.length > 0 && failing.length / required.length >= MISSING_SECTIONS_SHARE;
     const headline = offGenre && missingSections
-        ? 'This submission is off-genre and missing several sections.'
+        ? `This submission ${offTaskPhrase} and ${general ? 'is ' : ''}missing several sections.`
         : offGenre
-            ? 'This submission is off-genre.'
+            ? `This submission ${offTaskPhrase}.`
             : 'This submission is missing several sections.';
     const warnings: string[] = [];
     // Missing genre material is a course-setup gap, shown once in the rubric page's coverage
     // report rather than on every submission.
     if (run.flags?.includes('relevance_unavailable')) warnings.push('Course materials could not be checked for this run, so no readings were cited.');
     return {
+        title: general ? 'Off-task or missing sections' : 'Off-genre or missing sections',
         headline,
-        stageChips: stages.map((stage) => {
+        stageChips: sections.map((stage) => {
             const status = STATUS_LABELS[byId.get(stage.id) ?? ''] ?? 'Not checked';
             return { label: stage.label, status, required: stage.required === true, tone: STATUS_TONES[status] ?? 'neutral' };
         }),
         warnings,
         rationale: diagnosis.rationale
     };
+}
+
+/**
+ * Staff wording for pipeline flags, in display order. `no_genre_material` is left out on
+ * purpose: it is a course-setup gap, not something staff can act on per submission.
+ */
+const PIPELINE_FLAG_NOTES: ReadonlyArray<[string, string]> = [
+    ['no_assignment_material', 'This assignment has no details or handout, so EngE-AI could not check whether this submission does what the assignment asks or is missing sections. Add them and regenerate to include that check.'],
+    ['assignment_material_truncated', 'The assignment material was too long, so EngE-AI read only part of it.'],
+    ['relevance_unavailable', 'Course materials could not be checked for this run, so no readings were cited.'],
+    ['no_course_material', 'No published course material supported this feedback, so no readings were cited.']
+];
+
+/**
+ * staffFlagNotes - what staff should know about how this draft was produced.
+ *
+ * Pipeline notes come first, then what the model said it could not judge (D-114). Staff-only:
+ * the PDF service and release payload never read these.
+ *
+ * @param run - Latest run for the lens
+ * @returns One note per line; empty when there is nothing to report
+ */
+export function staffFlagNotes(run: FeedbackRun): string[] {
+    const flags = new Set(run.flags ?? []);
+    // A retrieval failure already explains the empty reading list.
+    if (flags.has('relevance_unavailable')) flags.delete('no_course_material');
+    return [
+        ...PIPELINE_FLAG_NOTES.filter(([flag]) => flags.has(flag)).map(([, note]) => note),
+        ...run.result.internalFlags
+    ];
 }
 
 /**

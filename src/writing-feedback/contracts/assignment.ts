@@ -127,7 +127,8 @@ export type FeedbackMode = 'standard' | 'global_revision';
 
 /** One profile stage as the diagnosis found it in the text. */
 export interface TextDiagnosisStage {
-    stageId: string; // a stage id from the approved profile
+    stageId: string; // a stage id from the approved profile, or a general check's section id
+    label?: string; // general checks only: the section's name in the assignment material
     status: 'present' | 'weak' | 'missing';
     evidence?: string; // exact quote; absent when the stage is missing
 }
