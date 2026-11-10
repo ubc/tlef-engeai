@@ -20,6 +20,8 @@ export interface CatalogSectionConfig {
     countIdPrefix: string;
     iconIdPrefix: string;
     containerClass: string;
+    /** Hidden text naming the section and week/topic, e.g. " (Slides) (Week 1)"; appended to the Edit button's name */
+    targetName?: string;
 }
 
 const INLINE_ADD_CONFIG: Record<
@@ -130,7 +132,16 @@ export function buildCatalogSection(config: CatalogSectionConfig): HTMLElement {
     editBtn.dataset.catalogKind = config.kind;
     editBtn.dataset.week = String(config.topicOrWeekId);
     editBtn.dataset.content = String(config.contentId);
+    // Accessible name: "Edit Learning Objectives (Slides) (Week 1)"; only "Edit" is visible
     editBtn.textContent = 'Edit';
+    const editKindName = document.createElement('span');
+    editKindName.className = 'visually-hidden';
+    editKindName.textContent = ` ${config.sectionTitle}`;
+    editBtn.appendChild(editKindName);
+    const editTargetName = document.createElement('span');
+    editTargetName.className = 'visually-hidden catalog-edit-target';
+    editTargetName.textContent = config.targetName ?? '';
+    editBtn.appendChild(editTargetName);
 
     const headerCount = document.createElement('div');
     headerCount.className = 'objectives-count';
@@ -196,18 +207,24 @@ const SECTION_PRESETS: Record<
     },
 };
 
-/** Convenience builder for documents page content items. */
+/**
+ * Convenience builder for documents page content items.
+ *
+ * @param targetName - Hidden text naming the section and week/topic, appended to the Edit button's name
+ */
 export function buildCatalogSectionForItem(
     kind: CatalogKind,
     topicOrWeekId: string,
     contentId: string,
-    items: CatalogItemRef[]
+    items: CatalogItemRef[],
+    targetName?: string
 ): HTMLElement {
     return buildCatalogSection({
         kind,
         topicOrWeekId,
         contentId,
         items,
+        targetName,
         ...SECTION_PRESETS[kind],
     });
 }

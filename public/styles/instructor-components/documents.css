@@ -1016,6 +1016,14 @@ button.content-status {
 }
 
 .upload-area {
+    /* Reset native button styling so the button looks like the original drop-zone row */
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: none;
+    background: transparent;
+    font: inherit;
+    color: inherit;
     text-align: center;
     cursor: pointer;
     transition: all 0.3s ease;
