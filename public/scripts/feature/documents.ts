@@ -989,13 +989,42 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         icon.setAttribute('aria-hidden', 'true');
         button.appendChild(icon);
 
-        const targetLabel = itemId ? 'Section' : currentClass.frameType === 'byWeek' ? 'Week' : 'Topic';
         const name = document.createElement('span');
         name.className = 'visually-hidden';
-        name.textContent = `Edit ${targetLabel} Name (${title})`;
+        name.textContent = getRenameButtonName(topicOrWeekId, itemId, title);
         button.appendChild(name);
 
         return button;
+    }
+
+    /**
+     * Builds the accessible name of a rename button. Section buttons also name their week/topic,
+     * because section titles such as "Slides" repeat across weeks.
+     *
+     * @param topicOrWeekId - The ID of the topic/week instance
+     * @param itemId - The section ID, or null for the topic/week title itself
+     * @param title - The current title of the section or topic/week
+     * @returns e.g. "Edit Section Name (Slides) (Week 1)" or "Edit Week Name (Week 1)"
+     */
+    function getRenameButtonName(topicOrWeekId: string, itemId: string | null, title: string): string {
+        if (!itemId) {
+            const targetLabel = currentClass.frameType === 'byWeek' ? 'Week' : 'Topic';
+            return `Edit ${targetLabel} Name (${title})`;
+        }
+        return `Edit Section Name${getSectionNameSuffix(topicOrWeekId, title)}`;
+    }
+
+    /**
+     * Builds the hidden text that section buttons append to their visible label, naming both the
+     * section and its week/topic, because section titles such as "Slides" repeat across weeks.
+     *
+     * @param topicOrWeekId - The ID of the section's topic/week instance
+     * @param sectionTitle - The current section title
+     * @returns e.g. " (Slides) (Week 1)", or " (Slides)" if the topic/week is not in local data
+     */
+    function getSectionNameSuffix(topicOrWeekId: string, sectionTitle: string): string {
+        const parentTitle = courseData.find((instance) => instance.id === topicOrWeekId)?.title;
+        return parentTitle ? ` (${sectionTitle}) (${parentTitle})` : ` (${sectionTitle})`;
     }
 
     /**
@@ -2295,7 +2324,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         deleteSectionText.textContent = 'Delete Section';
         const deleteSectionTextVisuallyHidden = document.createElement('span');
         deleteSectionTextVisuallyHidden.className = 'visually-hidden';
-        deleteSectionTextVisuallyHidden.textContent = ` (${content.title})`;
+        deleteSectionTextVisuallyHidden.textContent = getSectionNameSuffix(topicOrWeekId, content.title);
         deleteBadge.appendChild(deleteSectionIcon);
         deleteBadge.appendChild(deleteSectionText);
         deleteBadge.appendChild(deleteSectionTextVisuallyHidden);
@@ -2311,6 +2340,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         });
 
         // Objectives + struggle topics (shared catalog sections)
+        const catalogTargetName = getSectionNameSuffix(topicOrWeekId, content.title);
         const objectivesContainer = buildCatalogSectionForItem(
             'learning-objectives',
             topicOrWeekId,
@@ -2318,7 +2348,8 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             content.learningObjectives.map((obj) => ({
                 id: obj.id,
                 label: obj.LearningObjective,
-            }))
+            })),
+            catalogTargetName
         );
 
         const struggleContainer = buildCatalogSectionForItem(
@@ -2328,19 +2359,31 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             (content.instructorStruggleTopics ?? []).map((topic) => ({
                 id: topic.id,
                 label: topic.struggleTopic,
-            }))
+            })),
+            catalogTargetName
         );
         applyStruggleTopicsInactiveState(struggleContainer);
 
         // Upload
         const uploadWrap = document.createElement('div');
         uploadWrap.className = 'document-upload';
-        const uploadArea = document.createElement('div');
+        // A real button so keyboard users can open the upload modal; clicks go through the delegated listener.
+        // Accessible name: "Upload your document here (Slides) (Week 1)"
+        const uploadArea = document.createElement('button');
+        uploadArea.type = 'button';
         uploadArea.className = 'upload-area';
-        const uploadText = document.createElement('div');
+        const uploadText = document.createElement('span');
         uploadText.className = 'upload-text';
-        uploadText.textContent = ' + Upload your document here';
+        const uploadPlus = document.createElement('span');
+        uploadPlus.setAttribute('aria-hidden', 'true');
+        uploadPlus.textContent = '+ ';
+        uploadText.appendChild(uploadPlus);
+        uploadText.appendChild(document.createTextNode('Upload your document here'));
+        const uploadTargetName = document.createElement('span');
+        uploadTargetName.className = 'visually-hidden';
+        uploadTargetName.textContent = getSectionNameSuffix(topicOrWeekId, content.title);
         uploadArea.appendChild(uploadText);
+        uploadArea.appendChild(uploadTargetName);
         uploadWrap.appendChild(uploadArea);
 
         const materialsEl = createAdditionalMaterialsElement(content);
@@ -2787,12 +2830,63 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             : document.querySelector(
                   `.topic-or-week-header[data-topic-or-week-instance="${topicOrWeekId}"] .topic-or-week-status`
               );
-        actionRow?.querySelectorAll(':scope > button > .visually-hidden').forEach((hiddenName) => {
-            hiddenName.textContent = ` (${title})`;
-        });
-        
+        if (itemId) {
+            const sectionItem = document.getElementById(`content-item-${topicOrWeekId}-${itemId}`);
+            if (sectionItem) updateSectionButtonNames(sectionItem, topicOrWeekId, title);
+        } else {
+            actionRow?.querySelectorAll(':scope > button > .visually-hidden').forEach((hiddenName) => {
+                hiddenName.textContent = ` (${title})`;
+            });
+        }
+
+        // Section buttons name their week/topic, so a week/topic rename must update them too
+        if (!itemId) {
+            document
+                .querySelectorAll<HTMLElement>(
+                    `.rename-icon[data-topic-or-week-instance-id="${topicOrWeekId}"][data-item-id]`
+                )
+                .forEach((sectionButton) => {
+                    const sectionId = sectionButton.getAttribute('data-item-id')!;
+                    const sectionTitle = sectionButton
+                        .closest('.content-title')
+                        ?.querySelector('.content-title-heading')?.textContent ?? '';
+                    const hiddenName = sectionButton.querySelector('.visually-hidden');
+                    if (hiddenName) {
+                        hiddenName.textContent = getRenameButtonName(topicOrWeekId, sectionId, sectionTitle);
+                    }
+                });
+            document
+                .querySelectorAll<HTMLElement>(
+                    `.status-delete-section[data-topic-or-week-instance-id="${topicOrWeekId}"]`
+                )
+                .forEach((deleteButton) => {
+                    const sectionItem = deleteButton.closest<HTMLElement>('.content-item');
+                    const sectionTitle = sectionItem?.querySelector('.content-title-heading')?.textContent ?? '';
+                    if (sectionItem) updateSectionButtonNames(sectionItem, topicOrWeekId, sectionTitle);
+                });
+        }
+
         // Re-render feather icons
         renderFeatherIcons();
+    }
+
+    /**
+     * Rewrites the " (section) (week)" hidden text on a section's Delete Section and Upload buttons and its
+     * Learning Objectives / Struggle Topics Edit buttons after the section or its week/topic is renamed.
+     *
+     * @param sectionItem - The section's `.content-item` element
+     * @param topicOrWeekId - The ID of the section's topic/week instance
+     * @param sectionTitle - The current section title
+     */
+    function updateSectionButtonNames(sectionItem: HTMLElement, topicOrWeekId: string, sectionTitle: string): void {
+        const targetName = getSectionNameSuffix(topicOrWeekId, sectionTitle);
+        sectionItem
+            .querySelectorAll(
+                '.content-status-row > button > .visually-hidden, .catalog-edit-btn > .catalog-edit-target, .upload-area > .visually-hidden'
+            )
+            .forEach((hiddenName) => {
+                hiddenName.textContent = targetName;
+            });
     }
     
     /**
