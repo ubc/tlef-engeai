@@ -54,10 +54,141 @@
         </div>
         
         <ul id="documents-container" class="documents-container">
-            
+
         </ul>
     </main>
 </div>
+
+<!-- Shared by every Delete Week/Topic, Delete Section and Delete document button; documents.ts fills in the heading and message for the button that opened it -->
+<dialog
+    id="documents-delete-dialog"
+    class="app-dialog"
+    aria-labelledby="documents-delete-dialog-heading"
+>
+    <form method="dialog">
+        <div class="app-dialog__header">
+            <h2
+                id="documents-delete-dialog-heading"
+                class="app-dialog__title"
+                tabindex="-1"
+                autofocus
+            >Delete</h2>
+
+            <button
+                type="button"
+                class="app-dialog__close"
+                commandfor="documents-delete-dialog"
+                command="close"
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+                <span class="visually-hidden">Close</span>
+            </button>
+        </div>
+
+        <div class="app-dialog__body">
+            <p id="documents-delete-dialog-message"></p>
+        </div>
+
+        <div class="app-dialog__actions">
+            <button
+                type="button"
+                class="modal-btn modal-btn-secondary"
+                commandfor="documents-delete-dialog"
+                command="close"
+            >Cancel</button>
+            <button
+                type="submit"
+                class="modal-btn modal-btn-danger"
+                value="delete"
+            >Delete</button>
+        </div>
+    </form>
+</dialog>
+
+<!-- Reports what a week/topic, section, document or "Delete All Documents" delete removed; documents.ts fills it in and opens it once the request finishes -->
+<dialog
+    id="documents-deletion-result-dialog"
+    class="app-dialog"
+    aria-labelledby="documents-deletion-result-dialog-heading"
+>
+    <div class="app-dialog__header">
+        <h2
+            id="documents-deletion-result-dialog-heading"
+            class="app-dialog__title"
+            tabindex="-1"
+            autofocus
+        >Deleted</h2>
+
+        <button
+            type="button"
+            class="app-dialog__close"
+            commandfor="documents-deletion-result-dialog"
+            command="close"
+        >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+            <span class="visually-hidden">Close</span>
+        </button>
+    </div>
+
+    <div class="app-dialog__body" id="documents-deletion-result-dialog-body"></div>
+
+    <div class="app-dialog__actions">
+        <button
+            type="button"
+            class="modal-btn modal-btn-primary"
+            commandfor="documents-deletion-result-dialog"
+            command="close"
+        >OK</button>
+    </div>
+</dialog>
+
+<!-- Reports a failed request (e.g. deleting the last week); documents.ts fills it in and opens it -->
+<dialog
+    id="documents-error-dialog"
+    class="app-dialog"
+    aria-labelledby="documents-error-dialog-heading"
+>
+    <div class="app-dialog__header">
+        <h2
+            id="documents-error-dialog-heading"
+            class="app-dialog__title"
+            tabindex="-1"
+            autofocus
+        >Error</h2>
+
+        <button
+            type="button"
+            class="app-dialog__close"
+            commandfor="documents-error-dialog"
+            command="close"
+        >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+            <span class="visually-hidden">Close</span>
+        </button>
+    </div>
+
+    <div class="app-dialog__body">
+        <p id="documents-error-dialog-message"></p>
+    </div>
+
+    <div class="app-dialog__actions">
+        <button
+            type="button"
+            class="modal-btn modal-btn-primary"
+            commandfor="documents-error-dialog"
+            command="close"
+        >OK</button>
+    </div>
+</dialog>
 <!-- Modal mount point -->
 <div id="upload-modal-mount"></div>
 

@@ -29,7 +29,8 @@ import {
 import { uploadRAGContent } from '../services/rag-service.js';
 import { DocumentUploadModule } from '../services/document-upload-module.js';
 import type { InstructorStruggleTopic, UploadResult } from '../types.js';
-import { showConfirmModal, openUploadModal, openStruggleTopicsReviewModal, openLearningObjectivesEditModal, openDivisionReorderModal, showSimpleErrorModal, showDeleteConfirmationModal, showUploadLoadingModal, showInputModal, showSuccessModal, showErrorModal, showTitleUpdateLoadingModal, showDeletionSuccessModal, closeModal, showCustomModal } from '../ui/modal-overlay.js';
+import { showConfirmModal, openUploadModal, openStruggleTopicsReviewModal, openLearningObjectivesEditModal, openDivisionReorderModal, showSimpleErrorModal, showUploadLoadingModal, showInputModal, showSuccessModal, showErrorModal, showTitleUpdateLoadingModal, showDeletionSuccessModal, closeModal, showCustomModal } from '../ui/modal-overlay.js';
+import { installInvokerCommandFallback, onDialogOpenCommand, showDialogAndWait } from '../ui/dialog.js';
 import { buildCatalogSectionForItem } from './catalog-section.js';
 import { showToast, showSuccessToast } from '../ui/toast-notification.js';
 import { renderFeatherIcons } from '../api/api.js';
@@ -44,6 +45,102 @@ function setSchedulePanelError(el: HTMLElement, message: string): void {
     const text = message.trim();
     el.textContent = text;
     el.hidden = text.length === 0;
+}
+
+/** Shared confirm dialog in documents-instructor.html for every week/topic, section and document delete button. */
+const DELETE_DIALOG_ID = 'documents-delete-dialog';
+
+/** What a delete button removes; the dialog reads it to word the confirmation and pick the request. */
+type DeleteDialogKind = 'instance' | 'section' | 'material';
+
+/** Listeners on the delete dialog from the last page init, removed when the page initializes again. */
+let deleteDialogListeners: AbortController | null = null;
+
+/**
+ * setDeleteDialogInvoker — makes `button` open the shared delete dialog for `kind`.
+ * The button must also carry the ids that kind needs (see `prepareDeleteDialog`).
+ */
+function setDeleteDialogInvoker(button: HTMLButtonElement, kind: DeleteDialogKind): void {
+    button.setAttribute('commandfor', DELETE_DIALOG_ID);
+    button.setAttribute('command', 'show-modal');
+    button.dataset.deleteKind = kind;
+}
+
+/** Shared result dialog in documents-instructor.html, shown after any delete on this page. */
+const DELETION_RESULT_DIALOG_ID = 'documents-deletion-result-dialog';
+
+/**
+ * showDeletionResultDialog — reports how many chunks a delete removed, per document, and
+ * resolves once the instructor closes the report. Focus starts on its heading.
+ *
+ * @param deletedDocuments - Each deleted document's name and chunk count
+ * @param totalChunksDeleted - Chunks removed across all of them
+ */
+async function showDeletionResultDialog(
+    deletedDocuments: { name: string; chunksDeleted: number }[],
+    totalChunksDeleted: number
+): Promise<void> {
+    const dialog = document.getElementById(DELETION_RESULT_DIALOG_ID);
+    if (!(dialog instanceof HTMLDialogElement)) {
+        await showDeletionSuccessModal(deletedDocuments, totalChunksDeleted);
+        return;
+    }
+
+    // 1. Heading: the outcome in a few words
+    const heading = document.getElementById(`${DELETION_RESULT_DIALOG_ID}-heading`);
+    if (heading) {
+        heading.textContent = totalChunksDeleted === 0
+            ? 'No chunks were deleted'
+            : `${totalChunksDeleted} chunk(s) deleted successfully`;
+    }
+
+    // 2. Body: per-document breakdown; textContent because document names are instructor-entered
+    const body = document.getElementById(`${DELETION_RESULT_DIALOG_ID}-body`);
+    if (body) {
+        body.replaceChildren();
+        if (deletedDocuments.length > 0) {
+            const list = document.createElement('ul');
+            list.className = 'app-dialog__list';
+            for (const doc of deletedDocuments) {
+                const li = document.createElement('li');
+                li.textContent = `${doc.name}: ${doc.chunksDeleted} ${doc.chunksDeleted === 1 ? 'chunk' : 'chunks'}`;
+                list.appendChild(li);
+            }
+            body.appendChild(list);
+        } else {
+            const p = document.createElement('p');
+            p.textContent = totalChunksDeleted === 0
+                ? 'No documents with chunks were found to delete.'
+                : `${totalChunksDeleted} chunk(s) were removed from the vector database.`;
+            body.appendChild(p);
+        }
+    }
+
+    // 3. Open and wait for it to close
+    await showDialogAndWait(dialog);
+}
+
+/** Shared error dialog in documents-instructor.html. */
+const ERROR_DIALOG_ID = 'documents-error-dialog';
+
+/**
+ * showDocumentsErrorDialog — reports a failed request and resolves once the instructor closes
+ * the report. Focus starts on its heading and returns to the triggering control afterwards.
+ *
+ * @param title - Dialog heading
+ * @param message - What went wrong; shown as text, never HTML
+ */
+async function showDocumentsErrorDialog(title: string, message: string): Promise<void> {
+    const dialog = document.getElementById(ERROR_DIALOG_ID);
+    if (!(dialog instanceof HTMLDialogElement)) {
+        await showSimpleErrorModal(message, title);
+        return;
+    }
+    const heading = document.getElementById(`${ERROR_DIALOG_ID}-heading`);
+    const messageEl = document.getElementById(`${ERROR_DIALOG_ID}-message`);
+    if (heading) heading.textContent = title;
+    if (messageEl) messageEl.textContent = message;
+    await showDialogAndWait(dialog);
 }
 
 // In-memory store for the course data
@@ -1063,6 +1160,8 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         titleText.classList.add('topic-or-week-title-heading');
         // The disclosure <summary> takes its accessible name from this id
         titleText.id = `topic-or-week-heading-${instance_topicOrWeek.id}`;
+        // Focus target for scripts (e.g. after a neighbouring week is deleted); not in the tab order
+        titleText.tabIndex = -1;
         titleText.textContent = instance_topicOrWeek.title;
         title.appendChild(titleText);
         
@@ -1150,6 +1249,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         deleteInstanceBadge.className = 'content-status status-delete-instance';
         deleteInstanceBadge.setAttribute('data-action', 'delete-instance');
         deleteInstanceBadge.setAttribute('data-topic-or-week-instance-id', instance_topicOrWeek.id);
+        setDeleteDialogInvoker(deleteInstanceBadge, 'instance');
         const deleteInstanceIcon = document.createElement('i');
         deleteInstanceIcon.setAttribute('data-feather', 'trash-2');
         deleteInstanceIcon.setAttribute('aria-hidden', 'true');
@@ -1162,10 +1262,6 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         deleteInstanceBadge.appendChild(deleteInstanceIcon);
         deleteInstanceBadge.appendChild(deleteInstanceText);
         deleteInstanceBadge.appendChild(deleteInstanceTextVisuallyHidden);
-        deleteInstanceBadge.addEventListener('click', (e) => {
-            e.stopPropagation();
-            deleteTopicOrWeekInstance(instance_topicOrWeek);
-        });
 
         right.appendChild(addSessionBadge);
         right.appendChild(publishBtn);
@@ -1429,18 +1525,8 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 return;
             }
 
-            // Handle delete section clicks FIRST (before other button handling)
-            const deleteSectionElement = target.closest('.status-delete-section') as HTMLElement | null;
-            if (deleteSectionElement && deleteSectionElement.dataset.action === 'delete-section') {
-                event.stopPropagation();
-                //START DEBUG LOG : DEBUG-CODE(014)
-                // console.log('🗑️ Delete section clicked via event delegation'); // 🟢 MEDIUM: UI interaction
-                //END DEBUG LOG : DEBUG-CODE(014)
-                const sectionTopicOrWeekId = deleteSectionElement.dataset.topicOrWeekInstanceId || '0';
-                const sectionContentId = deleteSectionElement.dataset.contentId || '0';
-                deleteSection(sectionTopicOrWeekId, sectionContentId);
-                return; // Prevent further event handling
-            }
+            // Buttons that open a dialog (Delete Section, Delete document) are handled by the dialog
+            if (target.closest('button[commandfor]')) return;
 
         // Handle rename/edit buttons FIRST (before header clicks)
         // 1) Rename icon click (pen)
@@ -1565,19 +1651,6 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                         return;
                     }
 
-                    if (action === 'delete-material') {
-                        event.stopPropagation();
-                        const contentItem = button.closest('.content-item') as HTMLElement | null;
-                        if (!contentItem) return;
-
-                        const contentItemId = contentItem.id;
-                        const ids = contentItemId.split('-');
-                        const materialTopicOrWeekId = ids[2] || '0';
-                        const materialContentId = ids[3] || '0';
-
-                        deleteAdditionalMaterial(materialTopicOrWeekId, materialContentId, button.dataset.materialId || '');
-                        return;
-                    }
                 }
             }
             
@@ -1716,6 +1789,97 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             console.error('❌ Exception caught while adding topic/week instance:', error);
             await showSimpleErrorModal('An error occurred while adding the topic/week instance. Please try again.', 'Add Topic/Week Instance Error');
         }
+    }
+
+    function getDivisionLabel(): 'Week' | 'Topic' {
+        return currentClass.frameType === 'byWeek' ? 'Week' : 'Topic';
+    }
+
+    /**
+     * Words the shared delete dialog for the button opening it and returns the delete to run if
+     * the instructor confirms, or `null` (keeping the dialog closed) when the item is gone.
+     *
+     * Buttons carry: `instance` → `data-topic-or-week-instance-id`; `section` → that plus
+     * `data-content-id`; `material` → `data-material-id`, inside its `.content-item`.
+     */
+    function prepareDeleteDialog(invoker: HTMLButtonElement): (() => Promise<void>) | null {
+        const kind = invoker.dataset.deleteKind as DeleteDialogKind | undefined;
+        let itemType: string;
+        let itemName: string;
+        let runDelete: () => Promise<void>;
+
+        // 1. Find what the button deletes in the current course data
+        if (kind === 'instance') {
+            const instance = courseData.find((d) => d.id === invoker.dataset.topicOrWeekInstanceId);
+            if (!instance) return null;
+            itemType = getDivisionLabel();
+            itemName = instance.title;
+            runDelete = () => deleteTopicOrWeekInstance(instance);
+        } else if (kind === 'section') {
+            const topicOrWeekId = invoker.dataset.topicOrWeekInstanceId ?? '';
+            const contentId = invoker.dataset.contentId ?? '';
+            const section = courseData.find((d) => d.id === topicOrWeekId)?.items.find((c) => c.id === contentId);
+            if (!section) return null;
+            itemType = 'Section';
+            itemName = section.title || 'Section';
+            runDelete = () => deleteSection(topicOrWeekId, contentId);
+        } else if (kind === 'material') {
+            // content-item-{topicOrWeekId}-{contentId}
+            const ids = (invoker.closest('.content-item')?.id ?? '').split('-');
+            const topicOrWeekId = ids[2] ?? '';
+            const contentId = ids[3] ?? '';
+            const materialId = invoker.dataset.materialId ?? '';
+            const material = courseData
+                .find((d) => d.id === topicOrWeekId)
+                ?.items.find((c) => c.id === contentId)
+                ?.additionalMaterials?.find((m) => m.id === materialId);
+            if (!material) return null;
+            itemType = 'Document';
+            itemName = material.name || 'this document';
+            runDelete = () => deleteAdditionalMaterial(topicOrWeekId, contentId, materialId);
+        } else {
+            return null;
+        }
+
+        // 2. Word the dialog; textContent because titles are instructor-entered
+        const heading = document.getElementById(`${DELETE_DIALOG_ID}-heading`);
+        const message = document.getElementById(`${DELETE_DIALOG_ID}-message`);
+        if (heading) heading.textContent = `Delete ${itemType}`;
+        if (message) {
+            message.textContent =
+                `Are you sure you want to delete this ${itemType.toLowerCase()} "${itemName}"? This action cannot be undone.`;
+        }
+        return runDelete;
+    }
+
+    // Shared delete dialog: opened by commandfor buttons; deletes on close when "Delete" was chosen
+    const deleteDialog = document.getElementById(DELETE_DIALOG_ID);
+    if (deleteDialog instanceof HTMLDialogElement) {
+        installInvokerCommandFallback();
+        deleteDialogListeners?.abort();
+        deleteDialogListeners = new AbortController();
+        const { signal } = deleteDialogListeners;
+        let pendingDelete: (() => Promise<void>) | null = null;
+
+        onDialogOpenCommand(
+            deleteDialog,
+            (invoker) => {
+                pendingDelete = prepareDeleteDialog(invoker);
+                return pendingDelete !== null;
+            },
+            signal
+        );
+        deleteDialog.addEventListener(
+            'close',
+            () => {
+                const runDelete = pendingDelete;
+                pendingDelete = null;
+                if (deleteDialog.returnValue === 'delete' && runDelete) {
+                    void runDelete();
+                }
+            },
+            { signal }
+        );
     }
 
     // Add event listener for delete all documents button
@@ -2322,14 +2486,10 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         deleteBadge.appendChild(deleteSectionTextVisuallyHidden);
         deleteBadge.dataset.topicOrWeekInstanceId = topicOrWeekId;
         deleteBadge.dataset.contentId = content.id;
+        setDeleteDialogInvoker(deleteBadge, 'section');
         statusRow.appendChild(deleteBadge);
         header.appendChild(title);
         header.appendChild(statusRow);
-
-        deleteBadge.addEventListener('click', (e) => {
-            e.stopPropagation();
-            deleteSection(topicOrWeekId, content.id);
-        });
 
         // Objectives + struggle topics (shared catalog sections)
         const catalogTargetName = getSectionNameSuffix(topicOrWeekId, content.title);
@@ -2479,21 +2639,13 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         }
     }
 
+    /**
+     * Deletes a section the instructor has already confirmed in the delete dialog.
+     */
     async function deleteSection(topicOrWeekId: string, contentId: string) {
         const instance_topicOrWeek = courseData.find(d => d.id === topicOrWeekId);
         if (!instance_topicOrWeek) return;
-        
-        const content = instance_topicOrWeek.items.find(c => c.id === contentId);
-        if (!content) return;
-        
-        // Show confirmation modal
-        const result = await showDeleteConfirmationModal('Section', content.title || 'Section');
-        
-        // If user cancelled, don't proceed
-        if (result.action !== 'delete') {
-            return;
-        }
-        
+
         // Check if courseId exists
         if (!courseId) {
             await showErrorModal('Error', 'Course ID is missing. Cannot delete section.');
@@ -2535,7 +2687,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                     const deletedDocuments = resultData.data?.deletedDocuments;
                     const totalChunksDeleted = resultData.data?.totalChunksDeleted;
                     if (Array.isArray(deletedDocuments) && typeof totalChunksDeleted === 'number') {
-                        await showDeletionSuccessModal(deletedDocuments, totalChunksDeleted);
+                        await showDeletionResultDialog(deletedDocuments, totalChunksDeleted);
                     } else {
                         await showSuccessModal('Success', 'Section deleted successfully.');
                     }
@@ -2551,19 +2703,28 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     }
 
     /**
-     * Delete a topic/week instance (week or topic) after confirmation
+     * Picks where focus goes once `wrapper` (a week/topic) is removed: the previous week's heading,
+     * else the next one's when it was the first week, else the Add button when it was the only week.
+     */
+    function findFocusTargetAfterRemovingDivision(wrapper: Element): HTMLElement | null {
+        const wrappers = Array.from(document.querySelectorAll('#documents-container .topic-or-week-instance'));
+        const index = wrappers.indexOf(wrapper);
+        const neighbour = index > 0 ? wrappers[index - 1] : wrappers[index + 1];
+        return (
+            neighbour?.querySelector<HTMLElement>('h2.topic-or-week-title-heading') ??
+            document.getElementById('add-division-btn')
+        );
+    }
+
+    /**
+     * Deletes a topic/week instance (week or topic) the instructor has already confirmed in the delete dialog.
      * @param instance_topicOrWeek the topic/week instance to delete
      */
     async function deleteTopicOrWeekInstance(instance_topicOrWeek: TopicOrWeekInstance) {
-        const divisionLabel = currentClass.frameType === 'byWeek' ? 'Week' : 'Topic';
-        const result = await showDeleteConfirmationModal(divisionLabel, instance_topicOrWeek.title);
-
-        if (result.action !== 'delete') {
-            return;
-        }
+        const divisionLabel = getDivisionLabel();
 
         if (!courseId) {
-            await showErrorModal('Error', 'Course ID is missing. Cannot delete topic/week instance.');
+            await showDocumentsErrorDialog('Error', 'Course ID is missing. Cannot delete topic/week instance.');
             return;
         }
 
@@ -2589,18 +2750,21 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 currentClass.topicOrWeekInstances = courseData;
                 currentClass.tilesNumber = courseData.length;
 
-                // Remove from DOM
+                // Remove from DOM, moving focus off the deleted week's Delete button first
                 const header = document.querySelector(`.topic-or-week-header[data-topic-or-week-instance="${instance_topicOrWeek.id}"]`);
                 const wrapper = header?.closest('.topic-or-week-instance');
+                const focusTarget = wrapper ? findFocusTargetAfterRemovingDivision(wrapper) : null;
                 if (wrapper?.parentElement) {
                     wrapper.parentElement.removeChild(wrapper);
                 }
+                // Before the success modal opens, so it returns focus here when it closes
+                focusTarget?.focus();
 
                 setTimeout(async () => {
                     const deletedDocuments = resultData.data?.deletedDocuments;
                     const totalChunksDeleted = resultData.data?.totalChunksDeleted;
                     if (Array.isArray(deletedDocuments) && typeof totalChunksDeleted === 'number') {
-                        await showDeletionSuccessModal(deletedDocuments, totalChunksDeleted);
+                        await showDeletionResultDialog(deletedDocuments, totalChunksDeleted);
                     } else {
                         await showSuccessModal('Success', `${divisionLabel} deleted successfully.`);
                     }
@@ -2611,7 +2775,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         } catch (error) {
             console.error('Error deleting topic/week instance:', error);
             const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-            await showErrorModal('Error', `Failed to delete ${divisionLabel.toLowerCase()}: ${errorMessage}`);
+            await showDocumentsErrorDialog('Error', `Failed to delete ${divisionLabel.toLowerCase()}: ${errorMessage}`);
         }
     }
 
@@ -3083,9 +3247,11 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             const actions = document.createElement('div');
             actions.className = 'am-actions';
             const del = document.createElement('button');
+            del.type = 'button';
             del.className = 'action-btn delete-btn';
             del.dataset.action = 'delete-material';
             del.dataset.materialId = m.id;
+            setDeleteDialogInvoker(del, 'material');
             del.textContent = 'Delete';
             actions.appendChild(del);
 
@@ -3100,7 +3266,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     }
 
     /**
-     * Delete an additional material
+     * Deletes an additional material the instructor has already confirmed in the delete dialog.
      * 
      * @param divisionId the id of the division
      * @param contentId the id of the content item
@@ -3129,46 +3295,37 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             return;
         }
 
-        // Get the material to show its name in confirmation
         const material = content.additionalMaterials.find(m => m.id === materialId);
-        const result = await showDeleteConfirmationModal(
-            'Document',
-            material?.name || 'this document'
-        );
-        
-        if (result.action === 'delete') {
-            try {
-                // Call backend API to soft delete from MongoDB
-                if (!courseId) {
-                    console.error('❌ Cannot delete material: courseId is missing');
-                    await showSimpleErrorModal('Cannot delete material: Course ID is missing.', 'Error');
-                    return;
-                }
-                const response = await fetch(`/api/courses/${courseId}/topic-or-week-instances/${divisionId}/items/${contentId}/materials/${materialId}`, {
-                    method: 'DELETE',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const result = await response.json();
-                if (!result.success) {
-                    await showSimpleErrorModal('Failed to delete document: ' + result.error, 'Delete Document Error');
-                    return;
-                }
-                
-                // Remove from local array after successful backend deletion
-                content.additionalMaterials = content.additionalMaterials.filter(m => m.id !== materialId);
-                refreshContentItem(divisionId, contentId);
-                console.log('DEBUG #12 - Document deleted successfully');
 
-                // Show deletion success modal with chunk count
-                const materialName = result.data?.materialName ?? material?.name ?? 'Document';
-                const chunksDeleted = result.data?.chunksDeleted ?? 0;
-                await showDeletionSuccessModal([{ name: materialName, chunksDeleted }], chunksDeleted);
-            } catch (error) {
-                console.error('Error deleting document:', error);
-                await showSimpleErrorModal('An error occurred while deleting the document. Please try again.', 'Delete Document Error');
+        try {
+            // Call backend API to soft delete from MongoDB
+            if (!courseId) {
+                console.error('❌ Cannot delete material: courseId is missing');
+                await showSimpleErrorModal('Cannot delete material: Course ID is missing.', 'Error');
+                return;
             }
-        } else {
-            console.log('🗑️ Document deletion cancelled by user');
+            const response = await fetch(`/api/courses/${courseId}/topic-or-week-instances/${divisionId}/items/${contentId}/materials/${materialId}`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const result = await response.json();
+            if (!result.success) {
+                await showSimpleErrorModal('Failed to delete document: ' + result.error, 'Delete Document Error');
+                return;
+            }
+            
+            // Remove from local array after successful backend deletion
+            content.additionalMaterials = content.additionalMaterials.filter(m => m.id !== materialId);
+            refreshContentItem(divisionId, contentId);
+            console.log('DEBUG #12 - Document deleted successfully');
+
+            // Show deletion success modal with chunk count
+            const materialName = result.data?.materialName ?? material?.name ?? 'Document';
+            const chunksDeleted = result.data?.chunksDeleted ?? 0;
+            await showDeletionResultDialog([{ name: materialName, chunksDeleted }], chunksDeleted);
+        } catch (error) {
+            console.error('Error deleting document:', error);
+            await showSimpleErrorModal('An error occurred while deleting the document. Please try again.', 'Delete Document Error');
         }
     }
 
@@ -3482,7 +3639,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             // Show deletion success modal with document and chunk breakdown
             const deletedDocuments = result_data.data?.deletedDocuments ?? [];
             const totalChunksDeleted = result_data.data?.totalChunksDeleted ?? 0;
-            await showDeletionSuccessModal(deletedDocuments, totalChunksDeleted);
+            await showDeletionResultDialog(deletedDocuments, totalChunksDeleted);
 
         } catch (error) {
             console.error('Error deleting all documents:', error);

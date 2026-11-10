@@ -173,6 +173,17 @@ ul.documents-container > li::marker {
     font-size: 18px;
 }
 
+/* tabindex="-1" focus target (e.g. after a neighbouring week is deleted); ring only for keyboard users */
+.topic-or-week-title-heading:focus {
+    outline: none;
+}
+
+.topic-or-week-title-heading:focus-visible {
+    outline: 2px solid var(--color-chbe-green);
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+
 /*
  * Both subgrids cover the title block's cell too. They paint no background, and
  * pointer-events: none lets clicks through to the title and rename icon underneath;
