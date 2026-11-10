@@ -640,6 +640,12 @@ button.content-status {
     transition: all 0.3s ease;
 }
 
+/* Division control panel buttons keep the page's inherited line-height (as Copy From Another
+   Course had when it was a div), overriding the 1.2 that button.content-status sets */
+.division-control-panel button.content-status {
+    line-height: inherit;
+}
+
 .status-copy-materials:hover {
     background: rgba(77, 122, 47, 0.2);
     transform: translateY(-1px);

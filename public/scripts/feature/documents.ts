@@ -1834,21 +1834,13 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             updateDivisionButtonLabels(currentClass);
             renderDocumentsPage(true);
         };
-        const keyHandler = (e: KeyboardEvent) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                void copyHandler();
-            }
-        };
-        // Drop listeners from an earlier initialization of this page, as the other panel buttons do.
-        const previous = (copyMaterialsBtn as any)._copyMaterialsHandlers;
+        // Drop the listener from an earlier initialization of this page, as the other panel buttons do.
+        const previous = (copyMaterialsBtn as any)._copyMaterialsHandler;
         if (previous) {
-            copyMaterialsBtn.removeEventListener('click', previous.click);
-            copyMaterialsBtn.removeEventListener('keydown', previous.key);
+            copyMaterialsBtn.removeEventListener('click', previous);
         }
-        (copyMaterialsBtn as any)._copyMaterialsHandlers = { click: copyHandler, key: keyHandler };
+        (copyMaterialsBtn as any)._copyMaterialsHandler = copyHandler;
         copyMaterialsBtn.addEventListener('click', copyHandler);
-        copyMaterialsBtn.addEventListener('keydown', keyHandler);
     }
 
     // Division overflow dropdown (mobile): trigger click on hidden desktop buttons
