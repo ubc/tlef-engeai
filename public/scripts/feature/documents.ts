@@ -2346,6 +2346,8 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const titleText = document.createElement('h3');
         titleText.classList.add('content-title-heading');
         titleText.textContent = content.title;
+        // Focus target for scripts (e.g. after a neighbouring section is deleted); not in the tab order
+        titleText.tabIndex = -1;
         title.appendChild(titleText);
         
         title.appendChild(createRenameButton(topicOrWeekId, content.id, content.title));
@@ -2526,6 +2528,23 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     }
 
     /**
+     * Picks where focus goes once `item` (a section) is removed: the previous section's heading,
+     * else the next one's when it was the first section, else its week's heading when it was the
+     * only section.
+     */
+    function findFocusTargetAfterRemovingSection(item: HTMLElement): HTMLElement | null {
+        const wrapper = item.closest('.topic-or-week-instance');
+        const sections = Array.from(wrapper?.querySelectorAll('.content-item') ?? []);
+        const index = sections.indexOf(item);
+        const neighbour = index > 0 ? sections[index - 1] : sections[index + 1];
+        return (
+            neighbour?.querySelector<HTMLElement>('h3.content-title-heading') ??
+            wrapper?.querySelector<HTMLElement>('h2.topic-or-week-title-heading') ??
+            null
+        );
+    }
+
+    /**
      * Deletes a section the instructor has already confirmed in the delete dialog.
      */
     async function deleteSection(topicOrWeekId: string, contentId: string) {
@@ -2559,11 +2578,14 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 // Remove from local state
                 instance_topicOrWeek.items = instance_topicOrWeek.items.filter(c => c.id !== contentId);
                 
-                // Remove from DOM
+                // Remove from DOM, moving focus off the deleted section's Delete button first
                 const item = document.getElementById(`content-item-${topicOrWeekId}-${contentId}`);
+                const focusTarget = item ? findFocusTargetAfterRemovingSection(item) : null;
                 if (item && item.parentElement) {
                     item.parentElement.removeChild(item);
                 }
+                // Before the result dialog opens, so it returns focus here when it closes
+                focusTarget?.focus();
                 
                 // Update completion status
                 updateDivisionCompletion(topicOrWeekId);
