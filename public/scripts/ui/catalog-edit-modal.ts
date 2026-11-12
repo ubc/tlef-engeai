@@ -8,7 +8,7 @@ import {
     attachRowDragReorder,
     createCatalogModalChrome,
     createDragHandle,
-    getCatalogModalMount,
+    getCatalogModalDialog,
 } from './catalog-modal-shell.js';
 
 const MAX_LABEL_LENGTH = 300;
@@ -22,6 +22,8 @@ export interface CatalogEditModalOptions {
     items: Array<{ id: string; label: string }>;
     onSave?: () => void | Promise<void>;
     onDismiss?: () => void | Promise<void>;
+    /** Focus target on close when the opening control was replaced; see `CatalogModalChromeOptions`. */
+    returnFocus?: () => HTMLElement | null;
 }
 
 interface CatalogEditRow {
@@ -120,8 +122,8 @@ function newServerId(): string {
 }
 
 export async function openCatalogEditModal(options: CatalogEditModalOptions): Promise<void> {
-    if (!getCatalogModalMount()) {
-        console.error('Catalog edit modal mount could not be created.');
+    if (!getCatalogModalDialog()) {
+        console.error('Catalog edit dialog markup is missing from this page.');
         return;
     }
 
@@ -145,9 +147,10 @@ export async function openCatalogEditModal(options: CatalogEditModalOptions): Pr
         title: copy.title,
         intro: `${copy.intro} Section: ${options.sectionTitle}.`,
         onDismiss: options.onDismiss,
+        returnFocus: options.returnFocus,
     });
 
-    const { modal, body, list, saveBtn, dismissBtn, closeModal, showError, clearError, registerCleanup } =
+    const { dialog, body, list, saveBtn, signal, closeModal, setBusy, showError, clearError, registerCleanup } =
         chrome;
 
     const addRowBtn = document.createElement('button');
@@ -155,11 +158,13 @@ export async function openCatalogEditModal(options: CatalogEditModalOptions): Pr
     addRowBtn.className = 'catalog-modal__add';
     addRowBtn.textContent = `+ ${copy.addButton}`;
     body.insertBefore(addRowBtn, chrome.errorBox);
+    registerCleanup(() => addRowBtn.remove());
 
     const measureEl = document.createElement('span');
     measureEl.className = 'catalog-modal__input-measure';
     measureEl.setAttribute('aria-hidden', 'true');
-    modal.appendChild(measureEl);
+    dialog.appendChild(measureEl);
+    registerCleanup(() => measureEl.remove());
 
     let widthSyncRaf = 0;
 
@@ -205,10 +210,17 @@ export async function openCatalogEditModal(options: CatalogEditModalOptions): Pr
         addRowBtn.disabled = hasEmptyNew;
     };
 
-    const commitEdit = (rowId: string) => {
+    /**
+     * Ends editing a row. `refocus` (Enter) puts focus on the row's edit button, since the input it
+     * was in is replaced; a blur commit leaves focus wherever the user moved it.
+     */
+    const commitEdit = (rowId: string, refocus = false) => {
         if (editingRowId === rowId) {
             editingRowId = null;
             renderRows();
+            if (refocus) {
+                list.querySelector<HTMLButtonElement>(`[data-row-id="${rowId}"] .catalog-modal__pen`)?.focus();
+            }
         }
     };
 
@@ -268,7 +280,7 @@ export async function openCatalogEditModal(options: CatalogEditModalOptions): Pr
                 input.addEventListener('keydown', (e) => {
                     if (e.key === 'Enter') {
                         e.preventDefault();
-                        commitEdit(row.id);
+                        commitEdit(row.id, true);
                     }
                 });
                 inputWrap.appendChild(input);
@@ -309,6 +321,10 @@ export async function openCatalogEditModal(options: CatalogEditModalOptions): Pr
                 if (editingRowId === row.id) editingRowId = null;
                 renderRows();
                 syncSaveState();
+                // The button is gone: focus the previous row's Remove, else the next row's
+                // (now at this index), else the Add button
+                const removeBtns = list.querySelectorAll<HTMLButtonElement>('.catalog-modal__remove');
+                (removeBtns[index - 1] ?? removeBtns[index] ?? addRowBtn).focus();
             });
 
             attachRowDragReorder(li, index, row.id, handle, {
@@ -355,8 +371,8 @@ export async function openCatalogEditModal(options: CatalogEditModalOptions): Pr
             removed: false,
         });
         animateRowId = id;
-        editingRowId = id;
-        renderRows();
+        // Opens the new row's input and moves focus into it, so typing goes there
+        startEdit(id);
         syncSaveState();
     });
 
@@ -379,7 +395,7 @@ export async function openCatalogEditModal(options: CatalogEditModalOptions): Pr
         }
 
         saveBtn.disabled = true;
-        dismissBtn.disabled = true;
+        setBusy(true);
         addRowBtn.disabled = true;
         saveBtn.textContent = 'Saving...';
 
@@ -460,12 +476,12 @@ export async function openCatalogEditModal(options: CatalogEditModalOptions): Pr
             const message = error instanceof Error ? error.message : 'Failed to save changes';
             showError(message);
             saveBtn.disabled = false;
-            dismissBtn.disabled = false;
+            setBusy(false);
             addRowBtn.disabled = false;
             saveBtn.textContent = 'Save';
             syncSaveState();
         }
-    });
+    }, { signal });
 
     renderRows();
 }

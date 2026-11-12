@@ -507,13 +507,6 @@ button.content-status {
     outline-offset: 2px;
 }
 
-/* Scheduled-publish modal: morphing footer action (Cancel schedule <-> Apply new time) */
-.modal-scheduled-publish .modal-footer .modal-btn:last-child {
-    min-width: 148px;
-    transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease,
-        transform 0.2s ease;
-}
-
 @keyframes topic-or-week-appear {
     from {
         opacity: 0;
@@ -536,9 +529,19 @@ button.content-status {
     }
 }
 
-/* Publish modal: expandable schedule */
-.publish-draft-modal-body {
-    line-height: 1.5;
+/* Publish dialogs (publish, scheduled publish, move to draft): week/topic summary */
+.app-dialog__body .publish-dialog__intro {
+    margin-bottom: 0.75rem;
+}
+
+.app-dialog__body .publish-dialog__name {
+    margin-bottom: 0.35rem;
+    font-weight: 600;
+}
+
+.publish-dialog__sections {
+    margin: 0;
+    padding-left: 1.25rem;
 }
 
 /* Publish modal: "Schedule for later"; scheduled-topic modal: "Reschedule" — same control style */
@@ -579,6 +582,7 @@ button.content-status {
     outline-offset: 2px;
 }
 
+/* Collapsed: visibility (switched after the collapse finishes) takes the controls out of the tab order */
 .publish-modal-schedule-panel {
     display: flex;
     flex-direction: column;
@@ -588,14 +592,45 @@ button.content-status {
     max-height: 0;
     overflow: hidden;
     opacity: 0;
-    pointer-events: none;
-    transition: max-height 0.28s ease, opacity 0.2s ease;
+    visibility: hidden;
+    transition: max-height 0.28s ease, opacity 0.2s ease, visibility 0s linear 0.28s;
 }
 
 .publish-modal-schedule-panel.publish-modal-schedule-panel--open {
     max-height: 280px;
     opacity: 1;
-    pointer-events: auto;
+    visibility: visible;
+    transition: max-height 0.28s ease, opacity 0.2s ease, visibility 0s;
+}
+
+.publish-modal-schedule-date {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.publish-modal-schedule-date input {
+    width: 100%;
+}
+
+.publish-modal-schedule-time {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.app-dialog__body .publish-modal-schedule-error {
+    margin: 0;
+    color: var(--color-eng-red, #c00);
+    font-size: 0.875rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .publish-modal-schedule-panel,
+    .publish-modal-schedule-panel.publish-modal-schedule-panel--open {
+        transition: none;
+    }
 }
 
 /* Division Control Panel Styles */

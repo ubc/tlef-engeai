@@ -25,7 +25,14 @@
                     <button type="button" class="content-status status-delete-all-divisions" id="delete-all-divisions-btn">
                         Delete All Divisions
                     </button>
-                    <button type="button" class="content-status status-delete-all-documents" id="delete-all-documents-btn">
+                    <button
+                        type="button"
+                        class="content-status status-delete-all-documents"
+                        id="delete-all-documents-btn"
+                        commandfor="documents-delete-dialog"
+                        command="show-modal"
+                        data-delete-kind="all-documents"
+                    >
                         Delete All Documents
                     </button>
                 </div>
@@ -36,7 +43,13 @@
                     <div class="overflow-dropdown">
                         <button type="button" class="overflow-dropdown-item" data-trigger-id="copy-materials-btn">Copy From Another Course</button>
                         <button type="button" class="overflow-dropdown-item" data-trigger-id="delete-all-divisions-btn">Delete All Divisions</button>
-                        <button type="button" class="overflow-dropdown-item" data-trigger-id="delete-all-documents-btn">Delete All Documents</button>
+                        <button
+                            type="button"
+                            class="overflow-dropdown-item"
+                            commandfor="documents-delete-dialog"
+                            command="show-modal"
+                            data-delete-kind="all-documents"
+                        >Delete All Documents</button>
                     </div>
                 </div>
                 <!-- COMMENTED OUT: Nuclear Clear RAG Database button (functionality now included in Reset Dummy Courses) -->
@@ -59,7 +72,419 @@
     </main>
 </div>
 
-<!-- Shared by every Delete Week/Topic, Delete Section and Delete document button; documents.ts fills in the heading and message for the button that opened it -->
+<!-- Shared by Arrange Weeks/Topics, Edit Learning Objectives and Edit Struggle Topics; catalog-modal-shell.ts fills it in and opens it once the rows are loaded -->
+<dialog
+    id="catalog-modal"
+    class="app-dialog catalog-modal"
+    aria-labelledby="catalog-modal-title"
+>
+    <div class="catalog-modal__header">
+        <h2
+            id="catalog-modal-title"
+            class="catalog-modal__title"
+            tabindex="-1"
+            autofocus
+        ></h2>
+
+        <button
+            type="button"
+            class="catalog-modal__close"
+            commandfor="catalog-modal"
+            command="close"
+        >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+            <span class="visually-hidden">Close</span>
+        </button>
+    </div>
+
+    <div class="modal-body catalog-modal__body">
+        <p class="catalog-modal__intro"></p>
+        <ul class="catalog-modal__list" role="list"></ul>
+        <div class="catalog-modal__error" hidden></div>
+    </div>
+
+    <div class="modal-footer catalog-modal__footer">
+        <button
+            type="button"
+            class="catalog-modal__dismiss"
+            commandfor="catalog-modal"
+            command="close"
+        >Dismiss</button>
+        <button
+            type="button"
+            class="catalog-modal__save"
+            disabled
+        >Save</button>
+    </div>
+</dialog>
+
+<!-- Copy From Another Course: course-material-copy.ts fills the course list and opens it once the list has loaded -->
+<dialog
+    id="material-copy-picker-dialog"
+    class="app-dialog"
+    aria-labelledby="material-copy-picker-dialog-heading"
+>
+    <form method="dialog">
+        <div class="app-dialog__header">
+            <h2
+                id="material-copy-picker-dialog-heading"
+                class="app-dialog__title"
+                tabindex="-1"
+                autofocus
+            >Copy Materials From Another Course</h2>
+
+            <button
+                type="button"
+                class="app-dialog__close"
+                commandfor="material-copy-picker-dialog"
+                command="close"
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+                <span class="visually-hidden">Close</span>
+            </button>
+        </div>
+
+        <div class="app-dialog__body">
+            <p>Copies the weeks or topics, learning objectives, struggle topics and documents.</p>
+            <label for="material-copy-picker-dialog-source" class="material-copy-picker__label">Copy from</label>
+            <select id="material-copy-picker-dialog-source" class="material-copy-picker__select"></select>
+        </div>
+
+        <div class="app-dialog__actions">
+            <button
+                type="button"
+                class="modal-btn modal-btn-secondary"
+                commandfor="material-copy-picker-dialog"
+                command="close"
+            >Cancel</button>
+            <button
+                type="submit"
+                class="modal-btn modal-btn-primary"
+                value="continue"
+            >Continue</button>
+        </div>
+    </form>
+</dialog>
+
+<!-- Shown after the picker when this course already has weeks/topics; course-material-copy.ts fills in the message -->
+<dialog
+    id="material-copy-replace-dialog"
+    class="app-dialog"
+    aria-labelledby="material-copy-replace-dialog-heading"
+>
+    <form method="dialog">
+        <div class="app-dialog__header">
+            <h2
+                id="material-copy-replace-dialog-heading"
+                class="app-dialog__title"
+                tabindex="-1"
+                autofocus
+            >Replace This Course's Materials?</h2>
+
+            <button
+                type="button"
+                class="app-dialog__close"
+                commandfor="material-copy-replace-dialog"
+                command="close"
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+                <span class="visually-hidden">Close</span>
+            </button>
+        </div>
+
+        <div class="app-dialog__body">
+            <p id="material-copy-replace-dialog-message"></p>
+            <p>This cannot be undone.</p>
+        </div>
+
+        <div class="app-dialog__actions">
+            <button
+                type="button"
+                class="modal-btn modal-btn-secondary"
+                commandfor="material-copy-replace-dialog"
+                command="close"
+            >Cancel</button>
+            <button
+                type="submit"
+                class="modal-btn modal-btn-danger"
+                value="replace-materials"
+            >Replace Materials</button>
+        </div>
+    </form>
+</dialog>
+
+<!-- Publish topic/week? — opened by a draft week's status button (commandfor set in documents.ts) or after an upload -->
+<dialog
+    id="publish-dialog"
+    class="app-dialog"
+    aria-labelledby="publish-dialog-heading"
+>
+    <div class="app-dialog__header">
+        <h2
+            id="publish-dialog-heading"
+            class="app-dialog__title"
+            tabindex="-1"
+            autofocus
+        >Publish topic/week?</h2>
+
+        <button
+            type="button"
+            class="app-dialog__close"
+            commandfor="publish-dialog"
+            command="close"
+        >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            <span class="visually-hidden">Close</span>
+        </button>
+    </div>
+
+    <div class="app-dialog__body">
+        <p class="publish-dialog__intro">Students will see this week or topic in the course when it is published.</p>
+        <p class="publish-dialog__name" id="publish-dialog-name"></p>
+        <ul class="publish-dialog__sections" id="publish-dialog-sections"></ul>
+        <button
+            type="button"
+            class="publish-modal-calendar-trigger"
+            id="publish-dialog-schedule-trigger"
+            aria-expanded="false"
+            aria-controls="publish-dialog-schedule-panel"
+        >
+            <i data-feather="calendar" aria-hidden="true"></i>
+            <span>Schedule for later</span>
+        </button>
+        <div class="publish-modal-schedule-panel" id="publish-dialog-schedule-panel">
+            <div class="publish-modal-schedule-date">
+                <label for="publish-dialog-date">Date</label>
+                <input type="date" id="publish-dialog-date" class="modal-input-field">
+            </div>
+            <div class="publish-modal-schedule-time" role="group" aria-labelledby="publish-dialog-time-label">
+                <span id="publish-dialog-time-label">Time</span>
+                <select id="publish-dialog-hour" class="modal-input-field" aria-label="Hour"></select>
+                <span aria-hidden="true">:</span>
+                <select id="publish-dialog-minute" class="modal-input-field" aria-label="Minute"></select>
+                <select id="publish-dialog-ampm" class="modal-input-field" aria-label="AM or PM">
+                    <option value="am">AM</option>
+                    <option value="pm">PM</option>
+                </select>
+            </div>
+            <p class="publish-modal-schedule-error" id="publish-dialog-schedule-error" aria-live="polite" hidden></p>
+        </div>
+    </div>
+
+    <div class="app-dialog__actions">
+        <button
+            type="button"
+            class="modal-btn modal-btn-secondary"
+            commandfor="publish-dialog"
+            command="close"
+        >Cancel</button>
+        <button
+            type="button"
+            class="modal-btn modal-btn-primary"
+            id="publish-dialog-primary"
+        >Publish now</button>
+    </div>
+</dialog>
+
+<!-- Scheduled publish — opened by a scheduled week's status button -->
+<dialog
+    id="scheduled-publish-dialog"
+    class="app-dialog"
+    aria-labelledby="scheduled-publish-dialog-heading"
+>
+    <div class="app-dialog__header">
+        <h2
+            id="scheduled-publish-dialog-heading"
+            class="app-dialog__title"
+            tabindex="-1"
+            autofocus
+        >Scheduled publish</h2>
+
+        <button
+            type="button"
+            class="app-dialog__close"
+            commandfor="scheduled-publish-dialog"
+            command="close"
+        >
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            <span class="visually-hidden">Close</span>
+        </button>
+    </div>
+
+    <div class="app-dialog__body">
+        <p class="publish-dialog__intro">This topic/week is scheduled to publish automatically. You can reschedule or cancel the scheduled publish.</p>
+        <p class="publish-dialog__name" id="scheduled-publish-dialog-name"></p>
+        <p class="publish-dialog__intro" id="scheduled-publish-dialog-when"></p>
+        <button
+            type="button"
+            class="schedule-reschedule-trigger"
+            id="scheduled-publish-dialog-schedule-trigger"
+            aria-expanded="false"
+            aria-controls="scheduled-publish-dialog-schedule-panel"
+        >
+            <i data-feather="calendar" aria-hidden="true"></i>
+            <span>Reschedule</span>
+        </button>
+        <div class="publish-modal-schedule-panel" id="scheduled-publish-dialog-schedule-panel">
+            <div class="publish-modal-schedule-date">
+                <label for="scheduled-publish-dialog-date">Date</label>
+                <input type="date" id="scheduled-publish-dialog-date" class="modal-input-field">
+            </div>
+            <div class="publish-modal-schedule-time" role="group" aria-labelledby="scheduled-publish-dialog-time-label">
+                <span id="scheduled-publish-dialog-time-label">Time</span>
+                <select id="scheduled-publish-dialog-hour" class="modal-input-field" aria-label="Hour"></select>
+                <span aria-hidden="true">:</span>
+                <select id="scheduled-publish-dialog-minute" class="modal-input-field" aria-label="Minute"></select>
+                <select id="scheduled-publish-dialog-ampm" class="modal-input-field" aria-label="AM or PM">
+                    <option value="am">AM</option>
+                    <option value="pm">PM</option>
+                </select>
+            </div>
+            <p class="publish-modal-schedule-error" id="scheduled-publish-dialog-schedule-error" aria-live="polite" hidden></p>
+        </div>
+    </div>
+
+    <div class="app-dialog__actions">
+        <button
+            type="button"
+            class="modal-btn modal-btn-secondary"
+            commandfor="scheduled-publish-dialog"
+            command="close"
+        >Close</button>
+        <!-- Shown while the Reschedule panel is closed -->
+        <button
+            type="button"
+            class="modal-btn modal-btn-danger"
+            id="scheduled-publish-dialog-cancel-schedule"
+            commandfor="cancel-schedule-dialog"
+            command="show-modal"
+        >Cancel schedule</button>
+        <!-- Shown while the Reschedule panel is open -->
+        <button
+            type="button"
+            class="modal-btn modal-btn-primary"
+            id="scheduled-publish-dialog-apply"
+            hidden
+        >Apply new time</button>
+    </div>
+</dialog>
+
+<!-- Cancel schedule? — opened from Scheduled publish; documents.ts cancels on close when confirmed -->
+<dialog
+    id="cancel-schedule-dialog"
+    class="app-dialog"
+    aria-labelledby="cancel-schedule-dialog-heading"
+>
+    <form method="dialog">
+        <div class="app-dialog__header">
+            <h2
+                id="cancel-schedule-dialog-heading"
+                class="app-dialog__title"
+                tabindex="-1"
+                autofocus
+            >Cancel schedule?</h2>
+
+            <button
+                type="button"
+                class="app-dialog__close"
+                commandfor="cancel-schedule-dialog"
+                command="close"
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+                <span class="visually-hidden">Close</span>
+            </button>
+        </div>
+
+        <div class="app-dialog__body">
+            <p>This removes the scheduled publish time. You can publish or set a new time later.</p>
+        </div>
+
+        <div class="app-dialog__actions">
+            <button
+                type="button"
+                class="modal-btn modal-btn-secondary"
+                commandfor="cancel-schedule-dialog"
+                command="close"
+            >Keep</button>
+            <button
+                type="submit"
+                class="modal-btn modal-btn-danger"
+                value="cancel-schedule"
+            >Cancel schedule</button>
+        </div>
+    </form>
+</dialog>
+
+<!-- Move to draft? — opened by a published week's status button; documents.ts unpublishes on close when confirmed -->
+<dialog
+    id="move-to-draft-dialog"
+    class="app-dialog"
+    aria-labelledby="move-to-draft-dialog-heading"
+>
+    <form method="dialog">
+        <div class="app-dialog__header">
+            <h2
+                id="move-to-draft-dialog-heading"
+                class="app-dialog__title"
+                tabindex="-1"
+                autofocus
+            >Move to draft?</h2>
+
+            <button
+                type="button"
+                class="app-dialog__close"
+                commandfor="move-to-draft-dialog"
+                command="close"
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+                <span class="visually-hidden">Close</span>
+            </button>
+        </div>
+
+        <div class="app-dialog__body">
+            <p class="publish-dialog__intro">Students will no longer see this week or topic until you publish it again.</p>
+            <p class="publish-dialog__name" id="move-to-draft-dialog-name"></p>
+            <ul class="publish-dialog__sections" id="move-to-draft-dialog-sections"></ul>
+        </div>
+
+        <div class="app-dialog__actions">
+            <button
+                type="button"
+                class="modal-btn modal-btn-secondary"
+                commandfor="move-to-draft-dialog"
+                command="close"
+            >Cancel</button>
+            <button
+                type="submit"
+                class="modal-btn modal-btn-danger"
+                value="move-to-draft"
+            >Move to draft</button>
+        </div>
+    </form>
+</dialog>
+
+<!-- Shared by every Delete Week/Topic, Delete Section, Delete document and Delete All Documents button; documents.ts fills in the heading and message for the button that opened it -->
 <dialog
     id="documents-delete-dialog"
     class="app-dialog"
@@ -148,15 +573,15 @@
     </div>
 </dialog>
 
-<!-- Reports a failed request (e.g. deleting the last week); documents.ts fills it in and opens it -->
+<!-- General message (e.g. a failed request); documents.ts fills in the heading and message and opens it. It stacks above any open dialog -->
 <dialog
-    id="documents-error-dialog"
+    id="documents-message-dialog"
     class="app-dialog"
-    aria-labelledby="documents-error-dialog-heading"
+    aria-labelledby="documents-message-dialog-heading"
 >
     <div class="app-dialog__header">
         <h2
-            id="documents-error-dialog-heading"
+            id="documents-message-dialog-heading"
             class="app-dialog__title"
             tabindex="-1"
             autofocus
@@ -165,7 +590,7 @@
         <button
             type="button"
             class="app-dialog__close"
-            commandfor="documents-error-dialog"
+            commandfor="documents-message-dialog"
             command="close"
         >
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
@@ -177,14 +602,14 @@
     </div>
 
     <div class="app-dialog__body">
-        <p id="documents-error-dialog-message"></p>
+        <p id="documents-message-dialog-message"></p>
     </div>
 
     <div class="app-dialog__actions">
         <button
             type="button"
             class="modal-btn modal-btn-primary"
-            commandfor="documents-error-dialog"
+            commandfor="documents-message-dialog"
             command="close"
         >OK</button>
     </div>

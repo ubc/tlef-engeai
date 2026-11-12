@@ -4,6 +4,8 @@
  * (a warning when this course's own materials will be replaced), run the copy, report the outcome.
  *
  * Shared by the Documents page and Document Setup; each caller refreshes its own view afterwards.
+ * The Documents page supplies native `<dialog>` markup for the picker and the replace warning
+ * (documents-instructor.html); other pages fall back to ModalOverlay.
  */
 
 import type { activeCourse, CopyCourseMaterialsResult, MaterialCopySourceCourse } from '../types.js';
@@ -15,6 +17,26 @@ import {
     showInfoModal,
     showSimpleErrorModal
 } from '../ui/modal-overlay.js';
+import { showDialogAndWait } from '../ui/dialog.js';
+
+/** Native dialogs on the Documents page; absent on Document Setup. */
+const PICKER_DIALOG_ID = 'material-copy-picker-dialog';
+const REPLACE_DIALOG_ID = 'material-copy-replace-dialog';
+
+function findDialog(id: string): HTMLDialogElement | null {
+    const el = document.getElementById(id);
+    return el instanceof HTMLDialogElement ? el : null;
+}
+
+function fillSourceSelect(select: HTMLSelectElement, sources: MaterialCopySourceCourse[]): void {
+    select.replaceChildren();
+    for (const source of sources) {
+        const option = document.createElement('option');
+        option.value = source.id;
+        option.textContent = describeSource(source);
+        select.appendChild(option);
+    }
+}
 
 function countMaterials(course: activeCourse): number {
     let count = 0;
@@ -43,6 +65,14 @@ function paragraph(text: string, className?: string): HTMLParagraphElement {
 }
 
 async function pickSource(sources: MaterialCopySourceCourse[]): Promise<MaterialCopySourceCourse | null> {
+    const dialog = findDialog(PICKER_DIALOG_ID);
+    const nativeSelect = dialog?.querySelector('select');
+    if (dialog && nativeSelect) {
+        fillSourceSelect(nativeSelect, sources);
+        if ((await showDialogAndWait(dialog)) !== 'continue') return null;
+        return sources.find((s) => s.id === nativeSelect.value) ?? null;
+    }
+
     const body = document.createElement('div');
     body.className = 'material-copy-picker';
     body.appendChild(paragraph(
@@ -56,12 +86,7 @@ async function pickSource(sources: MaterialCopySourceCourse[]): Promise<Material
     const select = document.createElement('select');
     select.id = 'material-copy-source';
     select.className = 'material-copy-picker__select';
-    for (const source of sources) {
-        const option = document.createElement('option');
-        option.value = source.id;
-        option.textContent = describeSource(source);
-        select.appendChild(option);
-    }
+    fillSourceSelect(select, sources);
     body.append(label, select);
 
     setTimeout(() => select.focus(), 100);
@@ -87,6 +112,15 @@ async function confirmCopy(target: activeCourse, source: MaterialCopySourceCours
     const replaced = existing > 0
         ? `This deletes all ${plural(existing, 'document')} in ${target.courseName}, along with its ${layout}, learning objectives and struggle topics, and replaces them with copies from ${source.courseName}.`
         : `This replaces the ${layout}, learning objectives and struggle topics in ${target.courseName} with copies from ${source.courseName}.`;
+
+    const dialog = findDialog(REPLACE_DIALOG_ID);
+    const message = document.getElementById(`${REPLACE_DIALOG_ID}-message`);
+    if (dialog && message) {
+        // textContent: course names are user-entered
+        message.textContent = replaced;
+        return (await showDialogAndWait(dialog)) === 'replace-materials';
+    }
+
     const body = document.createElement('div');
     body.append(paragraph(replaced), paragraph('This cannot be undone.'));
     // Built from text nodes: string content is rendered as HTML and course names are user-entered.

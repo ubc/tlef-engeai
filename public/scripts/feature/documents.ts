@@ -29,7 +29,7 @@ import {
 import { uploadRAGContent } from '../services/rag-service.js';
 import { DocumentUploadModule } from '../services/document-upload-module.js';
 import type { InstructorStruggleTopic, UploadResult } from '../types.js';
-import { showConfirmModal, openUploadModal, openStruggleTopicsReviewModal, openLearningObjectivesEditModal, openDivisionReorderModal, showSimpleErrorModal, showUploadLoadingModal, showInputModal, showSuccessModal, showErrorModal, showTitleUpdateLoadingModal, showDeletionSuccessModal, closeModal, showCustomModal } from '../ui/modal-overlay.js';
+import { openUploadModal, openStruggleTopicsReviewModal, openLearningObjectivesEditModal, openDivisionReorderModal, showSimpleErrorModal, showUploadLoadingModal, showInputModal, showSuccessModal, showErrorModal, showTitleUpdateLoadingModal, showDeletionSuccessModal, closeModal, showCustomModal } from '../ui/modal-overlay.js';
 import { installInvokerCommandFallback, onDialogOpenCommand, showDialogAndWait } from '../ui/dialog.js';
 import { buildCatalogSectionForItem } from './catalog-section.js';
 import { showToast, showSuccessToast } from '../ui/toast-notification.js';
@@ -51,10 +51,10 @@ function setSchedulePanelError(el: HTMLElement, message: string): void {
 const DELETE_DIALOG_ID = 'documents-delete-dialog';
 
 /** What a delete button removes; the dialog reads it to word the confirmation and pick the request. */
-type DeleteDialogKind = 'instance' | 'section' | 'material';
+type DeleteDialogKind = 'instance' | 'section' | 'material' | 'all-documents';
 
-/** Listeners on the delete dialog from the last page init, removed when the page initializes again. */
-let deleteDialogListeners: AbortController | null = null;
+/** Listeners on the page's dialogs from the last page init, removed when the page initializes again. */
+let dialogListeners: AbortController | null = null;
 
 /**
  * setDeleteDialogInvoker — makes `button` open the shared delete dialog for `kind`.
@@ -120,24 +120,32 @@ async function showDeletionResultDialog(
     await showDialogAndWait(dialog);
 }
 
-/** Shared error dialog in documents-instructor.html. */
-const ERROR_DIALOG_ID = 'documents-error-dialog';
+/** Shared message dialog in documents-instructor.html. */
+const MESSAGE_DIALOG_ID = 'documents-message-dialog';
+
+/** Publish dialogs in documents-instructor.html; a week's status button opens the one for its state. */
+const PUBLISH_DIALOG_ID = 'publish-dialog';
+const SCHEDULED_PUBLISH_DIALOG_ID = 'scheduled-publish-dialog';
+const CANCEL_SCHEDULE_DIALOG_ID = 'cancel-schedule-dialog';
+const MOVE_TO_DRAFT_DIALOG_ID = 'move-to-draft-dialog';
 
 /**
- * showDocumentsErrorDialog — reports a failed request and resolves once the instructor closes
- * the report. Focus starts on its heading and returns to the triggering control afterwards.
+ * showDocumentsMessageDialog — shows a short message (e.g. a failed request) and resolves once the
+ * instructor closes it. Focus starts on its heading and returns to the previous control afterwards.
+ * Being a native dialog, it stacks above any other open dialog; a ModalOverlay would sit beneath
+ * one and be unusable.
  *
  * @param title - Dialog heading
- * @param message - What went wrong; shown as text, never HTML
+ * @param message - The message; shown as text, never HTML
  */
-async function showDocumentsErrorDialog(title: string, message: string): Promise<void> {
-    const dialog = document.getElementById(ERROR_DIALOG_ID);
+async function showDocumentsMessageDialog(title: string, message: string): Promise<void> {
+    const dialog = document.getElementById(MESSAGE_DIALOG_ID);
     if (!(dialog instanceof HTMLDialogElement)) {
         await showSimpleErrorModal(message, title);
         return;
     }
-    const heading = document.getElementById(`${ERROR_DIALOG_ID}-heading`);
-    const messageEl = document.getElementById(`${ERROR_DIALOG_ID}-message`);
+    const heading = document.getElementById(`${MESSAGE_DIALOG_ID}-heading`);
+    const messageEl = document.getElementById(`${MESSAGE_DIALOG_ID}-message`);
     if (heading) heading.textContent = title;
     if (messageEl) messageEl.textContent = message;
     await showDialogAndWait(dialog);
@@ -338,108 +346,82 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         return new Date(y, mo - 1, day, hour24, minute, 0, 0);
     }
 
-    /**
-     * Shared date/time row controls for publish modals (draft schedule and reschedule).
-     */
-    function createScheduleDateTimeControls(
-        tw: TopicOrWeekInstance,
-        idSuffix: string
-    ): {
+    /** The date/time controls inside a publish dialog (`{prefix}-date`, `{prefix}-hour`, …). */
+    interface ScheduleControls {
+        trigger: HTMLButtonElement;
         panel: HTMLElement;
         dateInput: HTMLInputElement;
         hourSel: HTMLSelectElement;
         minSel: HTMLSelectElement;
         amPm: HTMLSelectElement;
         errEl: HTMLElement;
-    } {
-        const panel = document.createElement('div');
-        panel.className = 'publish-modal-schedule-panel';
+    }
 
-        const dateRow = document.createElement('div');
-        dateRow.style.display = 'flex';
-        dateRow.style.flexDirection = 'column';
-        dateRow.style.gap = '4px';
-        const dateLabel = document.createElement('label');
-        dateLabel.textContent = 'Date';
-        dateLabel.setAttribute('for', `sched-date-${idSuffix}`);
-        const dateInput = document.createElement('input');
-        dateInput.type = 'date';
-        dateInput.id = `sched-date-${idSuffix}`;
-        dateInput.className = 'modal-input-field';
-        dateInput.style.width = '100%';
-        dateRow.appendChild(dateLabel);
-        dateRow.appendChild(dateInput);
-        panel.appendChild(dateRow);
+    /**
+     * Finds a publish dialog's schedule controls in documents-instructor.html and fills the hour
+     * and minute options the first time.
+     *
+     * @param prefix - The dialog id the controls' ids start with
+     */
+    function getScheduleControls(prefix: string): ScheduleControls | null {
+        const byId = <T extends HTMLElement>(suffix: string) => document.getElementById(`${prefix}-${suffix}`) as T | null;
+        const trigger = byId<HTMLButtonElement>('schedule-trigger');
+        const panel = byId<HTMLElement>('schedule-panel');
+        const dateInput = byId<HTMLInputElement>('date');
+        const hourSel = byId<HTMLSelectElement>('hour');
+        const minSel = byId<HTMLSelectElement>('minute');
+        const amPm = byId<HTMLSelectElement>('ampm');
+        const errEl = byId<HTMLElement>('schedule-error');
+        if (!trigger || !panel || !dateInput || !hourSel || !minSel || !amPm || !errEl) return null;
 
-        const timeRow = document.createElement('div');
-        timeRow.style.display = 'flex';
-        timeRow.style.flexWrap = 'wrap';
-        timeRow.style.alignItems = 'center';
-        timeRow.style.gap = '8px';
-        const timeLbl = document.createElement('span');
-        timeLbl.textContent = 'Time';
-        timeRow.appendChild(timeLbl);
-
-        const hourSel = document.createElement('select');
-        hourSel.className = 'modal-input-field';
-        for (let hr = 1; hr <= 12; hr++) {
-            const opt = document.createElement('option');
-            opt.value = String(hr);
-            opt.textContent = String(hr);
-            hourSel.appendChild(opt);
+        if (hourSel.options.length === 0) {
+            for (let hr = 1; hr <= 12; hr++) {
+                hourSel.add(new Option(String(hr), String(hr)));
+            }
+            for (let m = 0; m < 60; m++) {
+                minSel.add(new Option(m < 10 ? `0${m}` : String(m), String(m)));
+            }
         }
+        return { trigger, panel, dateInput, hourSel, minSel, amPm, errEl };
+    }
 
-        const minSel = document.createElement('select');
-        minSel.className = 'modal-input-field';
-        for (let m = 0; m < 60; m++) {
-            const opt = document.createElement('option');
-            const label = m < 10 ? `0${m}` : String(m);
-            opt.value = String(m);
-            opt.textContent = label;
-            minSel.appendChild(opt);
-        }
-
-        const amPm = document.createElement('select');
-        amPm.className = 'modal-input-field';
-        const amOpt = document.createElement('option');
-        amOpt.value = 'am';
-        amOpt.textContent = 'AM';
-        const pmOpt = document.createElement('option');
-        pmOpt.value = 'pm';
-        pmOpt.textContent = 'PM';
-        amPm.appendChild(amOpt);
-        amPm.appendChild(pmOpt);
-
-        timeRow.appendChild(hourSel);
-        timeRow.appendChild(document.createTextNode(':'));
-        timeRow.appendChild(minSel);
-        timeRow.appendChild(amPm);
-        panel.appendChild(timeRow);
-
-        const existing = getScheduledDate(tw);
-        const base = existing ?? new Date(Date.now() + MIN_SCHEDULE_LEAD_MS + 120_000);
-        const y = base.getFullYear();
+    /** Sets the controls to `tw`'s scheduled time, or a couple of minutes from now, and clears errors. */
+    function resetScheduleControls(controls: ScheduleControls, tw: TopicOrWeekInstance): void {
+        const base = getScheduledDate(tw) ?? new Date(Date.now() + MIN_SCHEDULE_LEAD_MS + 120_000);
         const mo = String(base.getMonth() + 1).padStart(2, '0');
         const d = String(base.getDate()).padStart(2, '0');
-        dateInput.value = `${y}-${mo}-${d}`;
+        controls.dateInput.value = `${base.getFullYear()}-${mo}-${d}`;
         const h24 = base.getHours();
-        const isPmInit = h24 >= 12;
-        let h12 = h24 % 12;
-        if (h12 === 0) h12 = 12;
-        hourSel.value = String(h12);
-        minSel.value = String(base.getMinutes());
-        amPm.value = isPmInit ? 'pm' : 'am';
+        controls.hourSel.value = String(h24 % 12 === 0 ? 12 : h24 % 12);
+        controls.minSel.value = String(base.getMinutes());
+        controls.amPm.value = h24 >= 12 ? 'pm' : 'am';
+        setSchedulePanelError(controls.errEl, '');
+    }
 
-        const errEl = document.createElement('p');
-        errEl.className = 'publish-modal-schedule-error';
-        errEl.setAttribute('aria-live', 'polite');
-        errEl.style.color = 'var(--color-eng-red, #c00)';
-        errEl.style.fontSize = '0.875rem';
-        errEl.style.margin = '0';
-        setSchedulePanelError(errEl, '');
-        panel.appendChild(errEl);
+    function setSchedulePanelOpen(controls: ScheduleControls, open: boolean): void {
+        controls.trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+        controls.panel.classList.toggle('publish-modal-schedule-panel--open', open);
+        if (!open) setSchedulePanelError(controls.errEl, '');
+    }
 
-        return { panel, dateInput, hourSel, minSel, amPm, errEl };
+    /** The chosen time, or `null` after showing why it can't be used. */
+    function readScheduleTime(controls: ScheduleControls): Date | null {
+        setSchedulePanelError(controls.errEl, '');
+        const when = buildLocalDateFromParts(
+            controls.dateInput.value,
+            parseInt(controls.hourSel.value, 10),
+            parseInt(controls.minSel.value, 10),
+            controls.amPm.value === 'pm'
+        );
+        if (!when) {
+            setSchedulePanelError(controls.errEl, 'Please choose a valid date and time.');
+            return null;
+        }
+        if (when.getTime() < Date.now() + MIN_SCHEDULE_LEAD_MS) {
+            setSchedulePanelError(controls.errEl, 'Choose a time at least one minute from now.');
+            return null;
+        }
+        return when;
     }
 
     function mergeTopicFromServerResponse(tw: TopicOrWeekInstance, data: Record<string, unknown>): void {
@@ -456,31 +438,20 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         }
     }
 
-    function buildPublishSummaryBody(tw: TopicOrWeekInstance, mode: 'publish' | 'unpublish'): HTMLElement {
-        const wrap = document.createElement('div');
-        wrap.style.lineHeight = '1.5';
-        const p = document.createElement('p');
-        p.style.marginBottom = '0.75rem';
-        p.textContent =
-            mode === 'publish'
-                ? 'Students will see this week or topic in the course when it is published.'
-                : 'Students will no longer see this week or topic until you publish it again.';
-        wrap.appendChild(p);
-        const h = document.createElement('p');
-        h.style.fontWeight = '600';
-        h.style.marginBottom = '0.35rem';
-        h.textContent = tw.title;
-        wrap.appendChild(h);
-        const ul = document.createElement('ul');
-        ul.style.margin = '0';
-        ul.style.paddingLeft = '1.25rem';
-        for (const item of tw.items) {
-            const li = document.createElement('li');
-            li.textContent = item.itemTitle || item.title || 'Untitled section';
-            ul.appendChild(li);
+    /** Fills a publish dialog's week/topic name and section list (`{prefix}-name`, `{prefix}-sections`). */
+    function fillPublishSummary(prefix: string, tw: TopicOrWeekInstance): void {
+        const name = document.getElementById(`${prefix}-name`);
+        const sections = document.getElementById(`${prefix}-sections`);
+        if (name) name.textContent = tw.title;
+        if (sections) {
+            sections.replaceChildren(
+                ...tw.items.map((item) => {
+                    const li = document.createElement('li');
+                    li.textContent = item.itemTitle || item.title || 'Untitled section';
+                    return li;
+                })
+            );
         }
-        wrap.appendChild(ul);
-        return wrap;
     }
 
     function syncTopicOrWeekPublishHeader(wrapper: HTMLElement, tw: TopicOrWeekInstance): void {
@@ -492,6 +463,13 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const published = !!tw.published;
         const sched = getScheduledDate(tw);
         const isScheduled = !published && sched !== null;
+
+        // The button opens the dialog for the week's current state
+        pubBtn.setAttribute(
+            'commandfor',
+            published ? MOVE_TO_DRAFT_DIALOG_ID : isScheduled ? SCHEDULED_PUBLISH_DIALOG_ID : PUBLISH_DIALOG_ID
+        );
+        pubBtn.setAttribute('command', 'show-modal');
 
         pubBtn.classList.remove('status-published', 'status-draft', 'status-scheduled');
         if (published) {
@@ -543,37 +521,10 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     }
 
     function showScheduleComingSoonModal(): void {
-        showCustomModal({
-            type: 'info',
-            title: 'Scheduled Publishing Coming Soon',
-            content: createComingSoonContent(),
-            maxWidth: '480px',
-            buttons: [
-                { text: 'Got it', type: 'primary', closeOnClick: true }
-            ]
-        });
-    }
-
-    function createComingSoonContent(): HTMLElement {
-        const wrapper = document.createElement('div');
-        wrapper.style.display = 'flex';
-        wrapper.style.flexDirection = 'column';
-        wrapper.style.gap = '1rem';
-
-        const message = document.createElement('p');
-        message.style.margin = '0';
-        message.style.lineHeight = '1.6';
-        message.textContent = 'We\'re working on adding the ability to schedule when your content publishes. For now, you can publish content immediately.';
-        wrapper.appendChild(message);
-
-        const icon = document.createElement('i');
-        icon.setAttribute('data-feather', 'clock');
-        icon.style.width = '24px';
-        icon.style.height = '24px';
-        icon.style.marginTop = '0.5rem';
-        wrapper.appendChild(icon);
-
-        return wrapper;
+        void showDocumentsMessageDialog(
+            'Scheduled Publishing Coming Soon',
+            'We\'re working on adding the ability to schedule when your content publishes. For now, you can publish content immediately.'
+        );
     }
 
     async function patchTopicSchedule(tw: TopicOrWeekInstance, isoOrNull: string | null): Promise<{ ok: boolean; error?: string }> {
@@ -612,333 +563,272 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         return { ok: true };
     }
 
-    function updatePublishDraftPrimaryLabel(schedulePanelOpen: boolean, tw: TopicOrWeekInstance): void {
-        const primary = document.querySelector('.modal-overlay.show .modal-btn-primary') as HTMLButtonElement | null;
+    // ----- Publish dialogs: native <dialog>s in documents-instructor.html -----
+    // A week's status button opens the dialog for its state (see syncTopicOrWeekPublishHeader);
+    // each dialog's `command` handler fills it in for that week, and its buttons act on it.
+
+    /** The week the open publish dialog is about. */
+    interface PublishTarget {
+        tw: TopicOrWeekInstance;
+        wrapper: HTMLElement;
+    }
+
+    let publishTarget: PublishTarget | null = null;
+    let scheduledTarget: PublishTarget | null = null;
+    let moveToDraftTarget: PublishTarget | null = null;
+
+    /** The week a status button belongs to. */
+    function findPublishTarget(invoker: Element): PublishTarget | null {
+        const wrapper = invoker.closest<HTMLElement>('.topic-or-week-instance');
+        const id = wrapper?.querySelector('.topic-or-week-header')?.getAttribute('data-topic-or-week-instance');
+        const tw = courseData.find((d) => d.id === id);
+        return wrapper && tw ? { tw, wrapper } : null;
+    }
+
+    /** Matches the publish dialog's main button to whether its schedule panel is open. */
+    function syncPublishPrimaryLabel(controls: ScheduleControls, tw: TopicOrWeekInstance): void {
+        const primary = document.getElementById(`${PUBLISH_DIALOG_ID}-primary`);
         if (!primary) return;
-        if (!schedulePanelOpen) {
-            primary.textContent = 'Publish now';
-            return;
-        }
-        primary.textContent = getScheduledDate(tw) ? 'Update schedule' : 'Schedule now';
+        const open = controls.trigger.getAttribute('aria-expanded') === 'true';
+        primary.textContent = !open ? 'Publish now' : getScheduledDate(tw) ? 'Update schedule' : 'Schedule now';
     }
 
     /**
-     * Modal when a draft topic/week already has a scheduled publish: show summary, reschedule (blue), cancel, close.
+     * Fills "Publish topic/week?" for `target`.
+     *
+     * @param openSchedulePanel - Start with "Schedule for later" expanded (e.g. "Publish later" after an upload)
      */
-    async function openScheduledTopicModal(tw: TopicOrWeekInstance, wrapper: HTMLElement): Promise<void> {
-        const sched = getScheduledDate(tw);
-        if (!sched) {
-            await openPublishDraftModal(tw, wrapper);
-            return;
-        }
-
-        const bodyWrap = document.createElement('div');
-        bodyWrap.className = 'publish-draft-modal-body';
-
-        const intro = document.createElement('p');
-        intro.style.marginBottom = '0.75rem';
-        intro.textContent =
-            'This topic/week is scheduled to publish automatically. You can reschedule or cancel the scheduled publish.';
-        bodyWrap.appendChild(intro);
-
-        const h = document.createElement('p');
-        h.style.fontWeight = '600';
-        h.style.marginBottom = '0.35rem';
-        h.textContent = tw.title;
-        bodyWrap.appendChild(h);
-
-        const summary = document.createElement('p');
-        summary.className = 'scheduled-publish-summary-line';
-        summary.style.marginBottom = '0.75rem';
-        summary.style.fontSize = '0.95rem';
-        summary.textContent = `Scheduled for: ${formatScheduleLine(sched)}`;
-        bodyWrap.appendChild(summary);
-
-        let schedulePanelOpen = false;
-        const rescheduleBtn = document.createElement('button');
-        rescheduleBtn.type = 'button';
-        rescheduleBtn.className = 'schedule-reschedule-trigger';
-        rescheduleBtn.setAttribute('aria-expanded', 'false');
-        const rescheduleIcon = document.createElement('i');
-        rescheduleIcon.setAttribute('data-feather', 'calendar');
-        const rescheduleLabel = document.createElement('span');
-        rescheduleLabel.textContent = 'Reschedule';
-        rescheduleBtn.appendChild(rescheduleIcon);
-        rescheduleBtn.appendChild(rescheduleLabel);
-        bodyWrap.appendChild(rescheduleBtn);
-
-        const controls = createScheduleDateTimeControls(tw, `${tw.id}-resched`);
-        const { panel, dateInput, hourSel, minSel, amPm, errEl } = controls;
-
-        bodyWrap.appendChild(panel);
-
-        function syncScheduledPublishFooterMorph(): void {
-            const footer = document.querySelector(
-                '.modal-overlay.show .modal-container.modal-scheduled-publish .modal-footer'
-            ) as HTMLElement | null;
-            const morphBtn = footer?.children[1] as HTMLButtonElement | undefined;
-            if (!morphBtn) return;
-            if (schedulePanelOpen) {
-                morphBtn.textContent = 'Apply new time';
-                morphBtn.className = 'modal-btn modal-btn-primary';
-                morphBtn.setAttribute('data-action', 'apply-new-time');
-            } else {
-                morphBtn.textContent = 'Cancel schedule';
-                morphBtn.className = 'modal-btn modal-btn-danger';
-                morphBtn.setAttribute('data-action', 'cancel-schedule');
-            }
-        }
-
-        async function applyRescheduledTime(): Promise<void> {
-            if (!SCHEDULED_PUBLISH_ENABLED) {
-                showScheduleComingSoonModal();
-                return;
-            }
-            setSchedulePanelError(errEl, '');
-            const when = buildLocalDateFromParts(
-                dateInput.value,
-                parseInt(hourSel.value, 10),
-                parseInt(minSel.value, 10),
-                amPm.value === 'pm'
-            );
-            if (!when) {
-                setSchedulePanelError(errEl, 'Please choose a valid date and time.');
-                return;
-            }
-            if (when.getTime() < Date.now() + MIN_SCHEDULE_LEAD_MS) {
-                setSchedulePanelError(errEl, 'Choose a time at least one minute from now.');
-                return;
-            }
-            const r = await patchTopicSchedule(tw, when.toISOString());
-            if (!r.ok) {
-                setSchedulePanelError(errEl, r.error || 'Failed to save schedule.');
-                return;
-            }
-            syncTopicOrWeekPublishHeader(wrapper, tw);
-            renderFeatherIcons();
-            closeModal('scheduled-topic');
-            showSuccessToastAfterDialogClose(`Updated schedule to ${formatScheduleLine(when)}.`);
-        }
-
-        rescheduleBtn.addEventListener('click', () => {
-            schedulePanelOpen = !schedulePanelOpen;
-            rescheduleBtn.setAttribute('aria-expanded', schedulePanelOpen ? 'true' : 'false');
-            panel.classList.toggle('publish-modal-schedule-panel--open', schedulePanelOpen);
-            if (!schedulePanelOpen) {
-                setSchedulePanelError(errEl, '');
-            }
-            syncScheduledPublishFooterMorph();
-            queueMicrotask(() => renderFeatherIcons());
-        });
-
-        const modalPromise = showCustomModal({
-            type: 'info',
-            title: 'Scheduled publish',
-            content: bodyWrap,
-            maxWidth: '480px',
-            customClass: 'modal-scheduled-publish',
-            buttons: [
-                { text: 'Close', type: 'secondary', closeOnClick: true },
-                {
-                    text: 'Cancel schedule',
-                    type: 'danger',
-                    closeOnClick: false,
-                    action: async () => {
-                        if (schedulePanelOpen) {
-                            await applyRescheduledTime();
-                            return;
-                        }
-                        const result = await showConfirmModal(
-                            'Cancel schedule?',
-                            'This removes the scheduled publish time. You can publish or set a new time later.',
-                            'Cancel schedule',
-                            'Keep',
-                            'danger'
-                        );
-                        if (result.action !== 'cancel-schedule') return;
-                        const r = await patchTopicSchedule(tw, null);
-                        if (!r.ok) {
-                            await showSimpleErrorModal(r.error || 'Could not cancel schedule.', 'Schedule');
-                            return;
-                        }
-                        syncTopicOrWeekPublishHeader(wrapper, tw);
-                        renderFeatherIcons();
-                        closeModal('scheduled-topic');
-                        showSuccessToastAfterDialogClose('Scheduled publish cancelled.');
-                    }
-                }
-            ]
-        });
-
-        queueMicrotask(() => renderFeatherIcons());
-        await modalPromise;
+    function preparePublishDialog(target: PublishTarget, openSchedulePanel = false): boolean {
+        const controls = getScheduleControls(PUBLISH_DIALOG_ID);
+        if (!controls) return false;
+        publishTarget = target;
+        fillPublishSummary(PUBLISH_DIALOG_ID, target.tw);
+        resetScheduleControls(controls, target.tw);
+        setSchedulePanelOpen(controls, openSchedulePanel || getScheduledDate(target.tw) !== null);
+        syncPublishPrimaryLabel(controls, target.tw);
+        return true;
     }
 
+    /** Fills "Scheduled publish" for `target`; `false` when it is no longer scheduled. */
+    function prepareScheduledPublishDialog(target: PublishTarget): boolean {
+        const sched = getScheduledDate(target.tw);
+        const controls = getScheduleControls(SCHEDULED_PUBLISH_DIALOG_ID);
+        if (!sched || !controls) return false;
+        scheduledTarget = target;
+        const name = document.getElementById(`${SCHEDULED_PUBLISH_DIALOG_ID}-name`);
+        const when = document.getElementById(`${SCHEDULED_PUBLISH_DIALOG_ID}-when`);
+        if (name) name.textContent = target.tw.title;
+        if (when) when.textContent = `Scheduled for: ${formatScheduleLine(sched)}`;
+        resetScheduleControls(controls, target.tw);
+        setScheduledPanelOpen(controls, false);
+        return true;
+    }
+
+    /** Opening "Reschedule" swaps "Cancel schedule" for "Apply new time". */
+    function setScheduledPanelOpen(controls: ScheduleControls, open: boolean): void {
+        setSchedulePanelOpen(controls, open);
+        const cancelBtn = document.getElementById(`${SCHEDULED_PUBLISH_DIALOG_ID}-cancel-schedule`);
+        const applyBtn = document.getElementById(`${SCHEDULED_PUBLISH_DIALOG_ID}-apply`);
+        if (cancelBtn) cancelBtn.hidden = open;
+        if (applyBtn) applyBtn.hidden = !open;
+    }
+
+    function prepareMoveToDraftDialog(target: PublishTarget): boolean {
+        moveToDraftTarget = target;
+        fillPublishSummary(MOVE_TO_DRAFT_DIALOG_ID, target.tw);
+        return true;
+    }
+
+    /**
+     * Opens "Publish topic/week?" from code (after an upload) and resolves once it closes.
+     *
+     * @param options.openSchedulePanel - Start with "Schedule for later" expanded
+     */
     async function openPublishDraftModal(
         tw: TopicOrWeekInstance,
         wrapper: HTMLElement,
         options: { openSchedulePanel?: boolean } = {}
     ): Promise<void> {
-        let schedulePanelOpen = options.openSchedulePanel === true || getScheduledDate(tw) !== null;
-
-        const bodyWrap = document.createElement('div');
-        bodyWrap.className = 'publish-draft-modal-body';
-
-        const intro = document.createElement('p');
-        intro.style.marginBottom = '0.75rem';
-        intro.textContent =
-            'Students will see this week or topic in the course when it is published.';
-        bodyWrap.appendChild(intro);
-
-        const h = document.createElement('p');
-        h.style.fontWeight = '600';
-        h.style.marginBottom = '0.35rem';
-        h.textContent = tw.title;
-        bodyWrap.appendChild(h);
-
-        const ul = document.createElement('ul');
-        ul.style.margin = '0';
-        ul.style.paddingLeft = '1.25rem';
-        for (const item of tw.items) {
-            const li = document.createElement('li');
-            li.textContent = item.itemTitle || item.title || 'Untitled section';
-            ul.appendChild(li);
-        }
-        bodyWrap.appendChild(ul);
-
-        const scheduleTrigger = document.createElement('button');
-        scheduleTrigger.type = 'button';
-        scheduleTrigger.className = 'publish-modal-calendar-trigger';
-        scheduleTrigger.setAttribute('aria-expanded', schedulePanelOpen ? 'true' : 'false');
-        const calIcon = document.createElement('i');
-        calIcon.setAttribute('data-feather', 'calendar');
-        const calLabel = document.createElement('span');
-        calLabel.textContent = 'Schedule for later';
-        scheduleTrigger.appendChild(calIcon);
-        scheduleTrigger.appendChild(calLabel);
-        bodyWrap.appendChild(scheduleTrigger);
-
-        const controlsDraft = createScheduleDateTimeControls(tw, `${tw.id}-draft`);
-        const panel = controlsDraft.panel;
-        if (schedulePanelOpen) {
-            panel.classList.add('publish-modal-schedule-panel--open');
-        }
-        const { dateInput, hourSel, minSel, amPm, errEl } = controlsDraft;
-        bodyWrap.appendChild(panel);
-
-        const initialPrimary =
-            schedulePanelOpen ? (getScheduledDate(tw) ? 'Update schedule' : 'Schedule now') : 'Publish now';
-
-        scheduleTrigger.addEventListener('click', () => {
-            schedulePanelOpen = !schedulePanelOpen;
-            scheduleTrigger.setAttribute('aria-expanded', schedulePanelOpen ? 'true' : 'false');
-            panel.classList.toggle('publish-modal-schedule-panel--open', schedulePanelOpen);
-            if (!schedulePanelOpen) {
-                setSchedulePanelError(errEl, '');
-            }
-            updatePublishDraftPrimaryLabel(schedulePanelOpen, tw);
-        });
-
-        const modalPromise = showCustomModal({
-            type: 'info',
-            title: 'Publish topic/week?',
-            content: bodyWrap,
-            maxWidth: '480px',
-            buttons: [
-                { text: 'Cancel', type: 'secondary', closeOnClick: true },
-                {
-                    text: initialPrimary,
-                    type: 'primary',
-                    closeOnClick: false,
-                    action: async () => {
-                        if (!schedulePanelOpen) {
-                            const r = await patchTopicPublished(tw, true);
-                            if (!r.ok) {
-                                await showSimpleErrorModal(r.error || 'Failed to publish.', 'Publish');
-                                return;
-                            }
-                            syncTopicOrWeekPublishHeader(wrapper, tw);
-                            renderFeatherIcons();
-                            // Close first: screen readers ignore the toast region while an aria-modal dialog is open
-                            closeModal('publish-now');
-                            showSuccessToastAfterDialogClose(`Published "${tw.title}".`);
-                            return;
-                        }
-
-                        // Schedule panel is open - user clicked "Schedule now" button
-                        if (!SCHEDULED_PUBLISH_ENABLED) {
-                            showScheduleComingSoonModal();
-                            return;
-                        }
-
-                        setSchedulePanelError(errEl, '');
-                        const when = buildLocalDateFromParts(
-                            dateInput.value,
-                            parseInt(hourSel.value, 10),
-                            parseInt(minSel.value, 10),
-                            amPm.value === 'pm'
-                        );
-                        if (!when) {
-                            setSchedulePanelError(errEl, 'Please choose a valid date and time.');
-                            return;
-                        }
-                        if (when.getTime() < Date.now() + MIN_SCHEDULE_LEAD_MS) {
-                            setSchedulePanelError(errEl, 'Choose a time at least one minute from now.');
-                            return;
-                        }
-                        const r = await patchTopicSchedule(tw, when.toISOString());
-                        if (!r.ok) {
-                            setSchedulePanelError(errEl, r.error || 'Failed to save schedule.');
-                            return;
-                        }
-                        syncTopicOrWeekPublishHeader(wrapper, tw);
-                        renderFeatherIcons();
-                        closeModal('publish-now');
-                        showSuccessToastAfterDialogClose(`Scheduled "${tw.title}" to publish ${formatScheduleLine(when)}.`);
-                    }
-                }
-            ]
-        });
-
-        queueMicrotask(() => {
-            renderFeatherIcons();
-            updatePublishDraftPrimaryLabel(schedulePanelOpen, tw);
-        });
-
-        await modalPromise;
+        const dialog = document.getElementById(PUBLISH_DIALOG_ID);
+        if (!(dialog instanceof HTMLDialogElement)) return;
+        if (!preparePublishDialog({ tw, wrapper }, options.openSchedulePanel === true)) return;
+        await showDialogAndWait(dialog);
     }
 
-    async function openPublishDecisionModal(tw: TopicOrWeekInstance, wrapper: HTMLElement): Promise<void> {
-        if (tw.published) {
-            const body = buildPublishSummaryBody(tw, 'unpublish');
-            const result = await showCustomModal({
-                type: 'warning',
-                title: 'Move to draft?',
-                content: body,
-                maxWidth: '480px',
-                buttons: [
-                    { text: 'Cancel', type: 'secondary', closeOnClick: true },
-                    { text: 'Move to draft', type: 'danger', closeOnClick: true }
-                ]
-            });
-            if (result.action !== 'move-to-draft') return;
-            const r = await patchTopicPublished(tw, false);
-            if (!r.ok) {
-                await showSimpleErrorModal(r.error || 'Failed to update.', 'Publish');
-                return;
-            }
-            syncTopicOrWeekPublishHeader(wrapper, tw);
-            renderFeatherIcons();
-            // The dialog closed before the request; a fast response would otherwise land on its focus change
-            showSuccessToastAfterDialogClose(`"${tw.title}" is now a draft.`);
+    /**
+     * Wires the four publish dialogs. Listeners stop when `signal` aborts (the page re-initializes).
+     */
+    function wirePublishDialogs(signal: AbortSignal): void {
+        const publishDialog = document.getElementById(PUBLISH_DIALOG_ID);
+        const scheduledDialog = document.getElementById(SCHEDULED_PUBLISH_DIALOG_ID);
+        const cancelScheduleDialog = document.getElementById(CANCEL_SCHEDULE_DIALOG_ID);
+        const moveToDraftDialog = document.getElementById(MOVE_TO_DRAFT_DIALOG_ID);
+        const publishControls = getScheduleControls(PUBLISH_DIALOG_ID);
+        const scheduledControls = getScheduleControls(SCHEDULED_PUBLISH_DIALOG_ID);
+        const publishPrimary = document.getElementById(`${PUBLISH_DIALOG_ID}-primary`) as HTMLButtonElement | null;
+        const applyBtn = document.getElementById(`${SCHEDULED_PUBLISH_DIALOG_ID}-apply`) as HTMLButtonElement | null;
+        if (
+            !(publishDialog instanceof HTMLDialogElement) ||
+            !(scheduledDialog instanceof HTMLDialogElement) ||
+            !(cancelScheduleDialog instanceof HTMLDialogElement) ||
+            !(moveToDraftDialog instanceof HTMLDialogElement) ||
+            !publishControls ||
+            !scheduledControls ||
+            !publishPrimary ||
+            !applyBtn
+        ) {
+            console.error('Publish dialog markup is missing from the Documents page.');
             return;
         }
 
-        if (getScheduledDate(tw)) {
-            await openScheduledTopicModal(tw, wrapper);
-            return;
-        }
-        await openPublishDraftModal(tw, wrapper);
+        // 1. Status buttons open the dialog for their week
+        const openFor = (prepare: (target: PublishTarget) => boolean) => (invoker: HTMLButtonElement) => {
+            const target = findPublishTarget(invoker);
+            return target ? prepare(target) : false;
+        };
+        onDialogOpenCommand(publishDialog, openFor((t) => preparePublishDialog(t)), signal);
+        onDialogOpenCommand(scheduledDialog, openFor(prepareScheduledPublishDialog), signal);
+        onDialogOpenCommand(moveToDraftDialog, openFor(prepareMoveToDraftDialog), signal);
+
+        // 2. "Publish topic/week?": publish now, or schedule when the panel is open
+        publishControls.trigger.addEventListener(
+            'click',
+            () => {
+                const open = publishControls.trigger.getAttribute('aria-expanded') !== 'true';
+                setSchedulePanelOpen(publishControls, open);
+                if (publishTarget) syncPublishPrimaryLabel(publishControls, publishTarget.tw);
+            },
+            { signal }
+        );
+        publishPrimary.addEventListener(
+            'click',
+            async () => {
+                const target = publishTarget;
+                if (!target) return;
+                const { tw, wrapper } = target;
+                const scheduling = publishControls.trigger.getAttribute('aria-expanded') === 'true';
+                let when: Date | null = null;
+                if (scheduling) {
+                    if (!SCHEDULED_PUBLISH_ENABLED) {
+                        showScheduleComingSoonModal();
+                        return;
+                    }
+                    when = readScheduleTime(publishControls);
+                    if (!when) return;
+                }
+
+                publishPrimary.disabled = true;
+                try {
+                    if (when) {
+                        const r = await patchTopicSchedule(tw, when.toISOString());
+                        if (!r.ok) {
+                            setSchedulePanelError(publishControls.errEl, r.error || 'Failed to save schedule.');
+                            return;
+                        }
+                    } else {
+                        const r = await patchTopicPublished(tw, true);
+                        if (!r.ok) {
+                            await showDocumentsMessageDialog('Publish', r.error || 'Failed to publish.');
+                            return;
+                        }
+                    }
+                    syncTopicOrWeekPublishHeader(wrapper, tw);
+                    renderFeatherIcons();
+                    // Close first: screen readers ignore the toast region while a modal dialog is open
+                    publishDialog.close();
+                    showSuccessToastAfterDialogClose(
+                        when ? `Scheduled "${tw.title}" to publish ${formatScheduleLine(when)}.` : `Published "${tw.title}".`
+                    );
+                } finally {
+                    publishPrimary.disabled = false;
+                }
+            },
+            { signal }
+        );
+
+        // 3. "Scheduled publish": reschedule (Apply new time); Cancel schedule opens its own dialog
+        scheduledControls.trigger.addEventListener(
+            'click',
+            () => {
+                const open = scheduledControls.trigger.getAttribute('aria-expanded') !== 'true';
+                setScheduledPanelOpen(scheduledControls, open);
+            },
+            { signal }
+        );
+        applyBtn.addEventListener(
+            'click',
+            async () => {
+                const target = scheduledTarget;
+                if (!target) return;
+                if (!SCHEDULED_PUBLISH_ENABLED) {
+                    showScheduleComingSoonModal();
+                    return;
+                }
+                const when = readScheduleTime(scheduledControls);
+                if (!when) return;
+                applyBtn.disabled = true;
+                try {
+                    const r = await patchTopicSchedule(target.tw, when.toISOString());
+                    if (!r.ok) {
+                        setSchedulePanelError(scheduledControls.errEl, r.error || 'Failed to save schedule.');
+                        return;
+                    }
+                    syncTopicOrWeekPublishHeader(target.wrapper, target.tw);
+                    renderFeatherIcons();
+                    scheduledDialog.close();
+                    showSuccessToastAfterDialogClose(`Updated schedule to ${formatScheduleLine(when)}.`);
+                } finally {
+                    applyBtn.disabled = false;
+                }
+            },
+            { signal }
+        );
+
+        // 4. "Cancel schedule?": confirmed → remove the schedule, then close "Scheduled publish" too
+        cancelScheduleDialog.addEventListener(
+            'command',
+            () => {
+                cancelScheduleDialog.returnValue = '';
+            },
+            { signal }
+        );
+        cancelScheduleDialog.addEventListener(
+            'close',
+            async () => {
+                const target = scheduledTarget;
+                if (cancelScheduleDialog.returnValue !== 'cancel-schedule' || !target) return;
+                const r = await patchTopicSchedule(target.tw, null);
+                if (!r.ok) {
+                    await showDocumentsMessageDialog('Schedule', r.error || 'Could not cancel schedule.');
+                    return;
+                }
+                syncTopicOrWeekPublishHeader(target.wrapper, target.tw);
+                renderFeatherIcons();
+                scheduledDialog.close();
+                showSuccessToastAfterDialogClose('Scheduled publish cancelled.');
+            },
+            { signal }
+        );
+
+        // 5. "Move to draft?": confirmed → unpublish after the dialog has closed
+        moveToDraftDialog.addEventListener(
+            'close',
+            async () => {
+                const target = moveToDraftTarget;
+                moveToDraftTarget = null;
+                if (moveToDraftDialog.returnValue !== 'move-to-draft' || !target) return;
+                const r = await patchTopicPublished(target.tw, false);
+                if (!r.ok) {
+                    await showDocumentsMessageDialog('Publish', r.error || 'Failed to update.');
+                    return;
+                }
+                syncTopicOrWeekPublishHeader(target.wrapper, target.tw);
+                renderFeatherIcons();
+                // A fast response would otherwise land on the dialog's focus change
+                showSuccessToastAfterDialogClose(`"${target.tw.title}" is now a draft.`);
+            },
+            { signal }
+        );
     }
 
     /**
@@ -1223,10 +1113,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         statusText.textContent = 'Draft';
         publishBtn.appendChild(statusIcon);
         publishBtn.appendChild(statusText);
-        publishBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            void openPublishDecisionModal(instance_topicOrWeek, wrapper);
-        });
+        // Opens the publish dialog for this week's state: commandfor is set in syncTopicOrWeekPublishHeader
 
         // Disclosure: the <summary> holds only the arrow and is named by the week heading;
         // the week's sections live inside <details> so the browser owns open/closed state
@@ -1351,7 +1238,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 if (result.changed) {
                     applyDivisionOrder(result.orderedIds);
                     renderDocumentsPage();
-                    showSuccessToast(
+                    showSuccessToastAfterDialogClose(
                         frameType === 'byWeek' ? 'Week order updated.' : 'Topic order updated.'
                     );
                 }
@@ -1800,12 +1687,15 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
      * the instructor confirms, or `null` (keeping the dialog closed) when the item is gone.
      *
      * Buttons carry: `instance` → `data-topic-or-week-instance-id`; `section` → that plus
-     * `data-content-id`; `material` → `data-material-id`, inside its `.content-item`.
+     * `data-content-id`; `material` → `data-material-id`, inside its `.content-item`;
+     * `all-documents` → nothing more (static buttons in documents-instructor.html).
      */
     function prepareDeleteDialog(invoker: HTMLButtonElement): (() => Promise<void>) | null {
         const kind = invoker.dataset.deleteKind as DeleteDialogKind | undefined;
-        let itemType: string;
-        let itemName: string;
+        let itemType = '';
+        let itemName = '';
+        let heading: string;
+        let message: string;
         let runDelete: () => Promise<void>;
 
         // 1. Find what the button deletes in the current course data
@@ -1837,28 +1727,39 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             itemType = 'Document';
             itemName = material.name || 'this document';
             runDelete = () => deleteAdditionalMaterial(topicOrWeekId, contentId, materialId);
+        } else if (kind === 'all-documents') {
+            runDelete = () => deleteAllDocuments();
         } else {
             return null;
         }
 
         // 2. Word the dialog; textContent because titles are instructor-entered
-        const heading = document.getElementById(`${DELETE_DIALOG_ID}-heading`);
-        const message = document.getElementById(`${DELETE_DIALOG_ID}-message`);
-        if (heading) heading.textContent = `Delete ${itemType}`;
-        if (message) {
-            message.textContent =
-                `Are you sure you want to delete this ${itemType.toLowerCase()} "${itemName}"? This action cannot be undone.`;
+        if (kind === 'all-documents') {
+            heading = 'Delete All Documents';
+            message =
+                `Are you sure you want to delete all documents from the RAG database for the course "${currentClass.courseName}"? This action cannot be undone.`;
+        } else {
+            heading = `Delete ${itemType}`;
+            message = `Are you sure you want to delete this ${itemType.toLowerCase()} "${itemName}"? This action cannot be undone.`;
         }
+        const headingEl = document.getElementById(`${DELETE_DIALOG_ID}-heading`);
+        const messageEl = document.getElementById(`${DELETE_DIALOG_ID}-message`);
+        if (headingEl) headingEl.textContent = heading;
+        if (messageEl) messageEl.textContent = message;
         return runDelete;
     }
+
+    // Native dialogs: listeners from a previous init are dropped before wiring again
+    installInvokerCommandFallback();
+    dialogListeners?.abort();
+    dialogListeners = new AbortController();
+    const dialogSignal = dialogListeners.signal;
+    wirePublishDialogs(dialogSignal);
 
     // Shared delete dialog: opened by commandfor buttons; deletes on close when "Delete" was chosen
     const deleteDialog = document.getElementById(DELETE_DIALOG_ID);
     if (deleteDialog instanceof HTMLDialogElement) {
-        installInvokerCommandFallback();
-        deleteDialogListeners?.abort();
-        deleteDialogListeners = new AbortController();
-        const { signal } = deleteDialogListeners;
+        const signal = dialogSignal;
         let pendingDelete: (() => Promise<void>) | null = null;
 
         onDialogOpenCommand(
@@ -1882,26 +1783,6 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         );
     }
 
-    // Add event listener for delete all documents button
-    const deleteAllDocumentsBtn = document.getElementById('delete-all-documents-btn');
-    if (deleteAllDocumentsBtn) {
-        // Remove any existing event listeners to prevent accumulation
-        const existingDeleteHandler = (deleteAllDocumentsBtn as any)._deleteAllHandler;
-        if (existingDeleteHandler) {
-            deleteAllDocumentsBtn.removeEventListener('click', existingDeleteHandler);
-            // console.log('🔧 Removed existing delete all documents handler'); // 🟢 MEDIUM: Handler management
-        }
-
-        // Create the delete handler function
-        const deleteHandler = async () => {
-            await deleteAllDocuments();
-        };
-
-        // Store the handler reference and add the event listener
-        (deleteAllDocumentsBtn as any)._deleteAllHandler = deleteHandler;
-        deleteAllDocumentsBtn.addEventListener('click', deleteHandler);
-        // console.log('🔧 Added delete all documents handler'); // 🟢 MEDIUM: Handler management
-    }
 
     // COMMENTED OUT: Add event listener for nuclear clear button
     /*
@@ -2021,6 +1902,9 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         overflowItems.forEach((item) => {
             item.addEventListener('click', (e) => {
                 e.stopPropagation();
+                // The menu hides on click, so move focus to its trigger first; a dialog this item
+                // opens returns focus there when it closes
+                (overflowTrigger as HTMLElement).focus();
                 const triggerId = (item as HTMLElement).dataset.triggerId;
                 if (triggerId) {
                     const target = document.getElementById(triggerId);
@@ -2159,8 +2043,10 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                                   topics: refreshedTopics,
                                   onSave: async () => {
                                       await loadStruggleTopics(reviewTopicOrWeekId, reviewItemId);
-                                      showSuccessToast('Struggle topics updated.');
+                                      showSuccessToastAfterDialogClose('Struggle topics updated.');
                                   },
+                                  returnFocus: () =>
+                                      findCatalogEditButton('struggle-topics', reviewTopicOrWeekId, reviewItemId),
                               });
                           }
                     : undefined;
@@ -2724,7 +2610,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const divisionLabel = getDivisionLabel();
 
         if (!courseId) {
-            await showDocumentsErrorDialog('Error', 'Course ID is missing. Cannot delete topic/week instance.');
+            await showDocumentsMessageDialog('Error', 'Course ID is missing. Cannot delete topic/week instance.');
             return;
         }
 
@@ -2775,7 +2661,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         } catch (error) {
             console.error('Error deleting topic/week instance:', error);
             const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
-            await showDocumentsErrorDialog('Error', `Failed to delete ${divisionLabel.toLowerCase()}: ${errorMessage}`);
+            await showDocumentsMessageDialog('Error', `Failed to delete ${divisionLabel.toLowerCase()}: ${errorMessage}`);
         }
     }
 
@@ -3329,6 +3215,21 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         }
     }
 
+    /**
+     * The section's current Edit button for a catalog (rebuilt whenever the section re-renders),
+     * used as the focus target when a catalog dialog closes.
+     */
+    function findCatalogEditButton(
+        kind: 'learning-objectives' | 'struggle-topics',
+        topicOrWeekId: string,
+        contentId: string
+    ): HTMLElement | null {
+        return document.querySelector<HTMLElement>(
+            `.catalog-edit-btn[data-catalog-kind="${CSS.escape(kind)}"]` +
+                `[data-week="${CSS.escape(topicOrWeekId)}"][data-content="${CSS.escape(contentId)}"]`
+        );
+    }
+
     async function openLearningObjectivesEditForSection(topicOrWeekId: string, contentId: string): Promise<void> {
         if (!courseId) {
             await showSimpleErrorModal('Cannot edit learning objectives: Course ID is missing.', 'Edit Learning Objectives');
@@ -3354,8 +3255,9 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             objectives,
             onSave: async () => {
                 await loadLearningObjectives(topicOrWeekId, contentId);
-                showSuccessToast('Learning objectives updated.');
+                showSuccessToastAfterDialogClose('Learning objectives updated.');
             },
+            returnFocus: () => findCatalogEditButton('learning-objectives', topicOrWeekId, contentId),
         });
     }
 
@@ -3385,8 +3287,9 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             topics,
             onSave: async () => {
                 await loadStruggleTopics(topicOrWeekId, contentId);
-                showSuccessToast('Struggle topics updated.');
+                showSuccessToastAfterDialogClose('Struggle topics updated.');
             },
+            returnFocus: () => findCatalogEditButton('struggle-topics', topicOrWeekId, contentId),
         });
     }
 
@@ -3548,24 +3451,11 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     }
 
     /**
-     * Delete all documents from both MongoDB and Qdrant
+     * Deletes all documents from both MongoDB and Qdrant once the instructor has confirmed in the
+     * shared delete dialog.
      */
     async function deleteAllDocuments(): Promise<void> {
         try {
-            // Show confirmation modal
-            const result = await showConfirmModal(
-                'Delete All Documents',
-                `Are you sure you want to delete all documents from the RAG database for the course "${currentClass.courseName}"? This action cannot be undone.`,
-                'Delete',
-                'Cancel',
-                'danger'
-            );
-
-            if (result.action !== 'delete') {
-                console.log('Delete all documents cancelled by user');
-                return;
-            }
-
             console.log('🗑️ Starting wipe of all RAG documents for current course...');
 
             // Use the stored courseId from closure
