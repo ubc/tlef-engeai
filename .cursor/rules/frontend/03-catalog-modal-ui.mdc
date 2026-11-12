@@ -27,7 +27,7 @@ Shared reorder/edit modal used for learning objectives, struggle topics, and top
 
 | Module | Role |
 |--------|------|
-| `catalog-modal-shell.ts` | Overlay chrome, footer, drag helpers; `variant: 'edit' \| 'division'` |
+| `catalog-modal-shell.ts` | Fills and opens the native `<dialog id="catalog-modal">` in `documents-instructor.html` (browser handles focus, Escape, trap); `setBusy`, `signal`, `returnFocus`; drag helpers; `variant: 'edit' \| 'division'` |
 | `catalog-edit-modal.ts` | LO + struggle edit (add, pen, remove, batch save) |
 | `division-reorder-modal.ts` | Top-level topic/week reorder only |
 
@@ -37,7 +37,7 @@ Shared reorder/edit modal used for learning objectives, struggle topics, and top
 2. Page layer (`documents.ts`) updates authoritative state:
    - Division reorder: `applyDivisionOrder(orderedIds)` → sync `courseData` and `currentClass.topicOrWeekInstances` → `renderDocumentsPage()`.
    - LO / struggle: `loadLearningObjectives` / `loadStruggleTopics` → `refreshContentItem`.
-3. Show `showSuccessToast` only when `changed !== false` (division) or after successful catalog save.
+3. Show the success toast (`showSuccessToastAfterDialogClose`, so it lands after the dialog closes) only when `changed !== false` (division) or after successful catalog save.
 4. Modal closes after `onSave` completes.
 
 ## Do not

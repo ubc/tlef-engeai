@@ -6,7 +6,7 @@ import {
     attachRowDragReorder,
     createCatalogModalChrome,
     createDragHandle,
-    getCatalogModalMount,
+    getCatalogModalDialog,
     isOrderDirty,
 } from './catalog-modal-shell.js';
 
@@ -47,9 +47,8 @@ function sectionCountLabel(count: number): string {
 }
 
 export async function openDivisionReorderModal(options: DivisionReorderModalOptions): Promise<void> {
-    const mount = getCatalogModalMount();
-    if (!mount) {
-        console.error('Division reorder modal mount could not be created.');
+    if (!getCatalogModalDialog()) {
+        console.error('Division reorder dialog markup is missing from this page.');
         return;
     }
 
@@ -62,12 +61,11 @@ export async function openDivisionReorderModal(options: DivisionReorderModalOpti
     const chrome = createCatalogModalChrome({
         title: copy.title,
         intro: copy.intro,
-        titleId: 'division-reorder-title',
         variant: 'division',
         onDismiss: options.onDismiss,
     });
 
-    const { list, saveBtn, dismissBtn, closeModal, showError, clearError } = chrome;
+    const { list, saveBtn, signal, closeModal, setBusy, showError, clearError } = chrome;
 
     const syncSaveState = () => {
         saveBtn.disabled = !isOrderDirty(
@@ -127,7 +125,7 @@ export async function openDivisionReorderModal(options: DivisionReorderModalOpti
 
         clearError();
         saveBtn.disabled = true;
-        dismissBtn.disabled = true;
+        setBusy(true);
         saveBtn.textContent = 'Saving...';
 
         try {
@@ -157,11 +155,11 @@ export async function openDivisionReorderModal(options: DivisionReorderModalOpti
             const message = error instanceof Error ? error.message : 'Failed to save changes';
             showError(message);
             saveBtn.disabled = false;
-            dismissBtn.disabled = false;
+            setBusy(false);
             saveBtn.textContent = 'Save';
             syncSaveState();
         }
-    });
+    }, { signal });
 
     renderRows();
 }

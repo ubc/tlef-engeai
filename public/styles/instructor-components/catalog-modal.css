@@ -3,13 +3,10 @@
    BEM block: catalog-modal / catalog-modal__*
    =========================================== */
 
-.catalog-modal__overlay {
-    /* inherits modal-overlay upload-modal-overlay from modal-overlay.css */
-}
-
-.catalog-modal {
-    max-width: 640px;
-    width: 100%;
+/* Native <dialog class="app-dialog catalog-modal">: .app-dialog (modal-overlay.css) supplies the
+   surface, backdrop and scroll lock; only the wider size is catalog-specific */
+.app-dialog.catalog-modal {
+    width: min(640px, calc(100vw - 32px));
 }
 
 .catalog-modal__header {
@@ -24,7 +21,8 @@
 
 .catalog-modal__title {
     margin: 0;
-    flex: 1;
+    /* Sized to its text so the focus ring hugs it; the header's space-between keeps Close at the end */
+    flex: 0 1 auto;
     min-width: 0;
     font-size: 18px;
     font-weight: 600;
@@ -33,6 +31,17 @@
 
 .catalog-modal__title--division {
     color: var(--color-eng-red, #8b0000);
+}
+
+/* Focused on open so screen readers start at the heading; ring only for keyboard users */
+.catalog-modal__title:focus {
+    outline: none;
+}
+
+.catalog-modal__title:focus-visible {
+    outline: 2px solid var(--color-chbe-green, #4d7a2f);
+    outline-offset: 2px;
+    border-radius: 2px;
 }
 
 .catalog-modal__close {
@@ -55,6 +64,17 @@
     color: var(--text-primary);
     background: var(--hover-bg, rgba(0, 0, 0, 0.06));
     border-radius: 4px;
+}
+
+.catalog-modal__close:focus-visible {
+    outline: 2px solid var(--color-navy-blue, #1b365d);
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+.catalog-modal__close:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
 }
 
 .catalog-modal__body {

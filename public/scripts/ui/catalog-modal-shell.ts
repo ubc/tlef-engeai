@@ -1,18 +1,24 @@
 /**
- * Shared modal chrome and drag-reorder helpers for catalog and division reorder modals.
+ * Shared dialog chrome and drag-reorder helpers for the catalog edit (learning objectives,
+ * struggle topics) and division reorder dialogs.
+ *
+ * The chrome is a native `<dialog id="catalog-modal">` in the Documents page markup
+ * (`documents-instructor.html`). Each open fills in its heading and intro, and consumers add rows
+ * and extras; the browser handles focus, Escape, the backdrop and the focus trap.
  */
 
-export const CATALOG_MODAL_MOUNT_ID = 'catalog-edit-modal-mount';
+/** Id of the shared catalog `<dialog>` in documents-instructor.html. */
+export const CATALOG_MODAL_ID = 'catalog-modal';
 
-export function getCatalogModalMount(): HTMLElement | null {
-    let el = document.getElementById(CATALOG_MODAL_MOUNT_ID);
-    if (!el) {
-        el = document.createElement('div');
-        el.id = CATALOG_MODAL_MOUNT_ID;
-        el.setAttribute('aria-hidden', 'true');
-        document.body.appendChild(el);
-    }
-    return el;
+/** Returned when the dialog closed after a successful save, so the close handler skips `onDismiss`. */
+const SAVED_RETURN_VALUE = 'saved';
+
+/** Tears down the use currently holding the dialog; `null` while it is closed. */
+let activeTeardown: ((saved: boolean) => void) | null = null;
+
+export function getCatalogModalDialog(): HTMLDialogElement | null {
+    const el = document.getElementById(CATALOG_MODAL_ID);
+    return el instanceof HTMLDialogElement ? el : null;
 }
 
 export function isOrderDirty(initialIds: string[], currentIds: string[]): boolean {
@@ -25,114 +31,90 @@ export type CatalogModalVariant = 'edit' | 'division';
 export interface CatalogModalChromeOptions {
     title: string;
     intro: string;
-    titleId?: string;
     variant?: CatalogModalVariant;
     onDismiss?: () => void | Promise<void>;
+    /**
+     * Where focus goes on close when the control that opened the dialog is gone (e.g. a save
+     * re-rendered it). The browser returns focus to that control itself when it still exists.
+     */
+    returnFocus?: () => HTMLElement | null;
 }
 
 export interface CatalogModalChrome {
-    mount: HTMLElement;
-    overlay: HTMLDivElement;
-    modal: HTMLDivElement;
-    body: HTMLDivElement;
+    dialog: HTMLDialogElement;
+    body: HTMLElement;
     list: HTMLUListElement;
-    errorBox: HTMLDivElement;
+    errorBox: HTMLElement;
     saveBtn: HTMLButtonElement;
     dismissBtn: HTMLButtonElement;
     closeBtn: HTMLButtonElement;
+    /** Aborted when the dialog closes; pass it to listeners added to the dialog's own elements. */
+    signal: AbortSignal;
+    /** Closes the dialog; `dismissed` runs `onDismiss`, otherwise the close counts as a save. */
     closeModal: (dismissed: boolean) => Promise<void>;
+    /** While busy, Dismiss, Close and Escape cannot close the dialog. */
+    setBusy: (busy: boolean) => void;
     showError: (message: string) => void;
     clearError: () => void;
     registerCleanup: (fn: () => void) => void;
 }
 
+function requireChild<T extends HTMLElement>(dialog: HTMLDialogElement, selector: string): T {
+    const el = dialog.querySelector<T>(selector);
+    if (!el) {
+        throw new Error(`Catalog dialog is missing ${selector}.`);
+    }
+    return el;
+}
+
+/**
+ * createCatalogModalChrome — resets the shared catalog dialog for a new use and opens it.
+ *
+ * Listeners that consumers add to the dialog's persistent elements (Save, Dismiss) must pass
+ * `chrome.signal`; elements consumers create should be removed via `registerCleanup`.
+ *
+ * @throws When the page has no catalog dialog markup
+ */
 export function createCatalogModalChrome(options: CatalogModalChromeOptions): CatalogModalChrome {
-    const mount = getCatalogModalMount();
-    if (!mount) {
-        throw new Error('Catalog modal mount could not be created.');
+    const dialog = getCatalogModalDialog();
+    if (!dialog) {
+        throw new Error('Catalog dialog markup is missing from this page.');
+    }
+    // A previous use still open (e.g. a review opened right after an upload) is torn down as
+    // dismissed now: its queued close event would otherwise arrive after this use has opened.
+    activeTeardown?.(false);
+    if (dialog.open) {
+        dialog.close();
     }
 
-    const titleId = options.titleId ?? 'catalog-edit-title';
     const variant = options.variant ?? 'edit';
+    const titleEl = requireChild<HTMLElement>(dialog, '.catalog-modal__title');
+    const intro = requireChild<HTMLElement>(dialog, '.catalog-modal__intro');
+    const body = requireChild<HTMLElement>(dialog, '.catalog-modal__body');
+    const list = requireChild<HTMLUListElement>(dialog, '.catalog-modal__list');
+    const errorBox = requireChild<HTMLElement>(dialog, '.catalog-modal__error');
+    const saveBtn = requireChild<HTMLButtonElement>(dialog, '.catalog-modal__save');
+    const dismissBtn = requireChild<HTMLButtonElement>(dialog, '.catalog-modal__dismiss');
+    const closeBtn = requireChild<HTMLButtonElement>(dialog, '.catalog-modal__close');
 
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay upload-modal-overlay catalog-modal__overlay';
-    mount.innerHTML = '';
-    mount.appendChild(overlay);
-    document.body.classList.add('modal-open');
-
-    const modal = document.createElement('div');
-    modal.className = 'modal-container catalog-modal';
-    if (variant === 'division') {
-        modal.classList.add('catalog-modal--division');
-    }
-    modal.setAttribute('role', 'dialog');
-    modal.setAttribute('aria-modal', 'true');
-    modal.setAttribute('aria-labelledby', titleId);
-    overlay.appendChild(modal);
-    overlay.offsetHeight;
-    overlay.classList.add('show');
-
-    const header = document.createElement('div');
-    header.className = 'catalog-modal__header';
-
-    const titleEl = document.createElement('h2');
-    titleEl.id = titleId;
-    titleEl.className = 'catalog-modal__title';
-    if (variant === 'division') {
-        titleEl.classList.add('catalog-modal__title--division');
-    }
+    // 1. Reset what the previous use left behind
+    dialog.classList.toggle('catalog-modal--division', variant === 'division');
+    titleEl.classList.toggle('catalog-modal__title--division', variant === 'division');
     titleEl.textContent = options.title;
-
-    const closeBtn = document.createElement('button');
-    closeBtn.type = 'button';
-    closeBtn.className = 'catalog-modal__close';
-    closeBtn.setAttribute('aria-label', 'Close');
-    closeBtn.textContent = '×';
-
-    header.appendChild(titleEl);
-    header.appendChild(closeBtn);
-
-    const body = document.createElement('div');
-    body.className = 'modal-body catalog-modal__body';
-
-    const intro = document.createElement('p');
-    intro.className = 'catalog-modal__intro';
     intro.textContent = options.intro;
-    body.appendChild(intro);
-
-    const list = document.createElement('ul');
-    list.className = 'catalog-modal__list';
-    list.setAttribute('role', 'list');
-    body.appendChild(list);
-
-    const errorBox = document.createElement('div');
-    errorBox.className = 'catalog-modal__error';
+    list.replaceChildren();
+    errorBox.textContent = '';
     errorBox.hidden = true;
-    body.appendChild(errorBox);
-
-    const footer = document.createElement('div');
-    footer.className = 'modal-footer catalog-modal__footer';
-
-    const dismissBtn = document.createElement('button');
-    dismissBtn.type = 'button';
-    dismissBtn.className = 'catalog-modal__dismiss';
-    dismissBtn.textContent = 'Dismiss';
-
-    const saveBtn = document.createElement('button');
-    saveBtn.type = 'button';
-    saveBtn.className = 'catalog-modal__save';
     saveBtn.textContent = 'Save';
     saveBtn.disabled = true;
+    dismissBtn.disabled = false;
+    closeBtn.disabled = false;
+    dialog.returnValue = '';
 
-    footer.appendChild(dismissBtn);
-    footer.appendChild(saveBtn);
-
-    modal.appendChild(header);
-    modal.appendChild(body);
-    modal.appendChild(footer);
-
+    const listeners = new AbortController();
+    const { signal } = listeners;
     const cleanupFns: Array<() => void> = [];
+    let busy = false;
 
     const showError = (message: string) => {
         errorBox.textContent = message;
@@ -144,44 +126,65 @@ export function createCatalogModalChrome(options: CatalogModalChromeOptions): Ca
         errorBox.hidden = true;
     };
 
-    const onKeyDown = (event: KeyboardEvent) => {
-        if (event.key === 'Escape') {
-            event.preventDefault();
-            void closeModal(true);
+    const setBusy = (value: boolean) => {
+        busy = value;
+        dismissBtn.disabled = value;
+        closeBtn.disabled = value;
+    };
+
+    // 2. Escape must not abandon a save in progress
+    dialog.addEventListener(
+        'cancel',
+        (event) => {
+            if (busy) event.preventDefault();
+        },
+        { signal }
+    );
+
+    // 3. However the dialog closes, tidy up once; only a non-save close counts as dismissing
+    const teardown = (saved: boolean) => {
+        if (activeTeardown !== teardown) return;
+        activeTeardown = null;
+        cleanupFns.forEach((fn) => fn());
+        listeners.abort();
+        const active = document.activeElement;
+        if (!active || active === document.body || dialog.contains(active)) {
+            options.returnFocus?.()?.focus();
+        }
+        if (!saved && options.onDismiss) {
+            void options.onDismiss();
         }
     };
+    activeTeardown = teardown;
+    dialog.addEventListener(
+        'close',
+        () => {
+            // Reopened before this queued event arrived: the new use owns the dialog now
+            if (dialog.open) return;
+            teardown(dialog.returnValue === SAVED_RETURN_VALUE);
+        },
+        { signal }
+    );
 
     const closeModal = async (dismissed: boolean) => {
-        document.removeEventListener('keydown', onKeyDown);
-        cleanupFns.forEach((fn) => fn());
-        overlay.classList.remove('show');
-        document.body.classList.remove('modal-open');
-        setTimeout(() => {
-            mount.innerHTML = '';
-        }, 200);
-        if (dismissed && options.onDismiss) {
-            await options.onDismiss();
+        if (dialog.open) {
+            dialog.close(dismissed ? '' : SAVED_RETURN_VALUE);
         }
     };
 
-    dismissBtn.addEventListener('click', () => void closeModal(true));
-    closeBtn.addEventListener('click', () => void closeModal(true));
-    document.addEventListener('keydown', onKeyDown);
-    overlay.addEventListener('click', (event) => {
-        if (event.target === overlay) void closeModal(true);
-    });
+    dialog.showModal();
 
     return {
-        mount,
-        overlay,
-        modal,
+        dialog,
         body,
         list,
         errorBox,
         saveBtn,
         dismissBtn,
         closeBtn,
+        signal,
         closeModal,
+        setBusy,
         showError,
         clearError,
         registerCleanup: (fn: () => void) => cleanupFns.push(fn),

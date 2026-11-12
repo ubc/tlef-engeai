@@ -1844,6 +1844,8 @@ export interface StruggleTopicsReviewModalOptions {
     topics: InstructorStruggleTopic[];
     onSave?: (topics: InstructorStruggleTopic[]) => void | Promise<void>;
     onDismiss?: () => void | Promise<void>;
+    /** Focus target on close when the opening control was replaced */
+    returnFocus?: () => HTMLElement | null;
 }
 
 /** Options for learning objectives edit modal */
@@ -1855,6 +1857,8 @@ export interface LearningObjectivesEditModalOptions {
     objectives: Array<{ id: string; LearningObjective: string }>;
     onSave?: () => void | Promise<void>;
     onDismiss?: () => void | Promise<void>;
+    /** Focus target on close when the opening control was replaced */
+    returnFocus?: () => HTMLElement | null;
 }
 
 export type { CatalogEditModalOptions };
@@ -1882,6 +1886,7 @@ export async function openStruggleTopicsReviewModal(
             }
         },
         onDismiss: options.onDismiss,
+        returnFocus: options.returnFocus,
     });
 }
 
@@ -1901,6 +1906,7 @@ export async function openLearningObjectivesEditModal(
         })),
         onSave: options.onSave,
         onDismiss: options.onDismiss,
+        returnFocus: options.returnFocus,
     });
 }
 
