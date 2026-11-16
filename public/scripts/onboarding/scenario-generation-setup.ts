@@ -205,22 +205,66 @@ function renderPreview(preview: ScenarioTutorialPreview): void {
     const prompt = document.getElementById('sgSetupPreviewPrompt');
     const objectives = document.getElementById('sgSetupPreviewObjectives');
     const difficulty = document.getElementById('sgSetupPreviewDifficulty');
-    const subquestions = document.getElementById('sgSetupPreviewSubquestions');
-    if (!prompt || !objectives || !difficulty || !subquestions) return;
+    const types = document.getElementById('sgSetupPreviewTypes');
+    const outputTitle = document.getElementById('sgSetupOutputTitle');
+    const outputContext = document.getElementById('sgSetupOutputContext');
+    const outputBaselines = document.getElementById('sgSetupOutputBaselines');
+    const outputCrisis = document.getElementById('sgSetupOutputCrisis');
+    const outputSubquestions = document.getElementById('sgSetupOutputSubquestions');
+    if (!prompt || !objectives || !difficulty || !types || !outputTitle || !outputContext ||
+        !outputBaselines || !outputCrisis || !outputSubquestions) return;
 
-    prompt.textContent = preview.prompt;
-    objectives.textContent = preview.selectedObjectiveLabels.length > 0
-        ? preview.selectedObjectiveLabels.join(', ')
+    // Show the instructor inputs separately so they are never mistaken for generated prose.
+    prompt.textContent = preview.inputs.prompt;
+    objectives.textContent = preview.inputs.selectedObjectiveLabels.length > 0
+        ? preview.inputs.selectedObjectiveLabels.join(', ')
         : 'None selected';
-    difficulty.textContent = preview.difficulty.charAt(0).toUpperCase() + preview.difficulty.slice(1);
-    subquestions.replaceChildren();
+    difficulty.textContent = preview.inputs.difficulty.charAt(0).toUpperCase() + preview.inputs.difficulty.slice(1);
+    types.textContent = preview.inputs.subquestionTypes.map(type => type.label).join(', ');
 
-    preview.subquestions.forEach(part => {
+    // Render a complete deterministic output in the same title/body/parts shape staff review.
+    outputTitle.textContent = preview.output.title;
+    outputContext.textContent = preview.output.context;
+    outputCrisis.textContent = preview.output.crisis;
+    outputBaselines.replaceChildren();
+    outputSubquestions.replaceChildren();
+
+    preview.output.designBaselines.forEach(baseline => {
+        const row = document.createElement('div');
+        const label = document.createElement('dt');
+        const value = document.createElement('dd');
+        label.textContent = baseline.label;
+        value.textContent = baseline.value;
+        row.append(label, value);
+        outputBaselines.append(row);
+    });
+
+    preview.output.subquestions.forEach((part, index) => {
         const item = document.createElement('li');
-        const label = document.createElement('strong');
-        label.textContent = `${part.label}: `;
-        item.append(label, document.createTextNode(part.prompt));
-        subquestions.append(item);
+        item.className = 'sg-setup-output-part';
+
+        const heading = document.createElement('div');
+        heading.className = 'sg-setup-output-part-heading';
+        const partLabel = document.createElement('strong');
+        partLabel.textContent = `Part ${String.fromCharCode(65 + index)}`;
+        const type = document.createElement('span');
+        type.className = `sg-part-type-badge sg-part-type-${part.type}`;
+        type.textContent = part.label;
+        heading.append(partLabel, type);
+
+        const question = document.createElement('p');
+        question.textContent = part.prompt;
+
+        const answer = document.createElement('details');
+        answer.className = 'sg-setup-output-answer';
+        const answerLabel = document.createElement('summary');
+        answerLabel.textContent = 'Review answer key';
+        const answerBody = document.createElement('p');
+        answerBody.textContent = part.modelAnswer;
+        answer.append(answerLabel, answerBody);
+
+        item.append(heading, question, answer);
+        outputSubquestions.append(item);
     });
 }
 

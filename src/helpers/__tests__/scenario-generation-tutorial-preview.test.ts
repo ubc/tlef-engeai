@@ -25,20 +25,35 @@ function defaultSelection(): ScenarioTutorialSelection {
 }
 
 describe('buildScenarioTutorialPreview', () => {
-    it('builds the default sample from the seeded tutorial values', () => {
+    it('separates the seeded inputs from a complete generated output', () => {
         const preview = buildScenarioTutorialPreview(defaultSelection());
 
-        expect(preview.prompt).toBe(SCENARIO_GENERATION_DEMO.prompt);
-        expect(preview.selectedObjectiveLabels).toEqual([
+        expect(preview.inputs.prompt).toBe(SCENARIO_GENERATION_DEMO.prompt);
+        expect(preview.inputs.selectedObjectiveLabels).toEqual([
             'Energy balances on process equipment',
             'Fouling and heat transfer resistance'
         ]);
-        expect(preview.difficulty).toBe('medium');
-        expect(preview.subquestions.map(part => part.type)).toEqual([
+        expect(preview.inputs.difficulty).toBe('medium');
+        expect(preview.inputs.subquestionTypes.map(part => part.type)).toEqual([
             'calculation',
             'troubleshoot',
             'corrective'
         ]);
+        expect(preview.output).toMatchObject({
+            title: 'Naphtha Stabilizer Overhead Condenser Failure',
+            context: expect.stringContaining('E-2104'),
+            crisis: expect.stringContaining('30 °C')
+        });
+        expect(preview.output.designBaselines).toEqual(expect.arrayContaining([
+            expect.objectContaining({ label: 'Outside tube area', value: '125 m²' })
+        ]));
+        expect(preview.output.subquestions.map(part => part.type)).toEqual([
+            'calculation',
+            'troubleshoot',
+            'corrective'
+        ]);
+        expect(preview.output.subquestions[0].modelAnswer).toContain('3,389 kW');
+        expect(preview.output.subquestions[0].modelAnswer).toContain('44.4% loss');
     });
 
     it('reflects edited text, objectives, types, and difficulty', () => {
@@ -49,14 +64,26 @@ describe('buildScenarioTutorialPreview', () => {
             difficulty: 'hard'
         });
 
-        expect(preview).toMatchObject({
+        expect(preview.inputs).toMatchObject({
             prompt: 'A pump is cavitating after a tank level change.',
             selectedObjectiveLabels: ['Diagnose pump cavitation'],
             difficulty: 'hard'
         });
-        expect(preview.subquestions).toEqual([
+        expect(preview.inputs.subquestionTypes).toEqual([
             expect.objectContaining({ type: 'action', label: 'Action' }),
             expect.objectContaining({ type: 'calculation', label: 'Calculation' })
+        ]);
+        expect(preview.output.subquestions).toEqual([
+            expect.objectContaining({
+                type: 'action',
+                label: 'Action',
+                modelAnswer: expect.stringContaining('independent calibrated instruments')
+            }),
+            expect.objectContaining({
+                type: 'calculation',
+                label: 'Calculation',
+                modelAnswer: expect.stringContaining('1,883 kW')
+            })
         ]);
     });
 

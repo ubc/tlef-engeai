@@ -113,7 +113,7 @@
                             </div>
 
                             <div class="completion-note">
-                                <p><strong>This tutorial is a simulation.</strong> Edit the form freely: nothing is saved and no model is called.</p>
+                                <p><strong>This is a practice example.</strong> Edit the form freely: nothing is saved and no AI request is sent.</p>
                             </div>
                         </div>
                     </div>
@@ -125,11 +125,11 @@
                 <div class="content-step-inner">
                     <div class="step-header">
                         <h1>Generating a Practice Scenario</h1>
-                        <p>Describe the situation, pick options, generate a draft</p>
+                        <p>Choose inputs, then generate a draft</p>
                     </div>
 
                     <div class="demo-explanation">
-                        <p>The same form used in Practice Scenarios, filled in so you can focus on the controls.</p>
+                        <p>Use the real Practice Scenarios form below.</p>
                     </div>
 
                     <p class="sg-setup-action-prompt" id="sgSetupActionPrompt" role="status" aria-live="polite">
@@ -143,15 +143,32 @@
                     <div class="sg-setup-draft" id="sgSetupGeneratedDraft" tabindex="-1" aria-labelledby="sgSetupDraftTitle" hidden>
                         <div class="sg-setup-draft-header">
                             <span class="sg-setup-status-pill">Draft</span>
-                            <h3 id="sgSetupDraftTitle">Generated sample</h3>
+                            <h3 id="sgSetupDraftTitle">Scenario preview</h3>
                         </div>
-                        <dl class="sg-setup-preview-summary">
-                            <div><dt>Base question</dt><dd id="sgSetupPreviewPrompt"></dd></div>
-                            <div><dt>Learning objectives</dt><dd id="sgSetupPreviewObjectives"></dd></div>
-                            <div><dt>Difficulty</dt><dd id="sgSetupPreviewDifficulty"></dd></div>
-                        </dl>
-                        <h4>Subquestions</h4>
-                        <ol id="sgSetupPreviewSubquestions"></ol>
+                        <section class="sg-setup-preview-inputs" aria-labelledby="sgSetupInputsTitle">
+                            <h4 id="sgSetupInputsTitle">Inputs used</h4>
+                            <dl class="sg-setup-preview-summary">
+                                <div><dt>Base question</dt><dd id="sgSetupPreviewPrompt"></dd></div>
+                                <div><dt>Learning objectives</dt><dd id="sgSetupPreviewObjectives"></dd></div>
+                                <div><dt>Difficulty</dt><dd id="sgSetupPreviewDifficulty"></dd></div>
+                                <div><dt>Subquestion types</dt><dd id="sgSetupPreviewTypes"></dd></div>
+                            </dl>
+                        </section>
+
+                        <section class="sg-setup-preview-output" aria-labelledby="sgSetupOutputTitle">
+                            <p class="sg-setup-preview-eyebrow">Generated output</p>
+                            <h4 id="sgSetupOutputTitle"></h4>
+                            <p id="sgSetupOutputContext"></p>
+
+                            <h5>Design baselines</h5>
+                            <dl class="sg-setup-output-baselines" id="sgSetupOutputBaselines"></dl>
+
+                            <h5>Operational alert</h5>
+                            <p id="sgSetupOutputCrisis"></p>
+
+                            <h5>Subquestions and answer keys</h5>
+                            <ol class="sg-setup-output-subquestions" id="sgSetupOutputSubquestions"></ol>
+                        </section>
                         <p class="sg-setup-draft-note">This draft is yours alone until you publish it.</p>
                     </div>
                 </div>
@@ -192,7 +209,7 @@
                             <h3>Scenario Generation tutorial complete</h3>
                             <p>You can now create and review a scenario draft.</p>
                             <ul class="completion-list">
-                                <li>Generated a sample from editable choices</li>
+                                <li>Generated a complete scenario draft from editable inputs</li>
                                 <li>Learned that drafts stay hidden until published</li>
                             </ul>
                             <div class="completion-note">
@@ -247,7 +264,7 @@
         <div id="help-step-2">
             <p><strong>Generating a scenario</strong></p>
             <p>The form takes a base question or situation, the learning objectives it should target, which sub-question types to include, and a difficulty level.</p>
-            <p>Edit any field, then select <strong>Generate</strong>. The preview reflects your choices, but nothing is saved and no model runs.</p>
+            <p>Edit any field, then select <strong>Generate</strong>. The preview shows both your inputs and a complete sample output, but nothing is saved and no AI request is sent.</p>
             <p>The question-mark control beside the type pills opens this Help panel. Use the plus control to add another real subquestion type.</p>
             <p><strong>Tip:</strong> a specific prompt with concrete numbers produces a far more useful draft than a broad topic name.</p>
         </div>

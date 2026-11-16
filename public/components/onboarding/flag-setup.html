@@ -30,7 +30,7 @@
                 </div>
                 <div class="step-content">
                     <h3>Welcome</h3>
-                    <p>Introduction to flag management</p>
+                    <p>Student reports</p>
                 </div>
             </div>
 
@@ -44,7 +44,7 @@
                 </div>
                 <div class="step-content">
                     <h3>Flag Types</h3>
-                    <p>Understanding different flag categories</p>
+                    <p>Report reasons</p>
                 </div>
             </div>
 
@@ -58,7 +58,7 @@
                 </div>
                 <div class="step-content">
                     <h3>Resolving Flags</h3>
-                    <p>How to resolve student flags</p>
+                    <p>Answer a concern</p>
                 </div>
             </div>
 
@@ -72,7 +72,7 @@
                 </div>
                 <div class="step-content">
                     <h3>Edit Comments</h3>
-                    <p>How to edit flag responses</p>
+                    <p>Update a saved response</p>
                 </div>
             </div>
 
@@ -85,7 +85,7 @@
                 </div>
                 <div class="step-content">
                     <h3>Complete</h3>
-                    <p>Flag management setup finished</p>
+                    <p>Setup finished</p>
                 </div>
             </div>
         </div>
@@ -113,7 +113,7 @@
                 <div class="welcome-content">
                     <div class="welcome-message">
                         <h3>See what students have reported</h3>
-                        <p>Students can flag a tutor message as incorrect, unsafe, off-topic, or broken. Staff review it, record a response, and resolve it.</p>
+                        <p>Students can report a tutor message as incorrect, unsafe, off-topic, or broken. Staff review and answer it.</p>
                         
                         <div class="demo-explanation">
                             <h4>Course staff can:</h4>
@@ -126,7 +126,7 @@
                         </div>
                         
                         <div class="completion-note">
-                            <p><strong>What resolving means:</strong> EngE-AI records the review, the response, and the resolved status. It does not change model behaviour.</p>
+                            <p><strong>What resolving means:</strong> EngE-AI saves the staff response and marks the concern as resolved. It does not change future tutor replies.</p>
                         </div>
                     </div>
                 </div>
@@ -233,12 +233,12 @@
                 
                 <div class="demo-section">
                     <div class="demo-explanation">
-                        <h3>Flag Resolution Process</h3>
-                        <p>New flags appear under "Unresolved". Read the message and the concern, write a response, then Resolve to record it.</p>
+                        <h3>Review and respond</h3>
+                        <p>New concerns appear under "Unresolved." Read the tutor message and the student's reason, write a response, then select Resolve to save it.</p>
                     </div>
                     
                     <div class="demo-interactive">
-                        <h3>Demo: Flag Resolution Interface</h3>
+                        <h3>Try resolving an example</h3>
                         
                         <!-- Demo flag resolution interface with report card style -->
                         <div class="reports-list">
@@ -296,12 +296,12 @@
                 
                 <div class="demo-section">
                     <div class="demo-explanation">
-                        <h3>Response Management</h3>
-                        <p>A recorded response can be revised after resolution, to correct it or add context.</p>
+                        <h3>Update a saved response</h3>
+                        <p>You can revise a response after resolving a flag if you need to correct it or add information.</p>
                     </div>
                     
                     <div class="demo-interactive">
-                        <h3>Demo: Editing Responses</h3>
+                        <h3>Try editing the response</h3>
                         
                         <div class="reports-list">
                             <div class="report-card expanded" data-flag-type="calculation-error" data-report-id="3" onclick="toggleReportCard(this)">
@@ -340,7 +340,7 @@
                                         <li>Responses stay editable after resolution</li>
                                         <li>Edits update the staff record only</li>
                                     </ul>
-                                    <p class="empty-state-note">Editing updates the review record only, never model behaviour.</p>
+                                    <p class="empty-state-note">Editing changes the saved staff response, not future tutor replies.</p>
                                 </div>
                             </div>
                         </div>
@@ -423,7 +423,7 @@
         <!-- Step 2 Help -->
         <div id="help-step-2">
             <p><strong>Understanding Flag Types</strong></p>
-            <p>Students can flag messages for various reasons. Each flag type helps identify different issues that need attention:</p>
+            <p>Students choose the reason that best describes their concern:</p>
             <ul>
                 <li><strong>Calculation & Concept Errors:</strong> Incorrect calculations or flawed engineering concepts</li>
                 <li><strong>Harassment & EDI:</strong> Inappropriate or discriminatory content</li>
@@ -474,7 +474,7 @@
                 <li>Use flag data to identify improvement areas</li>
                 <li>Edit responses as needed to provide better feedback</li>
             </ul>
-            <p>Resolving stores the staff review and response. It does not modify model behavior.</p>
+            <p>Resolving saves the staff review and response. It does not change future tutor replies.</p>
         </div>
     </div>
 </div>

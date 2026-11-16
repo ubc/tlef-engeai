@@ -90,7 +90,9 @@ describe('onboarding design guard', () => {
 
     it.each(STAFF_COMPONENTS)('%s avoids misleading novice-facing terms', file => {
         const markup = readFileSync(join(COMPONENT_DIR, file), 'utf8');
-        expect(markup).not.toMatch(/\bLMS\b|PowerPoint|Process Files|Clear All/i);
+        expect(markup).not.toMatch(
+            /\bLMS\b|PowerPoint|Process Files|Clear All|wizard|roster-management|roster-manager|course-management access|ranked contiguously|generation is queued|notifications never gate|model behaviou?r|feature access|course features|feature choices/i
+        );
     });
 
     it.each(onboardingComponents())('%s contains no emoji', file => {
@@ -122,11 +124,16 @@ describe('onboarding design guard', () => {
             join(REPO_ROOT, 'public', 'scripts', 'onboarding', 'scenario-generation-setup.ts'),
             'utf8'
         );
+        const markup = readFileSync(join(COMPONENT_DIR, 'scenario-generation-setup.html'), 'utf8');
         expect(controller).not.toContain('/api/');
         expect(controller).toContain("fetch('/components/scenarios/scenario-questions-generate.html')");
-        expect(controller).toContain('prompt.textContent = preview.prompt');
-        expect(controller).toContain('document.createTextNode(part.prompt)');
+        expect(controller).toContain('prompt.textContent = preview.inputs.prompt');
+        expect(controller).toContain('question.textContent = part.prompt');
+        expect(controller).toContain('answerBody.textContent = part.modelAnswer');
         expect(controller).toContain("submit.textContent = 'Update sample'");
+        expect(markup).toContain('Inputs used');
+        expect(markup).toContain('Generated output');
+        expect(markup).not.toContain('>Generated sample<');
     });
 
     it('presents Canvas and manual assignment intake as simulations', () => {
