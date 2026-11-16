@@ -18,9 +18,11 @@ export interface CatalogSectionConfig {
     items: CatalogItemRef[];
     contentIdPrefix: string;
     countIdPrefix: string;
-    iconIdPrefix: string;
     containerClass: string;
-    /** Hidden text naming the section and week/topic, e.g. " (Slides) (Week 1)"; appended to the Edit button's name */
+    /**
+     * Names the section and week/topic, e.g. " (Slides) (Week 1)"; appended to the Edit button's
+     * name (as hidden text) and to the disclosure's aria-label
+     */
     targetName?: string;
 }
 
@@ -104,7 +106,7 @@ export function buildCatalogInlineAddForm(
     return addWrap;
 }
 
-/** Full accordion section: header (count + Edit) + read-only rows + inline add. */
+/** Full accordion section: header (count + Edit + disclosure holding the read-only rows and inline add). */
 export function buildCatalogSection(config: CatalogSectionConfig): HTMLElement {
     const container = document.createElement('div');
     container.className = config.containerClass;
@@ -152,15 +154,25 @@ export function buildCatalogSection(config: CatalogSectionConfig): HTMLElement {
     headerCount.appendChild(countSpan);
     headerCount.appendChild(countText);
 
-    const expandSpan = document.createElement('span');
-    expandSpan.className = 'expand-icon catalog-expand-icon';
-    expandSpan.id = `${config.iconIdPrefix}-${config.topicOrWeekId}-${config.contentId}`;
-    expandSpan.setAttribute('aria-hidden', 'true');
-    expandSpan.textContent = '▼';
+    // Disclosure: the <summary> holds only the arrow and takes the header's place as the toggle;
+    // the list lives inside <details> so the browser owns open/closed state
+    const disclosure = document.createElement('details');
+    disclosure.className = 'catalog-disclosure';
+    const disclosureSummary = document.createElement('summary');
+    disclosureSummary.className = 'expand-icon catalog-expand-icon';
+    disclosureSummary.setAttribute('aria-label', `${config.sectionTitle}${config.targetName ?? ''}`);
+    // The arrow rotates on its own element: a transform on <summary> would become the
+    // containing block for its header-wide click area (::after) and shrink it to the arrow
+    const disclosureArrow = document.createElement('span');
+    disclosureArrow.className = 'catalog-disclosure-arrow';
+    disclosureArrow.setAttribute('aria-hidden', 'true');
+    disclosureArrow.textContent = '▼';
+    disclosureSummary.appendChild(disclosureArrow);
+    disclosure.appendChild(disclosureSummary);
 
     headerActions.appendChild(headerCount);
     headerActions.appendChild(editBtn);
-    headerActions.appendChild(expandSpan);
+    headerActions.appendChild(disclosure);
 
     headerRow.appendChild(headerTitle);
     headerRow.appendChild(headerActions);
@@ -177,9 +189,9 @@ export function buildCatalogSection(config: CatalogSectionConfig): HTMLElement {
     contentInner.appendChild(listWrapper);
     contentInner.appendChild(buildCatalogInlineAddForm(config.kind, config.topicOrWeekId, config.contentId));
     content.appendChild(contentInner);
+    disclosure.appendChild(content);
 
     accordion.appendChild(headerRow);
-    accordion.appendChild(content);
     container.appendChild(accordion);
 
     return container;
@@ -187,14 +199,13 @@ export function buildCatalogSection(config: CatalogSectionConfig): HTMLElement {
 
 const SECTION_PRESETS: Record<
     CatalogKind,
-    Omit<CatalogSectionConfig, 'kind' | 'topicOrWeekId' | 'contentId' | 'items'>
+    Omit<CatalogSectionConfig, 'kind' | 'topicOrWeekId' | 'contentId' | 'items' | 'targetName'>
 > = {
     'learning-objectives': {
         sectionTitle: 'Learning Objectives',
         countLabel: 'objectives',
         contentIdPrefix: 'objectives',
         countIdPrefix: 'count',
-        iconIdPrefix: 'obj-icon',
         containerClass: 'learning-objectives',
     },
     'struggle-topics': {
@@ -202,7 +213,6 @@ const SECTION_PRESETS: Record<
         countLabel: 'struggle topics',
         contentIdPrefix: 'struggle',
         countIdPrefix: 'struggle-count',
-        iconIdPrefix: 'struggle-icon',
         containerClass: 'struggle-topics',
     },
 };
@@ -210,7 +220,7 @@ const SECTION_PRESETS: Record<
 /**
  * Convenience builder for documents page content items.
  *
- * @param targetName - Hidden text naming the section and week/topic, appended to the Edit button's name
+ * @param targetName - Names the section and week/topic, appended to the Edit button's name and the disclosure's aria-label
  */
 export function buildCatalogSectionForItem(
     kind: CatalogKind,
