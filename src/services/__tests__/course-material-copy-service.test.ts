@@ -349,3 +349,49 @@ describe('listMaterialCopySources', () => {
         expect(countCourseMaterials(sourceCourse())).toBe(4);
     });
 });
+
+describe('copyCourseMaterials with a Course Syllabus (#674)', () => {
+    const syllabusChunks: MaterialChunkForCopy[] = [
+        { id: 'sp1', vector: [0.7, 0.8], payload: { id: 'src-syl', courseName: 'LLED 200 V89', topicOrWeekTitle: 'Course Syllabus', itemTitle: 'Course Syllabus', content: 'grading' } }
+    ];
+
+    function withSourceSyllabus(): activeCourse {
+        return { ...sourceCourse(), syllabusMaterials: [material('src-syl', 'Outline', ['sp1'])] } as activeCourse;
+    }
+
+    function chunksFor(materialId: string) {
+        return materialId === 'src-syl' ? syllabusChunks : STORED_CHUNKS[materialId] ?? [];
+    }
+
+    it('copies the source syllabus into a target that has none', async () => {
+        const { deps, calls } = makeDeps({ getMaterialChunks: async (id) => chunksFor(id) });
+
+        const result = await copyCourseMaterials(deps, withSourceSyllabus(), 'tgt');
+
+        const [copied] = calls.replacement!.syllabusMaterials!;
+        expect(copied).toMatchObject({ name: 'Outline', courseName: 'LLED 200 V92', courseId: 'tgt', topicOrWeekId: 'course-syllabus' });
+        expect(copied.id).not.toBe('src-syl');
+        const copiedPoint = calls.upserted.find((p) => p.payload.id === copied.id)!;
+        expect(copiedPoint.payload).toMatchObject({ courseName: 'LLED 200 V92', itemTitle: 'Course Syllabus' });
+        expect(result.materialsCopied).toBe(3);
+    });
+
+    it('keeps a target syllabus and never deletes its chunks', async () => {
+        const targetWithSyllabus = () =>
+            ({ ...targetCourse(), syllabusMaterials: [material('tgt-syl', 'New outline', ['tgt-sp1'])] }) as activeCourse;
+        const { deps, calls } = makeDeps({
+            getMaterialChunks: async (id) => chunksFor(id),
+            acquireLease: async () => targetWithSyllabus(),
+            replaceUnderLease: async (_courseId, _token, replacement) => {
+                calls.replacement = replacement;
+                return targetWithSyllabus();
+            }
+        });
+
+        await copyCourseMaterials(deps, withSourceSyllabus(), 'tgt');
+
+        expect(calls.replacement).not.toHaveProperty('syllabusMaterials');
+        expect(calls.deleted.flat()).not.toContain('tgt-sp1');
+        expect(calls.upserted.some((p) => p.payload.topicOrWeekTitle === 'Course Syllabus')).toBe(false);
+    });
+});

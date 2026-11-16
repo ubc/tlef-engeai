@@ -62,9 +62,11 @@ import { memoryAgent } from '../memory-agent/memory-agent';
 import dotenv from 'dotenv';
 import { RAGApp } from '../rag/rag-app';
 import { addAdminsToCourse } from '../helpers/instructor-helpers';
+import { nextDivisionTitle } from '../helpers/next-division-title';
+import { isCourseStaff } from '../utils/course-staff';
 import { appLogger } from '../utils/logger';
 import { isAdminUser } from '../utils/admin';
-import { filterAccessibleCourses, buildCourseSelectionByPeriod, isCourseAccessible } from '../helpers/course-access';
+import { filterAccessibleCourses, buildCourseSelectionByPeriod, isCourseAccessible, mapFacultyInstructorDisplay } from '../helpers/course-access';
 import { validateCourseSetupFields } from '../helpers/instructor-onboarding-redirect';
 import { buildTopicOrWeekInstances } from '../helpers/build-default-course-content';
 import { provisionCourse } from '../helpers/provision-course';
@@ -116,6 +118,8 @@ import { mountScenarioQuestionRoutes } from './mongo/scenario-questions-routes';
 import { mountPathwaysRoutes } from './mongo/pathways-routes';
 import { mountGuidedPathwayFlagRoutes } from './mongo/guided-pathway-flag-routes';
 import { mountCourseMaterialCopyRoutes } from './mongo/course-material-copy-routes';
+import { mountCourseSyllabusRoutes } from './mongo/course-syllabus-routes';
+import { isReservedSyllabusTitle, RESERVED_SYLLABUS_TITLE_ERROR } from '../rag/course-syllabus';
 import { isManualFlagType, MANUAL_FLAG_TYPES } from '../flags/manual-flag-policy';
 
 const router = express.Router();
@@ -640,7 +644,9 @@ router.get('/course-selection', asyncHandlerWithAuth(async (req: Request, res: R
  *
  * @route GET /api/courses/:id
  * @param {string} id - Course ID (path param)
- * @returns {object} { success: boolean, data?: activeCourse, error?: string }
+ * @returns {object} { success: boolean, data?: activeCourse & { instructorDisplay?: string }, error?: string }
+ *          Course staff also receive `instructorDisplay`: faculty instructor names without
+ *          platform admins or TAs, matching the course selection card.
  * @response 200 - Success
  * @response 404 - Course not found
  */
@@ -662,9 +668,23 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
         globalUser = await instance.findGlobalUserByPUID(sessionUser.puid);
     }
 
+    // Course staff also get the faculty-only instructor line used on course selection (#208)
+    // Copy, never mutate: the staff payload is the course object itself
+    let payload: activeCourse & { instructorDisplay?: string } = coursePayloadForViewer(courseData, globalUser);
+    if (isCourseStaff(courseData, globalUser)) {
+        const platformAdmins = await instance.findAdminGlobalUsers();
+        payload = {
+            ...payload,
+            instructorDisplay: mapFacultyInstructorDisplay(
+                courseData,
+                new Set(platformAdmins.map((u) => u.userId))
+            )
+        };
+    }
+
     res.status(200).json({
         success: true,
-        data: coursePayloadForViewer(courseData, globalUser)
+        data: payload
     });
 }));
 
@@ -1531,7 +1551,7 @@ router.put('/:courseId/topic-or-week-instances/reorder', requireInstructorForCou
  *
  * @route POST /api/courses/:courseId/topic-or-week-instances
  * @param {string} courseId - Course ID (path param)
- * @param {string} [title] - Instance title (body); defaults to "Week N" or "Topic N"
+ * @param {string} [title] - Instance title (body); defaults to the next "Week N" or "Topic N" by position (see nextDivisionTitle)
  * @returns {object} { success: boolean, data?: TopicOrWeekInstance, message?: string, error?: string }
  * @response 201 - Topic/Week instance added successfully
  * @response 401 - User not authenticated
@@ -1544,6 +1564,10 @@ router.post('/:courseId/topic-or-week-instances', requireInstructorForCourseAPI(
         const instance = await EngEAI_MongoDB.getInstance();
         const { courseId } = normalizeRouteParams(req.params);
         const { title } = req.body || {};
+        // The syllabus owns this title on its Qdrant chunks; a week sharing it would mix with them (#674)
+        if (typeof title === 'string' && isReservedSyllabusTitle(title)) {
+            return res.status(400).json({ success: false, error: RESERVED_SYLLABUS_TITLE_ERROR });
+        }
 
         const course = await instance.getActiveCourse(courseId);
         if (!course) {
@@ -1560,7 +1584,7 @@ router.post('/:courseId/topic-or-week-instances', requireInstructorForCourseAPI(
         const isByWeek = (course as any).frameType === 'byWeek';
         const resolvedTitle = (typeof title === 'string' && title.trim())
             ? title.trim()
-            : (isByWeek ? `Week ${nextIdNum}` : `Topic ${nextIdNum}`);
+            : nextDivisionTitle(instances, (course as any).frameType);
 
         const defaultItemTitle = isByWeek ? 'Lecture 1' : 'Session 1';
         const now = new Date();
@@ -3320,7 +3344,7 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/m
  *
  * @route DELETE /api/courses/:courseId/documents/all
  * @param {string} courseId - Course ID (path param)
- * @returns {object} { success: boolean, message?: string, data?: { deletedCount, courseId }, error?: string }
+ * @returns {object} { success: boolean, message?: string, data?: { deletedCount, courseId, deletedDocuments: { name, chunksDeleted }[], totalChunksDeleted }, error?: string }
  * @response 200 - All documents deleted successfully
  * @response 401 - User not authenticated
  * @response 403 - Instructor access required for course
@@ -3363,15 +3387,25 @@ router.delete('/:courseId/documents/all', requireInstructorForCourseAPI(['params
         }
         
         // Clear all additionalMaterials arrays in MongoDB
+        // Per-document breakdown for the result dialog, read before the records are cleared
+        const deletedDocuments: { name: string; chunksDeleted: number }[] = [];
+        const recordDeleted = (material: any) =>
+            deletedDocuments.push({ name: material?.name || 'Document', chunksDeleted: materialChunkIds(material).length });
+
         let totalDeleted = 0;
         course.topicOrWeekInstances?.forEach((instance_topicOrWeek: any) => {
             instance_topicOrWeek.items?.forEach((item: any) => {
                 if (item.additionalMaterials && item.additionalMaterials.length > 0) {
                     totalDeleted += item.additionalMaterials.length;
+                    item.additionalMaterials.forEach(recordDeleted);
                     item.additionalMaterials = [];
                 }
             });
         });
+        // Course Syllabus documents (#674) are deleted with the rest; their vectors went above
+        totalDeleted += course.syllabusMaterials?.length ?? 0;
+        (course.syllabusMaterials ?? []).forEach(recordDeleted);
+        course.syllabusMaterials = [];
         
         // Update the course in MongoDB
         const result = await mongoDB.updateActiveCourse(courseId, course as any);
@@ -3390,7 +3424,9 @@ router.delete('/:courseId/documents/all', requireInstructorForCourseAPI(['params
             message: 'All documents deleted successfully',
             data: {
                 deletedCount: totalDeleted,
-                courseId: courseId
+                courseId: courseId,
+                deletedDocuments,
+                totalChunksDeleted: deletedDocuments.reduce((sum, doc) => sum + doc.chunksDeleted, 0)
             }
         });
         
@@ -3417,10 +3453,11 @@ router.delete('/:courseId/documents/all', requireInstructorForCourseAPI(['params
  * @response 200 - Title updated successfully
  * @response 400 - Invalid or empty title
  * @response 401 - User not authenticated
+ * @response 403 - Instructor access required for course
  * @response 404 - Course or topic/week instance not found
  * @response 500 - Failed to update title
  */
-router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/title', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/title', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
         const { courseId, topicOrWeekId } = normalizeRouteParams(req.params);
@@ -3450,6 +3487,11 @@ router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/title', asyncHan
             });
         }
         
+        // The syllabus owns this title on its Qdrant chunks; a week sharing it would mix with them (#674)
+        if (isReservedSyllabusTitle(trimmedTitle)) {
+            return res.status(400).json({ success: false, error: RESERVED_SYLLABUS_TITLE_ERROR });
+        }
+
         // Get the course
         const course = await instance.getActiveCourse(courseId);
         
@@ -3521,10 +3563,11 @@ router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/title', asyncHan
  * @response 200 - Published status updated successfully
  * @response 400 - Published must be a boolean
  * @response 401 - User not authenticated
+ * @response 403 - Instructor access required for course
  * @response 404 - Course or topic/week instance not found
  * @response 500 - Failed to update published status
  */
-router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/published', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/published', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
         const { courseId, topicOrWeekId } = normalizeRouteParams(req.params);
@@ -3844,10 +3887,11 @@ router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId', requireInstru
  * @response 200 - Item title updated successfully
  * @response 400 - Invalid or empty title
  * @response 401 - User not authenticated
+ * @response 403 - Instructor access required for course
  * @response 404 - Course, topic/week, or item not found
  * @response 500 - Failed to update item title
  */
-router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/title', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/title', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         const instance = await EngEAI_MongoDB.getInstance();
         const { courseId, topicOrWeekId, itemId } = normalizeRouteParams(req.params);
@@ -3965,10 +4009,11 @@ router.patch('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/ti
  * @response 200 - Content item deleted successfully
  * @response 400 - Missing required params
  * @response 401 - User not authenticated
+ * @response 403 - Instructor access required for course
  * @response 404 - Course, topic/week, or item not found
  * @response 500 - Failed to delete content item
  */
-router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId', asyncHandlerWithAuth(async (req: Request, res: Response) => {
+router.delete('/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId', requireInstructorForCourseAPI(['params']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
     try {
         appLogger.log('🗑️ [BACKEND] Delete content item request received');
         appLogger.log('🔍 [BACKEND] Request params:', req.params);
@@ -4808,3 +4853,4 @@ mountGuidedPathwayFlagRoutes(router);
 // ========= COURSE MATERIAL COPY API =======
 // ===========================================
 mountCourseMaterialCopyRoutes(router);
+mountCourseSyllabusRoutes(router);

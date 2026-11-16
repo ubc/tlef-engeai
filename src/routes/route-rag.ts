@@ -15,6 +15,77 @@ import { asyncHandlerWithAuth } from '../middleware/async-handler';
 import { requireInstructorForCourseAPI, requireInstructorGlobal } from '../middleware/require-course-role';
 import { isCourseFeatureEnabled } from '../dashboard-setting/course-features';
 import { runPostUploadStruggleGeneration } from './struggle-generation-upload';
+import { isCourseSyllabusScope } from '../rag/course-syllabus';
+import { COURSE_SYLLABUS_TITLE } from '../types/shared';
+
+/** Thrown when a Course Syllabus upload reached Qdrant but its Mongo record could not be saved. */
+class SyllabusPersistError extends Error {}
+
+/**
+ * resolveUploadTitles - Topic/item titles stored on the uploaded chunks.
+ *
+ * A Course Syllabus upload (#674) always gets `COURSE_SYLLABUS_TITLE` for both, whatever
+ * the client sent, so retrieval can find exactly the syllabus chunks.
+ *
+ * @param body - Upload request body
+ * @returns Titles to store on the material and its chunks
+ */
+function resolveUploadTitles(body: { topicOrWeekId?: unknown; topicOrWeekTitle?: string; itemTitle?: string }) {
+    if (isCourseSyllabusScope(body.topicOrWeekId)) {
+        return { topicOrWeekTitle: COURSE_SYLLABUS_TITLE, itemTitle: COURSE_SYLLABUS_TITLE };
+    }
+    return { topicOrWeekTitle: body.topicOrWeekTitle ?? '', itemTitle: body.itemTitle ?? '' };
+}
+
+/**
+ * rejectSyllabusWithoutCourse - Sends 400 when a syllabus upload has no course id.
+ *
+ * @returns True when the response was sent and the handler must stop
+ */
+function rejectSyllabusWithoutCourse(req: Request, res: Response): boolean {
+    if (isCourseSyllabusScope(req.body?.topicOrWeekId) && !req.body?.courseId) {
+        res.status(400).json({ status: 400, message: 'courseId is required for a Course Syllabus upload' });
+        return true;
+    }
+    return false;
+}
+
+/**
+ * persistSyllabusMaterial - Stores a Course Syllabus upload on the course (#674).
+ *
+ * Syllabus documents skip struggle-topic generation: they describe the course, not a
+ * lecture. When the Mongo write fails, the new chunks are removed again so retrieval
+ * never reads a syllabus the Documents page cannot show or delete.
+ *
+ * @throws SyllabusPersistError when the record could not be saved
+ */
+async function persistSyllabusMaterial(
+    ragApp: RAGApp,
+    result: AdditionalMaterialUpload,
+    courseId: string,
+    uploadedBy: string
+) {
+    const chunkIds = materialChunkIds(result);
+    if (!result.uploaded || chunkIds.length === 0) {
+        throw new SyllabusPersistError('Syllabus document produced no searchable chunks');
+    }
+    const persistable = hoistMaterialFile(result) as unknown as AdditionalMaterial;
+    let saved = false;
+    try {
+        saved = await ragApp.mongoDBInstance.addSyllabusMaterial(courseId, { ...persistable, uploadedBy });
+    } catch (mongoError) {
+        appLogger.error('Failed to store syllabus metadata in MongoDB:', mongoError);
+    }
+    if (!saved) {
+        try {
+            await ragApp.getRagModule().deleteDocumentsByIds(chunkIds);
+        } catch (cleanupError) {
+            appLogger.error('Failed to remove syllabus chunks after a failed save:', { courseId, materialId: result.id, error: cleanupError });
+        }
+        throw new SyllabusPersistError('Failed to save syllabus document');
+    }
+    return { generatedStruggleTopics: [], struggleGenerationSkipped: true };
+}
 
 // Extend Request interface to include file property from multer
 interface MulterRequest extends Request {
@@ -282,7 +353,9 @@ router.post('/documents/parse/text', requireInstructorGlobal, asyncHandlerWithAu
  * @param {string} itemTitle - Item title (body)
  * @param {string} text - Document text content (body)
  * @param {string} [courseId] - Course ID for MongoDB metadata (body)
- * @param {string} [topicOrWeekId] - Topic/week ID for MongoDB metadata (body)
+ * @param {string} [topicOrWeekId] - Topic/week ID for MongoDB metadata (body); `course-syllabus` stores the
+ *        document as the Course Syllabus (#674): titles forced to "Course Syllabus", courseId required,
+ *        no struggle-topic generation, 500 when the course record cannot be saved
  * @param {string} [itemId] - Item ID for MongoDB metadata (body)
  * @returns {object} { status: number, message?: string, data?: { id, name, uploaded, qdrantChunkIds, chunksGenerated }, details?: string }
  * @response 201 - Document uploaded successfully
@@ -292,6 +365,7 @@ router.post('/documents/parse/text', requireInstructorGlobal, asyncHandlerWithAu
  * @response 500 - Failed to upload text document
  */
 router.post('/documents/text', validateTextDocument, requireInstructorForCourseAPI(['body', 'session']), asyncHandlerWithAuth(async (req: Request, res: Response) => {
+    if (rejectSyllabusWithoutCourse(req, res)) return;
     try {
         appLogger.log('?? BACKEND UPLOAD TEXT - Request Details:');
         appLogger.log('  Headers:', req.headers);
@@ -305,8 +379,7 @@ router.post('/documents/text', validateTextDocument, requireInstructorForCourseA
             date: new Date(),
             name: req.body.name,
             courseName: req.body.courseName,
-            topicOrWeekTitle: req.body.topicOrWeekTitle,
-            itemTitle: req.body.itemTitle,
+            ...resolveUploadTitles(req.body),
             sourceType: 'text',
             text: req.body.text,
             uploaded: false,
@@ -316,12 +389,10 @@ router.post('/documents/text', validateTextDocument, requireInstructorForCourseA
 
         appLogger.log('?? BACKEND UPLOAD TEXT - RAG Upload Result:', result);
 
-        const strugglePayload = await persistMaterialAndGenerateStruggleTopics(
-            ragApp,
-            result,
-            req.body,
-            (req.user as { puid?: string })?.puid || 'system'
-        );
+        const uploadedBy = (req.user as { puid?: string })?.puid || 'system';
+        const strugglePayload = isCourseSyllabusScope(req.body.topicOrWeekId)
+            ? await persistSyllabusMaterial(ragApp, result, req.body.courseId, uploadedBy)
+            : await persistMaterialAndGenerateStruggleTopics(ragApp, result, req.body, uploadedBy);
 
         res.status(201).json({
             status: 201,
@@ -339,7 +410,7 @@ router.post('/documents/text', validateTextDocument, requireInstructorForCourseA
     } catch (error) {
         res.status(500).json({
             status: 500,
-            message: 'Failed to upload text document',
+            message: error instanceof SyllabusPersistError ? error.message : 'Failed to upload text document',
             details: error instanceof Error ? error.message : 'Unknown error'
         });
     }
@@ -356,7 +427,9 @@ router.post('/documents/text', validateTextDocument, requireInstructorForCourseA
  * @param {string} topicOrWeekTitle - Topic or week title (body)
  * @param {string} itemTitle - Item title (body)
  * @param {string} [courseId] - Course ID for MongoDB metadata (body)
- * @param {string} [topicOrWeekId] - Topic/week ID for MongoDB metadata (body)
+ * @param {string} [topicOrWeekId] - Topic/week ID for MongoDB metadata (body); `course-syllabus` stores the
+ *        document as the Course Syllabus (#674): titles forced to "Course Syllabus", courseId required,
+ *        no struggle-topic generation, 500 when the course record cannot be saved
  * @param {string} [itemId] - Item ID for MongoDB metadata (body)
  * @returns {object} { status: number, message?: string, data?: { id, name, fileName, uploaded, qdrantChunkIds, chunksGenerated }, details?: string }
  * @response 201 - File uploaded and processed successfully
@@ -366,6 +439,7 @@ router.post('/documents/text', validateTextDocument, requireInstructorForCourseA
  * @response 500 - Failed to upload file document
  */
 router.post('/documents/file', upload.single('file'), validateFileDocument, requireInstructorForCourseAPI(['body', 'session']), asyncHandlerWithAuth(async (req: MulterRequest, res: Response) => {
+    if (rejectSyllabusWithoutCourse(req, res)) return;
     try {
         appLogger.log('?? BACKEND UPLOAD FILE - Request Details:');
         appLogger.log('  Headers:', req.headers);
@@ -387,8 +461,7 @@ router.post('/documents/file', upload.single('file'), validateFileDocument, requ
             date: new Date(),
             name: req.body.name,
             courseName: req.body.courseName,
-            topicOrWeekTitle: req.body.topicOrWeekTitle,
-            itemTitle: req.body.itemTitle,
+            ...resolveUploadTitles(req.body),
             sourceType: 'file',
             file: req.file as any,
             fileName: req.file.originalname,
@@ -397,12 +470,10 @@ router.post('/documents/file', upload.single('file'), validateFileDocument, requ
 
         const result = await ragApp.uploadDocument(document);
 
-        const strugglePayload = await persistMaterialAndGenerateStruggleTopics(
-            ragApp,
-            result,
-            req.body,
-            (req.user as { puid?: string })?.puid || 'system'
-        );
+        const uploadedBy = (req.user as { puid?: string })?.puid || 'system';
+        const strugglePayload = isCourseSyllabusScope(req.body.topicOrWeekId)
+            ? await persistSyllabusMaterial(ragApp, result, req.body.courseId, uploadedBy)
+            : await persistMaterialAndGenerateStruggleTopics(ragApp, result, req.body, uploadedBy);
 
         res.status(201).json({
             status: 201,
@@ -421,7 +492,7 @@ router.post('/documents/file', upload.single('file'), validateFileDocument, requ
     } catch (error) {
         res.status(500).json({
             status: 500,
-            message: 'Failed to upload file document',
+            message: error instanceof SyllabusPersistError ? error.message : 'Failed to upload file document',
             details: error instanceof Error ? error.message : 'Unknown error'
         });
     }

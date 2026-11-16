@@ -21,16 +21,33 @@ export interface StudentCourseCapabilities {
 }
 
 /**
- * toStudentCoursePayload - strip staff-only Extra Feature and LLM settings.
+ * toStudentCoursePayload - strip staff-only Extra Feature, LLM settings, syllabus material
+ * records, and the uploader PUID on week/topic materials.
  *
  * Does not mutate the input. Staff callers should return the full course instead.
  *
  * @param course - Full active course document
- * @returns Shallow copy without `features` or `llmSettings`
+ * @returns Copy without `features`, `llmSettings`, `syllabusMaterials`, or any
+ *          `additionalMaterials[].uploadedBy`
  */
 export function toStudentCoursePayload(course: activeCourse): activeCourse {
-    const { features: _features, llmSettings: _llmSettings, ...rest } = course;
-    return { ...rest };
+    // Syllabus material records are staff-managed (#674)
+    const { features: _features, llmSettings: _llmSettings, syllabusMaterials: _syllabusMaterials, ...rest } = course;
+    // `uploadedBy` is the uploader's PUID, which must stay out of student-facing responses
+    const topicOrWeekInstances = (rest.topicOrWeekInstances ?? []).map((instance) => ({
+        ...instance,
+        items: (instance.items ?? []).map((item) => ({
+            ...item,
+            ...(item.additionalMaterials
+                ? {
+                      additionalMaterials: item.additionalMaterials.map(
+                          ({ uploadedBy: _uploadedBy, ...material }) => material
+                      )
+                  }
+                : {})
+        }))
+    }));
+    return { ...rest, topicOrWeekInstances };
 }
 
 /**

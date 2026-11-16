@@ -271,3 +271,37 @@ describe('runMigratePipeline', () => {
         expect(ran.indexOf('qdrant-resolve')).toBeLessThan(ran.indexOf('qdrant-validate'));
     });
 });
+
+describe('Course Syllabus documents in the migration (#674)', () => {
+    const syllabusDoc = {
+        id: 'syl-1',
+        name: 'Outline',
+        topicOrWeekTitle: 'Course Syllabus',
+        itemTitle: 'Course Syllabus',
+        qdrantChunkIds: ['sp-1'],
+        stray: 'dropped',
+    };
+
+    it('keeps syllabusMaterials through the course allowlist, walking each record', () => {
+        const result = walkObject(
+            { id: 'c1', courseName: 'Sandbox', syllabusMaterials: [syllabusDoc] },
+            activeCourseSchema
+        );
+        const [walked] = result.value?.syllabusMaterials as Record<string, unknown>[];
+        expect(walked).toMatchObject({ id: 'syl-1', name: 'Outline', qdrantChunkIds: ['sp-1'] });
+        expect(walked.stray).toBeUndefined();
+    });
+
+    it('indexes syllabus documents so op D does not treat their vectors as orphans', () => {
+        const { map: catalog } = buildCourseCatalogMap([{ id: 'c1', courseName: 'Sandbox' }]);
+        const materials = collectMaterials([{ id: 'c1', courseName: 'Sandbox', syllabusMaterials: [syllabusDoc] }]);
+        expect(materials.get('syl-1')).toMatchObject({ courseId: 'c1', itemTitle: 'Course Syllabus' });
+        expect(
+            classifyQdrantPoint(
+                { id: 'sp-1', payload: { id: 'syl-1', courseName: 'Sandbox', topicOrWeekTitle: 'Course Syllabus', itemTitle: 'Course Syllabus', name: 'Outline' } },
+                materials,
+                catalog
+            )
+        ).not.toBe('orphan');
+    });
+});

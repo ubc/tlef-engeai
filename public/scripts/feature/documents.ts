@@ -24,7 +24,9 @@ import {
     TopicOrWeekItem, 
     AdditionalMaterial,
     AdditionalMaterialUpload,
-    activeCourse
+    activeCourse,
+    COURSE_SYLLABUS_SCOPE_ID,
+    COURSE_SYLLABUS_TITLE
 } from '../types.js';
 import { uploadRAGContent } from '../services/rag-service.js';
 import { DocumentUploadModule } from '../services/document-upload-module.js';
@@ -51,7 +53,7 @@ function setSchedulePanelError(el: HTMLElement, message: string): void {
 const DELETE_DIALOG_ID = 'documents-delete-dialog';
 
 /** What a delete button removes; the dialog reads it to word the confirmation and pick the request. */
-type DeleteDialogKind = 'instance' | 'section' | 'material' | 'all-documents';
+type DeleteDialogKind = 'instance' | 'section' | 'material' | 'syllabus-material' | 'all-documents';
 
 /** Listeners on the page's dialogs from the last page init, removed when the page initializes again. */
 let dialogListeners: AbortController | null = null;
@@ -269,6 +271,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 // Update currentClass with latest topic/week instances count and data
                 currentClass.topicOrWeekInstances = course.topicOrWeekInstances || currentClass.topicOrWeekInstances;
                 currentClass.tilesNumber = (course.topicOrWeekInstances && course.topicOrWeekInstances.length) ? course.topicOrWeekInstances.length : currentClass.tilesNumber;
+                currentClass.syllabusMaterials = course.syllabusMaterials ?? [];
             }
         } catch (e) {
             console.warn('⚠️ Exception fetching latest course:', e);
@@ -936,6 +939,8 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         if (!container) return;
 
         //return; //for debugging purposes, do not change this line
+
+        renderSyllabusSection();
 
         // Clear existing children
         while (container.firstChild) container.removeChild(container.firstChild);
@@ -1611,12 +1616,6 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 return;
             }
 
-            // Compute next numeric id (server will compute as well; client uses server response)
-            const existingNumericIds = courseData
-                .map(d => parseInt(d.id, 10))
-                .filter(n => !Number.isNaN(n));
-            const nextIdNum = (existingNumericIds.length ? Math.max(...existingNumericIds) : 0) + 1;
-
             if (!courseId) {
                 console.error('❌ Cannot add division: courseId is missing');
                 await showSimpleErrorModal('Cannot add division: Course ID is missing.', 'Error');
@@ -1629,10 +1628,8 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                // Send optional title; server may override to ensure consistency
-                body: JSON.stringify({
-                    title: currentClass.frameType === 'byWeek' ? `Week ${nextIdNum}` : `Topic ${nextIdNum}`
-                })
+                // No title: the server picks the next "Week N" / "Topic N" by position (#689)
+                body: JSON.stringify({})
             });
 
             // console.log('📡 Add Division API Response status:', response.status, response.statusText); // 🟢 MEDIUM: HTTP status logging
@@ -1727,6 +1724,13 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             itemType = 'Document';
             itemName = material.name || 'this document';
             runDelete = () => deleteAdditionalMaterial(topicOrWeekId, contentId, materialId);
+        } else if (kind === 'syllabus-material') {
+            const materialId = invoker.dataset.materialId ?? '';
+            const material = currentClass.syllabusMaterials?.find((m) => m.id === materialId);
+            if (!material) return null;
+            itemType = 'Document';
+            itemName = material.name || 'this document';
+            runDelete = () => deleteSyllabusMaterial(materialId);
         } else if (kind === 'all-documents') {
             runDelete = () => deleteAllDocuments();
         } else {
@@ -3114,6 +3118,174 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
 
     // ----- Additional Materials (front-end only) -----
 
+    // ----- Course Syllabus (#674) -----
+
+    /**
+     * renderSyllabusSection — fills the pinned Course Syllabus card above the weeks/topics.
+     *
+     * The syllabus is course-wide: no publish state, no sections, no struggle topics.
+     * AI retrieval reads it as soon as it is uploaded.
+     */
+    function renderSyllabusSection(): void {
+        const section = document.getElementById('documents-syllabus');
+        if (!section) return;
+        while (section.firstChild) section.removeChild(section.firstChild);
+
+        // 1. Heading and what the syllabus is used for
+        const header = document.createElement('div');
+        header.className = 'syllabus-header';
+        const heading = document.createElement('h2');
+        heading.id = 'documents-syllabus-heading';
+        heading.className = 'syllabus-title';
+        heading.tabIndex = -1;
+        heading.textContent = COURSE_SYLLABUS_TITLE;
+        const hint = document.createElement('p');
+        hint.className = 'syllabus-hint';
+        hint.textContent =
+            'Upload your course outline. The AI tutor, Scenario Generation and Writing Feedback use it as soon as it is uploaded. No publishing needed.';
+        header.appendChild(heading);
+        header.appendChild(hint);
+        section.appendChild(header);
+
+        // 2. Uploaded syllabus documents
+        const materials = (currentClass.syllabusMaterials ?? []).filter((m) => !m.deleted);
+        if (materials.length > 0) {
+            const list = document.createElement('div');
+            list.className = 'additional-materials';
+            materials.forEach((m) => {
+                const row = document.createElement('div');
+                row.className = 'additional-material';
+                row.setAttribute('data-material-id', m.id);
+
+                const title = document.createElement('div');
+                title.className = 'am-title';
+                title.textContent = m.name;
+
+                const meta = document.createElement('div');
+                meta.className = 'am-meta';
+                meta.textContent = m.sourceType === 'file' ? (m.fileName ? `File · ${m.fileName}` : 'File') : 'Text';
+
+                const actions = document.createElement('div');
+                actions.className = 'am-actions';
+                const del = document.createElement('button');
+                del.type = 'button';
+                del.className = 'action-btn delete-btn';
+                del.dataset.materialId = m.id;
+                setDeleteDialogInvoker(del, 'syllabus-material');
+                del.textContent = 'Delete';
+                const delTarget = document.createElement('span');
+                delTarget.className = 'visually-hidden';
+                delTarget.textContent = ` ${m.name}`;
+                del.appendChild(delTarget);
+                actions.appendChild(del);
+
+                row.appendChild(title);
+                row.appendChild(meta);
+                row.appendChild(actions);
+                list.appendChild(row);
+            });
+            section.appendChild(list);
+        }
+
+        // 3. Upload button (same dashed drop-zone look as a section's)
+        const upload = document.createElement('button');
+        upload.type = 'button';
+        upload.className = 'upload-area syllabus-upload';
+        const uploadText = document.createElement('span');
+        uploadText.className = 'upload-text';
+        const plus = document.createElement('span');
+        plus.setAttribute('aria-hidden', 'true');
+        plus.textContent = '+ ';
+        uploadText.appendChild(plus);
+        uploadText.appendChild(
+            document.createTextNode(materials.length > 0 ? 'Upload another syllabus document' : 'Upload your syllabus here')
+        );
+        upload.appendChild(uploadText);
+        upload.addEventListener('click', () => {
+            void openUploadModal(COURSE_SYLLABUS_SCOPE_ID, COURSE_SYLLABUS_SCOPE_ID, handleUploadSyllabus);
+        });
+        section.appendChild(upload);
+    }
+
+    /**
+     * handleUploadSyllabus — uploads one Course Syllabus document through the RAG upload
+     * routes with the reserved syllabus scope, then redraws the syllabus card.
+     *
+     * @param material - Name, source type and file/text from the upload modal
+     * @returns Upload outcome for the modal's success message
+     */
+    async function handleUploadSyllabus(material: any): Promise<{ success: boolean; chunksGenerated?: number }> {
+        if (!courseId) {
+            await showSimpleErrorModal('Cannot upload the syllabus: Course ID is missing.', 'Upload Error');
+            return { success: false };
+        }
+        const upload: AdditionalMaterialUpload = {
+            id: '',
+            name: material.name,
+            courseName: currentClass.courseName,
+            topicOrWeekTitle: COURSE_SYLLABUS_TITLE,
+            itemTitle: COURSE_SYLLABUS_TITLE,
+            sourceType: material.sourceType,
+            file: material.file,
+            text: material.text,
+            fileName: material.fileName,
+            date: new Date(),
+            courseId,
+            topicOrWeekId: COURSE_SYLLABUS_SCOPE_ID,
+            itemId: COURSE_SYLLABUS_SCOPE_ID
+        };
+        try {
+            const result: UploadResult = await new DocumentUploadModule(() => {}).uploadDocument(upload);
+            if (!result.success || !result.document) {
+                await showSimpleErrorModal(`Failed to upload the syllabus: ${result.error ?? 'Unknown error'}`, 'Upload Error');
+                return { success: false };
+            }
+            currentClass.syllabusMaterials = [...(currentClass.syllabusMaterials ?? []), result.document];
+            renderSyllabusSection();
+            return { success: true, chunksGenerated: result.chunksGenerated };
+        } catch (error) {
+            console.error('Error uploading syllabus document:', error);
+            await showSimpleErrorModal('An error occurred while uploading the syllabus. Please try again.', 'Upload Error');
+            return { success: false };
+        }
+    }
+
+    /**
+     * deleteSyllabusMaterial — deletes one syllabus document the instructor confirmed in the
+     * shared delete dialog, then moves focus to the syllabus heading.
+     *
+     * @param materialId - Syllabus material id
+     */
+    async function deleteSyllabusMaterial(materialId: string): Promise<void> {
+        if (!courseId) {
+            await showSimpleErrorModal('Cannot delete the document: Course ID is missing.', 'Error');
+            return;
+        }
+        const material = currentClass.syllabusMaterials?.find((m) => m.id === materialId);
+        try {
+            const response = await fetch(
+                `/api/courses/${encodeURIComponent(courseId)}/syllabus/materials/${encodeURIComponent(materialId)}`,
+                { method: 'DELETE', headers: { 'Content-Type': 'application/json' } }
+            );
+            const result = await response.json();
+            if (!result.success) {
+                await showSimpleErrorModal('Failed to delete document: ' + result.error, 'Delete Document Error');
+                return;
+            }
+            currentClass.syllabusMaterials = (currentClass.syllabusMaterials ?? []).filter((m) => m.id !== materialId);
+            renderSyllabusSection();
+            document.getElementById('documents-syllabus-heading')?.focus();
+            const chunksDeleted = result.data?.chunksDeleted ?? 0;
+            await showDeletionResultDialog(
+                [{ name: result.data?.materialName ?? material?.name ?? 'Document', chunksDeleted }],
+                chunksDeleted
+            );
+        } catch (error) {
+            console.error('Error deleting syllabus document:', error);
+            await showSimpleErrorModal('An error occurred while deleting the document. Please try again.', 'Delete Document Error');
+        }
+    }
+
     /**
      * Build the additional materials container via DOM APIs
      * 
@@ -3485,13 +3657,13 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 throw new Error('Course ID not found');
             }
 
-            // Call the new wipe-all API endpoint with courseId
+            // Course-scoped delete-all route (the old /api/rag/wipe-all route is disabled on the server)
+            const deleteAllUrl = `/api/courses/${encodeURIComponent(courseId)}/documents/all`;
             console.log('🔍 WIPE ALL DOCUMENTS - Request Details:');
-            console.log('  URL:', `/api/rag/wipe-all?courseId=${courseId}`);
+            console.log('  URL:', deleteAllUrl);
             console.log('  Method: DELETE');
-            console.log('  Course ID:', courseId);
             
-            const response = await fetch(`/api/rag/wipe-all?courseId=${courseId}`, {
+            const response = await fetch(deleteAllUrl, {
                 method: 'DELETE',
                 headers: {
                     'Content-Type': 'application/json',
@@ -3538,12 +3710,13 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             }
             console.log('✅ RAG database wipe completed:', result_data);
 
-            // Clear all additional materials from local data
+            // Clear all additional materials, including the Course Syllabus, from local data
             courseData.forEach(division => {
                 division.items.forEach(item => {
                     item.additionalMaterials = [];
                 });
             });
+            currentClass.syllabusMaterials = [];
 
             // Refresh the UI to show empty state
             renderDocumentsPage();

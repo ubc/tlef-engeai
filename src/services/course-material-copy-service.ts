@@ -24,6 +24,8 @@ import type {
 import type { CourseMaterialReplacement } from '../db/mongo/course-material-copy-mongo';
 import type { MaterialChunkForCopy, RAGApp } from '../rag/rag-app';
 import { materialChunkIds } from '../migrate/schema-walker';
+import { activeSyllabusMaterials, syllabusChunkIds } from '../rag/course-syllabus';
+import { COURSE_SYLLABUS_SCOPE_ID, COURSE_SYLLABUS_TITLE } from '../types/shared';
 import { canManageCourseRoster } from '../utils/course-staff';
 import { isAdminUser } from '../utils/admin';
 import { appLogger } from '../utils/logger';
@@ -74,6 +76,8 @@ interface PlannedMaterial {
 
 interface MaterialCopyPlan {
     instances: TopicOrWeekInstance[];
+    /** Copied Course Syllabus documents; absent when the target keeps its own syllabus (#674). */
+    syllabusMaterials?: AdditionalMaterial[];
     points: MaterialChunkForCopy[];
     materialsCopied: number;
     skippedMaterials: SkippedCopyMaterial[];
@@ -256,7 +260,32 @@ async function planMaterialCopy(
         });
     }
 
-    return { instances, points, materialsCopied, skippedMaterials };
+    // Course Syllabus (#674): copied only into a target without one, so a copy never
+    // deletes a syllabus the target's instructor already uploaded.
+    let syllabusMaterials: AdditionalMaterial[] | undefined;
+    const sourceSyllabus = activeSyllabusMaterials(source);
+    if (sourceSyllabus.length > 0 && activeSyllabusMaterials(target).length === 0) {
+        syllabusMaterials = [];
+        for (const material of sourceSyllabus) {
+            const planned = await copyMaterial(deps, source, target, material, {
+                topicOrWeekId: COURSE_SYLLABUS_SCOPE_ID,
+                itemId: COURSE_SYLLABUS_SCOPE_ID
+            });
+            if (!planned) {
+                skippedMaterials.push({
+                    name: material.name,
+                    topicOrWeekTitle: COURSE_SYLLABUS_TITLE,
+                    itemTitle: COURSE_SYLLABUS_TITLE
+                });
+                continue;
+            }
+            syllabusMaterials.push(planned.material);
+            points.push(...planned.points);
+            materialsCopied += 1;
+        }
+    }
+
+    return { instances, syllabusMaterials, points, materialsCopied, skippedMaterials };
 }
 
 function scheduledPublishDate(instance: TopicOrWeekInstance): Date | null {
@@ -283,7 +312,7 @@ function allChunkIds(course: activeCourse): string[] {
  * Steps:
  * 1. Claim the target with a lease so two copies cannot interleave.
  * 2. Read the source's chunks and write copies under fresh ids.
- * 3. Swap the target's topics/weeks in one Mongo write. If writing chunks or the swap fails, the
+ * 3. Swap the target's topics/weeks (and, when the target had none, its Course Syllabus) in one Mongo write. If writing chunks or the swap fails, the
  *    new chunks are deleted and the target is left exactly as it was.
  * 4. Clean up what the swap replaced: the old chunks and old scheduled publishes. Failures here
  *    are logged, not thrown — the copy itself has succeeded.
@@ -315,16 +344,19 @@ export async function copyCourseMaterials(
     let replaced: activeCourse | null = null;
     let result: CopyCourseMaterialsResult;
     let instances: TopicOrWeekInstance[];
+    let replacedSyllabus = false;
     try {
         const plan = await planMaterialCopy(deps, source, target);
         instances = plan.instances;
         writtenPointIds = plan.points.map((p) => p.id);
         await deps.upsertChunks(plan.points);
 
+        replacedSyllabus = plan.syllabusMaterials !== undefined;
         replaced = await deps.replaceUnderLease(targetCourseId, token, {
             frameType: source.frameType,
             tilesNumber: source.tilesNumber,
-            topicOrWeekInstances: plan.instances
+            topicOrWeekInstances: plan.instances,
+            ...(plan.syllabusMaterials ? { syllabusMaterials: plan.syllabusMaterials } : {})
         });
         if (!replaced) {
             throw new MaterialCopyLeaseLostError();
@@ -355,7 +387,11 @@ export async function copyCourseMaterials(
 
     // Read the replaced materials from the swap's own "before" image, not the copy's first read:
     // anything uploaded to the target mid-copy is gone from the catalog too and must not be orphaned.
-    const oldChunkIds = allChunkIds(replaced);
+    const oldChunkIds = [
+        ...allChunkIds(replaced),
+        // Only when the swap wrote a syllabus; otherwise the target's own syllabus stays live
+        ...(replacedSyllabus ? syllabusChunkIds(replaced) : [])
+    ];
     try {
         await deps.deleteChunks(oldChunkIds);
     } catch (error) {

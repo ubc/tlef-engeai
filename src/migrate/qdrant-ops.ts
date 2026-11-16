@@ -16,6 +16,7 @@ import type { CourseCatalogMap } from './catalog-map';
 import { printCatalogMap } from './catalog-map';
 import { QDRANT_PAYLOAD_ALLOWLIST } from './schemas';
 import { hoistMaterialFile } from './schema-walker';
+import { COURSE_SYLLABUS_TITLE } from '../types/shared';
 
 export interface QdrantPoint {
     id: string | number;
@@ -33,7 +34,8 @@ export interface MaterialIndexEntry {
 }
 
 /**
- * collectMaterials - index live additionalMaterials by id (after hoist) for C/D joins.
+ * collectMaterials - index live additionalMaterials and Course Syllabus documents by id
+ * (after hoist) for C/D joins. Leaving the syllabus out would make op D delete its vectors.
  */
 export function collectMaterials(courses: Record<string, unknown>[]): Map<string, MaterialIndexEntry> {
     const index = new Map<string, MaterialIndexEntry>();
@@ -64,6 +66,22 @@ export function collectMaterials(courses: Record<string, unknown>[]): Map<string
                     });
                 }
             }
+        }
+        // Course Syllabus documents (#674) live on the course, outside the topic/week tree
+        const syllabus = Array.isArray(course.syllabusMaterials) ? course.syllabusMaterials : [];
+        for (const raw of syllabus) {
+            const material = hoistMaterialFile(raw);
+            const id = typeof material.id === 'string' ? material.id : '';
+            if (!id) continue;
+            index.set(id, {
+                courseId,
+                courseName,
+                topicOrWeekTitle: String(material.topicOrWeekTitle ?? COURSE_SYLLABUS_TITLE),
+                itemTitle: String(material.itemTitle ?? COURSE_SYLLABUS_TITLE),
+                name: String(material.name ?? ''),
+                fileName: typeof material.fileName === 'string' ? material.fileName : undefined,
+                deleted: material.deleted === true,
+            });
         }
     }
     return index;
@@ -379,6 +397,23 @@ export async function runQdrantResolveToMongo(
         for (const course of courses) {
             const instances = Array.isArray(course.topicOrWeekInstances) ? course.topicOrWeekInstances : [];
             let courseChanged = false;
+            /** Merges resolved chunk ids into one material record. */
+            const mergeChunkIds = (raw: unknown) => {
+                const material = hoistMaterialFile(raw);
+                const extra = idsByMaterial.get(String(material.id ?? ''));
+                if (!extra) {
+                    return material;
+                }
+                const merged = Array.from(new Set([...(material.qdrantChunkIds as string[]), ...extra]));
+                material.qdrantChunkIds = merged;
+                material.chunksGenerated = merged.length;
+                courseChanged = true;
+                return material;
+            };
+            // Course Syllabus documents (#674)
+            if (Array.isArray(course.syllabusMaterials)) {
+                course.syllabusMaterials = course.syllabusMaterials.map(mergeChunkIds);
+            }
             for (const instance of instances) {
                 if (!instance || typeof instance !== 'object') continue;
                 const week = instance as Record<string, unknown>;
@@ -387,19 +422,7 @@ export async function runQdrantResolveToMongo(
                     if (!item || typeof item !== 'object') continue;
                     const row = item as Record<string, unknown>;
                     const materialsArr = Array.isArray(row.additionalMaterials) ? row.additionalMaterials : [];
-                    row.additionalMaterials = materialsArr.map((raw) => {
-                        const material = hoistMaterialFile(raw);
-                        const id = String(material.id ?? '');
-                        const extra = idsByMaterial.get(id);
-                        if (!extra) {
-                            return material;
-                        }
-                        const merged = Array.from(new Set([...(material.qdrantChunkIds as string[]), ...extra]));
-                        material.qdrantChunkIds = merged;
-                        material.chunksGenerated = merged.length;
-                        courseChanged = true;
-                        return material;
-                    });
+                    row.additionalMaterials = materialsArr.map(mergeChunkIds);
                 }
             }
             if (courseChanged) {

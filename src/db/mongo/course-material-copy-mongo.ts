@@ -7,7 +7,7 @@
  * The Qdrant half of a copy lives in `RAGApp`; `course-material-copy-service.ts` sequences the two.
  */
 
-import type { activeCourse, frameType, MaterialCopyLease, TopicOrWeekInstance } from '../../types/shared';
+import type { activeCourse, AdditionalMaterial, frameType, MaterialCopyLease, TopicOrWeekInstance } from '../../types/shared';
 import { activeCourseListCollection } from './mongo-collections';
 import type { MongoDalContext } from './mongo-context';
 
@@ -16,6 +16,8 @@ export interface CourseMaterialReplacement {
     frameType: frameType;
     tilesNumber: number;
     topicOrWeekInstances: TopicOrWeekInstance[];
+    /** Set only when the copy brings a Course Syllabus; omitted leaves the target's untouched (#674). */
+    syllabusMaterials?: AdditionalMaterial[];
 }
 
 /**
@@ -74,6 +76,7 @@ export async function replaceCourseMaterialsUnderLease(
                 frameType: replacement.frameType,
                 tilesNumber: replacement.tilesNumber,
                 topicOrWeekInstances: replacement.topicOrWeekInstances,
+                ...(replacement.syllabusMaterials ? { syllabusMaterials: replacement.syllabusMaterials } : {}),
                 contentSetup: true,
                 updatedAt: Date.now().toString()
             },

@@ -460,6 +460,8 @@ export interface activeCourse {
     frameType: frameType;
     tilesNumber: number;
     topicOrWeekInstances: TopicOrWeekInstance[]; // previously content, previously divisions
+    /** Course Syllabus documents (#674): course-wide, outside the week/topic tree; AI retrieval reads them as soon as they are uploaded. */
+    syllabusMaterials?: AdditionalMaterial[];
     courseCode?: string; // 6-character uppercase alphanumeric PIN code for course entry
     /** Present only on courses imported from an LMS. */
     lmsLink?: CourseLmsLink;
@@ -561,6 +563,11 @@ export interface InitialAssistantPrompt {
     isSelected: boolean;
     isDefault?: boolean; // If true, this is the system default prompt (unremovable)
 }
+
+/** Reserved scope id sent as `topicOrWeekId`/`itemId` when uploading a Course Syllabus document (#674). */
+export const COURSE_SYLLABUS_SCOPE_ID = 'course-syllabus';
+/** Topic and item title stored on Course Syllabus chunks in Qdrant; also their source label in AI context. */
+export const COURSE_SYLLABUS_TITLE = 'Course Syllabus';
 
 /**
  * Must match src/types/shared.ts

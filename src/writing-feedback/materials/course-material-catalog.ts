@@ -12,6 +12,7 @@
  */
 
 import type { activeCourse } from '../../types/shared';
+import { COURSE_SYLLABUS_TITLE } from '../../types/shared';
 
 /** One pickable course material: a stable id and the title a student would read. */
 export interface CourseMaterialTitle {
@@ -28,7 +29,8 @@ export interface CourseMaterialTitle {
  *
  * Only published topics contribute. The title is printed to a student, so an unreleased
  * document must not be offered — the same boundary retrieval enforces when it decides what
- * is citable.
+ * is citable. Course Syllabus documents (#674) have no publish state and are citable as
+ * soon as they are uploaded, so they come first.
  *
  * @param course - Course record carrying the embedded topic/week graph, if loaded
  * @returns Pickable titles, deduplicated by label, in topic then item then material order
@@ -36,6 +38,15 @@ export interface CourseMaterialTitle {
 export function listPublishedCourseMaterialTitles(course: activeCourse | undefined | null): CourseMaterialTitle[] {
     const titles: CourseMaterialTitle[] = [];
     const seen = new Set<string>();
+    // Same label `mentionFromChunk` builds from a syllabus chunk ("Course Syllabus · <name>")
+    for (const material of course?.syllabusMaterials ?? []) {
+        if (!material || material.deleted === true) continue;
+        const name = typeof material.name === 'string' ? material.name.trim() : '';
+        const label = name && name !== COURSE_SYLLABUS_TITLE ? `${COURSE_SYLLABUS_TITLE} · ${name}` : COURSE_SYLLABUS_TITLE;
+        if (seen.has(label)) continue;
+        seen.add(label);
+        titles.push({ id: material.id, label });
+    }
     for (const topic of course?.topicOrWeekInstances ?? []) {
         if (topic?.published !== true) continue;
         for (const item of topic.items ?? []) {

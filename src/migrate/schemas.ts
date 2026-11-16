@@ -147,6 +147,14 @@ export const activeCourseSchema: FieldSpec[] = [
     { key: 'frameType', enum: ['byWeek', 'byTopic'], default: 'byTopic' },
     { key: 'tilesNumber', default: 0 },
     { key: 'topicOrWeekInstances', kind: 'array', itemFields: topicOrWeekFields, default: [] },
+    // Course Syllabus documents (#674): same record shape as a section's additionalMaterials
+    {
+        key: 'syllabusMaterials',
+        kind: 'array',
+        itemFields: additionalMaterialFields,
+        optional: true,
+        preprocess: (value) => (Array.isArray(value) ? value.map((item) => hoistMaterialFile(item)) : value),
+    },
     { key: 'courseCode', optional: true },
     {
         key: 'collections',

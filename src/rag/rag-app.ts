@@ -15,7 +15,8 @@ import { AppConfig, loadConfig } from "../utils/config";
 import { appLogger } from "../utils/logger";
 import { LLMModule } from "ubc-genai-toolkit-llm";
 import { DocumentParsingModule } from "ubc-genai-toolkit-document-parsing";
-import { AdditionalMaterialUpload, TopicOrWeekInstance, TopicOrWeekItem } from "../types/shared";
+import { activeCourse, AdditionalMaterialUpload, TopicOrWeekInstance, TopicOrWeekItem } from "../types/shared";
+import { activeSyllabusMaterials, isCourseSyllabusScope, SYLLABUS_RETRIEVE_LIMIT, syllabusChunkFilter, syllabusChunkIds } from "./course-syllabus";
 import { materialChunkIds } from "../migrate/schema-walker";
 import { EngEAI_MongoDB } from "../db/enge-ai-mongodb";
 import { IDGenerator } from "../utils/unique-id-generator";
@@ -165,9 +166,11 @@ export class RAGApp {
     /**
      * Retrieves relevant document chunks for a student chat turn.
      *
-     * Filters to published course items only. Skips retrieval when MOCK_RESPONSE is enabled
-     * or when the RAG module is unavailable.
-     * 
+     * Filters to published course items only, then appends up to `SYLLABUS_RETRIEVE_LIMIT`
+     * Course Syllabus chunks from a separate search (#674). The syllabus search ignores
+     * `topicOrWeekId` and publish state, so Scenario Generation and chat always see it.
+     * Skips retrieval when MOCK_RESPONSE is enabled or when the RAG module is unavailable.
+     *
      * @param query - The query to search for
      * @param courseName - The name of the course
      * @param options - The options for the retrieval
@@ -224,30 +227,33 @@ export class RAGApp {
                     });
             }
 
+            // Step 1: published week/topic material, within the caller's limit
+            let results: RetrievedChunk[] = [];
             if (publishedItemTitles.length === 0) {
                 appLogger.debug(`No published items found for course: ${courseName}`);
-                return [];
+            } else {
+                const filter: Record<string, unknown> = {
+                    must: [
+                        { key: 'courseName', match: { value: courseName } },
+                        { key: 'itemTitle', match: { any: publishedItemTitles } },
+                    ],
+                };
+
+                const contextualQuery = ` ${query}`;
+
+                results = await this.rag.retrieveContext(contextualQuery, {
+                    limit,
+                    scoreThreshold,
+                    filter,
+                });
+
+                appLogger.log(`DEBUG #119: RAG Results:`, results);
+                appLogger.log(`DEBUG #119: RAG Results length:`, results.length);
             }
 
-            const filter: Record<string, unknown> = {
-                must: [
-                    { key: 'courseName', match: { value: courseName } },
-                    { key: 'itemTitle', match: { any: publishedItemTitles } },
-                ],
-            };
-
-            const contextualQuery = ` ${query}`;
-
-            const results = await this.rag.retrieveContext(contextualQuery, {
-                limit,
-                scoreThreshold,
-                filter,
-            });
-
-            appLogger.log(`DEBUG #119: RAG Results:`, results);
-            appLogger.log(`DEBUG #119: RAG Results length:`, results.length);
-
-            return results;
+            // Step 2: Course Syllabus in its own slot, never scoped to one week
+            const syllabusChunks = await this.retrieveSyllabusChunks(query, course, scoreThreshold);
+            return [...results, ...syllabusChunks];
         } catch (error) {
             appLogger.debug(`❌ RAG Error:`, error as Error);
             appLogger.error('Error retrieving documents:', error as Error);
@@ -266,8 +272,9 @@ export class RAGApp {
      * @param query - Student-text-free search query
      * @param courseId - Stable active-course id
      * @param options - Retrieval limit/threshold and optional topic filter
-     * @returns Retrieved chunks tagged with publication state, or an empty list when
-     *          retrieval is unavailable
+     * @returns Retrieved chunks tagged with publication state, plus up to
+     *          `SYLLABUS_RETRIEVE_LIMIT` Course Syllabus chunks tagged published; an empty
+     *          list when retrieval is unavailable
      */
     public async retrieveForWritingFeedback(
         query: string,
@@ -308,28 +315,62 @@ export class RAGApp {
                     });
                 });
 
-            if (searchTitles.size === 0) return [];
-
-            const filter: Record<string, unknown> = {
-                must: [
-                    { key: 'courseName', match: { value: course.courseName } },
-                    { key: 'itemTitle', match: { any: [...searchTitles] } },
-                ],
-            };
-
             // Step 2: tag each chunk so the caller can ground on all of it and cite only the
             // published part. Chunk content is deliberately never logged here.
-            const chunks = await this.rag.retrieveContext(` ${query}`, { limit, scoreThreshold, filter });
-            return chunks.map((chunk: RetrievedChunk): PublishedTaggedChunk => {
-                const raw = chunk.metadata;
-                const metadata: Record<string, unknown> = typeof raw === 'string'
-                    ? (() => { try { return JSON.parse(raw) as Record<string, unknown>; } catch { return {}; } })()
-                    : (raw ?? {});
-                const itemTitle = typeof metadata.itemTitle === 'string' ? metadata.itemTitle : '';
-                return { ...chunk, published: publishedTitles.has(itemTitle) };
-            });
+            let tagged: PublishedTaggedChunk[] = [];
+            if (searchTitles.size > 0) {
+                const filter: Record<string, unknown> = {
+                    must: [
+                        { key: 'courseName', match: { value: course.courseName } },
+                        { key: 'itemTitle', match: { any: [...searchTitles] } },
+                    ],
+                };
+                const chunks = await this.rag.retrieveContext(` ${query}`, { limit, scoreThreshold, filter });
+                tagged = chunks.map((chunk: RetrievedChunk): PublishedTaggedChunk => {
+                    const raw = chunk.metadata;
+                    const metadata: Record<string, unknown> = typeof raw === 'string'
+                        ? (() => { try { return JSON.parse(raw) as Record<string, unknown>; } catch { return {}; } })()
+                        : (raw ?? {});
+                    const itemTitle = typeof metadata.itemTitle === 'string' ? metadata.itemTitle : '';
+                    return { ...chunk, published: publishedTitles.has(itemTitle) };
+                });
+            }
+
+            // Step 3: Course Syllabus in its own slot (#674). It is live on upload, so citable.
+            const syllabusChunks = await this.retrieveSyllabusChunks(query, course, scoreThreshold);
+            return [...tagged, ...syllabusChunks.map((chunk) => ({ ...chunk, published: true }))];
         } catch (error) {
             appLogger.warn('Writing Feedback course-material retrieval failed', { error: error as Error });
+            return [];
+        }
+    }
+
+    /**
+     * retrieveSyllabusChunks - Up to `SYLLABUS_RETRIEVE_LIMIT` Course Syllabus chunks (#674).
+     *
+     * Runs only when the course has syllabus documents with chunks. A failure here is
+     * logged and yields no chunks, so it never discards the caller's lecture results.
+     * Chunk content is not logged.
+     *
+     * @param query - Retrieval query (never student submission text for Writing Feedback)
+     * @param course - Active course whose syllabus is searched
+     * @param scoreThreshold - Same threshold the caller uses for its main search
+     * @returns Syllabus chunks, possibly empty
+     */
+    private async retrieveSyllabusChunks(
+        query: string,
+        course: Pick<activeCourse, 'courseName' | 'syllabusMaterials'>,
+        scoreThreshold: number
+    ): Promise<RetrievedChunk[]> {
+        if (activeSyllabusMaterials(course).length === 0) return [];
+        try {
+            return await this.rag.retrieveContext(` ${query}`, {
+                limit: SYLLABUS_RETRIEVE_LIMIT,
+                scoreThreshold,
+                filter: syllabusChunkFilter(course.courseName),
+            });
+        } catch (error) {
+            appLogger.warn('Course Syllabus retrieval failed', { error: error as Error });
             return [];
         }
     }
@@ -625,7 +666,8 @@ export class RAGApp {
      *
      * @param materialId - The id of the material to delete
      * @param courseId - The course ID
-     * @param topicOrWeekId - The topic/week instance ID
+     * @param topicOrWeekId - The topic/week instance ID, or `COURSE_SYLLABUS_SCOPE_ID` for a
+     *        Course Syllabus document (then `itemId` is ignored)
      * @param itemId - The item ID
      * @returns The result of the delete with materialName and chunksDeleted
      */
@@ -636,9 +678,13 @@ export class RAGApp {
             if (!course) {
                 throw new Error('Course not found');
             }
-            const instance_topicOrWeek = course.topicOrWeekInstances?.find((d: any) => d.id === topicOrWeekId);
-            const item = instance_topicOrWeek?.items?.find((i: any) => i.id === itemId);
-            const material = item?.additionalMaterials?.find((m: any) => m.id === materialId);
+            // Syllabus documents sit on the course, outside the week/topic tree (#674)
+            const material = isCourseSyllabusScope(topicOrWeekId)
+                ? course.syllabusMaterials?.find((m: any) => m.id === materialId)
+                : course.topicOrWeekInstances
+                    ?.find((d: any) => d.id === topicOrWeekId)
+                    ?.items?.find((i: any) => i.id === itemId)
+                    ?.additionalMaterials?.find((m: any) => m.id === materialId);
 
             const storedIds = materialChunkIds(material);
             if (!material || storedIds.length === 0) {
@@ -856,6 +902,8 @@ export class RAGApp {
                     });
                 });
             });
+            // Course Syllabus documents (#674) are course documents too
+            qdrantIds.push(...syllabusChunkIds(course));
 
             if (qdrantIds.length === 0) {
                 appLogger.info('No documents found to delete');
@@ -965,6 +1013,9 @@ export class RAGApp {
                     });
                 });
             });
+            // Course Syllabus documents (#674)
+            mongoMaterialCount += course.syllabusMaterials?.length ?? 0;
+            qdrantIds.push(...syllabusChunkIds(course));
 
             appLogger.info(`📈 Found ${mongoMaterialCount} materials in MongoDB, ${qdrantIds.length} with Qdrant IDs`);
 
@@ -989,6 +1040,7 @@ export class RAGApp {
                 // Clear all AdditionalMaterial from MongoDB for this course
                 appLogger.info('🗑️  Clearing AdditionalMaterial from MongoDB...');
                 await this.mongoDB.clearAllAdditionalMaterials(courseId);
+                await this.mongoDB.clearSyllabusMaterials(courseId);
                 appLogger.info('✅ AdditionalMaterial cleared from MongoDB successfully');
 
                 return { deletedCount: qdrantIds.length, errors: [] };
@@ -1013,6 +1065,7 @@ export class RAGApp {
 
                         // Clear MongoDB materials
                         await this.mongoDB.clearAllAdditionalMaterials(courseId);
+                        await this.mongoDB.clearSyllabusMaterials(courseId);
 
                         return { deletedCount: courseDocumentIds.length, errors: [] };
                     } else {

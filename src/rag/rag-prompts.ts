@@ -122,8 +122,9 @@ export class RAGPrompts {
                 appLogger.warn(`⚠️ Error parsing metadata for document ${index + 1}:`, error);
             }
 
+            // Course Syllabus chunks carry the same topic and item title (#674): say it once
             const modulePartLabel =
-                chapter && itemTitle
+                chapter && itemTitle && chapter !== itemTitle
                     ? `${chapter} part ${itemTitle}`
                     : chapter || itemTitle || 'Unknown';
             const chunkLabel = `chunk ${index + 1}`;

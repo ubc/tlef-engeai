@@ -398,7 +398,7 @@ render its banner; the test student's own id is never sent to the browser.
 
 | Method | Path | Auth | Role | Description |
 |--------|------|------|------|-------------|
-| GET | `/api/courses/:id` | Yes* | Any | Get course by ID. \*Auth preferred; course staff receive full `features` + `llmSettings`. Students / non-staff / unauthenticated get a projection that **omits** `features` and `llmSettings` (`toStudentCoursePayload`). Same projection applies to `GET /api/courses` (list/by name) and course-selection course cards. |
+| GET | `/api/courses/:id` | Yes* | Any | Get course by ID. \*Auth preferred; course staff receive full `features` + `llmSettings`. Students / non-staff / unauthenticated get a projection that **omits** `features` and `llmSettings` (`toStudentCoursePayload`). Same projection applies to `GET /api/courses` (list/by name) and course-selection course cards. Course staff also receive `instructorDisplay`: faculty instructor names without platform admins or TAs (`mapFacultyInstructorDisplay`, same as course-selection cards); Advanced Settings → View course information shows it. |
 | GET | `/api/courses/:courseId/student-capabilities` | Yes | Member | Student-safe booleans only: `{ scenarioGeneration }` — for shell UI; never returns guidedPathway / full features / llmSettings |
 | POST | `/api/courses/:id/complete-course-setup` | Yes | Instructor | Finish course-setup on existing shell (`frameType`, `tilesNumber`); sets `courseSetup: true` |
 | PUT | `/api/courses/:id` | Yes | Instructor | Update course. Strips `features` (roster-manager gated) and the deprecated `contentSetup` / `flagSetup` / `monitorSetup` flags, which moved to `GlobalUser.instructorOnboarding` (OB-002) |
@@ -411,10 +411,15 @@ render its banner; the test student's own id is never sent to the browser.
 
 | Method | Path | Auth | Role | Description |
 |--------|------|------|------|-------------|
-| POST | `/api/courses/:courseId/topic-or-week-instances` | Yes | Instructor | Create topic/week |
+| POST | `/api/courses/:courseId/topic-or-week-instances` | Yes | Instructor | Create topic/week. `400` when `title` is `Course Syllabus` (reserved, #674). Without a body `title`, the default is the next "Week N" / "Topic N" by position, skipping numbers existing default-style titles already use (`nextDivisionTitle`; ids are not read) |
 | PUT | `/api/courses/:courseId/topic-or-week-instances/reorder` | Yes | Instructor | Reorder topic/week instances (`body: { orderedIds: string[] }` — exact permutation; response includes `changed`) |
 | POST | `/api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items` | Yes | Instructor | Create item |
+| PATCH | `/api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/title` | Yes | Instructor | Rename topic/week (also renames its Qdrant chunk metadata); `400` for the reserved title `Course Syllabus` |
+| PATCH | `/api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/published` | Yes | Instructor | Publish or unpublish a topic/week (`{ published: boolean }`) |
+| PATCH | `/api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/title` | Yes | Instructor | Rename an item (section) |
+| DELETE | `/api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId` | Yes | Instructor | Delete an item (section) and its Qdrant chunks |
 | DELETE | `/api/courses/:courseId/topic-or-week-instances/:topicOrWeekId/items/:itemId/materials/:materialId` | Yes | Instructor | Delete material |
+| DELETE | `/api/courses/:courseId/syllabus/materials/:materialId` | Yes | Instructor | Delete one Course Syllabus document (#674): Qdrant chunks first (500 keeps the record), then `syllabusMaterials` entry. `200 { success, data: { materialId, deleted, materialName, chunksDeleted } }`; `404` unknown course or document |
 | GET | `/api/courses/:courseId/material-copy-sources` | Yes | Instructor or admin (not TA) | Courses the caller may copy materials from into `:courseId`: every other course where the caller is a faculty instructor (admins: every course) with at least one topic/week. `200 { success, data: MaterialCopySourceCourse[] }` — `{ id, courseName, frameType, topicOrWeekCount, materialCount }` |
 | POST | `/api/courses/:courseId/copy-materials` | Yes | Instructor or admin on **both** courses (not TA) | Replace `:courseId`'s materials with a copy of another course's. Body `{ sourceCourseId }`. Copies `frameType`, `tilesNumber`, every topic/week (title, order, publish state, scheduled publish), each item's learning objectives and struggle topics, and each live material with its Qdrant chunks (stored embeddings, no re-embedding). Everything gets fresh ids. The target's previous topics/weeks, material chunks, and scheduled publishes are removed; scenario questions, Guided Pathways, and Writing Feedback are not copied or touched. Sets `contentSetup`. Materials whose chunks are missing are skipped and listed. `200 { success, data: CopyCourseMaterialsResult }`; `400` missing source or source = target; `403` caller does not instruct the source; `404` source missing; `409` target has not finished course setup, or another copy into it is running; `500` copy failed — target unchanged |
 
@@ -606,7 +611,7 @@ Local development helper for report/monitor work. **Only** course name `Test 3` 
 
 | Method | Path | Auth | Role | Description |
 |--------|------|------|------|-------------|
-| DELETE | `/api/courses/:courseId/documents/all` | Yes | Instructor | Delete all RAG documents for course |
+| DELETE | `/api/courses/:courseId/documents/all` | Yes | Instructor | Delete all RAG documents for course, Course Syllabus included. `200 data: { deletedCount, courseId, deletedDocuments: { name, chunksDeleted }[], totalChunksDeleted }`; the Documents page "Delete All Documents" button calls this route |
 
 #### System prompt config (v2, instructor-only)
 
@@ -660,7 +665,9 @@ Two auth tiers: `requireCourseMemberForScenarioAPI` (enrolled student **or** sta
 | GET | `/api/rag/documents/:courseName/:contentTitle/:subContentTitle` | Yes | Any | Documents by sub-content |
 | GET | `/api/rag/documents/:courseName/:contentTitle/:subContentTitle/:chunkNumber` | Yes | Any | Get specific chunk |
 | POST | `/api/rag/search` | Yes | Any | Vector search |
-| DELETE | `/api/rag/wipe-all` | Yes | Instructor | Wipe all RAG data for course |
+| DELETE | `/api/rag/wipe-all` | — | — | Disabled (commented out in `route-rag.ts`); use `DELETE /api/courses/:courseId/documents/all` |
+
+**Course Syllabus uploads (#674):** both upload routes accept `topicOrWeekId: 'course-syllabus'` (`COURSE_SYLLABUS_SCOPE_ID`). The server then forces `topicOrWeekTitle` and `itemTitle` to `Course Syllabus`, requires `courseId` (`400` otherwise), stores the record on `activeCourse.syllabusMaterials`, skips struggle-topic generation (`struggleGenerationSkipped: true`), and answers `500 { message: 'Failed to save syllabus document' }` after removing the new chunks when the course record cannot be saved. The syllabus has no publish state: chat (`retrieveForChat`, including Scenario Generation's week-scoped calls) and Writing Feedback (`retrieveForWritingFeedback`, tagged `published: true`) add up to 2 syllabus chunks from a separate search on top of their own limit. `DELETE /api/courses/:courseId/documents/all` and course deletion also remove syllabus documents.
 
 **Post-upload struggle generation:** After a successful material save, when **Memory Agent** (`features.memoryAgent.enabled`) is on, the server may append instructor struggle-topic labels to the section catalog. When Memory Agent is off, generation is skipped (`struggleGenerationSkipped: true`) and the upload still succeeds. Labels come from LLM structured generation (or mock-response mode when `MOCK_RESPONSE=true`).
 

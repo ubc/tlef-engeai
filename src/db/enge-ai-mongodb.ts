@@ -58,6 +58,7 @@ import * as MemoryAgentMongo from './mongo/memory-agent-mongo';
 import * as ScheduledTaskMongo from './mongo/scheduled-task-mongo';
 import * as CourseMaterialCopyMongo from './mongo/course-material-copy-mongo';
 import * as TopicWeekMongo from './mongo/topic-week-mongo';
+import * as CourseSyllabusMongo from './mongo/course-syllabus-mongo';
 import * as ConversationExportMongo from './mongo/conversation-export-mongo';
 import * as CourseBackupMongo from './mongo/course-backup-mongo';
 import * as ReportFixtureSeedMongo from './mongo/report-fixture-seed-mongo';
@@ -1064,6 +1065,18 @@ export class EngEAI_MongoDB {
 
     public clearAllAdditionalMaterials = async (courseId: string) =>
         TopicWeekMongo.clearAllAdditionalMaterials(this.ctx(), courseId);
+
+    /** Appends a Course Syllabus document (#674); see `course-syllabus-mongo.ts`. */
+    public addSyllabusMaterial = async (courseId: string, material: AdditionalMaterial) =>
+        CourseSyllabusMongo.addSyllabusMaterial(this.ctx(), courseId, material);
+
+    /** Removes one Course Syllabus document by id; idempotent. */
+    public removeSyllabusMaterial = async (courseId: string, materialId: string) =>
+        CourseSyllabusMongo.removeSyllabusMaterial(this.ctx(), courseId, materialId);
+
+    /** Removes every Course Syllabus document from the course; idempotent. */
+    public clearSyllabusMaterials = async (courseId: string) =>
+        CourseSyllabusMongo.clearSyllabusMaterials(this.ctx(), courseId);
 
     /**
      * #########################################################

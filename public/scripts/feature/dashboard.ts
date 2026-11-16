@@ -417,7 +417,10 @@ function fillCourseMetadata(currentClass: activeCourse): void {
 
     const instructorsEl = document.getElementById('courseInfoInstructors');
     if (instructorsEl) {
-        instructorsEl.textContent = formatInstructorsForDisplay(currentClass.instructors || []);
+        // Server-computed faculty line excludes platform admins and TAs, like course selection (#208)
+        const { instructorDisplay } = currentClass as activeCourse & { instructorDisplay?: string };
+        instructorsEl.textContent = instructorDisplay
+            ?? formatInstructorsForDisplay(currentClass.instructors || []);
     }
 
     const tasEl = document.getElementById('courseInfoTAs');

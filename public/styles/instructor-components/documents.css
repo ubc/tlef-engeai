@@ -1129,6 +1129,55 @@ button.content-status {
 .additional-material .am-meta { font-size: 12px; color: var(--text-secondary); }
 
 
+/* Course Syllabus (#674): pinned course-wide card above the weeks/topics */
+.documents-syllabus {
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--chat-bg);
+    padding: 15px 20px;
+    margin-bottom: 20px;
+}
+
+.documents-syllabus:empty {
+    display: none;
+}
+
+.syllabus-header {
+    margin-bottom: 10px;
+}
+
+.syllabus-title {
+    margin-block: 0 4px;
+    font-size: 18px;
+}
+
+.syllabus-title:focus {
+    outline: none;
+}
+
+.syllabus-title:focus-visible {
+    outline: 2px solid var(--color-chbe-green);
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+
+.syllabus-hint {
+    margin: 0;
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.documents-syllabus .additional-materials {
+    margin-block: 0 10px;
+}
+
+.syllabus-upload {
+    border: 2px dashed var(--border-color);
+    border-radius: 8px;
+    padding: 12px;
+    min-height: 44px;
+}
+
 /* Publish toggle removed — publish/schedule uses modal + status buttons */
 
 /* Rename Icon Styles */

@@ -77,3 +77,17 @@ describe('listPublishedCourseMaterialTitles', () => {
         expect(listPublishedCourseMaterialTitles(undefined)).toEqual([]);
     });
 });
+
+describe('listPublishedCourseMaterialTitles with a Course Syllabus (#674)', () => {
+    it('lists live syllabus documents first, labelled like a retrieved syllabus chunk', () => {
+        const titles = listPublishedCourseMaterialTitles(course({
+            syllabusMaterials: [
+                { id: 's1', name: 'Course outline' },
+                { id: 's2', name: 'Old outline', deleted: true }
+            ] as never
+        }));
+        expect(titles[0]).toEqual({ id: 's1', label: 'Course Syllabus · Course outline' });
+        expect(titles.map((t) => t.id)).not.toContain('s2');
+        expect(titles.map((t) => t.id)).toContain('m1');
+    });
+});

@@ -46,6 +46,25 @@ describe('toStudentCoursePayload', () => {
         expect(course.features?.guidedPathway?.enabled).toBe(true);
         expect(course.llmSettings?.chat.modelId).toBe('gpt-5.6-luna');
     });
+
+    it('omits Course Syllabus records, which carry the uploader PUID (#674)', () => {
+        const course = baseCourse({
+            syllabusMaterials: [{ id: 'syl-1', name: 'Outline', uploadedBy: 'puid-1' } as never]
+        });
+        expect(toStudentCoursePayload(course).syllabusMaterials).toBeUndefined();
+        expect(course.syllabusMaterials).toHaveLength(1);
+    });
+
+    it('drops the uploader PUID from week/topic materials without mutating input', () => {
+        const course = baseCourse({
+            topicOrWeekInstances: [
+                { id: 'w1', title: 'Week 1', items: [{ id: 'i1', additionalMaterials: [{ id: 'm1', name: 'Notes', uploadedBy: 'puid-1' }] }] }
+            ] as never
+        });
+        const [material] = toStudentCoursePayload(course).topicOrWeekInstances[0].items[0].additionalMaterials!;
+        expect(material).toEqual({ id: 'm1', name: 'Notes' });
+        expect(course.topicOrWeekInstances[0].items[0].additionalMaterials![0].uploadedBy).toBe('puid-1');
+    });
 });
 
 describe('coursePayloadForViewer', () => {
