@@ -10,6 +10,11 @@ const source = fs.readFileSync(
     'utf8'
 );
 
+const diagnosisSource = fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', 'public', 'scripts', 'feature', 'writing-feedback-diagnosis.ts'),
+    'utf8'
+);
+
 const editorSource = fs.readFileSync(
     path.join(__dirname, '..', '..', '..', 'public', 'scripts', 'feature', 'writing-feedback-summary-editor.ts'),
     'utf8'
@@ -73,6 +78,8 @@ describe('writing feedback review source contract', () => {
         expect(source).not.toContain('Next ungraded');
         expect(source).not.toContain('wf-grade-progress');
         expect(source).not.toContain('Internal review flags');
+        expect(source).not.toContain('internalFlags');
+        expect(diagnosisSource).not.toContain('Internal review flags');
     });
 
     it('keeps the review history heading in step with the section it records', () => {
@@ -200,17 +207,6 @@ describe('single release source contract', () => {
         // The refused connection still exists, so the usual "not connected" prompt never appears.
         expect(source).toContain('error instanceof CanvasAccountMismatchError');
         expect(source).toContain('canvasReconnectUrl: error.connectUrl');
-    });
-});
-
-describe('internal review flags on the review page (D-114)', () => {
-    it('renders them directly under the criterion levels, before Approve can be reached', () => {
-        const levels = source.indexOf('element.append(rubricSection);');
-        const flags = source.indexOf('element.append(...renderStaffFlags(staffFlagNotes(run)));');
-        const readings = source.indexOf('element.append(...renderReadings(run));');
-        expect(levels).toBeGreaterThan(-1);
-        expect(flags).toBeGreaterThan(levels);
-        expect(flags).toBeLessThan(readings);
     });
 });
 

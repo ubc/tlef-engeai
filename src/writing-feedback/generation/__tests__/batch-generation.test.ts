@@ -106,26 +106,18 @@ function build(doubles: ReturnType<typeof store>) {
 }
 
 describe('batchBlockedReason', () => {
-    const original = process.env.WRITING_FEEDBACK_ANALYSIS_MODE;
-    afterEach(() => {
-        if (original === undefined) delete process.env.WRITING_FEEDBACK_ANALYSIS_MODE;
-        else process.env.WRITING_FEEDBACK_ANALYSIS_MODE = original;
-    });
-
-    function withoutProfile(): WritingAssignment {
-        const approved = assignment();
+    function withoutProfile(mode: 'general' | 'sfl'): WritingAssignment {
+        const approved = { ...assignment(), analysisMode: mode };
         delete approved.rubric.sflContext;
         return approved;
     }
 
-    it('lets general analysis run without a genre and register profile', () => {
-        delete process.env.WRITING_FEEDBACK_ANALYSIS_MODE;
-        expect(batchBlockedReason(withoutProfile())).toBeUndefined();
+    it('lets a general-mode assignment run without a writing description', () => {
+        expect(batchBlockedReason(withoutProfile('general'))).toBeUndefined();
     });
 
-    it('still requires the profile in sfl mode', () => {
-        process.env.WRITING_FEEDBACK_ANALYSIS_MODE = 'sfl';
-        expect(batchBlockedReason(withoutProfile())).toBe(BATCH_ERRORS.profileIncomplete);
+    it('still requires the description for an sfl-mode assignment', () => {
+        expect(batchBlockedReason(withoutProfile('sfl'))).toBe(BATCH_ERRORS.profileIncomplete);
     });
 });
 

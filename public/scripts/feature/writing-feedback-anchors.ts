@@ -36,7 +36,6 @@ import {
     createText,
     field,
     jsonRequest,
-    isGeneralAnalysis,
     request
 } from './writing-feedback-shared.js';
 import { isHeldBack, readAgainLabel, splitHeldBack } from './writing-feedback-diagnosis-model.js';
@@ -57,6 +56,8 @@ interface AnnotationContext {
     holdBack?: boolean;
     /** Latest run for this lens, used to check that a model citation was supported. */
     run?: FeedbackRun | null;
+    /** True when the assignment uses general analysis, which assigns no SFL function or level. */
+    general?: boolean;
 }
 
 /**
@@ -408,7 +409,7 @@ function renderAnnotationList(context: AnnotationContext, rerender: () => void):
 
     // Function and level are SFL categories; general analysis does not assign them, so its
     // reviewers see no filter that would sort annotations by them.
-    const sflTags = !isGeneralAnalysis();
+    const sflTags = !context.general;
     const fnRow = document.createElement('div');
     fnRow.className = 'wf-filter-row';
     fnRow.append(createText('span', 'FUNCTION', 'wf-filter-label'));
@@ -513,8 +514,8 @@ function renderAnnotationCard(
         badge.textContent = String(number);
         header.append(badge);
     }
-    if (comment.functionTag && !isGeneralAnalysis()) header.append(chip(FUNCTION_TAG_LABELS[comment.functionTag], FUNCTION_TAG_TONES[comment.functionTag]));
-    if (comment.levelTag && !isGeneralAnalysis()) header.append(chip(LEVEL_TAG_LABELS[comment.levelTag], 'neutral'));
+    if (comment.functionTag && !context.general) header.append(chip(FUNCTION_TAG_LABELS[comment.functionTag], FUNCTION_TAG_TONES[comment.functionTag]));
+    if (comment.levelTag && !context.general) header.append(chip(LEVEL_TAG_LABELS[comment.levelTag], 'neutral'));
     if (comment.priority) header.append(chip(PRIORITY_LABELS[comment.priority], PRIORITY_TONES[comment.priority]));
     // Staff comments carry the server-stamped author name; the generic label is a fallback.
     header.append(chip(
@@ -703,7 +704,7 @@ function renderCardEditor(
     card.append(
         field('Feedback', commentText, 'What should the student reconsider in this passage?'),
         field('Revision guidance', howToImprove, 'Concrete direction, balanced with the guiding questions in the summary.'),
-        ...(isGeneralAnalysis() ? [] : [field('Function', functionSelect), field('Level', levelSelect)]),
+        ...(context.general ? [] : [field('Function', functionSelect), field('Level', levelSelect)]),
         field('Priority', prioritySelect),
         field('Course material title', materialTitle, 'Pick a published course material, or type another title. It appears in the student PDF under Useful readings.'),
         field('Glossary term', glossaryTerm),

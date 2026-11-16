@@ -3,7 +3,7 @@
  *
  * Usage: npm run wf:eval -- [--runs N] [--only fixture-id] [--lens linguistic|technical|all] [--live-rag courseId] [--mode general|sfl]
  *
- * `--mode` defaults to WRITING_FEEDBACK_ANALYSIS_MODE (general when unset). General mode runs every
+ * `--mode` defaults to general, the mode new assignments start in. General mode runs every
  * fixture, writing and lab, through the general engine and skips the SFL-only checks.
  * Needs LLM_PROVIDER / LLM_ENDPOINT / LLM_DEFAULT_MODEL (and LLM_API_KEY if the provider
  * requires it). Fixture texts are synthetic, so full outputs are written to the report.
@@ -20,7 +20,6 @@ import 'dotenv/config';
 import { RubricWritingFeedbackEngine } from '../src/writing-feedback/generation/feedback-engine';
 import { GENERAL_FEEDBACK_PROMPT_VERSION, GeneralFeedbackEngine } from '../src/writing-feedback/generation/general-feedback-engine';
 import { GENERAL_WHOLE_TEXT_PROMPT_VERSION } from '../src/writing-feedback/generation/general-whole-text-check';
-import { getAnalysisMode } from '../src/writing-feedback/shared/analysis-mode';
 import { courseTermsFor } from '../src/writing-feedback/language/plain-language';
 import type { WritingFeedbackMaterialRetriever } from '../src/writing-feedback/materials/course-material-mentions';
 import { EVAL_FIXTURES, EVAL_HANDOUT, GENERAL_EVAL_FIXTURES, buildEvalAssignment, buildGeneralEvalAssignment, generalEvalHandout } from '../src/writing-feedback/__tests__/fixtures/eval/eval-fixtures';
@@ -60,7 +59,7 @@ async function main(): Promise<void> {
     const only = arg('only');
     const liveRagCourse = arg('live-rag');
     const lens = arg('lens') ?? 'all';
-    const general = (arg('mode') ?? getAnalysisMode()) !== 'sfl';
+    const general = arg('mode') !== 'sfl';
     const assignment = buildEvalAssignment();
     if (liveRagCourse) assignment.courseId = liveRagCourse;
 

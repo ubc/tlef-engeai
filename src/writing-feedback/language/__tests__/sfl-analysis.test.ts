@@ -159,13 +159,13 @@ describe('validateSflAnalysis', () => {
 describe('requireCompleteSflProfile', () => {
     it('rejects profiles still marked as needing staff input', () => {
         expect(() => requireCompleteSflProfile({ ...profile, genreState: 'needs_staff_input' }))
-            .toThrow('Confirm the genre and register profile');
+            .toThrow('Complete "Describe the writing"');
     });
 
     it('rejects the shipped default profile even after its state is changed', () => {
         const placeholder = buildDefaultSflContextProfile();
         expect(() => requireCompleteSflProfile({ ...placeholder, genreState: 'staff_confirmed' }))
-            .toThrow('Complete the genre and register profile');
+            .toThrow('Complete "Describe the writing"');
     });
 
     it('accepts a profile once every required field is answered', () => {

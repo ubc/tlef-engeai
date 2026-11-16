@@ -22,6 +22,7 @@ import type {
     CanvasRubricRow,
     StaffReviewRevision,
     WritingAssignment,
+    WritingFeedbackAnalysisMode,
     WritingFeedbackLens,
     WritingFeedbackRun,
     WritingGlossaryEntry,
@@ -297,8 +298,6 @@ export async function createManualWritingAssignment(
             title.trim().slice(0, 200),
             instructions?.trim() || undefined
         ),
-        // Every new assignment waits for staff to choose its type (D-123).
-        assignmentTypePending: true,
         ...(dueAt ? { dueAt } : {})
     };
     await assignments(ctx).insertOne(assignment);
@@ -415,9 +414,6 @@ export async function createCanvasWritingAssignment(
     );
     const assignment: WritingAssignment = {
         ...base,
-        // Every new assignment waits for staff to choose its type (D-123). A concurrent import
-        // that loses the unique-index race returns the existing record unchanged below.
-        assignmentTypePending: true,
         ...(canvasRubric
             ? {
                   rubric: seedRubricForLens({ lens: 'linguistic', actorUserId: 'platform', canvasRubric, now }),
@@ -665,6 +661,32 @@ export async function chooseWritingAssignmentType(
     const updated = await assignments(ctx).findOneAndUpdate(
         { id: assignmentId, courseId, assignmentTypePending: true },
         { $set: { isLabReport, updatedAt: new Date() }, $unset: { assignmentTypePending: '' } },
+        { returnDocument: 'after' }
+    );
+    return updated ? normalizeWritingAssignment(updated) : null;
+}
+
+/**
+ * setWritingAssignmentAnalysisMode — records which analysis generates an assignment's feedback.
+ *
+ * Changes nothing already generated: stored runs keep the mode that produced them, so a draft
+ * from the other mode is shown as needing regeneration until staff regenerate it.
+ *
+ * @param ctx - Connected Mongo data-layer context
+ * @param courseId - Owning course id
+ * @param assignmentId - Assignment whose mode is being set
+ * @param analysisMode - The mode staff chose
+ * @returns Updated assignment, or `null` when it is absent
+ */
+export async function setWritingAssignmentAnalysisMode(
+    ctx: MongoDalContext,
+    courseId: string,
+    assignmentId: string,
+    analysisMode: WritingFeedbackAnalysisMode
+): Promise<WritingAssignment | null> {
+    const updated = await assignments(ctx).findOneAndUpdate(
+        { id: assignmentId, courseId },
+        { $set: { analysisMode, updatedAt: new Date() } },
         { returnDocument: 'after' }
     );
     return updated ? normalizeWritingAssignment(updated) : null;

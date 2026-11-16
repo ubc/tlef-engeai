@@ -21,11 +21,10 @@
  * @description: Owns the rubric page shell, shared assignment details, draft persistence, and approval.
  */
 
-import { showConfirmModal } from '../ui/modal-overlay.js';
+import { showConfirmModal, showErrorModal } from '../ui/modal-overlay.js';
 import { showSuccessToast } from '../ui/toast-notification.js';
 import { AutosaveHeldError, AutosaveSignedOutError, createAutosave } from './writing-feedback-autosave.js';
 import type { Autosave } from './writing-feedback-autosave.js';
-import { ensureAssignmentTypeChosen } from './writing-feedback-assignment-type.js';
 import { renderSourcesPanel, type SourcesPanel } from './writing-feedback-sources.js';
 import {
     MIN_RATINGS_PER_CRITERION,
@@ -66,6 +65,8 @@ import {
     SflStage,
     WfFunctionTag,
     WritingFeedbackLens,
+    analysisModeOf,
+    APPROACH_LABELS,
     chip,
     confirmDiscardDirty,
     courseTermsOf,
@@ -79,7 +80,6 @@ import {
     field,
     formatDate,
     inputControl,
-    isGeneralAnalysis,
     jsonRequest,
     labelWithRequiredMarker,
     refreshIcons,
@@ -372,13 +372,16 @@ function profileStatusChip(readiness: StepReadiness): HTMLElement {
  * @param details - Description values the profile borrows task, purpose, audience and outcomes from
  * @param canEdit - Whether the current staff user may modify the profile
  * @param onInput - Dirty-tracking handler shared with the rest of the details form
+ * @param courseTerms - Terms for the glossary box; includes any older rubric-level course terms,
+ *        so the next save keeps them in the one place both analysis modes read
  * @returns Detached sub-box; its controls are named `sfl.*` and read by {@link collectSflContext}
  */
 function renderSflProfileBox(
     sflContext: SflContextProfile | undefined,
     details: DetailsValues,
     canEdit: boolean,
-    onInput: () => void
+    onInput: () => void,
+    courseTerms: string[] = sflContext?.approvedGlossaryTerms ?? []
 ): HTMLDivElement {
     // Readiness answers to requireCompleteSflProfile, the rule that actually
     // blocks feedback. The old test here asked only whether the fields were
@@ -433,7 +436,7 @@ function renderSflProfileBox(
     embeddedGenres.placeholder = 'One per line — e.g. a data commentary inside a lab report. Leave blank if none';
     const taskRequirements = namedControl(textAreaControl((sflContext?.taskRequirements ?? []).join('\n'), 3), 'sfl.taskRequirements');
     taskRequirements.placeholder = 'One per line — e.g. at least three sources';
-    const glossaryTerms = namedControl(textAreaControl((sflContext?.approvedGlossaryTerms ?? []).join('\n'), 2), 'sfl.approvedGlossaryTerms');
+    const glossaryTerms = namedControl(textAreaControl(courseTerms.join('\n'), 2), 'sfl.approvedGlossaryTerms');
     glossaryTerms.placeholder = 'One per line. Feedback may use these terms, with a short explanation. Leave blank if none';
     body.append(sflField({ label: 'Smaller pieces of writing inside it (optional)', control: embeddedGenres }));
     body.append(sflField({ label: 'What must they include?', control: taskRequirements, required: true }));
@@ -447,23 +450,70 @@ function renderSflProfileBox(
     return outer;
 }
 
+/** What each feedback approach does, as staff choose between them. */
+const APPROACH_DESCRIPTIONS: Record<'general' | 'sfl', string> = {
+    general: 'Feedback follows your instructions and rubric. Suits any kind of assignment, including technical reports, lab reports, design reports and memos.',
+    sfl: 'Feedback follows your instructions and rubric, and adds a systemic functional linguistics analysis of how the writing is staged and worded. Suits genre-based writing assignments.'
+};
+
 /**
- * renderCourseTermsField - the general analysis's course-terms box, outside any profile.
+ * renderApproachSetting - the assignment's feedback approach, General or SFL writing.
  *
- * Terms differ per course and per assignment, so staff list the ones this assignment's course
- * material, details, and handouts have taught. Feedback may use them with a short explanation.
- * Prefilled from the rubric's own list and any glossary kept in an older genre profile.
+ * Saved as soon as staff choose, apart from the rubric draft: it decides how feedback is
+ * generated, not what the rubric says, so it needs no approval. Drafts already generated keep
+ * the approach that produced them; the review page asks staff to regenerate those.
  *
- * @param draft - Rubric whose terms are shown
- * @param canEdit - Whether the current staff member may edit
- * @param onInput - Called on every edit, for autosave and progress
- * @returns Detached field; its control is named `courseTerms`
+ * @param assignment - Assignment whose approach is shown; updated in place on save
+ * @param canEdit - Whether the current staff member may change it
+ * @returns Detached fieldset
  */
-function renderCourseTermsField(draft: RubricDefinition, canEdit: boolean, onInput: () => void): HTMLDivElement {
-    const control = namedControl(textAreaControl(courseTermsOf(draft).join('\n'), 3), 'courseTerms');
-    control.placeholder = 'One per line — terms this course has taught for this assignment, from its materials, details, or handouts. Feedback may use them, with a short explanation. Leave blank if none';
-    bindTextControl(control, canEdit, onInput);
-    return field('Course terms students already know (optional)', control, undefined, true, false);
+function renderApproachSetting(assignment: Assignment, canEdit: boolean): HTMLFieldSetElement {
+    const fieldset = document.createElement('fieldset');
+    fieldset.className = 'wf-fieldset';
+    fieldset.append(createText('legend', 'Feedback approach'));
+    const name = `wf-approach-${assignment.id}`;
+    let current = analysisModeOf(assignment);
+    const radios: HTMLInputElement[] = [];
+    (['general', 'sfl'] as const).forEach((mode) => {
+        const row = document.createElement('label');
+        row.className = 'wf-sources__choice';
+        const radio = document.createElement('input');
+        radio.type = 'radio';
+        radio.name = name;
+        radio.value = mode;
+        radio.checked = mode === current;
+        radio.disabled = !canEdit;
+        const text = document.createElement('span');
+        text.append(createText('strong', APPROACH_LABELS[mode]), document.createTextNode(` — ${APPROACH_DESCRIPTIONS[mode]}`));
+        row.append(radio, text);
+        radios.push(radio);
+        radio.addEventListener('change', () => {
+            if (!radio.checked || mode === current) return;
+            void (async () => {
+                radios.forEach((entry) => { entry.disabled = true; });
+                try {
+                    const updated = await jsonRequest<Assignment>(
+                        `/assignments/${encodeURIComponent(assignment.id)}/analysis-mode`,
+                        'PUT',
+                        { analysisMode: mode }
+                    );
+                    current = analysisModeOf(updated);
+                    assignment.analysisMode = updated.analysisMode;
+                    const listed = state.assignments.find((item) => item.id === assignment.id);
+                    if (listed) listed.analysisMode = updated.analysisMode;
+                    showSuccessToast(`Feedback approach set to ${APPROACH_LABELS[current]}. Drafts generated before stay as they are until you regenerate them.`);
+                } catch (error) {
+                    // Put the choice back on what is actually saved, then report why.
+                    radios.forEach((entry) => { entry.checked = entry.value === current; });
+                    await showErrorModal('Writing Feedback action failed', error instanceof Error ? error.message : 'Please try again.');
+                } finally {
+                    radios.forEach((entry) => { entry.disabled = !canEdit; });
+                }
+            })();
+        });
+    });
+    fieldset.append(...radios.map((radio) => radio.parentElement!));
+    return fieldset;
 }
 
 /**
@@ -1569,11 +1619,6 @@ export async function openRubricPage(assignmentId: string): Promise<void> {
     if (!state.assignments.length) state.assignments = await request<Assignment[]>('/assignments');
     let assignment = state.assignments.find((item) => item.id === assignmentId);
     if (!assignment) throw new Error('Writing assignment not found');
-    // A deep link or Edit rubric on a pending assignment asks for its type first (D-123).
-    // General analysis has no assignment types, so nothing is asked.
-    if (assignment.assignmentTypePending && !isGeneralAnalysis()) {
-        assignment = await ensureAssignmentTypeChosen(assignment);
-    }
     let linguisticData = await request<RubricResponse>(`/assignments/${encodeURIComponent(assignmentId)}/rubric?lens=linguistic`);
     let technicalData = assignment.isLabReport
         ? await request<RubricResponse>(`/assignments/${encodeURIComponent(assignmentId)}/rubric?lens=technical`)
@@ -1827,6 +1872,7 @@ function renderRubricPage(
 
     const step1Body = document.createElement('div');
     step1Body.className = 'wf-step-body';
+    step1Body.append(renderApproachSetting(assignment, linguisticData.permissions.canEdit));
     const detailsForm = renderAssignmentDetails(step1Body, writingSource, {
         canEdit: linguisticData.permissions.canEdit,
         isLabReport,
@@ -1845,8 +1891,7 @@ function renderRubricPage(
     const readDetailsNow = (): DetailsValues => readAssignmentDetails(detailsForm);
     const readProfileNow = (): SflContextProfile =>
         readSflContext(detailsForm, readDetailsNow(), writingSource.sflContext?.genreId);
-    // General analysis has no genre profile, so the details alone describe the assignment.
-    const profileComplete = (): boolean => isGeneralAnalysis() || describeProfile(readProfileNow(), readDetailsNow()).complete;
+    const profileComplete = (): boolean => describeProfile(readProfileNow(), readDetailsNow()).complete;
     const describedComplete = (): boolean => describeDetails(readDetailsNow()).complete && profileComplete();
 
     // The material step opens for an assignment still waiting to be described; once the
@@ -2256,7 +2301,7 @@ function renderRubricPage(
         const detailsNow = describeDetails(details);
         const profileNow = describeProfile(readProfileNow(), details);
         const gridNow = describeAllGrids(pageContext.sections);
-        const describedDone = detailsNow.complete && (isGeneralAnalysis() || profileNow.complete);
+        const describedDone = detailsNow.complete && profileNow.complete;
 
         // Material is optional -- a description can be typed by hand -- so the step counts as
         // done once there is any, or once the description it feeds is complete.
@@ -2656,9 +2701,7 @@ function renderAssignmentDetails(
         grid.append(wrapper);
     });
 
-    grid.append(isGeneralAnalysis()
-        ? renderCourseTermsField(draft, options.canEdit, options.onInput)
-        : renderSflProfileBox(draft.sflContext, detailsFromDraft(draft), options.canEdit, options.onInput));
+    grid.append(renderSflProfileBox(draft.sflContext, detailsFromDraft(draft), options.canEdit, options.onInput, courseTermsOf(draft)));
 
     // The lab handout is versioned and approval-gated on the technical rubric,
     // so it is edited here but never sent with the writing rubric.
@@ -2761,11 +2804,7 @@ async function saveAssignmentRubrics(context: RubricPageContext): Promise<void> 
     // serializes that as BSON null): coerce it to undefined so a save can never send
     // `"genreId": null` back to a server schema that only accepts a string or absence.
     const storedGenreId = context.sections.find((section) => section.lens === 'linguistic')?.working.sflContext?.genreId;
-    const sflContext = isGeneralAnalysis()
-        // General analysis leaves the inactive profile to the server, which carries it forward.
-        ? undefined
-        : collectSflContext(context.detailsForm, details, storedGenreId ?? undefined);
-    const courseTerms = isGeneralAnalysis() ? rubricLines(context.detailsForm, 'courseTerms') : undefined;
+    const sflContext = collectSflContext(context.detailsForm, details, storedGenreId ?? undefined);
     const labContext = rubricTextValue(context.detailsForm, 'labContext').slice(0, MAX_LAB_CONTEXT) || undefined;
 
     // Validate every rubric before writing any of them. Validating inside the write
@@ -2812,8 +2851,7 @@ async function saveAssignmentRubrics(context: RubricPageContext): Promise<void> 
             ...details,
             ...structure,
             ...(section.lens === 'linguistic' && sflContext ? { sflContext } : {}),
-            ...(section.lens === 'technical' ? { labContext } : {}),
-            ...(courseTerms ? { courseTerms } : {})
+            ...(section.lens === 'technical' ? { labContext } : {})
         };
         const updated = await jsonRequest<Assignment>(
             `/assignments/${encodeURIComponent(context.assignment.id)}/rubric-draft${section.lens === 'technical' ? '?lens=technical' : ''}`,
@@ -2859,9 +2897,7 @@ async function autosaveAssignmentRubrics(context: RubricPageContext): Promise<vo
     let sflContext: SflContextProfile | undefined;
     try {
         collectAssignmentDetails(context.detailsForm);
-        sflContext = isGeneralAnalysis()
-            ? undefined
-            : collectSflContext(context.detailsForm, details, storedGenreId ?? undefined);
+        sflContext = collectSflContext(context.detailsForm, details, storedGenreId ?? undefined);
         pending = context.sections
             .filter((section) => section.canEdit)
             .map((section) => ({
@@ -2873,7 +2909,6 @@ async function autosaveAssignmentRubrics(context: RubricPageContext): Promise<vo
     }
 
     const labContext = rubricTextValue(context.detailsForm, 'labContext').slice(0, MAX_LAB_CONTEXT) || undefined;
-    const courseTerms = isGeneralAnalysis() ? rubricLines(context.detailsForm, 'courseTerms') : undefined;
 
     // Step 2: write each editable rubric. Nothing is seeded and nothing is approved here.
     for (const { section, structure } of pending) {
@@ -2881,8 +2916,7 @@ async function autosaveAssignmentRubrics(context: RubricPageContext): Promise<vo
             ...details,
             ...structure,
             ...(section.lens === 'linguistic' && sflContext ? { sflContext } : {}),
-            ...(section.lens === 'technical' ? { labContext } : {}),
-            ...(courseTerms ? { courseTerms } : {})
+            ...(section.lens === 'technical' ? { labContext } : {})
         };
         try {
             const updated = await jsonRequest<Assignment>(

@@ -20,7 +20,7 @@ import { hasWholeTextProblem } from './feedback-gate';
 import { modelAssessedCriteria } from '../rubric/criterion-assessment';
 import { stripNulls } from '../shared/strip-nulls';
 import { buildStudentReaderContract, courseTermsFor, knownTermsFor, LAB_REPORT_FAMILIAR_TERMS } from '../language/plain-language';
-import { getAnalysisMode, type WritingFeedbackAnalysisMode } from '../shared/analysis-mode';
+import { analysisModeOf, type WritingFeedbackAnalysisMode } from '../shared/analysis-mode';
 import { PRIME_DIRECTIVE, technicalKnownTerms } from './technical-feedback-engine';
 import type { SummaryRedraftOutput } from '../review/summary';
 import type {
@@ -68,7 +68,7 @@ const RULES = [
  *
  * @param input - Assignment, lens and approved rubric; `wholeTextProblem` when the run's gate
  *                found one, so the restructuring goal stays first; `mode` defaults to the
- *                deployment's analysis mode. General mode uses one reader contract and the
+ *                assignment's analysis mode. General mode uses one reader contract and the
  *                rubric's course terms for every lens, and sends no genre profile.
  * @returns System prompt; contains no student-derived text
  */
@@ -76,7 +76,7 @@ export function buildSummaryRedraftSystemPrompt(
     input: Pick<SummaryRedraftInput, 'assignment' | 'lens' | 'rubric'> & { wholeTextProblem?: boolean; mode?: WritingFeedbackAnalysisMode }
 ): string {
     const { rubric } = input;
-    const general = (input.mode ?? getAnalysisMode()) === 'general';
+    const general = (input.mode ?? analysisModeOf(input.assignment)) === 'general';
     return [
         ...(input.lens === 'technical' && !general ? [PRIME_DIRECTIVE] : []),
         'You redraft the summary of staff-reviewed feedback. The teaching team edits and approves it, then the student reads it, so write for the student.',

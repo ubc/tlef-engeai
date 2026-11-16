@@ -168,6 +168,7 @@ export interface RubricDefinition {
 /** Assignment summary used by the landing queue and current rubric context. */
 export interface Assignment {
     id: string; // internal assignment key used in course-scoped routes
+    analysisMode?: 'general' | 'sfl'; // feedback approach staff chose; absent means sfl (created before the choice)
     title: string; // queue and review heading
     canvasAssignmentId?: string; // external key retained only for Canvas-linked intake/release
     canvasRubricRefusal?: CanvasRubricRefusal; // why an imported Canvas rubric could not seed this grid
@@ -636,7 +637,6 @@ export interface CanvasAssignment {
 export interface WorkspaceContext {
     permissions: { canManageRubric: boolean }; // controls instructor/admin rubric affordances
     canvas: CanvasStatus; // gates and labels Canvas-related actions
-    analysisMode?: 'general' | 'sfl'; // deployment-wide analysis; absent from older servers means sfl
 }
 
 /** Approved/draft rubric pair and history returned to the rubric page. */
@@ -787,17 +787,23 @@ interface WfState {
  * Reset by {@link initializeWritingFeedback} whenever the instructor shell mounts
  * the component; dirty flags protect unsaved setup and review edits.
  */
+/** Staff names for each feedback approach, as the rubric page offers them. */
+export const APPROACH_LABELS: Record<'general' | 'sfl', string> = {
+    general: 'General',
+    sfl: 'SFL writing'
+};
+
 /**
- * isGeneralAnalysis - whether the server runs the general (rubric-grounded) analysis.
+ * analysisModeOf - the analysis one assignment uses.
  *
- * In general mode the genre and register profile and the assignment-type question are
- * hidden. A server that does not report a mode predates the switch
- * and runs the SFL analysis.
+ * Mirrors `analysisModeOf` in src/writing-feedback/shared/analysis-mode.ts: an assignment with
+ * no stored mode predates the choice and keeps the SFL analysis.
  *
- * @returns True only when the workspace context says `general`
+ * @param assignment - Assignment, or undefined when there is none
+ * @returns `general` or `sfl`
  */
-export function isGeneralAnalysis(): boolean {
-    return state.workspace?.analysisMode === 'general';
+export function analysisModeOf(assignment: Pick<Assignment, 'analysisMode'> | null | undefined): 'general' | 'sfl' {
+    return assignment?.analysisMode === 'general' ? 'general' : 'sfl';
 }
 
 /**

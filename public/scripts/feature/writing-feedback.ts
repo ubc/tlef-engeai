@@ -55,14 +55,12 @@ import {
     clearWorkspaceMessage,
     state,
     textAreaControl,
-    views,
-    isGeneralAnalysis
+    views
 } from './writing-feedback-shared.js';
 import { openAssignmentPage } from './writing-feedback-assignment-page.js';
 import { openRubricPage } from './writing-feedback-rubric.js';
 import { openReview } from './writing-feedback-review.js';
 import { setWritingFeedbackDemoMode } from './writing-feedback-demo-mode.js';
-import { oldestPendingAssignment } from './writing-feedback-assignment-type-state.js';
 import { connectUrlReturningTo } from './writing-feedback-canvas-connect.js';
 import { stopFollowingGeneration } from './writing-feedback-batch.js';
 
@@ -86,22 +84,10 @@ async function loadLanding(mode: 'push' | 'replace' = 'push'): Promise<void> {
     list.replaceChildren(createText('p', 'Loading assignments…', 'wf-muted-note'));
     state.assignments = await request<Assignment[]>('/assignments');
     renderLanding();
-
-    // An assignment left without a type (the page was closed before staff answered) is asked
-    // about again here, oldest first, and then opened on its rubric page (D-123). General
-    // analysis has no assignment types, so nothing is pending.
-    const pending = isGeneralAnalysis() ? undefined : oldestPendingAssignment(state.assignments);
-    if (pending && state.workspace?.permissions.canManageRubric) {
-        await openNewAssignment(pending);
-    }
 }
 
 /**
- * openNewAssignment - opens a new assignment's rubric page, which asks for its type.
- *
- * The question is asked from the rubric view rather than here: a lab report then waits on
- * the auto-fill of its writing rubric, and that wait must show the rubric page loading,
- * not the stale assignment list the import started from.
+ * openNewAssignment - opens a new assignment's rubric page, where staff set it up.
  *
  * @param assignment - Newly created or imported assignment, or one still pending
  */
@@ -235,7 +221,7 @@ async function showAddAssignment(): Promise<void> {
     }
     if (!(await confirmDiscardDirty('setup'))) return;
     state.panelDirty = false;
-    const content = openActionPanel(isGeneralAnalysis() ? 'Add an assignment' : 'Add a writing assignment', ACTION_MOUNT_ID);
+    const content = openActionPanel('Add an assignment', ACTION_MOUNT_ID);
     content.append(createText(
         'p',
         'Add the directions students receive. The assignment starts with an editable rubric draft that must be approved before feedback can be generated.',
@@ -562,8 +548,8 @@ async function showCanvasImport(): Promise<void> {
                 canvasAssignmentId: selected.value
             });
             await closeActionPanel(false);
-            // Only a newly created assignment is pending; a re-import returns the existing one.
-            if (result.targetAssignment.assignmentTypePending) {
+            // A newly created assignment opens on its rubric page; a re-import returns the existing one.
+            if (result.rubricImport !== 'existing_assignment') {
                 await openNewAssignment(result.targetAssignment);
             } else {
                 await openAssignmentPage(result.targetAssignment.id);

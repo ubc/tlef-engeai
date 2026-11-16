@@ -1,13 +1,13 @@
 /**
- * Writing Feedback routes under the analysis-mode switch, over HTTP
+ * Writing Feedback routes for the per-assignment analysis mode, over HTTP
  *
  * Course RBAC and the capability gate pass through here (they are tested where they live), so
- * these pin what the mode owns: general analysis has no assignment types and needs no SFL
- * profile, and SFL analysis still requires both.
+ * these pin what the mode owns: the setting route, the retired assignment type, and a complete
+ * "Describe the writing" profile required at approval in both modes.
  *
  * @author: EngE-AI Team
  * @version: 1.0.0
- * @description: HTTP coverage for the assignment-type refusal and rubric approval in each mode.
+ * @description: HTTP coverage for the approach setting, the assignment-type refusal, and approval in each mode.
  */
 
 import express from 'express';
@@ -15,7 +15,8 @@ import request from 'supertest';
 
 const mongo = {
     getWritingAssignment: jest.fn(),
-    approveWritingRubricDraft: jest.fn()
+    approveWritingRubricDraft: jest.fn(),
+    setWritingAssignmentAnalysisMode: jest.fn()
 };
 
 jest.mock('../../db/enge-ai-mongodb', () => ({
@@ -33,12 +34,11 @@ jest.mock('../../middleware/async-handler', () => {
 
 // Imported after the mocks so the router binds to them.
 import router from '../route-writing-feedback';
-import { ASSIGNMENT_TYPES_INACTIVE_MESSAGE, CHOOSE_TYPE_BEFORE_APPROVAL_MESSAGE } from '../../writing-feedback/rubric/assignment-type';
+import { ASSIGNMENT_TYPES_INACTIVE_MESSAGE } from '../../writing-feedback/rubric/assignment-type';
 import { buildDefaultSflContextProfile } from '../../writing-feedback/rubric/default-rubric-profile';
 import { buildStaffedWritingRubric } from '../../writing-feedback/__tests__/helpers/staffed-rubric';
 
 const ASSIGNMENT = '/api/courses/course-1/writing-feedback/assignments/assignment-1';
-const originalMode = process.env.WRITING_FEEDBACK_ANALYSIS_MODE;
 
 function app() {
     const server = express();
@@ -51,7 +51,7 @@ function app() {
     return server;
 }
 
-/** A complete draft whose SFL profile is still the blank default, as a general-mode rubric has. */
+/** A complete draft whose "Describe the writing" profile is still the blank default. */
 function assignmentWithBlankProfile(overrides: Record<string, unknown> = {}) {
     return {
         id: 'assignment-1',
@@ -61,73 +61,75 @@ function assignmentWithBlankProfile(overrides: Record<string, unknown> = {}) {
     };
 }
 
+/** The same draft with its writing described, as staff leave it before approving. */
+function describedAssignment(overrides: Record<string, unknown> = {}) {
+    return {
+        id: 'assignment-1',
+        courseId: 'course-1',
+        rubric: { ...buildStaffedWritingRubric('user-1'), status: 'draft' },
+        ...overrides
+    };
+}
+
 describe('writing feedback routes by analysis mode', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         mongo.getWritingAssignment.mockResolvedValue(assignmentWithBlankProfile());
         mongo.approveWritingRubricDraft.mockResolvedValue({ id: 'assignment-1' });
+        mongo.setWritingAssignmentAnalysisMode.mockResolvedValue({ id: 'assignment-1', analysisMode: 'sfl' });
     });
 
-    afterAll(() => {
-        if (originalMode === undefined) delete process.env.WRITING_FEEDBACK_ANALYSIS_MODE;
-        else process.env.WRITING_FEEDBACK_ANALYSIS_MODE = originalMode;
+    it('refuses the retired assignment-type answer before touching the assignment', async () => {
+        const response = await request(app()).put(`${ASSIGNMENT}/type`).send({ type: 'lab_report' });
+
+        expect(response.status).toBe(409);
+        expect(response.body.error).toBe(ASSIGNMENT_TYPES_INACTIVE_MESSAGE);
+        expect(mongo.getWritingAssignment).not.toHaveBeenCalled();
     });
 
-    describe('general', () => {
-        beforeEach(() => {
-            process.env.WRITING_FEEDBACK_ANALYSIS_MODE = 'general';
+    describe.each(['general', 'sfl'] as const)('approval in %s mode', (analysisMode) => {
+        it('refuses a rubric whose writing description is blank', async () => {
+            mongo.getWritingAssignment.mockResolvedValue(assignmentWithBlankProfile({ analysisMode }));
+
+            const response = await request(app()).post(`${ASSIGNMENT}/rubric-draft/approve`).send({});
+
+            expect(response.status).toBe(400);
+            expect(response.body.error).toBe('Complete "Describe the writing" before approving the writing rubric');
+            expect(mongo.approveWritingRubricDraft).not.toHaveBeenCalled();
         });
 
-        it('refuses the assignment-type answer before touching the assignment', async () => {
-            const response = await request(app()).put(`${ASSIGNMENT}/type`).send({ type: 'lab_report' });
+        it('approves a rubric once the writing is described, ignoring a leftover pending type', async () => {
+            mongo.getWritingAssignment.mockResolvedValue(describedAssignment({ analysisMode, assignmentTypePending: true }));
 
-            expect(response.status).toBe(409);
-            expect(response.body.error).toBe(ASSIGNMENT_TYPES_INACTIVE_MESSAGE);
-            expect(mongo.getWritingAssignment).not.toHaveBeenCalled();
-        });
-
-        it('approves a rubric whose SFL profile is blank', async () => {
             const response = await request(app()).post(`${ASSIGNMENT}/rubric-draft/approve`).send({});
 
             expect(response.status).toBe(200);
             expect(mongo.approveWritingRubricDraft).toHaveBeenCalledTimes(1);
         });
-
-        it('ignores a leftover pending assignment type at approval', async () => {
-            mongo.getWritingAssignment.mockResolvedValue(assignmentWithBlankProfile({ assignmentTypePending: true }));
-
-            const response = await request(app()).post(`${ASSIGNMENT}/rubric-draft/approve`).send({});
-
-            expect(response.status).toBe(200);
-        });
     });
 
-    describe('sfl', () => {
-        beforeEach(() => {
-            process.env.WRITING_FEEDBACK_ANALYSIS_MODE = 'sfl';
+    describe('the feedback approach setting', () => {
+        it('saves the approach staff chose', async () => {
+            const response = await request(app()).put(`${ASSIGNMENT}/analysis-mode`).send({ analysisMode: 'sfl' });
+
+            expect(response.status).toBe(200);
+            expect(mongo.setWritingAssignmentAnalysisMode).toHaveBeenCalledWith('course-1', 'assignment-1', 'sfl');
+            expect(response.body.data.analysisMode).toBe('sfl');
         });
 
-        it('lets the assignment-type answer through to its own validation', async () => {
-            const response = await request(app()).put(`${ASSIGNMENT}/type`).send({ type: 'poem' });
+        it('refuses anything but general or sfl', async () => {
+            const response = await request(app()).put(`${ASSIGNMENT}/analysis-mode`).send({ analysisMode: 'lab_report' });
 
             expect(response.status).toBe(400);
-            expect(response.body.error).toBe('type must be writing or lab_report');
+            expect(mongo.setWritingAssignmentAnalysisMode).not.toHaveBeenCalled();
         });
 
-        it('refuses to approve a rubric whose SFL profile is blank', async () => {
-            const response = await request(app()).post(`${ASSIGNMENT}/rubric-draft/approve`).send({});
+        it('answers 404 for an assignment that is not there', async () => {
+            mongo.setWritingAssignmentAnalysisMode.mockResolvedValue(null);
 
-            expect(response.status).toBe(400);
-            expect(mongo.approveWritingRubricDraft).not.toHaveBeenCalled();
-        });
+            const response = await request(app()).put(`${ASSIGNMENT}/analysis-mode`).send({ analysisMode: 'general' });
 
-        it('refuses approval while the assignment type is pending', async () => {
-            mongo.getWritingAssignment.mockResolvedValue(assignmentWithBlankProfile({ assignmentTypePending: true }));
-
-            const response = await request(app()).post(`${ASSIGNMENT}/rubric-draft/approve`).send({});
-
-            expect(response.status).toBe(409);
-            expect(response.body.error).toBe(CHOOSE_TYPE_BEFORE_APPROVAL_MESSAGE);
+            expect(response.status).toBe(404);
         });
     });
 });

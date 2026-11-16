@@ -54,9 +54,13 @@ export function sectionCheckView(
     const diagnosis = run.textDiagnosis;
     if (!diagnosis || !hasWholeTextProblem(run)) return null;
     const byId = new Map(diagnosis.stages.map((stage) => [stage.stageId, stage.status]));
-    // A general run's sections come from its own check; any stored profile is inactive.
+    // A general run's sections come from its own check. Those taken from the writing
+    // description keep its required flag; any other one was listed because it is required.
     const sections = run.analysisMode === 'general'
-        ? diagnosis.stages.map((stage) => ({ id: stage.stageId, label: stage.label ?? stage.stageId, required: true }))
+        ? diagnosis.stages.map((stage) => {
+            const described = stages.find((entry) => entry.id === stage.stageId);
+            return { id: stage.stageId, label: stage.label ?? stage.stageId, required: described ? described.required === true : true };
+        })
         : stages;
     // Two things trip the gate, alone or together, and the fixed headline names which did.
     const required = sections.filter((stage) => stage.required === true);
@@ -85,36 +89,6 @@ export function sectionCheckView(
         warnings,
         rationale: diagnosis.rationale
     };
-}
-
-/**
- * Staff wording for pipeline flags, in display order. `no_genre_material` is left out on
- * purpose: it is a course-setup gap, not something staff can act on per submission.
- */
-const PIPELINE_FLAG_NOTES: ReadonlyArray<[string, string]> = [
-    ['no_assignment_material', 'This assignment has no details or handout, so EngE-AI could not check whether this submission does what the assignment asks or is missing sections. Add them and regenerate to include that check.'],
-    ['assignment_material_truncated', 'The assignment material was too long, so EngE-AI read only part of it.'],
-    ['relevance_unavailable', 'Course materials could not be checked for this run, so no readings were cited.'],
-    ['no_course_material', 'No published course material supported this feedback, so no readings were cited.']
-];
-
-/**
- * staffFlagNotes - what staff should know about how this draft was produced.
- *
- * Pipeline notes come first, then what the model said it could not judge (D-114). Staff-only:
- * the PDF service and release payload never read these.
- *
- * @param run - Latest run for the lens
- * @returns One note per line; empty when there is nothing to report
- */
-export function staffFlagNotes(run: FeedbackRun): string[] {
-    const flags = new Set(run.flags ?? []);
-    // A retrieval failure already explains the empty reading list.
-    if (flags.has('relevance_unavailable')) flags.delete('no_course_material');
-    return [
-        ...PIPELINE_FLAG_NOTES.filter(([flag]) => flags.has(flag)).map(([, note]) => note),
-        ...run.result.internalFlags
-    ];
 }
 
 /**

@@ -69,7 +69,8 @@ import {
     rubricContentEquals,
     writingRubricDraftInputSchema
 } from '../writing-feedback/rubric/rubric-schema';
-import { carriedSflProfile, draftForValidation, getAnalysisMode, requireAnalysisProfile } from '../writing-feedback/shared/analysis-mode';
+import { analysisModeOf, draftForValidation, isAnalysisMode } from '../writing-feedback/shared/analysis-mode';
+import { requireCompleteSflProfile } from '../writing-feedback/language/sfl-analysis';
 import { courseTermExcerpts } from '../writing-feedback/generation/general-feedback-engine';
 import { listCriterionLibrary, suggestScale } from '../writing-feedback/rubric/rubric-presets';
 import { isCourseStaff } from '../utils/course-staff';
@@ -78,9 +79,7 @@ import { seedRubricForLens } from '../writing-feedback/rubric/rubric-seed';
 import {
     AssignmentTypeService,
     ASSIGNMENT_TYPES_INACTIVE_MESSAGE,
-    CHOOSE_TYPE_BEFORE_APPROVAL_MESSAGE,
-    assignmentTypeErrorStatus,
-    isAssignmentTypeChoice
+    assignmentTypeErrorStatus
 } from '../writing-feedback/rubric/assignment-type';
 import { mapCanvasRubric } from '../writing-feedback/canvas/canvas-rubric-mapping';
 import {
@@ -257,8 +256,8 @@ function safeError(error: unknown): string {
         'Feedback comments no longer match', 'Feedback comments failed validation',
         'Assignment title is required', 'Assignment deadline is invalid',
         'Assignment instructions must be text', 'Assignment instructions exceeds',
-        'Complete the genre and register profile', 'Confirm the genre and register profile',
-        'Add at least one section', 'Add task requirements',
+        'Complete "Describe the writing"',
+        'Add at least one section', 'Add what students must include',
         'Complete the rubric grid before approving', 'Give every criterion its points',
         // The rubric-cell gate's refusals, which staff have to be able to read and act on.
         'Fill each criterion\'s ratings from the weakest upwards', 'Give every criterion at least',
@@ -544,9 +543,7 @@ router.get('/:courseId/writing-feedback/workspace-context', asyncHandlerWithAuth
         success: true,
         data: {
             permissions: { canManageRubric: Boolean(currentCourse && isCourseStaff(currentCourse, globalUser)) },
-            canvas,
-            // Staff-only: which analysis generation runs, so the UI hides SFL-only surfaces.
-            analysisMode: getAnalysisMode()
+            canvas
         }
     });
 }));
@@ -851,11 +848,7 @@ router.put(
         } catch {
             return res.status(400).json({ success: false, error: 'Unknown feedback lens' });
         }
-        // General analysis never edits the inactive SFL profile, so one sent in is ignored
-        // rather than validated; the stored one is carried forward below.
-        const general = getAnalysisMode() === 'general';
-        const body = general && req.body && typeof req.body === 'object' ? { ...req.body, sflContext: undefined } : req.body;
-        const parsed = writingRubricDraftInputSchema.safeParse(body);
+        const parsed = writingRubricDraftInputSchema.safeParse(req.body);
         if (!parsed.success) {
             return res.status(400).json({
                 success: false,
@@ -886,11 +879,9 @@ router.put(
         // Where the grid came from is the server's to record, not the editor's, so a draft saved
         // from the page keeps the source of the version it was edited from.
         const keptSource = (selected.draft ?? currentApproved)?.gridSource;
-        const keptProfile = general ? carriedSflProfile((selected.draft ?? currentApproved)?.sflContext) : undefined;
         const draft = {
             ...buildRubricDraft(parsed.data, version, globalUser.userId),
-            ...(keptSource ? { gridSource: keptSource } : {}),
-            ...(keptProfile ? { sflContext: keptProfile } : {})
+            ...(keptSource ? { gridSource: keptSource } : {})
         };
 
         // A draft that says the same as the approved rubric is no change at all -- staff who
@@ -1062,7 +1053,8 @@ router.post(
             let extractionFailed = false;
             const [proposal, extracted] = await Promise.all([
                 proposeRubricFromInstructions(material, draft, undefined, {
-                    courseExcerpts: getAnalysisMode() === 'general' ? await courseTermExcerpts(assignment, draft) : []
+                    mode: analysisModeOf(assignment),
+                    courseExcerpts: analysisModeOf(assignment) === 'general' ? await courseTermExcerpts(assignment, draft) : []
                 }),
                 rubricMaterial && !awaitingConfirmation
                     ? extractRubricsFromMaterial(rubricMaterial.text).catch(() => { extractionFailed = true; return undefined; })
@@ -1253,12 +1245,8 @@ router.post(
         const mongo = await EngEAI_MongoDB.getInstance();
         const assignment = await mongo.getWritingAssignment(courseId(req), String(req.params.assignmentId));
         if (!assignment) return res.status(404).json({ success: false, error: 'Writing assignment not found' });
-        // A pending assignment has no settled type, so which rubric it is graded on is not
-        // known yet. Refused here so a direct link cannot approve around the modal (D-123).
-        // General analysis has no assignment types: every assignment uses its one rubric.
-        if (getAnalysisMode() === 'sfl' && assignment.assignmentTypePending === true) {
-            return res.status(409).json({ success: false, error: CHOOSE_TYPE_BEFORE_APPROVAL_MESSAGE });
-        }
+        // Assignments are no longer typed: each is graded on the one rubric staff import, so a
+        // type still pending from before is ignored.
         if (lens === 'technical' && !assignment.isLabReport) {
             return res.status(409).json({ success: false, error: 'Mark this assignment as a lab report before editing its technical rubric' });
         }
@@ -1281,7 +1269,8 @@ router.post(
 
         // Promote only the persisted draft version; the delegate rejects concurrent rubric changes.
         try {
-            if (lens === 'linguistic') requireAnalysisProfile(selected.draft.sflContext);
+            // "Describe the writing" is required in both analysis modes.
+            if (lens === 'linguistic') requireCompleteSflProfile(selected.draft.sflContext);
             requireCompleteRubricCells(selected.draft);
         } catch (error) {
             return res.status(400).json({ success: false, error: safeError(error) });
@@ -1312,31 +1301,33 @@ router.post(
 );
 
 /**
- * Records the one-time assignment type (D-123).
- *
- * `lab_report` also moves an imported Canvas grid to the technical rubric and returns the
- * writing rubric to the default profile. Refused with 409 once the type has been chosen, and
- * in general analysis mode, which has no assignment types.
+ * The retired one-time assignment type (D-123). Always refused with 409: every assignment is
+ * graded on the one rubric staff import, so a lab report no longer gets a second rubric.
  */
 router.put(
     '/:courseId/writing-feedback/assignments/:assignmentId/type',
+    asyncHandlerWithAuth(async (_req: Request, res: Response) => {
+        res.status(409).json({ success: false, error: ASSIGNMENT_TYPES_INACTIVE_MESSAGE });
+    })
+);
+
+/**
+ * Sets which analysis generates an assignment's feedback: `general` or `sfl`.
+ *
+ * Any course staff, like the rest of the rubric page. Nothing already generated changes; a
+ * draft from the other mode shows as needing regeneration until staff regenerate it.
+ */
+router.put(
+    '/:courseId/writing-feedback/assignments/:assignmentId/analysis-mode',
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
-        if (getAnalysisMode() !== 'sfl') {
-            return res.status(409).json({ success: false, error: ASSIGNMENT_TYPES_INACTIVE_MESSAGE });
-        }
-        const type = req.body?.type;
-        if (!isAssignmentTypeChoice(type)) {
-            return res.status(400).json({ success: false, error: 'type must be writing or lab_report' });
+        const mode = req.body?.analysisMode;
+        if (!isAnalysisMode(mode)) {
+            return res.status(400).json({ success: false, error: 'analysisMode must be general or sfl' });
         }
         const mongo = await EngEAI_MongoDB.getInstance();
-        const globalUser = (req.session as any).globalUser;
-        try {
-            const updated = await new AssignmentTypeService(mongo)
-                .choose(courseId(req), String(req.params.assignmentId), type, globalUser.userId);
-            res.json({ success: true, data: updated });
-        } catch (error) {
-            res.status(assignmentTypeErrorStatus(error)).json({ success: false, error: safeError(error) });
-        }
+        const updated = await mongo.setWritingAssignmentAnalysisMode(courseId(req), String(req.params.assignmentId), mode);
+        if (!updated) return res.status(404).json({ success: false, error: 'Writing assignment not found' });
+        res.json({ success: true, data: updated });
     })
 );
 

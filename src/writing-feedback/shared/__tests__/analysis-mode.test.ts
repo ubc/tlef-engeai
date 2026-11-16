@@ -1,24 +1,34 @@
 /**
- * @fileoverview Pins the global analysis-mode switch: general by default, SFL only on the
- * exact opt-in value, and the SFL profile gate applied only in SFL mode.
+ * @fileoverview Pins the per-assignment analysis mode: an assignment's stored choice, SFL for
+ * one created before the choice existed, general for a new one, and the generation-time
+ * profile gate applied only in SFL mode.
  */
 
-import { carriedSflProfile, draftForValidation, getAnalysisMode, requireAnalysisProfile } from '../analysis-mode';
-import { buildDefaultSflContextProfile } from '../../rubric/default-rubric-profile';
+import { analysisModeOf, draftForValidation, isAnalysisMode, requireAnalysisProfile } from '../analysis-mode';
+import { buildDefaultSflContextProfile, buildDefaultWritingAssignment } from '../../rubric/default-rubric-profile';
 
-describe('getAnalysisMode', () => {
-    it('defaults to general when the variable is unset', () => {
-        expect(getAnalysisMode({})).toBe('general');
+describe('analysisModeOf', () => {
+    it('returns the mode staff chose', () => {
+        expect(analysisModeOf({ analysisMode: 'general' })).toBe('general');
+        expect(analysisModeOf({ analysisMode: 'sfl' })).toBe('sfl');
     });
 
-    it('returns sfl only for the sfl value, ignoring case and spaces', () => {
-        expect(getAnalysisMode({ WRITING_FEEDBACK_ANALYSIS_MODE: 'sfl' })).toBe('sfl');
-        expect(getAnalysisMode({ WRITING_FEEDBACK_ANALYSIS_MODE: ' SFL ' })).toBe('sfl');
+    it('keeps the SFL analysis for an assignment created before the choice existed', () => {
+        expect(analysisModeOf({})).toBe('sfl');
+        expect(analysisModeOf(undefined)).toBe('sfl');
     });
 
-    it('falls back to general for any other value', () => {
-        expect(getAnalysisMode({ WRITING_FEEDBACK_ANALYSIS_MODE: 'general' })).toBe('general');
-        expect(getAnalysisMode({ WRITING_FEEDBACK_ANALYSIS_MODE: 'slf' })).toBe('general');
+    it('starts a new assignment in general', () => {
+        expect(analysisModeOf(buildDefaultWritingAssignment('course-1', 'a1', 'Essay'))).toBe('general');
+    });
+});
+
+describe('isAnalysisMode', () => {
+    it('accepts only the two modes', () => {
+        expect(isAnalysisMode('general')).toBe(true);
+        expect(isAnalysisMode('sfl')).toBe(true);
+        expect(isAnalysisMode('lab_report')).toBe(false);
+        expect(isAnalysisMode(undefined)).toBe(false);
     });
 });
 
@@ -29,35 +39,14 @@ describe('requireAnalysisProfile', () => {
 
     it('keeps the SFL profile gate in sfl mode', () => {
         expect(() => requireAnalysisProfile(undefined, 'sfl'))
-            .toThrow('Complete the genre and register profile before approving the writing rubric');
-    });
-});
-
-describe('carriedSflProfile', () => {
-    it('keeps a blank default profile as stored, unvalidated, so it cannot block a general save', () => {
-        const blank = buildDefaultSflContextProfile();
-        expect(carriedSflProfile(blank)).toEqual(blank);
-    });
-
-    it('drops the glossary, which now lives in the rubric course terms', () => {
-        const profile = { ...buildDefaultSflContextProfile(), approvedGlossaryTerms: ['hypothesis'] };
-        expect(carriedSflProfile(profile)).not.toHaveProperty('approvedGlossaryTerms');
-    });
-
-    it('returns nothing when there is no stored profile', () => {
-        expect(carriedSflProfile(undefined)).toBeUndefined();
+            .toThrow('Complete "Describe the writing" before approving the writing rubric');
     });
 });
 
 describe('draftForValidation', () => {
-    const draft = { title: 'Essay', sflContext: buildDefaultSflContextProfile() };
-
-    it('leaves the profile out in general mode, without changing the draft', () => {
-        expect(draftForValidation(draft, 'general').sflContext).toBeUndefined();
+    it('leaves the profile out, without changing the draft', () => {
+        const draft = { title: 'Essay', sflContext: buildDefaultSflContextProfile() };
+        expect(draftForValidation(draft).sflContext).toBeUndefined();
         expect(draft.sflContext).toBeDefined();
-    });
-
-    it('keeps the profile in sfl mode', () => {
-        expect(draftForValidation(draft, 'sfl')).toBe(draft);
     });
 });

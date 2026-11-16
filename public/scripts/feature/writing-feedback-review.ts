@@ -37,6 +37,8 @@ import {
     WritingFeedbackLens,
     baseUrl,
     chip,
+    analysisModeOf,
+    APPROACH_LABELS,
     confirmDiscardDirty,
     createBackBar,
     createButton,
@@ -70,8 +72,8 @@ import { describeApprovalBlocker, type GradeProgress } from './writing-feedback-
 import { changedLenses, decideNextAction, stepBarState, type ReviewStep } from './writing-feedback-review-steps.js';
 import { SummaryEditor, seedSummaryText, type SummaryBaseline } from './writing-feedback-summary-editor.js';
 import { fingerprintAnnotations } from './writing-feedback-annotation-fingerprint.js';
-import { hasWholeTextProblem, resolveHoldBack, sectionCheckView, staffFlagNotes } from './writing-feedback-diagnosis-model.js';
-import { renderOverallMessageEditor, renderSectionCheck, renderStaffFlags } from './writing-feedback-diagnosis.js';
+import { hasWholeTextProblem, resolveHoldBack, sectionCheckView } from './writing-feedback-diagnosis-model.js';
+import { renderOverallMessageEditor, renderSectionCheck } from './writing-feedback-diagnosis.js';
 
 function latestReview(submission: Submission): ReviewRevision | undefined {
     return submission.reviews?.[submission.reviews.length - 1];
@@ -434,6 +436,19 @@ function renderReviewView(root: HTMLDivElement, detail: SubmissionDetail): void 
         const warning = createText(
             'div',
             `The approved rubric is now v${assignment?.rubric.version}. Regenerate this feedback before approval or release.`,
+            'wf-workspace-message'
+        );
+        warning.dataset.tone = 'warning';
+        root.append(warning);
+    }
+
+    // Staff changed the assignment's feedback approach after this draft was generated. The
+    // draft stays reviewable; regenerating produces one with the approach now chosen.
+    const runMode = feedbackRun?.analysisMode ?? 'sfl';
+    if (!released && !generating && feedbackRun && assignment && runMode !== analysisModeOf(assignment)) {
+        const warning = createText(
+            'div',
+            `This feedback was generated with the ${APPROACH_LABELS[runMode]} approach, but the assignment now uses ${APPROACH_LABELS[analysisModeOf(assignment)]}. Regenerate it to use the new approach.`,
             'wf-workspace-message'
         );
         warning.dataset.tone = 'warning';
@@ -897,6 +912,7 @@ export function renderFeedbackPanel(
             verifiedText: submission.verifiedText ?? submission.originalText,
             lens,
             markDirty,
+            general: analysisModeOf(assignment) === 'general',
             holdBack: lens === 'linguistic' && holdBack(),
             run: lensRuns[lens] ?? null
         });
@@ -1614,9 +1630,6 @@ function renderSummaryLens(input: {
     });
     rubricSection.append(criterionList);
     element.append(rubricSection);
-
-    // Staff-only, directly under the levels they qualify and before Approve (D-114).
-    element.append(...renderStaffFlags(staffFlagNotes(run)));
 
     // Step 5: readings under the levels they qualify: the writing lens, or any general run.
     if (lens === 'linguistic' || run.analysisMode === 'general') element.append(...renderReadings(run));

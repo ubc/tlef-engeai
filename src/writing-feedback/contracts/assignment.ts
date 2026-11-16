@@ -11,6 +11,7 @@
  */
 
 import type { CanvasAssignmentDetails, CanvasRubricIdMap, CanvasRubricRefusal, ImportedRubricShape } from './canvas';
+import type { WritingFeedbackAnalysisMode } from './feedback';
 
 /** Template identifier stored with new assignments and feedback runs for traceability. */
 export const DEFAULT_WRITING_PROFILE_VERSION = 'writing-feedback-v2';
@@ -277,6 +278,12 @@ export interface WritingAssignment {
      * type cannot change afterwards.
      */
     assignmentTypePending?: boolean;
+    /**
+     * Which analysis generates this assignment's feedback, chosen by staff on the rubric page.
+     * New assignments start in `general`; absent on assignments created before the choice
+     * existed, which keep the SFL analysis (see `analysisModeOf`).
+     */
+    analysisMode?: WritingFeedbackAnalysisMode;
     /** True when this assignment is a lab report and also receives technical feedback. */
     isLabReport?: boolean;
     /** Approved technical rubric governing the technical lens. Absent until first approval. */

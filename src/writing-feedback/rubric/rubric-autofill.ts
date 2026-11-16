@@ -19,7 +19,7 @@ import { spaceBandsEvenly } from './rubric-bands';
 import { storedGridSource } from './rubric-lens';
 import { MAX_CELL_DESCRIPTOR, MAX_CRITERION_DESCRIPTION } from './rubric-schema';
 import { stripNulls, type WithoutNull } from '../shared/strip-nulls';
-import { getAnalysisMode, type WritingFeedbackAnalysisMode } from '../shared/analysis-mode';
+import { DEFAULT_ANALYSIS_MODE, type WritingFeedbackAnalysisMode } from '../shared/analysis-mode';
 import { courseTermsFor } from '../language/plain-language';
 import type {
     WritingAssignment,
@@ -105,7 +105,10 @@ export interface AutofillProposal {
     learningOutcomes: string[];
     gradingIntent: string;
     sflContext?: WritingSflContextProfile;
-    /** Course terms the material teaches; proposed only in general analysis. */
+    /**
+     * Course terms the material teaches. Present (possibly empty) only in general analysis,
+     * where they join the profile glossary staff already have rather than replacing it.
+     */
     courseTerms?: string[];
     criteria: WritingRubricCriterion[];
 }
@@ -231,8 +234,10 @@ export function mergeAutofill(
             }));
     }
 
+    // In general analysis the older rubric-level term list is folded into the profile glossary.
+    const { courseTerms: _folded, ...base } = draft;
     return {
-        ...draft,
+        ...(proposal.courseTerms ? base : draft),
         title: proposal.title || draft.title,
         task: proposal.task || draft.task,
         audience: proposal.audience || draft.audience,
@@ -240,13 +245,32 @@ export function mergeAutofill(
         constraints: proposal.constraints.length ? proposal.constraints : draft.constraints,
         learningOutcomes: proposal.learningOutcomes.length ? proposal.learningOutcomes : draft.learningOutcomes,
         gradingIntent: proposal.gradingIntent || draft.gradingIntent,
-        ...(proposal.sflContext ? { sflContext: proposal.sflContext } : {}),
-        // Proposed terms are added to the ones staff already listed, never replacing them.
-        ...(proposal.courseTerms?.length
-            ? { courseTerms: courseTermsFor({ courseTerms: [...courseTermsFor(draft), ...proposal.courseTerms] }).slice(0, MAX_COURSE_TERMS) }
-            : {}),
+        ...withProposedProfile(draft, proposal),
         criteria
     };
+}
+
+/**
+ * withProposedProfile - the "Describe the writing" profile after auto-fill.
+ *
+ * A proposed profile replaces the draft's. In general analysis the course terms live in the
+ * profile glossary: proposed terms are added to the ones staff already listed, never replacing
+ * them, and terms from the older rubric-level `courseTerms` list move into the glossary.
+ *
+ * @param draft - Current draft rubric
+ * @param proposal - Validated model proposal
+ * @returns The profile to spread into the merged draft, or nothing when there is none
+ */
+function withProposedProfile(
+    draft: WritingRubricDefinition,
+    proposal: AutofillProposal
+): Pick<WritingRubricDefinition, 'sflContext'> {
+    const profile = proposal.sflContext ?? draft.sflContext;
+    if (!profile) return {};
+    if (!proposal.courseTerms) return { sflContext: profile };
+    const terms = courseTermsFor({ courseTerms: [...courseTermsFor(draft), ...proposal.courseTerms] }).slice(0, MAX_COURSE_TERMS);
+    const { approvedGlossaryTerms: _replaced, ...rest } = profile;
+    return { sflContext: terms.length ? { ...rest, approvedGlossaryTerms: terms } : rest };
 }
 
 /**
@@ -255,8 +279,8 @@ export function mergeAutofill(
  * @param instructions - Instructor-authored assignment material: the instructions alone, or several
  *        sources joined by `composeAutofillMaterial`
  * @param draft - Current draft, supplying the criteria and levels to describe
- * @param options - `mode` selects the SFL profile request (`sfl`) or the course-terms request
- *        (`general`, the default); `courseExcerpts` is published course text retrieved for
+ * @param options - `mode` adds the course-terms request in `general` (the default); both modes
+ *        ask for the "Describe the writing" profile; `courseExcerpts` is published course text retrieved for
  *        the assignment, read only for course terms
  * @returns Prompt text. Never logged.
  */
@@ -265,7 +289,7 @@ export function buildAutofillPrompt(
     draft: WritingRubricDefinition,
     options: { mode?: WritingFeedbackAnalysisMode; courseExcerpts?: string[] } = {}
 ): string {
-    const mode = options.mode ?? getAnalysisMode();
+    const mode = options.mode ?? DEFAULT_ANALYSIS_MODE;
     const courseExcerpts = options.courseExcerpts ?? [];
     const criteria = draft.criteria
         .map((criterion) => `- ${criterion.id}: ${criterion.label}`)
@@ -288,17 +312,16 @@ export function buildAutofillPrompt(
         '- Each descriptor says what work at that level looks like for that criterion,',
         '  in one sentence, specific to this assignment.',
         '- Do not add, remove, or rename criteria or levels. Use exactly the ids given.',
-        ...(mode === 'sfl'
+        '- Also propose an SFL context profile for the assignment. Treat genre as a staged social purpose, not a format label.',
+        '- If the assignment is unfamiliar or composite, set genreState to custom or composite and do not invent Ferreira DR/DC/PS stages.',
+        '- Mark a stage required only when a text missing it could not count as this genre (for a descriptive report: the general statement and the classification or composition stage). Mark closings and optional moves as not required.',
+        '- Include task, purpose, audience, field, tenor, mode, actual evaluator, production conditions, explicit stages, embedded genres, task requirements, and learning outcomes.',
+        ...(mode === 'general'
             ? [
-                '- Also propose an SFL context profile for the assignment. Treat genre as a staged social purpose, not a format label.',
-                '- If the assignment is unfamiliar or composite, set genreState to custom or composite and do not invent Ferreira DR/DC/PS stages.',
-                '- Mark a stage required only when a text missing it could not count as this genre (for a descriptive report: the general statement and the classification or composition stage). Mark closings and optional moves as not required.',
-                '- Include task, purpose, audience, field, tenor, mode, actual evaluator, production conditions, explicit stages, embedded genres, task requirements, and learning outcomes.'
-            ]
-            : [
-                '- Leave sflContext null.',
+                '- Leave approvedGlossaryTerms in the profile null.',
                 `- Also list courseTerms: subject terms that the assignment material or the course material excerpts explicitly teach, define, or require students to use. At most ${MAX_COURSE_TERMS}, each a short term as written in the source. Leave out everyday words and terms the sources only mention in passing. Return an empty list if there are none.`
-            ]),
+            ]
+            : []),
         '- Keep each of task, audience, purpose, and grading intent under 1000 characters.',
         '- Keep each criterion description and each descriptor to one or two sentences.',
         '',
@@ -453,7 +476,7 @@ function deterministicAutofillProposal(draft: WritingRubricDefinition): Autofill
  * @param draft - Draft supplying the criteria and levels the model must describe
  * @param llmModule - Optional injected LLM adapter for tests or controlled composition
  * @param options - Analysis mode and course excerpts, passed to {@link buildAutofillPrompt}.
- *        In general mode any SFL profile the model returns is discarded.
+ *        Both modes keep the profile the model returns.
  * @returns A validated proposal. The caller decides how much of it may be applied.
  * @throws Error with no model text when the response cannot be parsed or validated,
  *         because model errors and responses can echo the prompt body
@@ -464,7 +487,7 @@ export async function proposeRubricFromInstructions(
     llmModule?: LLMModule,
     options: { mode?: WritingFeedbackAnalysisMode; courseExcerpts?: string[] } = {}
 ): Promise<AutofillProposal> {
-    const mode = options.mode ?? getAnalysisMode();
+    const mode = options.mode ?? DEFAULT_ANALYSIS_MODE;
     const llm = llmModule ?? (isMockResponse()
         ? undefined
         : new LLMModule({
@@ -506,7 +529,7 @@ export async function proposeRubricFromInstructions(
     // The model is told not to invent criteria. Anything it invented anyway is dropped
     // here, so the merge rules only ever see ids the draft already has.
     const known = new Set(draft.criteria.map((criterion) => criterion.id));
-    const sflContext = mode === 'sfl' && validatedData.sflContext
+    const sflContext = validatedData.sflContext
         ? {
             ...validatedData.sflContext,
             task: clipToDraftLimit(validatedData.sflContext.task),
@@ -531,7 +554,7 @@ export async function proposeRubricFromInstructions(
         purpose: clipToDraftLimit(validatedData.purpose),
         gradingIntent: clipToDraftLimit(validatedData.gradingIntent),
         sflContext,
-        ...(mode === 'general' && validatedData.courseTerms?.length ? { courseTerms: validatedData.courseTerms } : {}),
+        ...(mode === 'general' ? { courseTerms: validatedData.courseTerms ?? [] } : {}),
         criteria: validatedData.criteria
             .filter((criterion) => known.has(criterion.id))
             .map((criterion) => ({ ...criterion, description: clipToDraftLimit(criterion.description, MAX_CRITERION_DESCRIPTION) }))

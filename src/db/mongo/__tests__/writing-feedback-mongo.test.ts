@@ -179,10 +179,11 @@ describe('Writing Feedback assignment persistence', () => {
         ]);
         expect(inserted.every((assignment) => assignment.canvasAssignmentId === undefined)).toBe(true);
         expect(new Set(inserted.map((assignment) => assignment.id)).size).toBe(2);
-        expect(inserted.every((assignment) => assignment.assignmentTypePending === true)).toBe(true);
+        // New assignments start in general analysis and are never asked for a type.
+        expect(inserted.every((assignment) => assignment.analysisMode === 'general' && assignment.assignmentTypePending === undefined)).toBe(true);
     });
 
-    it('creates a Canvas-imported assignment with its type still pending', async () => {
+    it('creates a Canvas-imported assignment in general analysis with no type to choose', async () => {
         const inserted: WritingAssignment[] = [];
         const assignmentCollection = {
             listIndexes: jest.fn().mockReturnValue({ toArray: jest.fn().mockResolvedValue([]) }),
@@ -206,7 +207,8 @@ describe('Writing Feedback assignment persistence', () => {
         await createCanvasWritingAssignment(ctx, 'course-1', 'canvas-42', 'Lab 3', 'Measure the exchanger.');
 
         expect(inserted).toHaveLength(1);
-        expect(inserted[0].assignmentTypePending).toBe(true);
+        expect(inserted[0].analysisMode).toBe('general');
+        expect(inserted[0].assignmentTypePending).toBeUndefined();
     });
 });
 

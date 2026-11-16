@@ -89,11 +89,13 @@ interface BuildServiceOptions {
     technicalRun?: WritingFeedbackRun | null; // explicit override; null simulates "no technical run yet"
     technicalRubricVersion?: number; // approved technical rubric version
     technicalRunRubricVersion?: number; // rubric version stamped on the existing technical run
+    analysisMode?: 'general' | 'sfl'; // the assignment's feedback approach; new assignments start in general
 }
 
 function labReportAssignment(options: BuildServiceOptions): WritingAssignment {
     const assignment = approvedAssignment(1);
     assignment.isLabReport = options.isLabReport ?? false;
+    if (options.analysisMode) assignment.analysisMode = options.analysisMode;
     if (options.technicalApproved) {
         assignment.technicalRubric = approveRubricDraft(
             { ...assignment.rubric, version: options.technicalRubricVersion ?? 1 },
@@ -656,21 +658,14 @@ describe('two-lens generation', () => {
 
     it.each([
         ['sfl', 'lab-report-technical-v1.5.1'],
-        ['general', 'general-feedback-v1.1.0']
-    ])('stamps the %s prompt version on the technical run', async (mode, promptVersion) => {
-        const original = process.env.WRITING_FEEDBACK_ANALYSIS_MODE;
-        process.env.WRITING_FEEDBACK_ANALYSIS_MODE = mode;
-        try {
-            const { service, mongo } = buildService({ isLabReport: true, technicalApproved: true });
-            await service.generate('course-1', 'submission-1');
-            const technicalRun = mongo.createWritingFeedbackRun.mock.calls
-                .map(([input]: [{ lens: string; modelMetadata: { promptVersion: string } }]) => input)
-                .find((input) => input.lens === 'technical');
-            expect(technicalRun?.modelMetadata.promptVersion).toBe(promptVersion);
-        } finally {
-            if (original === undefined) delete process.env.WRITING_FEEDBACK_ANALYSIS_MODE;
-            else process.env.WRITING_FEEDBACK_ANALYSIS_MODE = original;
-        }
+        ['general', 'general-feedback-v1.2.0']
+    ] as const)('stamps the %s prompt version on the technical run', async (mode, promptVersion) => {
+        const { service, mongo } = buildService({ isLabReport: true, technicalApproved: true, analysisMode: mode });
+        await service.generate('course-1', 'submission-1');
+        const technicalRun = mongo.createWritingFeedbackRun.mock.calls
+            .map(([input]: [{ lens: string; modelMetadata: { promptVersion: string } }]) => input)
+            .find((input) => input.lens === 'technical');
+        expect(technicalRun?.modelMetadata.promptVersion).toBe(promptVersion);
     });
 });
 
@@ -1254,14 +1249,8 @@ describe('WritingFeedbackService first transcript confirmation', () => {
 });
 
 describe('WritingFeedbackService general analysis routing', () => {
-    const original = process.env.WRITING_FEEDBACK_ANALYSIS_MODE;
-    afterEach(() => {
-        if (original === undefined) delete process.env.WRITING_FEEDBACK_ANALYSIS_MODE;
-        else process.env.WRITING_FEEDBACK_ANALYSIS_MODE = original;
-    });
-
-    function generalService(isLabReport = true) {
-        const { mongo, assignment } = buildService({ isLabReport, technicalApproved: isLabReport });
+    function generalService(isLabReport = true, analysisMode: 'general' | 'sfl' = 'general') {
+        const { mongo, assignment } = buildService({ isLabReport, technicalApproved: isLabReport, analysisMode });
         const handout = { id: 'm1', kind: 'file', text: 'Use two readings.' };
         const withMaterials = { ...mongo, listWritingSourceMaterials: jest.fn(async () => [handout]) };
         const engine = { generate: jest.fn(async () => result) };
@@ -1270,7 +1259,6 @@ describe('WritingFeedbackService general analysis routing', () => {
     }
 
     it('runs the one engine for every approved rubric, passing the lens and the handouts', async () => {
-        delete process.env.WRITING_FEEDBACK_ANALYSIS_MODE;
         const { service, engine, handout } = generalService();
         await service.generate('course-1', 'submission-1');
         expect(engine.generate).toHaveBeenCalledTimes(2);
@@ -1279,7 +1267,6 @@ describe('WritingFeedbackService general analysis routing', () => {
     });
 
     it('generates once, against the one rubric, for a new assignment', async () => {
-        delete process.env.WRITING_FEEDBACK_ANALYSIS_MODE;
         const { service, engine, mongo } = generalService(false);
         await service.generate('course-1', 'submission-1');
         expect(engine.generate).toHaveBeenCalledTimes(1);
@@ -1287,9 +1274,8 @@ describe('WritingFeedbackService general analysis routing', () => {
         expect(mongo.createWritingFeedbackRun).toHaveBeenCalledTimes(1);
     });
 
-    it('does not read handouts in sfl mode', async () => {
-        process.env.WRITING_FEEDBACK_ANALYSIS_MODE = 'sfl';
-        const { service, mongo, engine } = generalService(false);
+    it('does not read handouts for an sfl-mode assignment', async () => {
+        const { service, mongo, engine } = generalService(false, 'sfl');
         await service.generate('course-1', 'submission-1');
         expect(mongo.listWritingSourceMaterials).not.toHaveBeenCalled();
         expect(engine.generate).toHaveBeenCalledWith(expect.not.objectContaining({ sourceMaterials: expect.anything() }));

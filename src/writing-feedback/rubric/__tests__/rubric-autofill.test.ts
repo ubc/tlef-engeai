@@ -13,6 +13,7 @@ import {
     proposeRubricFromInstructions
 } from '../rubric-autofill';
 import { writingRubricDraftInputSchema } from '../rubric-schema';
+import { buildStaffedSflContextProfile } from '../../__tests__/helpers/staffed-rubric';
 import type { WritingAssignment, WritingRubricDefinition } from '../../contracts';
 
 const levels = [
@@ -392,30 +393,48 @@ describe('auto-fill in general analysis', () => {
         courseTerms: ['Hypothesis']
     });
 
-    it('asks for course terms instead of an SFL profile', () => {
+    it('asks for the writing description and for course terms', () => {
         const prompt = buildAutofillPrompt('Write a lab report.', generalDraft(), { mode: 'general', courseExcerpts: ['A hypothesis is a testable prediction.'] });
+        expect(prompt).toContain('SFL context profile');
         expect(prompt).toContain('courseTerms');
+        expect(prompt).toContain('Leave approvedGlossaryTerms in the profile null.');
         expect(prompt).toContain('A hypothesis is a testable prediction.');
-        expect(prompt).not.toContain('SFL context profile');
-        expect(prompt).not.toContain('Ferreira');
     });
 
     it('keeps the SFL profile request in sfl mode and ignores course excerpts there', () => {
         const prompt = buildAutofillPrompt('Write a lab report.', generalDraft(), { mode: 'sfl', courseExcerpts: ['A hypothesis is a testable prediction.'] });
         expect(prompt).toContain('SFL context profile');
+        expect(prompt).not.toContain('courseTerms');
         expect(prompt).not.toContain('A hypothesis is a testable prediction.');
     });
 
-    it('discards a returned SFL profile and keeps the proposed course terms', async () => {
+    it('keeps the proposed course terms, as an empty list when there are none', async () => {
         const body = { ...proposal, courseTerms: ['uncertainty'], sflContext: null, criteria: [] };
         const llm = { sendStructuredConversation: jest.fn(async () => ({ parsed: body })) } as unknown as LLMModule;
         const result = await proposeRubricFromInstructions('i', generalDraft(), llm, { mode: 'general' });
-        expect(result.sflContext).toBeUndefined();
         expect(result.courseTerms).toEqual(['uncertainty']);
+
+        const none = { sendStructuredConversation: jest.fn(async () => ({ parsed: { ...body, courseTerms: null } })) } as unknown as LLMModule;
+        expect((await proposeRubricFromInstructions('i', generalDraft(), none, { mode: 'general' })).courseTerms).toEqual([]);
     });
 
-    it('adds proposed terms to the ones staff listed, ignoring case duplicates', () => {
-        const merged = mergeAutofill(generalDraft(), { ...proposal, criteria: [], courseTerms: ['hypothesis', 'uncertainty'] }, autofillMergeRules('canvas'));
-        expect(merged.courseTerms).toEqual(['Hypothesis', 'uncertainty']);
+    it('keeps a returned writing description', async () => {
+        const body = { ...proposal, courseTerms: [], sflContext: buildStaffedSflContextProfile(), criteria: [] };
+        const llm = { sendStructuredConversation: jest.fn(async () => ({ parsed: body })) } as unknown as LLMModule;
+        const result = await proposeRubricFromInstructions('i', generalDraft(), llm, { mode: 'general' });
+        expect(result.sflContext?.genreLabel).toBe('A short design proposal');
+    });
+
+    it('adds proposed terms to the glossary staff listed, ignoring case duplicates', () => {
+        const staffed = { ...generalDraft(), sflContext: buildStaffedSflContextProfile({ approvedGlossaryTerms: ['Variable'] }) };
+        const merged = mergeAutofill(staffed, { ...proposal, sflContext: buildStaffedSflContextProfile(), criteria: [], courseTerms: ['hypothesis', 'uncertainty'] }, autofillMergeRules('canvas'));
+        expect(merged.sflContext?.approvedGlossaryTerms).toEqual(['Hypothesis', 'Variable', 'uncertainty']);
+        // The older rubric-level list is folded into the glossary, so terms live in one place.
+        expect('courseTerms' in merged).toBe(false);
+    });
+
+    it('leaves the glossary as proposed in sfl mode, where no course terms are asked for', () => {
+        const merged = mergeAutofill(generalDraft(), { ...proposal, criteria: [] }, autofillMergeRules('canvas'));
+        expect(merged.courseTerms).toEqual(['Hypothesis']);
     });
 });

@@ -42,8 +42,9 @@ Model calls: the general engine (default) with its whole-text check, the inactiv
 | `batch-generation.ts` | 247 | Previews, starts, and stops batch feedback generation for one assignment. | `batch-generation.test.ts` | which submissions a batch includes, or stopping, changes |
 | `feedback-engine.ts` | 638 | Generates staff-review drafts from assignment rubrics and verified text. | `feedback-engine.test.ts` | prompt or draft shape changes |
 | `feedback-gate.ts` | 93 | Pure gate decision, whole-text flag, hold-back resolution, and student-facing comment filter. | `feedback-gate.test.ts` | — |
-| `general-feedback-engine.ts` | 453 | General analysis (default): rubric, assignment material, and course material; every lens. Owns its system prompt. | `general-feedback-engine.test.ts` | the general prompt, its inputs, or its provenance change |
-| `general-whole-text-check.ts` | 148 | General analysis's whole-text check: prompt, schema, validation, gate decision. | `general-whole-text-check.test.ts` | what counts as off-task or a required section changes |
+| `general-feedback-engine.ts` | 463 | General analysis (default): rubric, assignment material, and course material; every lens. Owns its system prompt. | `general-feedback-engine.test.ts` | the general prompt, its inputs, or its provenance change |
+| `general-whole-text-check.ts` | 178 | General analysis's whole-text check: prompt, schema, validation, gate decision. | `general-whole-text-check.test.ts` | what counts as off-task or a required section changes |
+| `general-writing-description.ts` | 82 | The approved "Describe the writing" profile as general analysis reads it: selection and prompt block. | `general-feedback-engine.test.ts` | what the general prompts read from the description changes |
 | `feedback-schema.ts` | 435 | Enforces rubric-driven output, exact evidence, and safe numeric mapping. | `feedback-schema.test.ts` | model output validation changes |
 | `summary-redraft-engine.ts` | 197 | Structured summary redraft for the two-step review. | `summary-redraft-engine.test.ts` | the redraft prompt or output changes |
 | `technical-feedback-engine.ts` | 260 | Generates staff-review technical drafts for lab reports. | `technical-feedback-engine.test.ts` | lab-report technical drafts change |
@@ -81,7 +82,7 @@ Rubric schema, bands, lenses, seeding, presets, autofill, and the default and la
 
 | File | Lines | Responsibility | Tests | Open it when |
 | --- | ---: | --- | --- | --- |
-| `assignment-type.ts` | 129 | Records the assignment type and applies lab-report rubric routing. | `assignment-type.test.ts` | the assignment type flow changes |
+| `assignment-type.ts` | 129 | Lab-report rubric routing for legacy typed assignments (the type question is retired); seeds a legacy lab report's technical rubric. | `assignment-type.test.ts` | the assignment type flow changes |
 | `criterion-assessment.ts` | 119 | Partitions rubric criteria by who authors their feedback. | `criterion-assessment.test.ts` | — |
 | `default-rubric-profile.ts` | 222 | Builds neutral assignment and rubric defaults without course-specific assumptions. | `default-rubric-profile.test.ts` | assignment or rubric defaults change |
 | `lab-report-profile.ts` | 185 | Builds the editable lab-report technical rubric template. | `lab-report-profile.test.ts` | the technical rubric template changes |
@@ -184,7 +185,7 @@ Small helpers used across areas.
 
 | File | Lines | Responsibility | Tests | Open it when |
 | --- | ---: | --- | --- | --- |
-| `analysis-mode.ts` | 52 | Reads the global `WRITING_FEEDBACK_ANALYSIS_MODE` switch (`general` default, `sfl`) and the mode-dependent profile gate. | `analysis-mode.test.ts` | what the switch turns on or off |
+| `analysis-mode.ts` | 77 | Resolves an assignment's analysis mode (`general` for new assignments, `sfl` when none is stored) and the mode-dependent profile gate. | `analysis-mode.test.ts` | how an assignment's analysis is chosen changes |
 | `strip-nulls.ts` | 52 | Recursively omits null-valued object keys from a structured-output result. | `strip-nulls.test.ts` | structured-output normalisation changes |
 
 ## Outside `src/writing-feedback/`
@@ -210,8 +211,6 @@ Small helpers used across areas.
 | `public/scripts/feature/writing-feedback-summary-editor.ts` | 193 | Editable summary sections and edit detection per lens. | editable summary UI changes |
 | `public/scripts/feature/writing-feedback-annotation-fingerprint.ts` | 56 | Browser mirror of the annotation fingerprint. | what counts as an annotation change |
 | `public/scripts/feature/writing-feedback-sources.ts` | 283 | The "Assignment material" list in step 1: ticks, upload, paste with table HTML, remove, and the character total. | the source list or how material is added changes |
-| `public/scripts/feature/writing-feedback-assignment-type.ts` | 93 | The "What kind of assignment is this?" modal and save flow. | the assignment type modal changes |
-| `public/scripts/feature/writing-feedback-assignment-type-state.ts` | 45 | DOM-free labels and pending-assignment selection for that modal. | the modal labels change |
 | `public/styles/instructor-components/writing-feedback.css` | 3567 | Every Writing Feedback style. | the workspace, rubric, review, or release step is restyled |
 
 ## Tests

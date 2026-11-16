@@ -1,85 +1,77 @@
 /**
- * Analysis mode — which feedback analysis the whole deployment runs
+ * Analysis mode — which feedback analysis one assignment uses
  *
- * `general` (the default) grounds every assignment's feedback in its approved rubric, its
- * assignment details, the instructor's materials, and published course material. `sfl` restores
- * the SFL-founded pipeline: genre and register profile, text diagnosis, SFL analyzer, rewrite
- * gate, assignment-type question, and the technical lens. The SFL code stays in place and is only
- * switched off, so it can be tried again by setting `WRITING_FEEDBACK_ANALYSIS_MODE=sfl`.
+ * Staff choose it per assignment on the rubric page. `general` grounds feedback in the approved
+ * rubric, the "Describe the writing" profile, the assignment details, the instructor's
+ * materials, and published course material. `sfl` runs the SFL-founded pipeline: text
+ * diagnosis, SFL analyzer, and rewrite gate (and, for a lab report created before assignments
+ * had one rubric, the technical engine on its technical rubric).
+ *
+ * New assignments start in `general`. An assignment with no stored mode was created before the
+ * choice existed and keeps the SFL analysis it has always had.
  *
  * @author: @rdschrs
  * @date: 2026-10-26
- * @version: 1.0.0
- * @description: Reads the global analysis-mode switch and applies the mode-dependent profile gate.
+ * @version: 2.0.0
+ * @description: Resolves an assignment's analysis mode and applies the mode-dependent profile gate.
  */
 
-import type { WritingFeedbackAnalysisMode, WritingSflContextProfile } from '../contracts';
+import type { WritingAssignment, WritingFeedbackAnalysisMode, WritingSflContextProfile } from '../contracts';
 import { requireCompleteSflProfile } from '../language/sfl-analysis';
 
 export type { WritingFeedbackAnalysisMode };
 
-/** Environment variable holding the switch. */
-export const ANALYSIS_MODE_ENV = 'WRITING_FEEDBACK_ANALYSIS_MODE';
+/** The mode a newly created assignment starts in. */
+export const DEFAULT_ANALYSIS_MODE: WritingFeedbackAnalysisMode = 'general';
 
 /**
- * getAnalysisMode - reads the deployment-wide analysis mode.
+ * isAnalysisMode - whether a value names an analysis mode.
  *
- * Only the exact value `sfl` turns the SFL pipeline on; anything else, including an unset or
- * misspelled value, runs the general analysis, so a typo can never re-enable SFL by accident.
- *
- * @param env - Environment to read; defaults to the process environment
- * @returns `'sfl'` when explicitly requested, otherwise `'general'`
+ * @param value - Untrusted input, such as a request body field
+ * @returns True for `general` or `sfl`
  */
-export function getAnalysisMode(env: NodeJS.ProcessEnv = process.env): WritingFeedbackAnalysisMode {
-    return env[ANALYSIS_MODE_ENV]?.trim().toLowerCase() === 'sfl' ? 'sfl' : 'general';
+export function isAnalysisMode(value: unknown): value is WritingFeedbackAnalysisMode {
+    return value === 'general' || value === 'sfl';
 }
 
 /**
- * requireAnalysisProfile - the writing-profile gate for approval and generation.
+ * analysisModeOf - the analysis one assignment uses.
  *
- * The SFL genre and register profile is required only in `sfl` mode. In `general` mode the
- * approved rubric and assignment material are enough, and an absent or partial profile is ignored.
+ * @param assignment - Assignment, or undefined when there is none
+ * @returns Its stored mode; `sfl` when none is stored, because it predates the choice
+ */
+export function analysisModeOf(assignment: Pick<WritingAssignment, 'analysisMode'> | undefined): WritingFeedbackAnalysisMode {
+    return assignment?.analysisMode === 'general' ? 'general' : 'sfl';
+}
+
+/**
+ * requireAnalysisProfile - the writing-profile gate at generation.
+ *
+ * Approval requires a complete "Describe the writing" profile in both modes. Generation checks
+ * it again only in `sfl` mode, whose pipeline cannot run without it; general analysis uses the
+ * profile when present, so a rubric approved without one still generates.
  *
  * @param profile - The writing rubric's stored SFL profile, if any
- * @param mode - Active analysis mode
+ * @param mode - The assignment's analysis mode
  * @throws Error the existing SFL profile messages, only in `sfl` mode
  */
 export function requireAnalysisProfile(
     profile: WritingSflContextProfile | undefined,
-    mode: WritingFeedbackAnalysisMode = getAnalysisMode()
+    mode: WritingFeedbackAnalysisMode
 ): void {
     if (mode === 'sfl') requireCompleteSflProfile(profile);
 }
 
 /**
- * carriedSflProfile - the stored SFL profile a general-mode draft save keeps.
+ * draftForValidation - the form of an imported or auto-filled draft the draft schema should check.
  *
- * In general mode the profile is inactive data. It is never edited or validated, so a blank
- * default profile cannot block a save, but it is kept so SFL can be switched back on. Its
- * glossary is dropped because those terms now live in the rubric's `courseTerms`.
- *
- * @param stored - The profile on the draft or approved rubric being replaced
- * @returns The profile without `approvedGlossaryTerms`, or undefined when there is none
- */
-export function carriedSflProfile(stored: WritingSflContextProfile | undefined): WritingSflContextProfile | undefined {
-    if (!stored) return undefined;
-    const { approvedGlossaryTerms: _moved, ...rest } = stored;
-    return rest;
-}
-
-/**
- * draftForValidation - the form of a stored draft that the draft schema should check.
- *
- * In general mode the SFL profile is carried but never edited, so a blank one must not fail
- * validation. Validate this value and save the original, which keeps the profile.
+ * Staff finish the "Describe the writing" profile on the rubric page and approval checks it, so
+ * a blank default one must not fail an import. Validate this value and save the original, which
+ * keeps the profile.
  *
  * @param draft - Draft about to be validated
- * @param mode - Active analysis mode
- * @returns A copy without the profile in `general` mode; the draft itself in `sfl` mode
+ * @returns A copy without the profile; the draft itself is unchanged
  */
-export function draftForValidation<T extends object>(
-    draft: T,
-    mode: WritingFeedbackAnalysisMode = getAnalysisMode()
-): T {
-    return mode === 'general' ? { ...draft, sflContext: undefined } : draft;
+export function draftForValidation<T extends object>(draft: T): T {
+    return { ...draft, sflContext: undefined };
 }
