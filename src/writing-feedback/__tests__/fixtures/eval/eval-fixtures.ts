@@ -10,7 +10,7 @@
  * @description: Fixed inputs and expected behaviour for the live Writing Feedback eval.
  */
 
-import type { WritingAssignment } from '../../../contracts';
+import type { WritingAssignment, WritingSourceMaterial } from '../../../contracts';
 import { buildDefaultWritingAssignment } from '../../../rubric/default-rubric-profile';
 import { approveRubricDraft } from '../../../rubric/rubric-schema';
 
@@ -88,6 +88,110 @@ export function buildEvalAssignment(): WritingAssignment {
     }, 'eval-instructor', new Date('2026-09-28T00:00:00.000Z'));
     return assignment;
 }
+
+/** Instructor handout the general analysis reads in place of the SFL profile's stages. */
+export const EVAL_HANDOUT: WritingSourceMaterial = {
+    id: 'eval-handout',
+    courseId: 'eval-course',
+    assignmentId: 'eval-a2',
+    kind: 'paste',
+    text: [
+        'A2: Descriptive report (one paragraph).',
+        'Your report must include these three sections, in this order:',
+        '1. General statement: identify and formally define the entity.',
+        '2. Classification or composition: state the types of the entity or its parts.',
+        '3. Description: describe each type or part in turn.',
+        'You may end with a short closing that generalizes about the classification; this is optional.',
+        'A descriptive report organizes knowledge about a class of things. It does not explain how a process happens step by step.'
+    ].join('\n'),
+    hasTables: false,
+    characterCount: 0,
+    addedAt: new Date('2026-09-28T00:00:00.000Z'),
+    addedBy: 'eval-instructor'
+};
+
+/** A general-analysis fixture that brings its own assignment, for kinds of work other than a report. */
+export interface GeneralEvalFixture extends EvalFixture {
+    title: string;
+    instructions: string;
+    handout?: string;
+}
+
+/**
+ * buildGeneralEvalAssignment - an approved assignment built from one general fixture.
+ *
+ * @param fixture - Supplies the title and instructions
+ * @returns An approved assignment with the default rubric and no genre profile
+ */
+export function buildGeneralEvalAssignment(fixture: GeneralEvalFixture): WritingAssignment {
+    const assignment = buildDefaultWritingAssignment('eval-course', `eval-${fixture.id}`, fixture.title, fixture.instructions);
+    const rubric = { ...assignment.rubric, task: fixture.instructions };
+    delete rubric.sflContext;
+    assignment.rubric = approveRubricDraft(rubric, 'eval-instructor', new Date('2026-11-09T00:00:00.000Z'));
+    return assignment;
+}
+
+/**
+ * generalEvalHandout - the fixture's handout as stored instructor material.
+ *
+ * @param fixture - Fixture that may carry a handout
+ * @returns Source materials for the engine; empty when the fixture has no handout
+ */
+export function generalEvalHandout(fixture: GeneralEvalFixture): WritingSourceMaterial[] {
+    if (!fixture.handout) return [];
+    return [{
+        ...EVAL_HANDOUT,
+        id: `handout-${fixture.id}`,
+        assignmentId: `eval-${fixture.id}`,
+        text: fixture.handout,
+        characterCount: fixture.handout.length
+    }];
+}
+
+const DESIGN_MEMO_HANDOUT = [
+    'Design memo. Your memo must include these sections:',
+    '1. Problem: state the design problem and its constraints.',
+    '2. Options: describe at least two options.',
+    '3. Recommendation: recommend one option and justify it against the constraints.'
+].join('\n');
+
+/** On-task work of other kinds must stay unflagged; only the off-task memo is flagged. */
+export const GENERAL_EVAL_FIXTURES: GeneralEvalFixture[] = [
+    {
+        id: 'general-design-memo-on-task',
+        title: 'Footbridge design memo',
+        instructions: 'Write a short design memo recommending a footbridge deck material.',
+        handout: DESIGN_MEMO_HANDOUT,
+        materials: 'none',
+        text: 'Problem. The campus footbridge deck must span 12 m, carry 5 kPa, and cost under $40,000. Options. A timber deck is cheap and light but needs sealing every three years. A glass-fibre deck costs more at first but needs almost no upkeep. Recommendation. We recommend the glass-fibre deck because it stays within the $40,000 limit and removes the sealing cost over the life of the bridge.',
+        expect: { mode: 'standard' }
+    },
+    {
+        id: 'general-design-memo-off-task',
+        title: 'Footbridge design memo',
+        instructions: 'Write a short design memo recommending a footbridge deck material.',
+        handout: DESIGN_MEMO_HANDOUT,
+        materials: 'none',
+        text: 'Last weekend I walked over the old footbridge with my friends. It was sunny and we took some photos. I felt a bit nervous because the bridge moved when we jumped on it. Afterwards we went for lunch and talked about our classes. I really enjoy being on campus in the fall.',
+        expect: { mode: 'global_revision' }
+    },
+    {
+        id: 'general-problem-set',
+        title: 'Statics problem set 3',
+        instructions: 'Answer each question and show your reasoning. Q1: Find the reaction at support A of a 4 m simply supported beam with a 10 kN load at midspan. Q2: Explain why the reactions are equal.',
+        materials: 'none',
+        text: 'Q1. Taking moments about B, RA times 4 m equals 10 kN times 2 m, so RA is 5 kN. Q2. The reactions are equal because the load is at the midpoint, so each support carries the same moment arm.',
+        expect: { mode: 'standard' }
+    },
+    {
+        id: 'general-reflection',
+        title: 'Team project reflection',
+        instructions: 'Write a personal reflection on what you learned about working in a team during the term project.',
+        materials: 'none',
+        text: 'At the start of the project I tried to do everything myself because I was worried about our grade. When my teammate pointed out that I had changed her section without asking, I felt embarrassed. Since then I have learned to raise concerns early and to trust the plan we agreed on. In my next project I want to ask what each person needs before I start.',
+        expect: { mode: 'standard' }
+    }
+];
 
 export const EVAL_FIXTURES: EvalFixture[] = [
     {

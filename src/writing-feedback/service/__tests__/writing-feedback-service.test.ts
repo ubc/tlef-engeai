@@ -89,11 +89,13 @@ interface BuildServiceOptions {
     technicalRun?: WritingFeedbackRun | null; // explicit override; null simulates "no technical run yet"
     technicalRubricVersion?: number; // approved technical rubric version
     technicalRunRubricVersion?: number; // rubric version stamped on the existing technical run
+    analysisMode?: 'general' | 'sfl'; // the assignment's feedback approach; new assignments start in general
 }
 
 function labReportAssignment(options: BuildServiceOptions): WritingAssignment {
     const assignment = approvedAssignment(1);
     assignment.isLabReport = options.isLabReport ?? false;
+    if (options.analysisMode) assignment.analysisMode = options.analysisMode;
     if (options.technicalApproved) {
         assignment.technicalRubric = approveRubricDraft(
             { ...assignment.rubric, version: options.technicalRubricVersion ?? 1 },
@@ -654,13 +656,16 @@ describe('two-lens generation', () => {
         expect(mongo.setWritingSubmissionStatus).toHaveBeenLastCalledWith('course-1', 'submission-1', 'failed', ['generating']);
     });
 
-    it('stamps the technical prompt version on the technical run', async () => {
-        const { service, mongo } = buildService({ isLabReport: true, technicalApproved: true });
+    it.each([
+        ['sfl', 'lab-report-technical-v1.5.1'],
+        ['general', 'general-feedback-v1.2.0']
+    ] as const)('stamps the %s prompt version on the technical run', async (mode, promptVersion) => {
+        const { service, mongo } = buildService({ isLabReport: true, technicalApproved: true, analysisMode: mode });
         await service.generate('course-1', 'submission-1');
         const technicalRun = mongo.createWritingFeedbackRun.mock.calls
             .map(([input]: [{ lens: string; modelMetadata: { promptVersion: string } }]) => input)
             .find((input) => input.lens === 'technical');
-        expect(technicalRun?.modelMetadata.promptVersion).toBe('lab-report-technical-v1.5.1');
+        expect(technicalRun?.modelMetadata.promptVersion).toBe(promptVersion);
     });
 });
 
@@ -1240,5 +1245,39 @@ describe('WritingFeedbackService first transcript confirmation', () => {
         await expect(service.confirmTranscript('course-1', 'submission-1', 'Rewritten.'))
             .rejects.toThrow('already confirmed');
         expect(mongo.updateVerifiedWritingText).not.toHaveBeenCalled();
+    });
+});
+
+describe('WritingFeedbackService general analysis routing', () => {
+    function generalService(isLabReport = true, analysisMode: 'general' | 'sfl' = 'general') {
+        const { mongo, assignment } = buildService({ isLabReport, technicalApproved: isLabReport, analysisMode });
+        const handout = { id: 'm1', kind: 'file', text: 'Use two readings.' };
+        const withMaterials = { ...mongo, listWritingSourceMaterials: jest.fn(async () => [handout]) };
+        const engine = { generate: jest.fn(async () => result) };
+        const service = new WritingFeedbackService(withMaterials as unknown as EngEAI_MongoDB, engine);
+        return { service, mongo: withMaterials, engine, assignment, handout };
+    }
+
+    it('runs the one engine for every approved rubric, passing the lens and the handouts', async () => {
+        const { service, engine, handout } = generalService();
+        await service.generate('course-1', 'submission-1');
+        expect(engine.generate).toHaveBeenCalledTimes(2);
+        expect(engine.generate).toHaveBeenNthCalledWith(1, expect.objectContaining({ lens: 'linguistic', sourceMaterials: [handout] }));
+        expect(engine.generate).toHaveBeenNthCalledWith(2, expect.objectContaining({ lens: 'technical', sourceMaterials: [handout] }));
+    });
+
+    it('generates once, against the one rubric, for a new assignment', async () => {
+        const { service, engine, mongo } = generalService(false);
+        await service.generate('course-1', 'submission-1');
+        expect(engine.generate).toHaveBeenCalledTimes(1);
+        expect(engine.generate).toHaveBeenCalledWith(expect.objectContaining({ lens: 'linguistic' }));
+        expect(mongo.createWritingFeedbackRun).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not read handouts for an sfl-mode assignment', async () => {
+        const { service, mongo, engine } = generalService(false, 'sfl');
+        await service.generate('course-1', 'submission-1');
+        expect(mongo.listWritingSourceMaterials).not.toHaveBeenCalled();
+        expect(engine.generate).toHaveBeenCalledWith(expect.not.objectContaining({ sourceMaterials: expect.anything() }));
     });
 });

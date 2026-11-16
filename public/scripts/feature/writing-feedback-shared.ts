@@ -156,6 +156,7 @@ export interface RubricDefinition {
     learningOutcomes: string[]; // instructor-approved outcomes governing feedback
     gradingIntent: string; // states formative/summative intent and grading boundaries
     sflContext?: SflContextProfile; // V2 linguistic genre/register profile approved with the rubric
+    courseTerms?: string[]; // course terms students already know; feedback glosses them on first use
     criteria: RubricCriterion[]; // assignment-specific criteria and optional SFL lenses
     levels: RubricLevel[]; // complete ordinal scale and optional point mapping
     updatedAt: string; // server timestamp shown in rubric provenance/history
@@ -167,6 +168,7 @@ export interface RubricDefinition {
 /** Assignment summary used by the landing queue and current rubric context. */
 export interface Assignment {
     id: string; // internal assignment key used in course-scoped routes
+    analysisMode?: 'general' | 'sfl'; // feedback approach staff chose; absent means sfl (created before the choice)
     title: string; // queue and review heading
     canvasAssignmentId?: string; // external key retained only for Canvas-linked intake/release
     canvasRubricRefusal?: CanvasRubricRefusal; // why an imported Canvas rubric could not seed this grid
@@ -222,7 +224,7 @@ export type FeedbackMode = 'standard' | 'global_revision';
 export interface TextDiagnosis {
     realizedGenre: RealizedGenre;
     genreFit: 'fits' | 'partial' | 'mismatch';
-    stages: Array<{ stageId: string; status: 'present' | 'weak' | 'missing'; evidence?: string }>;
+    stages: Array<{ stageId: string; label?: string; status: 'present' | 'weak' | 'missing'; evidence?: string }>;
     contradictingFeatures: Array<{ quote: string; note: string }>;
     transferableStrengths: Array<{ text: string; quote?: string }>;
     rationale: string;
@@ -233,6 +235,7 @@ export interface FeedbackRun {
     id: string; // provenance key attached to subsequent staff revisions
     rubricVersion?: number; // approved rubric version used to detect stale runs
     lens?: WritingFeedbackLens; // which feedback lens produced this run
+    analysisMode?: 'general' | 'sfl'; // analysis that produced this run; absent on runs before the switch
     createdAt: string; // generation timestamp shown in review provenance
     result: {
         schemaVersion?: string; // V2 result schema, absent on older runs
@@ -784,6 +787,45 @@ interface WfState {
  * Reset by {@link initializeWritingFeedback} whenever the instructor shell mounts
  * the component; dirty flags protect unsaved setup and review edits.
  */
+/** Staff names for each feedback approach, as the rubric page offers them. */
+export const APPROACH_LABELS: Record<'general' | 'sfl', string> = {
+    general: 'General',
+    sfl: 'SFL writing'
+};
+
+/**
+ * analysisModeOf - the analysis one assignment uses.
+ *
+ * Mirrors `analysisModeOf` in src/writing-feedback/shared/analysis-mode.ts: an assignment with
+ * no stored mode predates the choice and keeps the SFL analysis.
+ *
+ * @param assignment - Assignment, or undefined when there is none
+ * @returns `general` or `sfl`
+ */
+export function analysisModeOf(assignment: Pick<Assignment, 'analysisMode'> | null | undefined): 'general' | 'sfl' {
+    return assignment?.analysisMode === 'general' ? 'general' : 'sfl';
+}
+
+/**
+ * courseTermsOf - the course terms a rubric carries, including the legacy profile glossary.
+ *
+ * Mirrors `courseTermsFor` in src/writing-feedback/language/plain-language.ts.
+ *
+ * @param rubric - Rubric being edited
+ * @returns Trimmed terms, deduplicated ignoring case, rubric list first
+ */
+export function courseTermsOf(rubric: Pick<RubricDefinition, 'courseTerms' | 'sflContext'>): string[] {
+    const seen = new Set<string>();
+    return [...(rubric.courseTerms ?? []), ...(rubric.sflContext?.approvedGlossaryTerms ?? [])]
+        .map((term) => term.trim())
+        .filter((term) => {
+            const key = term.toLowerCase();
+            if (!term || seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+}
+
 export const state: WfState = {
     course: null,
     workspace: null,

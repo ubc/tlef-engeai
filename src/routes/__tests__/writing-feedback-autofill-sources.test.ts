@@ -37,13 +37,17 @@ jest.mock('../../middleware/async-handler', () => {
         (req: unknown, res: unknown, next: (error?: unknown) => void) => Promise.resolve(fn(req, res, next)).catch(next);
     return { asyncHandler: wrap, asyncHandlerWithAuth: wrap };
 });
+jest.mock('../../writing-feedback/generation/general-feedback-engine', () => ({
+    courseTermExcerpts: jest.fn(async () => [])
+}));
 jest.mock('../../writing-feedback/rubric/rubric-autofill', () => ({
     ...jest.requireActual('../../writing-feedback/rubric/rubric-autofill'),
     proposeRubricFromInstructions: (...args: unknown[]) => proposeRubricFromInstructions(...args),
     // The proposal is irrelevant here. The details come from a valid staffed rubric, as a real
-    // proposal would fill them; the grid is whatever the route handed over.
-    mergeAutofill: (draft: { criteria: unknown; levels: unknown; version: number; status: string; gridSource?: unknown }) => ({
+    // proposal would fill them; the grid and SFL profile are whatever the route handed over.
+    mergeAutofill: (draft: { criteria: unknown; levels: unknown; version: number; status: string; gridSource?: unknown; sflContext?: unknown }) => ({
         ...jest.requireActual('../../writing-feedback/__tests__/helpers/staffed-rubric').buildStaffedWritingRubric('user-1'),
+        sflContext: draft.sflContext,
         criteria: draft.criteria,
         levels: draft.levels,
         version: draft.version,
@@ -340,6 +344,45 @@ describe('auto-fill source routes', () => {
             expect(lens).toBe('linguistic');
             expect(saved.gridSource).toMatchObject({ kind: 'uploaded', label: 'rubric.docx' });
             expect(provenance.pendingRubricExtraction).toBeNull();
+        });
+
+        describe.each(['general', 'sfl'] as const)('with the blank profile a new %s-mode draft starts with', (analysisMode) => {
+            // Staff finish "Describe the writing" on the rubric page and approval checks it, so an
+            // import never fails on the blank one.
+            function heldVersion() {
+                const { convertExtractedRubric } = jest.requireActual('../../writing-feedback/sources/source-rubric-extraction');
+                const converted = convertExtractedRubric(reported('Final rubric'));
+                const staffed = jest.requireActual('../../writing-feedback/__tests__/helpers/staffed-rubric').buildStaffedWritingRubric('user-1');
+                const assignment = fresh();
+                return {
+                    ...assignment,
+                    analysisMode,
+                    rubric: { ...staffed, status: 'draft', sflContext: assignment.rubric.sflContext },
+                    pendingRubricExtraction: {
+                        lens: 'linguistic', sourceLabel: 'rubric.docx', createdAt: new Date(),
+                        candidates: [{ title: 'Final rubric', shape: converted.shape, notes: converted.notes, deductions: converted.deductions }]
+                    }
+                };
+            }
+
+            it('applies the one rubric found, keeping the profile', async () => {
+                const assignment = { ...fresh(), analysisMode };
+                mongo.getWritingAssignment.mockResolvedValue(assignment);
+                extractRubricsFromMaterial.mockResolvedValue([reported('Essay rubric')]);
+                const response = await request(app()).post(`${ASSIGNMENT}/rubric-draft/fill`).send({ rubricFrom: { sourceId: 'material-1' } });
+
+                expect(response.body.data.grid).toBe('applied');
+                expect(mongo.saveWritingRubricDraft.mock.calls[0][2].sflContext).toEqual(assignment.rubric.sflContext);
+            });
+
+            it('applies the held version staff choose, keeping the profile', async () => {
+                const assignment = heldVersion();
+                mongo.getWritingAssignment.mockResolvedValue(assignment);
+                const response = await request(app()).post(`${ASSIGNMENT}/rubric-draft/from-extraction`).send({ candidateIndex: 0 });
+
+                expect(response.status).toBe(200);
+                expect(mongo.saveWritingRubricDraft.mock.calls[0][2].sflContext).toEqual(assignment.rubric.sflContext);
+            });
         });
 
         it('refuses to finish an extraction that is not waiting', async () => {

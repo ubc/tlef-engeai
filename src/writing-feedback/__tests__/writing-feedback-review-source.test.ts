@@ -10,6 +10,11 @@ const source = fs.readFileSync(
     'utf8'
 );
 
+const diagnosisSource = fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', 'public', 'scripts', 'feature', 'writing-feedback-diagnosis.ts'),
+    'utf8'
+);
+
 const editorSource = fs.readFileSync(
     path.join(__dirname, '..', '..', '..', 'public', 'scripts', 'feature', 'writing-feedback-summary-editor.ts'),
     'utf8'
@@ -73,6 +78,8 @@ describe('writing feedback review source contract', () => {
         expect(source).not.toContain('Next ungraded');
         expect(source).not.toContain('wf-grade-progress');
         expect(source).not.toContain('Internal review flags');
+        expect(source).not.toContain('internalFlags');
+        expect(diagnosisSource).not.toContain('Internal review flags');
     });
 
     it('keeps the review history heading in step with the section it records', () => {

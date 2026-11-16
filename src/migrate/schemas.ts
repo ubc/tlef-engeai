@@ -406,6 +406,7 @@ export const writingAssignmentSchema: FieldSpec[] = [
     { key: 'rubricDraft', kind: 'opaque', optional: true },
     { key: 'rubricHistory', kind: 'opaque', optional: true },
     { key: 'assignmentTypePending', optional: true },
+    { key: 'analysisMode', optional: true },
     { key: 'isLabReport', optional: true },
     { key: 'technicalRubric', kind: 'opaque', optional: true },
     { key: 'technicalRubricDraft', kind: 'opaque', optional: true },
@@ -487,6 +488,7 @@ export const writingFeedbackRunSchema: FieldSpec[] = [
     { key: 'flags', kind: 'opaque', optional: true },
     { key: 'diagnosisPromptVersion', optional: true },
     { key: 'relevancePromptVersion', optional: true },
+    { key: 'analysisMode', optional: true },
 ];
 
 export const writingReleaseSchema: FieldSpec[] = [

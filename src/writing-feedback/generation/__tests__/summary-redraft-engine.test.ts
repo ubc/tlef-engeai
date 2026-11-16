@@ -69,10 +69,10 @@ describe('summary redraft prompts', () => {
             .not.toContain(staffId);
     });
 
-    it('adds the technical prime directive and lab context only for the technical lens', () => {
+    it('adds the technical prime directive and lab context only for the technical lens in sfl mode', () => {
         const technical = input('technical');
         technical.rubric = { ...technical.rubric, labContext: 'Heat exchanger handout.' };
-        const prompt = buildSummaryRedraftSystemPrompt(technical);
+        const prompt = buildSummaryRedraftSystemPrompt({ ...technical, mode: 'sfl' });
         expect(prompt).toContain(PRIME_DIRECTIVE);
         expect(prompt).toContain('<lab_context>Heat exchanger handout.</lab_context>');
     });
@@ -130,8 +130,21 @@ describe('plain-language contract', () => {
 });
 
 describe('technical redraft terms', () => {
-    it('lets standard lab terms through without a gloss', () => {
-        expect(buildSummaryRedraftSystemPrompt(input('technical'))).toMatch(/no explanation needed\):[^\n]*"uncertainty"/);
+    it('lets standard lab terms through without a gloss in sfl mode', () => {
+        expect(buildSummaryRedraftSystemPrompt({ ...input('technical'), mode: 'sfl' })).toMatch(/no explanation needed\):[^\n]*"uncertainty"/);
+    });
+});
+
+describe('general analysis redraft', () => {
+    it('uses the rubric course terms and no SFL inputs for every lens', () => {
+        const technical = input('technical');
+        technical.rubric = { ...technical.rubric, courseTerms: ['sample calculation'], labContext: 'Heat exchanger handout.' };
+        const prompt = buildSummaryRedraftSystemPrompt({ ...technical, mode: 'general' });
+        expect(prompt).not.toContain(PRIME_DIRECTIVE);
+        expect(prompt).toContain('Known course terms you may use: "sample calculation"');
+        expect(prompt).not.toContain('Translate each one');
+        expect(prompt).not.toContain('writingProfile');
+        expect(prompt).toContain('<lab_context>Heat exchanger handout.</lab_context>');
     });
 });
 

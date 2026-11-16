@@ -14,7 +14,8 @@ const cardCss = css.slice(css.indexOf('/* Section check'), css.indexOf('/* Annot
 describe('section check markup', () => {
     it('is an annotation card with the filter-label section label', () => {
         expect(source).toContain("card.className = 'wf-annotation-card wf-diagnosis'");
-        expect(source).toContain("createText('span', 'OFF-GENRE OR MISSING SECTIONS', 'wf-filter-label')");
+        expect(source).toContain("createText('span', view.title.toUpperCase(), 'wf-filter-label')");
+        expect(source).toContain("card.setAttribute('aria-label', view.title)");
     });
 
     it('uses the shared chip for sections', () => {

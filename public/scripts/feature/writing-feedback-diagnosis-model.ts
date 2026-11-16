@@ -1,5 +1,5 @@
 /**
- * @fileoverview Pure model for the review page's "Off-genre or missing sections" card: whether
+ * @fileoverview Pure model for the review page's whole-text card: whether
  * the run has a whole-text problem, its copy, held-back annotations, and when a course reading
  * is shown.
  */
@@ -50,27 +50,39 @@ export function resolveHoldBack(run: FeedbackRun | null, staffChoice?: boolean):
 export function sectionCheckView(
     run: FeedbackRun,
     stages: Array<{ id: string; label: string; required?: boolean }>
-): { headline: string; stageChips: Array<{ label: string; status: string; required: boolean; tone: 'green' | 'amber' | 'red' | 'neutral' }>; warnings: string[]; rationale: string } | null {
+): { title: string; headline: string; stageChips: Array<{ label: string; status: string; required: boolean; tone: 'green' | 'amber' | 'red' | 'neutral' }>; warnings: string[]; rationale: string } | null {
     const diagnosis = run.textDiagnosis;
     if (!diagnosis || !hasWholeTextProblem(run)) return null;
     const byId = new Map(diagnosis.stages.map((stage) => [stage.stageId, stage.status]));
+    // A general run's sections come from its own check. Those taken from the writing
+    // description keep its required flag; any other one was listed because it is required.
+    const sections = run.analysisMode === 'general'
+        ? diagnosis.stages.map((stage) => {
+            const described = stages.find((entry) => entry.id === stage.stageId);
+            return { id: stage.stageId, label: stage.label ?? stage.stageId, required: described ? described.required === true : true };
+        })
+        : stages;
     // Two things trip the gate, alone or together, and the fixed headline names which did.
-    const required = stages.filter((stage) => stage.required === true);
+    const required = sections.filter((stage) => stage.required === true);
     const failing = required.filter((stage) => byId.has(stage.id) && byId.get(stage.id) !== 'present');
     const offGenre = diagnosis.genreFit === 'mismatch';
+    // A general run is compared with the assignment's own requirements, not with a genre.
+    const general = run.analysisMode === 'general';
+    const offTaskPhrase = general ? 'does not do what the assignment asks' : 'is off-genre';
     const missingSections = required.length > 0 && failing.length / required.length >= MISSING_SECTIONS_SHARE;
     const headline = offGenre && missingSections
-        ? 'This submission is off-genre and missing several sections.'
+        ? `This submission ${offTaskPhrase} and ${general ? 'is ' : ''}missing several sections.`
         : offGenre
-            ? 'This submission is off-genre.'
+            ? `This submission ${offTaskPhrase}.`
             : 'This submission is missing several sections.';
     const warnings: string[] = [];
     // Missing genre material is a course-setup gap, shown once in the rubric page's coverage
     // report rather than on every submission.
     if (run.flags?.includes('relevance_unavailable')) warnings.push('Course materials could not be checked for this run, so no readings were cited.');
     return {
+        title: general ? 'Off-task or missing sections' : 'Off-genre or missing sections',
         headline,
-        stageChips: stages.map((stage) => {
+        stageChips: sections.map((stage) => {
             const status = STATUS_LABELS[byId.get(stage.id) ?? ''] ?? 'Not checked';
             return { label: stage.label, status, required: stage.required === true, tone: STATUS_TONES[status] ?? 'neutral' };
         }),

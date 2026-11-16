@@ -35,6 +35,52 @@ const comment = (id: string, extra: Partial<AnchoredComment> = {}): AnchoredComm
 });
 
 describe('sectionCheckView', () => {
+    const generalRun = (statuses: string[], genreFit = 'partial'): FeedbackRun => ({
+        ...run,
+        analysisMode: 'general',
+        textDiagnosis: {
+            ...run.textDiagnosis!,
+            genreFit,
+            stages: statuses.map((status, index) => ({ stageId: `section-${index + 1}`, label: `Part ${index + 1}`, status }))
+        }
+    } as unknown as FeedbackRun);
+
+    it('builds a general run\'s chips from the sections the check found', () => {
+        const view = sectionCheckView(generalRun(['missing', 'weak']), stages)!;
+        expect(view.headline).toBe('This submission is missing several sections.');
+        expect(view.stageChips).toEqual([
+            { label: 'Part 1', status: 'Missing', required: true, tone: 'red' },
+            { label: 'Part 2', status: 'Weak', required: true, tone: 'amber' }
+        ]);
+    });
+
+    it('takes the required flag from the writing description for the sections it lists', () => {
+        const described = {
+            ...generalRun(['missing', 'missing'], 'mismatch'),
+            textDiagnosis: {
+                ...run.textDiagnosis!, genreFit: 'mismatch',
+                stages: [{ stageId: 'identify', label: 'General statement', status: 'missing' }, { stageId: 'conclude', label: 'Closing', status: 'missing' }]
+            }
+        } as unknown as FeedbackRun;
+        expect(sectionCheckView(described, stages)!.stageChips.map((chip) => chip.required)).toEqual([true, false]);
+    });
+
+    it('uses assignment wording, not genre wording, on a general run', () => {
+        const both = sectionCheckView(generalRun(['missing', 'missing'], 'mismatch'), stages)!;
+        expect(both.title).toBe('Off-task or missing sections');
+        expect(both.headline).toBe('This submission does not do what the assignment asks and is missing several sections.');
+    });
+
+    it('keeps the genre wording on an SFL run', () => {
+        expect(sectionCheckView(run, stages)!.title).toBe('Off-genre or missing sections');
+    });
+
+    it('shows an off-task general run with no named sections and no chips', () => {
+        const view = sectionCheckView(generalRun([], 'mismatch'), stages)!;
+        expect(view.headline).toBe('This submission does not do what the assignment asks.');
+        expect(view.stageChips).toEqual([]);
+    });
+
     it('names both problems when the text is off-genre and missing most required sections', () => {
         const view = sectionCheckView(run, stages)!;
         expect(view.headline).toBe('This submission is off-genre and missing several sections.');

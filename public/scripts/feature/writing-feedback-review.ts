@@ -37,6 +37,8 @@ import {
     WritingFeedbackLens,
     baseUrl,
     chip,
+    analysisModeOf,
+    APPROACH_LABELS,
     confirmDiscardDirty,
     createBackBar,
     createButton,
@@ -434,6 +436,19 @@ function renderReviewView(root: HTMLDivElement, detail: SubmissionDetail): void 
         const warning = createText(
             'div',
             `The approved rubric is now v${assignment?.rubric.version}. Regenerate this feedback before approval or release.`,
+            'wf-workspace-message'
+        );
+        warning.dataset.tone = 'warning';
+        root.append(warning);
+    }
+
+    // Staff changed the assignment's feedback approach after this draft was generated. The
+    // draft stays reviewable; regenerating produces one with the approach now chosen.
+    const runMode = feedbackRun?.analysisMode ?? 'sfl';
+    if (!released && !generating && feedbackRun && assignment && runMode !== analysisModeOf(assignment)) {
+        const warning = createText(
+            'div',
+            `This feedback was generated with the ${APPROACH_LABELS[runMode]} approach, but the assignment now uses ${APPROACH_LABELS[analysisModeOf(assignment)]}. Regenerate it to use the new approach.`,
             'wf-workspace-message'
         );
         warning.dataset.tone = 'warning';
@@ -897,6 +912,7 @@ export function renderFeedbackPanel(
             verifiedText: submission.verifiedText ?? submission.originalText,
             lens,
             markDirty,
+            general: analysisModeOf(assignment) === 'general',
             holdBack: lens === 'linguistic' && holdBack(),
             run: lensRuns[lens] ?? null
         });
@@ -1615,8 +1631,8 @@ function renderSummaryLens(input: {
     rubricSection.append(criterionList);
     element.append(rubricSection);
 
-    // Step 5: readings (writing lens), under the levels they qualify.
-    if (lens === 'linguistic') element.append(...renderReadings(run));
+    // Step 5: readings under the levels they qualify: the writing lens, or any general run.
+    if (lens === 'linguistic' || run.analysisMode === 'general') element.append(...renderReadings(run));
 
     // Step 6: revision goals. Writing keeps the student-feedback textarea and its binding rule.
     const goalsSection = document.createElement('section');

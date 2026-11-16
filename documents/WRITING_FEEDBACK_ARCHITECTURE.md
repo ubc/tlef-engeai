@@ -23,6 +23,26 @@ The workspace keeps configuration and operation separate:
 
 Canvas grade permission remains a separate release prerequisite. A staff role inside EngE-AI does not imply that Canvas will accept a grade write.
 
+## Analysis mode (2026-10-26, D-161; per assignment from 2026-11-13)
+
+Each assignment has its own `analysisMode`, chosen by staff under "Feedback approach" in step 2 of the rubric page and saved at once through `PUT …/analysis-mode`; `analysisModeOf` in `src/writing-feedback/shared/analysis-mode.ts` resolves it. New assignments start in `general`. An assignment with no stored mode was created before the choice existed and keeps `sfl`, so existing assignments behave as they did. Nothing already generated changes when staff switch: the review page warns that a draft from the other approach should be regenerated. Assignments are no longer typed: there is no "writing or lab report" question, and a new assignment has one rubric, whichever one staff import.
+
+- **`general` (new assignments).** Every assignment is analyzed the same way, whatever its subject. `GeneralFeedbackEngine` (`generation/general-feedback-engine.ts`) makes one writer call per approved rubric. Its sources, highest authority first:
+  1. the approved rubric;
+  2. the assignment details (instructions, Canvas description) and every instructor file or paste (`sources/assignment-context.ts`, capped at 60,000 characters and flagged when cut);
+  3. published course material judged relevant to a rubric criterion. The relevance check (`general-relevance-v1.0.0`) reads the assignment's title, task and purpose, works out what kind of work it is, and judges each excerpt against what that criterion asks for. It never assumes the criterion is about writing.
+
+  Course-material queries are built from rubric criteria and the assignment title only, never from student text. In this mode:
+  - there is no SFL analysis. Staff still complete "Describe the writing" (the SFL profile), which approval requires in both modes; generation does not, so a rubric approved without one still generates;
+  - the writer and the whole-text check read the approved description (`generation/general-writing-description.ts`) beside the rubric, ranked with it; a lab report's technical lens reads the one on its writing rubric;
+  - a whole-text check (`generation/general-whole-text-check.ts`) reads the rubric, the writing description, and instructor material on the writing lens; it checks the description's sections (keeping their ids and required flags) or, without a description, lists only the sections the rubric and material require, and feeds the shared gate (a mismatch, or 75% or more of required sections weak or missing). It is skipped when there is neither assignment material nor a description, and a check that cannot complete fails the run with a fixed message;
+  - a whole-text problem adds the same things as in `sfl` mode: General feedback (`overallMessage`), a restructuring first goal, the staff-only card (titled "Off-task or missing sections" on general runs, because the comparison is with the assignment's own requirements, not a genre), and annotations not included by default;
+  - an existing lab report keeps both of its rubrics, and the general engine serves both lenses;
+  - course terms come from the description's glossary (older rubric-level `courseTerms` are read too and folded in on the next save), and auto-fill proposes them from the assignment material and course excerpts.
+- **`sfl` ("SFL writing"; every assignment created before the choice).** The SFL-founded pipeline: genre and register profile, text diagnosis, SFL analyzer, and rewrite gate. A lab report created when assignments were typed keeps its technical rubric and the technical engine.
+
+Stored SFL profiles and SFL-era runs stay readable in both modes.
+
 ## Components and boundaries
 
 ```mermaid

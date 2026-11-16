@@ -5,7 +5,7 @@
 
 import type { LLMModule } from 'ubc-genai-toolkit-llm';
 import type { GroundingExcerpt, RetrievalNeed } from '../course-material-mentions';
-import { buildRelevancePairs, judgeRelevance, supportedByNeed } from '../material-relevance';
+import { buildRelevancePairs, generalRelevanceSystemPrompt, judgeRelevance, supportedByNeed } from '../material-relevance';
 
 const needs: RetrievalNeed[] = [
     { id: 'stage:classify', kind: 'stage', label: 'Classification', query: 'q1', stageId: 'classify' },
@@ -67,5 +67,36 @@ describe('material relevance', () => {
         const sendStructuredConversation = jest.fn(async () => ({ parsed: { verdicts: [{ pairId: 'invented', verdict: 'supports' }] } }));
         const outcome = await judgeRelevance({ sendStructuredConversation } as unknown as LLMModule, pairs);
         expect(outcome.verdicts.has('invented')).toBe(false);
+    });
+});
+
+describe('general relevance prompt', () => {
+    const assignment = { title: 'Truss design project', task: 'Design and justify a truss for a pedestrian bridge.', purpose: 'Show load analysis.' };
+
+    it('frames support by the rubric criterion for any kind of assignment', () => {
+        const prompt = generalRelevanceSystemPrompt(assignment);
+        expect(prompt).toContain('what one rubric criterion assesses');
+        expect(prompt).toContain('Do not assume the criterion is about writing unless it says so');
+        expect(prompt).toContain('The rubric criterion is the frame');
+        expect(prompt).toContain('Truss design project');
+        expect(prompt).not.toContain('writing point');
+    });
+
+    it('is used only when the assignment is given; the SFL prompt stays otherwise', async () => {
+        const previous = process.env.MOCK_RESPONSE;
+        process.env.MOCK_RESPONSE = 'false';
+        try {
+            const pairs = buildRelevancePairs(needs, excerpts);
+            const sendStructuredConversation = jest.fn(async (..._args: unknown[]) => ({ parsed: { verdicts: [] } }));
+            const llm = { sendStructuredConversation } as unknown as LLMModule;
+            await judgeRelevance(llm, pairs, undefined, { assignment });
+            await judgeRelevance(llm, pairs);
+            const systemOf = (call: number) => (sendStructuredConversation.mock.calls[call][0] as Array<{ content: string }>)[0]!.content;
+            expect(systemOf(0)).toContain('what one rubric criterion assesses');
+            expect(systemOf(1)).toContain('a specific writing point');
+        } finally {
+            if (previous === undefined) delete process.env.MOCK_RESPONSE;
+            else process.env.MOCK_RESPONSE = previous;
+        }
     });
 });

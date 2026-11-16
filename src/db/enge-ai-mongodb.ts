@@ -79,6 +79,7 @@ import type {
     CanvasImportedRubric,
     CanvasRubricRow,
     StaffReviewRevision,
+    WritingFeedbackAnalysisMode,
     WritingFeedbackLens,
     WritingFeedbackRun,
     WritingGlossaryEntry,
@@ -873,6 +874,20 @@ export class EngEAI_MongoDB {
      */
     public chooseWritingAssignmentType = async (courseId: string, assignmentId: string, isLabReport: boolean) =>
         WritingFeedbackMongo.chooseWritingAssignmentType(this.ctx(), courseId, assignmentId, isLabReport);
+
+    /**
+     * setWritingAssignmentAnalysisMode — records which analysis generates an assignment's feedback.
+     *
+     * @param courseId - Owning course id
+     * @param assignmentId - Assignment whose mode is being set
+     * @param analysisMode - `general` or `sfl`
+     * @returns Updated assignment, or `null` when it is absent
+     */
+    public setWritingAssignmentAnalysisMode = async (
+        courseId: string,
+        assignmentId: string,
+        analysisMode: WritingFeedbackAnalysisMode
+    ) => WritingFeedbackMongo.setWritingAssignmentAnalysisMode(this.ctx(), courseId, assignmentId, analysisMode);
 
     /**
      * deleteWritingSubmission — removes a scoped submission and dependent workflow records.

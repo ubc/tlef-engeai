@@ -694,3 +694,24 @@ describe('rubricContentEquals and cell origin', () => {
         expect(rubricContentEquals(suggested, accepted)).toBe(true);
     });
 });
+
+describe('course terms', () => {
+    const validInput = () => {
+        const rubric = buildLabReportRubric();
+        return {
+            title: rubric.title, task: rubric.task, audience: rubric.audience, purpose: rubric.purpose,
+            constraints: rubric.constraints, learningOutcomes: rubric.learningOutcomes,
+            gradingIntent: rubric.gradingIntent, criteria: rubric.criteria, levels: rubric.levels
+        };
+    };
+
+    it('accepts up to 30 trimmed terms', () => {
+        const parsed = writingRubricDraftInputSchema.safeParse({ ...validInput(), courseTerms: ['  hypothesis  ', 'uncertainty'] });
+        expect(parsed.success && parsed.data.courseTerms).toEqual(['hypothesis', 'uncertainty']);
+    });
+
+    it('refuses a 31st term', () => {
+        const terms = Array.from({ length: 31 }, (_, index) => `term ${index}`);
+        expect(writingRubricDraftInputSchema.safeParse({ ...validInput(), courseTerms: terms }).success).toBe(false);
+    });
+});

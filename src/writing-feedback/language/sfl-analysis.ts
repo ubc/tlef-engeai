@@ -253,7 +253,7 @@ export function validateSflAnalysis(
  * @throws Error with a staff-facing message when required context is missing
  */
 export function requireCompleteSflProfile(profile: WritingSflContextProfile | undefined): asserts profile is WritingSflContextProfile {
-    if (!profile) throw new Error('Complete the genre and register profile before approving the writing rubric');
+    if (!profile) throw new Error('Complete "Describe the writing" before approving the writing rubric');
     const requiredText = [
         profile.genreLabel,
         profile.task,
@@ -266,15 +266,15 @@ export function requireCompleteSflProfile(profile: WritingSflContextProfile | un
         profile.productionConditions
     ];
     if (requiredText.some((value) => !value.trim())) {
-        throw new Error('Complete the genre and register profile before approving the writing rubric');
+        throw new Error('Complete "Describe the writing" before approving the writing rubric');
     }
     if (profile.genreState === 'needs_staff_input') {
-        throw new Error('Confirm the genre and register profile before approving the writing rubric');
+        throw new Error('Complete "Describe the writing" before approving the writing rubric');
     }
     if (!profile.stages.length || profile.stages.some((stage) => !stage.id.trim() || !stage.label.trim() || !stage.purpose.trim())) {
-        throw new Error('Add at least one section before approving the writing rubric');
+        throw new Error('Add at least one section to "Describe the writing" before approving the writing rubric');
     }
     if (!profile.taskRequirements.length || !profile.learningOutcomes.length) {
-        throw new Error('Add task requirements and learning outcomes to the genre and register profile before approving the writing rubric');
+        throw new Error('Add what students must include to "Describe the writing", and at least one learning outcome to the assignment details, before approving the writing rubric');
     }
 }

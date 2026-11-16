@@ -16,6 +16,7 @@ import type { WritingAssignment, WritingFeedbackLens, WritingJob, WritingSubmiss
 import {
     BATCH_ERRORS,
     type BatchGenerationStore,
+    batchBlockedReason,
     classifyForBatch,
     WritingBatchGenerationService
 } from '../batch-generation';
@@ -103,6 +104,22 @@ function build(doubles: ReturnType<typeof store>) {
     const service = new WritingBatchGenerationService(doubles as unknown as BatchGenerationStore, enqueue);
     return { service, enqueue };
 }
+
+describe('batchBlockedReason', () => {
+    function withoutProfile(mode: 'general' | 'sfl'): WritingAssignment {
+        const approved = { ...assignment(), analysisMode: mode };
+        delete approved.rubric.sflContext;
+        return approved;
+    }
+
+    it('lets a general-mode assignment run without a writing description', () => {
+        expect(batchBlockedReason(withoutProfile('general'))).toBeUndefined();
+    });
+
+    it('still requires the description for an sfl-mode assignment', () => {
+        expect(batchBlockedReason(withoutProfile('sfl'))).toBe(BATCH_ERRORS.profileIncomplete);
+    });
+});
 
 describe('classifyForBatch', () => {
     const context = (overrides: Partial<Parameters<typeof classifyForBatch>[1]> = {}) => ({

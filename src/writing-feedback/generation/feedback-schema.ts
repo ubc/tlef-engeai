@@ -400,6 +400,42 @@ export function applyExcerptCitations(
 }
 
 /**
+ * applyCriterionExcerptCitations - keeps only citations backed by an excerpt judged to support
+ * the cited criterion.
+ *
+ * The general analysis has no SFL findings, so an excerpt is citable for an evidence item when
+ * the relevance call judged it `supports` for that item's criterion. As with
+ * {@link applyExcerptCitations}, the student-facing mention is derived from the excerpt.
+ *
+ * @param result - Writer output, mutated in place
+ * @param allowedByCriterion - Criterion id to excerpt ids judged `supports` for it
+ * @param excerptsById - Retrieved excerpts
+ * @returns How many citations were dropped
+ */
+export function applyCriterionExcerptCitations(
+    result: WritingFeedbackResult,
+    allowedByCriterion: Map<string, Set<string>>,
+    excerptsById: Map<string, GroundingExcerpt>
+): number {
+    let dropped = 0;
+    for (const criterion of result.criteria) {
+        for (const evidence of criterion.evidence) {
+            const excerptId = evidence.supportingExcerptId;
+            const allowed = excerptId !== undefined && allowedByCriterion.get(criterion.criterion)?.has(excerptId) === true;
+            const mention = allowed ? citableMention(excerptsById.get(excerptId!)) : undefined;
+            if (mention) {
+                evidence.courseMaterialMention = mention;
+                continue;
+            }
+            if (excerptId !== undefined) dropped += 1;
+            delete evidence.supportingExcerptId;
+            delete evidence.courseMaterialMention;
+        }
+    }
+    return dropped;
+}
+
+/**
  * applyGlobalExcerptCitations - filters the overall message's citations the same way.
  *
  * @param result - Writer output, mutated in place

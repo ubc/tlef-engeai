@@ -11,6 +11,7 @@
  */
 
 import type { CanvasAssignmentDetails, CanvasRubricIdMap, CanvasRubricRefusal, ImportedRubricShape } from './canvas';
+import type { WritingFeedbackAnalysisMode } from './feedback';
 
 /** Template identifier stored with new assignments and feedback runs for traceability. */
 export const DEFAULT_WRITING_PROFILE_VERSION = 'writing-feedback-v2';
@@ -127,7 +128,8 @@ export type FeedbackMode = 'standard' | 'global_revision';
 
 /** One profile stage as the diagnosis found it in the text. */
 export interface TextDiagnosisStage {
-    stageId: string; // a stage id from the approved profile
+    stageId: string; // a stage id from the approved profile, or a general check's section id
+    label?: string; // general checks only: the section's name in the assignment material
     status: 'present' | 'weak' | 'missing';
     evidence?: string; // exact quote; absent when the stage is missing
 }
@@ -146,7 +148,7 @@ export interface TextDiagnosis {
 }
 
 /** What a retrieval need is about. */
-export type RetrievalNeedKind = 'genre' | 'stage' | 'task_requirement' | 'language_function' | 'contrast' | 'finding';
+export type RetrievalNeedKind = 'genre' | 'stage' | 'task_requirement' | 'language_function' | 'contrast' | 'finding' | 'criterion';
 
 /**
  * One cell of the rubric grid: the points a criterion earns at one level, and the
@@ -232,6 +234,8 @@ export interface WritingRubricDefinition {
     labContext?: string;
     /** Staff-approved genre/register profile required by the V2 linguistic pipeline. */
     sflContext?: WritingSflContextProfile;
+    /** Course terms students were taught for this assignment; feedback may use them with a short gloss. */
+    courseTerms?: string[];
     /**
      * Where this version's grid came from, set when a fill chose its source. Kept on the version
      * rather than the assignment so a discarded draft takes its source with it and an approval
@@ -274,6 +278,12 @@ export interface WritingAssignment {
      * type cannot change afterwards.
      */
     assignmentTypePending?: boolean;
+    /**
+     * Which analysis generates this assignment's feedback, chosen by staff on the rubric page.
+     * New assignments start in `general`; absent on assignments created before the choice
+     * existed, which keep the SFL analysis (see `analysisModeOf`).
+     */
+    analysisMode?: WritingFeedbackAnalysisMode;
     /** True when this assignment is a lab report and also receives technical feedback. */
     isLabReport?: boolean;
     /** Approved technical rubric governing the technical lens. Absent until first approval. */

@@ -69,16 +69,17 @@ import {
     rubricContentEquals,
     writingRubricDraftInputSchema
 } from '../writing-feedback/rubric/rubric-schema';
+import { analysisModeOf, draftForValidation, isAnalysisMode } from '../writing-feedback/shared/analysis-mode';
 import { requireCompleteSflProfile } from '../writing-feedback/language/sfl-analysis';
+import { courseTermExcerpts } from '../writing-feedback/generation/general-feedback-engine';
 import { listCriterionLibrary, suggestScale } from '../writing-feedback/rubric/rubric-presets';
 import { isCourseStaff } from '../utils/course-staff';
 import { parseLens, rubricGridSource, selectRubric, storedGridSource } from '../writing-feedback/rubric/rubric-lens';
 import { seedRubricForLens } from '../writing-feedback/rubric/rubric-seed';
 import {
     AssignmentTypeService,
-    CHOOSE_TYPE_BEFORE_APPROVAL_MESSAGE,
-    assignmentTypeErrorStatus,
-    isAssignmentTypeChoice
+    ASSIGNMENT_TYPES_INACTIVE_MESSAGE,
+    assignmentTypeErrorStatus
 } from '../writing-feedback/rubric/assignment-type';
 import { mapCanvasRubric } from '../writing-feedback/canvas/canvas-rubric-mapping';
 import {
@@ -255,8 +256,8 @@ function safeError(error: unknown): string {
         'Feedback comments no longer match', 'Feedback comments failed validation',
         'Assignment title is required', 'Assignment deadline is invalid',
         'Assignment instructions must be text', 'Assignment instructions exceeds',
-        'Complete the genre and register profile', 'Confirm the genre and register profile',
-        'Add at least one section', 'Add task requirements',
+        'Complete "Describe the writing"',
+        'Add at least one section', 'Add what students must include',
         'Complete the rubric grid before approving', 'Give every criterion its points',
         // The rubric-cell gate's refusals, which staff have to be able to read and act on.
         'Fill each criterion\'s ratings from the weakest upwards', 'Give every criterion at least',
@@ -1051,7 +1052,10 @@ router.post(
             // to be built from material. A failed extraction leaves the grid alone, not the fill.
             let extractionFailed = false;
             const [proposal, extracted] = await Promise.all([
-                proposeRubricFromInstructions(material, draft),
+                proposeRubricFromInstructions(material, draft, undefined, {
+                    mode: analysisModeOf(assignment),
+                    courseExcerpts: analysisModeOf(assignment) === 'general' ? await courseTermExcerpts(assignment, draft) : []
+                }),
                 rubricMaterial && !awaitingConfirmation
                     ? extractRubricsFromMaterial(rubricMaterial.text).catch(() => { extractionFailed = true; return undefined; })
                     : Promise.resolve(undefined)
@@ -1128,7 +1132,7 @@ router.post(
                 if (!retiredIdsOk(withExtracted)) {
                     gridOutcome = 'failed';
                     gridMessage = GRID_REUSES_RETIRED_IDS;
-                } else if (!writingRubricDraftInputSchema.safeParse(withExtracted).success) {
+                } else if (!writingRubricDraftInputSchema.safeParse(draftForValidation(withExtracted)).success) {
                     gridOutcome = 'failed';
                     gridMessage = `The rubric in ${rubricMaterial.label} could not be turned into a rubric grid. The grid is unchanged.`;
                 } else {
@@ -1141,7 +1145,7 @@ router.post(
             // Reuse the same validation the PUT path enforces (band ordering, cells keyed
             // to real levels) rather than writing a second one; a proposal that would leave
             // the draft invalid is refused before it is ever saved.
-            if (!writingRubricDraftInputSchema.safeParse(merged).success) {
+            if (!writingRubricDraftInputSchema.safeParse(draftForValidation(merged)).success) {
                 throw new Error('Auto-fill response was not usable');
             }
 
@@ -1210,7 +1214,7 @@ router.post(
                 return res.status(409).json({ success: false, error: GRID_REUSES_RETIRED_IDS });
             }
         }
-        if (!writingRubricDraftInputSchema.safeParse(draft).success) {
+        if (!writingRubricDraftInputSchema.safeParse(draftForValidation(draft)).success) {
             return res.status(409).json({ success: false, error: `This version of the rubric in ${pending.sourceLabel} could not be turned into a rubric grid.` });
         }
         const saved = await mongo.saveWritingRubricDraft(courseId(req), assignment.id, draft, lens, { pendingRubricExtraction: null });
@@ -1241,11 +1245,8 @@ router.post(
         const mongo = await EngEAI_MongoDB.getInstance();
         const assignment = await mongo.getWritingAssignment(courseId(req), String(req.params.assignmentId));
         if (!assignment) return res.status(404).json({ success: false, error: 'Writing assignment not found' });
-        // A pending assignment has no settled type, so which rubric it is graded on is not
-        // known yet. Refused here so a direct link cannot approve around the modal (D-123).
-        if (assignment.assignmentTypePending === true) {
-            return res.status(409).json({ success: false, error: CHOOSE_TYPE_BEFORE_APPROVAL_MESSAGE });
-        }
+        // Assignments are no longer typed: each is graded on the one rubric staff import, so a
+        // type still pending from before is ignored.
         if (lens === 'technical' && !assignment.isLabReport) {
             return res.status(409).json({ success: false, error: 'Mark this assignment as a lab report before editing its technical rubric' });
         }
@@ -1268,6 +1269,7 @@ router.post(
 
         // Promote only the persisted draft version; the delegate rejects concurrent rubric changes.
         try {
+            // "Describe the writing" is required in both analysis modes.
             if (lens === 'linguistic') requireCompleteSflProfile(selected.draft.sflContext);
             requireCompleteRubricCells(selected.draft);
         } catch (error) {
@@ -1299,27 +1301,33 @@ router.post(
 );
 
 /**
- * Records the one-time assignment type (D-123).
- *
- * `lab_report` also moves an imported Canvas grid to the technical rubric and returns the
- * writing rubric to the default profile. Refused with 409 once the type has been chosen.
+ * The retired one-time assignment type (D-123). Always refused with 409: every assignment is
+ * graded on the one rubric staff import, so a lab report no longer gets a second rubric.
  */
 router.put(
     '/:courseId/writing-feedback/assignments/:assignmentId/type',
+    asyncHandlerWithAuth(async (_req: Request, res: Response) => {
+        res.status(409).json({ success: false, error: ASSIGNMENT_TYPES_INACTIVE_MESSAGE });
+    })
+);
+
+/**
+ * Sets which analysis generates an assignment's feedback: `general` or `sfl`.
+ *
+ * Any course staff, like the rest of the rubric page. Nothing already generated changes; a
+ * draft from the other mode shows as needing regeneration until staff regenerate it.
+ */
+router.put(
+    '/:courseId/writing-feedback/assignments/:assignmentId/analysis-mode',
     asyncHandlerWithAuth(async (req: Request, res: Response) => {
-        const type = req.body?.type;
-        if (!isAssignmentTypeChoice(type)) {
-            return res.status(400).json({ success: false, error: 'type must be writing or lab_report' });
+        const mode = req.body?.analysisMode;
+        if (!isAnalysisMode(mode)) {
+            return res.status(400).json({ success: false, error: 'analysisMode must be general or sfl' });
         }
         const mongo = await EngEAI_MongoDB.getInstance();
-        const globalUser = (req.session as any).globalUser;
-        try {
-            const updated = await new AssignmentTypeService(mongo)
-                .choose(courseId(req), String(req.params.assignmentId), type, globalUser.userId);
-            res.json({ success: true, data: updated });
-        } catch (error) {
-            res.status(assignmentTypeErrorStatus(error)).json({ success: false, error: safeError(error) });
-        }
+        const updated = await mongo.setWritingAssignmentAnalysisMode(courseId(req), String(req.params.assignmentId), mode);
+        if (!updated) return res.status(404).json({ success: false, error: 'Writing assignment not found' });
+        res.json({ success: true, data: updated });
     })
 );
 

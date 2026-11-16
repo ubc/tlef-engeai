@@ -39,11 +39,11 @@ export function renderSectionCheck(
     // Built on the annotation card so the panel reads as one family (D-155).
     const card = document.createElement('section');
     card.className = 'wf-annotation-card wf-diagnosis';
-    card.setAttribute('aria-label', 'Off-genre or missing sections');
+    card.setAttribute('aria-label', view.title);
 
     const header = document.createElement('div');
     header.className = 'wf-annotation-header wf-diagnosis-header';
-    header.append(createText('span', 'OFF-GENRE OR MISSING SECTIONS', 'wf-filter-label'));
+    header.append(createText('span', view.title.toUpperCase(), 'wf-filter-label'));
     card.append(header);
 
     card.append(createText('h4', view.headline, 'wf-diagnosis-headline'));
@@ -65,7 +65,8 @@ export function renderSectionCheck(
         item.append(node);
         stages.append(item);
     });
-    card.append(stages);
+    // A general check lists no sections when the assignment names none.
+    if (view.stageChips.length) card.append(stages);
 
     view.warnings.forEach((warning) => {
         const note = document.createElement('p');

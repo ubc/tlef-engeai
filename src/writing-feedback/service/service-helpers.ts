@@ -29,6 +29,7 @@ import type {
 import type { AnchoredCommentWithState } from '../review/anchored-comments';
 import { NO_REVISION_GOALS_MESSAGE } from '../generation/feedback-engine';
 import { TEXT_DIAGNOSIS_FAILED_MESSAGE } from '../generation/text-diagnosis';
+import { GENERAL_WHOLE_TEXT_FAILED_MESSAGE } from '../generation/general-whole-text-check';
 import { hasWholeTextProblem, resolveHoldBack, studentFacingComments } from '../generation/feedback-gate';
 import { lensesForAssignment, selectRubric, rubricForVersion } from '../rubric/rubric-lens';
 import { TEXT_EDITED_MESSAGE, reviewsSinceTextEdit, runPredatesTextEdit } from '../intake/transcript';
@@ -73,7 +74,8 @@ const SAFE_TO_LOG_MESSAGES = new Set([
     'SFL analysis duplicated a genre-staging finding',
     'SFL analysis returned too many findings',
     NO_REVISION_GOALS_MESSAGE,
-    TEXT_DIAGNOSIS_FAILED_MESSAGE
+    TEXT_DIAGNOSIS_FAILED_MESSAGE,
+    GENERAL_WHOLE_TEXT_FAILED_MESSAGE
 ]);
 
 /**

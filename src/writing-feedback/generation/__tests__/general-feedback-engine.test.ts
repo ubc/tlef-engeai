@@ -1,0 +1,334 @@
+/**
+ * @fileoverview Pins the general analysis engine: its system prompt carries the rubric,
+ * assignment material, and course terms with no SFL apparatus; course-material queries never
+ * carry student text; and the shared evidence and citation guards still hold.
+ */
+
+import { buildDefaultSflContextProfile, buildDefaultWritingAssignment } from '../../rubric/default-rubric-profile';
+import { buildStaffedSflContextProfile } from '../../__tests__/helpers/staffed-rubric';
+import { buildLabReportRubric } from '../../rubric/lab-report-profile';
+import { approveRubricDraft } from '../../rubric/rubric-schema';
+import { buildAssignmentContext } from '../../sources/assignment-context';
+import {
+    buildCriterionNeeds,
+    buildGeneralFeedbackSystemPrompt,
+    GENERAL_FEEDBACK_PROMPT_VERSION,
+    GeneralFeedbackEngine
+} from '../general-feedback-engine';
+import { GENERAL_WHOLE_TEXT_FAILED_MESSAGE, GENERAL_WHOLE_TEXT_PROMPT_VERSION } from '../general-whole-text-check';
+import { SanitizedJobError } from '../../jobs/job-runner';
+import type { WritingAssignment, WritingFeedbackResult, WritingSourceMaterial } from '../../contracts';
+
+const NOW = new Date('2026-10-26T00:00:00.000Z');
+const verifiedText = 'Bridges fail because of fatigue. The measured load was 12 kN at failure.';
+
+function assignment(overrides: Partial<WritingAssignment> = {}): WritingAssignment {
+    const base = buildDefaultWritingAssignment('course-1', 'assignment-1', 'Bridge failure essay', 'Explain one cause of bridge failure.', NOW);
+    const rubric = { ...base.rubric, title: 'Essay rubric', courseTerms: ['fatigue'] };
+    delete rubric.sflContext;
+    base.rubric = approveRubricDraft(rubric, 'instructor-1', NOW);
+    return { ...base, ...overrides };
+}
+
+function handout(text: string): WritingSourceMaterial {
+    return {
+        id: 'm1', courseId: 'course-1', assignmentId: 'assignment-1', kind: 'file', fileName: 'handout.pdf',
+        text, hasTables: false, characterCount: text.length, addedAt: NOW, addedBy: 'instructor-1'
+    };
+}
+
+function modelResult(quote = 'Bridges fail because of fatigue.'): WritingFeedbackResult {
+    return {
+        criteria: ['organization', 'content', 'interpersonal_positioning'].map((criterion) => ({
+            criterion,
+            suggestedLevel: 'developing',
+            evidence: [{ quote, rationale: 'The claim names a cause but no source.', revisionGuidance: 'Name the reading that supports it.' }],
+            explanation: 'The cause is named but not supported.',
+            confidence: 0.6
+        })),
+        strengths: ['You name a clear cause.'],
+        revisionGoals: [{
+            skillTag: 'content',
+            goal: 'Support the cause with a source.',
+            action: 'Add the course reading that explains fatigue.',
+            guidedQuestion: 'Which reading explains why fatigue weakens a bridge?',
+            questionScope: 'whole'
+        }],
+        internalFlags: []
+    };
+}
+
+/** Answers the whole-text check and the writer separately, as the live model does. */
+function modelFor(check: unknown, writer: unknown | (() => unknown) = modelResult()) {
+    return {
+        sendStructuredConversation: jest.fn(async (_messages: unknown, _schema: unknown, options: { structuredOutputName: string }) => ({
+            parsed: options.structuredOutputName === 'general_whole_text'
+                ? check
+                : typeof writer === 'function' ? (writer as () => unknown)() : writer
+        }))
+    };
+}
+
+const FITS = { fit: 'fits', sections: [], contradictingFeatures: [], transferableStrengths: [], rationale: 'Does what was asked.' };
+
+function offGenre(overrides: Record<string, unknown> = {}) {
+    return {
+        fit: 'mismatch',
+        sections: [{ label: 'Rationale', status: 'missing', evidence: null }],
+        contradictingFeatures: [{ quote: 'The measured load was 12 kN at failure.', note: 'Reports a measurement.' }],
+        transferableStrengths: [{ text: 'A clear topic.', quote: null }],
+        rationale: 'The handout asks for a rationale.',
+        ...overrides
+    };
+}
+
+function writerWithOverall(overrides: Partial<WritingFeedbackResult> = {}): WritingFeedbackResult {
+    return { ...modelResult(), overallMessage: 'You chose a clear topic, but the handout asks for a rationale.', ...overrides };
+}
+
+function promptsOf(llm: ReturnType<typeof modelFor>, name: string): Array<{ content: string }> {
+    const call = llm.sendStructuredConversation.mock.calls.find(([, , options]) => options.structuredOutputName === name);
+    return call![0] as Array<{ content: string }>;
+}
+
+describe('buildGeneralFeedbackSystemPrompt', () => {
+    const subject = assignment();
+    const prompt = buildGeneralFeedbackSystemPrompt(subject, subject.rubric, buildAssignmentContext(subject, [handout('Use at least two course readings.')]));
+
+    it('puts the rubric first in the authority order and forbids invented requirements', () => {
+        expect(prompt).toContain('Authority, highest first: (1) the approved rubric; (2) the assignment details and instructor materials; (3) the course material excerpts.');
+        expect(prompt).toContain('Never add a requirement, criterion, or expectation of your own');
+    });
+
+    it('carries the assignment instructions and every handout', () => {
+        expect(prompt).toContain('Explain one cause of bridge failure.');
+        expect(prompt).toContain('handout.pdf');
+        expect(prompt).toContain('Use at least two course readings.');
+    });
+
+    it('lists the approved course terms and allows terms the materials define', () => {
+        expect(prompt).toContain('Known course terms you may use: "fatigue"');
+        expect(prompt).toContain('A term that the assignment material or a course material excerpt defines or teaches may also be used');
+    });
+
+    it('carries no SFL apparatus', () => {
+        ['Ferreira', 'sflContext', 'sflDimension', 'genre', 'diagnosis', 'Translate each one'].forEach((term) => expect(prompt).not.toContain(term));
+    });
+
+    it('leads with a weak or missing required section when the check ran', () => {
+        const checked = buildGeneralFeedbackSystemPrompt(subject, subject.rubric, buildAssignmentContext(subject, []), 'checked');
+        expect(checked).toContain('If a required section is weak or missing, your first revision goal addresses it');
+        expect(checked).not.toContain('overallMessage');
+    });
+
+    it('asks for an overall message and a restructuring first goal on a whole-text problem', () => {
+        const problem = buildGeneralFeedbackSystemPrompt(subject, subject.rubric, buildAssignmentContext(subject, []), 'problem');
+        expect(problem).toContain('Your first revision goal is the restructuring goal');
+        expect(problem).toContain('Write overallMessage');
+        expect(problem).toContain('Never say "rewrite", "resubmit" or "start again"');
+    });
+
+    it('says so when there is no assignment material', () => {
+        const bare = assignment({ instructions: undefined });
+        expect(buildGeneralFeedbackSystemPrompt(bare, bare.rubric, buildAssignmentContext(bare, [])))
+            .toContain('No assignment details or instructor materials were provided');
+    });
+});
+
+describe('buildCriterionNeeds', () => {
+    it('queries course material from the rubric and title only', () => {
+        const subject = assignment();
+        const needs = buildCriterionNeeds(subject, subject.rubric);
+        expect(needs.map((need) => need.id)).toEqual(['criterion:organization', 'criterion:content', 'criterion:interpersonal_positioning']);
+        needs.forEach((need) => {
+            expect(need.query).toContain('Bridge failure essay');
+            expect(need.query.length).toBeLessThanOrEqual(280);
+        });
+    });
+});
+
+describe('GeneralFeedbackEngine.generate', () => {
+    it('runs the whole-text check and one writer call, and stamps the general provenance', async () => {
+        const retriever = { retrieve: jest.fn(async () => []) };
+        const llm = modelFor(FITS);
+        const result = await new GeneralFeedbackEngine(llm as never, retriever).generate({
+            assignment: assignment(), verifiedText, sourceMaterials: [handout('Use two readings.')]
+        });
+        expect(llm.sendStructuredConversation).toHaveBeenCalledTimes(2);
+        expect(result.runTrace?.analysisMode).toBe('general');
+        expect(result.runTrace?.writerPromptVersion).toBe(GENERAL_FEEDBACK_PROMPT_VERSION);
+        expect(result.runTrace?.diagnosisPromptVersion).toBe(GENERAL_WHOLE_TEXT_PROMPT_VERSION);
+        expect(result.runTrace?.sflAnalysis).toBeUndefined();
+        expect(result.gateDecision).toBe('standard');
+        expect(result.overallMessage).toBeUndefined();
+    });
+
+    it('flags an off-genre submission for staff and keeps the overall message', async () => {
+        const llm = modelFor(offGenre(), writerWithOverall());
+        const result = await new GeneralFeedbackEngine(llm as never, { retrieve: jest.fn(async () => []) })
+            .generate({ assignment: assignment(), verifiedText, sourceMaterials: [handout('Include a rationale.')] });
+        expect(result.gateDecision).toBe('global_revision');
+        expect(result.runTrace?.gateDecision).toBe('global_revision');
+        expect(result.runTrace?.textDiagnosis?.stages).toEqual([{ stageId: 'section-1', label: 'Rationale', status: 'missing' }]);
+        expect(result.overallMessage).toContain('rationale');
+        expect(promptsOf(llm, 'general_feedback')[0]!.content).toContain('Your first revision goal is the restructuring goal');
+    });
+
+    it('asks the writer again when a whole-text problem has a part-scoped first goal', async () => {
+        const part = writerWithOverall({ revisionGoals: [{ ...modelResult().revisionGoals[0]!, questionScope: 'part' }, modelResult().revisionGoals[0]!] });
+        let calls = 0;
+        const llm = modelFor(offGenre(), () => (++calls === 1 ? part : writerWithOverall()));
+        const result = await new GeneralFeedbackEngine(llm as never, { retrieve: jest.fn(async () => []) })
+            .generate({ assignment: assignment(), verifiedText });
+        expect(calls).toBe(2);
+        expect(result.revisionGoals[0]!.questionScope).toBe('whole');
+    });
+
+    it('stays standard and gives no overall message when only some sections are missing', async () => {
+        const check = {
+            ...FITS,
+            fit: 'partial',
+            sections: [
+                { label: 'Rationale', status: 'missing', evidence: null },
+                { label: 'Claim', status: 'present', evidence: 'Bridges fail because of fatigue.' }
+            ]
+        };
+        const llm = modelFor(check, writerWithOverall());
+        const result = await new GeneralFeedbackEngine(llm as never, { retrieve: jest.fn(async () => []) })
+            .generate({ assignment: assignment(), verifiedText });
+        expect(result.gateDecision).toBe('standard');
+        expect(result.overallMessage).toBeUndefined();
+        const writer = promptsOf(llm, 'general_feedback');
+        expect(writer[0]!.content).toContain('If a required section is weak or missing, your first revision goal addresses it');
+        expect(writer[1]!.content).toContain('<whole_text_check>');
+        expect(writer[1]!.content).toContain('Rationale');
+    });
+
+    it('drops praise for language the check named as doing the wrong work', async () => {
+        const llm = modelFor(offGenre(), writerWithOverall({ strengths: ['The measured load was 12 kN at failure.'] }));
+        const result = await new GeneralFeedbackEngine(llm as never, { retrieve: jest.fn(async () => []) })
+            .generate({ assignment: assignment(), verifiedText });
+        expect(result.strengths).toEqual([]);
+    });
+
+    it('skips the check when no assignment material says what was asked', async () => {
+        const llm = modelFor(offGenre());
+        const result = await new GeneralFeedbackEngine(llm as never, { retrieve: jest.fn(async () => []) })
+            .generate({ assignment: assignment({ instructions: undefined }), verifiedText });
+        expect(llm.sendStructuredConversation).toHaveBeenCalledTimes(1);
+        expect(result.gateDecision).toBeUndefined();
+        expect(result.runTrace?.textDiagnosis).toBeUndefined();
+    });
+
+    it('fails the run with a fixed message when the check cannot complete', async () => {
+        const llm = modelFor({ fit: 'nonsense' });
+        await expect(new GeneralFeedbackEngine(llm as never, { retrieve: jest.fn(async () => []) })
+            .generate({ assignment: assignment(), verifiedText }))
+            .rejects.toThrow(GENERAL_WHOLE_TEXT_FAILED_MESSAGE);
+    });
+
+    it('fails the run when a check quote is not in the verified text', async () => {
+        const llm = modelFor(offGenre({ contradictingFeatures: [{ quote: 'Never written by the student.', note: 'n' }] }));
+        await expect(new GeneralFeedbackEngine(llm as never, { retrieve: jest.fn(async () => []) })
+            .generate({ assignment: assignment(), verifiedText }))
+            .rejects.toBeInstanceOf(SanitizedJobError);
+    });
+
+    it('never sends student text to the course-material retriever', async () => {
+        const retriever = { retrieve: jest.fn(async (_input: { query: string }) => []) };
+        const llm = modelFor(FITS);
+        await new GeneralFeedbackEngine(llm as never, retriever as never).generate({ assignment: assignment(), verifiedText });
+        expect(retriever.retrieve).toHaveBeenCalled();
+        retriever.retrieve.mock.calls.forEach(([input]) => {
+            expect(input.query).not.toContain('fatigue.');
+            expect(input.query).not.toContain('12 kN');
+        });
+    });
+
+    it('flags missing assignment material instead of failing', async () => {
+        const llm = { sendStructuredConversation: jest.fn(async () => ({ parsed: modelResult() })) };
+        const result = await new GeneralFeedbackEngine(llm as never, { retrieve: jest.fn(async () => []) })
+            .generate({ assignment: assignment({ instructions: undefined }), verifiedText });
+        expect(result.runTrace?.flags).toEqual(expect.arrayContaining(['no_assignment_material', 'no_course_material']));
+    });
+
+    it('rejects evidence that is not in the verified text', async () => {
+        const llm = modelFor(FITS, modelResult('Bridges never fail.'));
+        await expect(new GeneralFeedbackEngine(llm as never, { retrieve: jest.fn(async () => []) })
+            .generate({ assignment: assignment(), verifiedText }))
+            .rejects.toThrow('Feedback evidence did not match the verified submission text');
+    });
+
+    it('assesses an existing lab report against its technical rubric when asked for that lens', async () => {
+        const technicalRubric = { ...buildLabReportRubric('platform', NOW), status: 'approved' as const, approvedAt: NOW, approvedBy: 'instructor-1' };
+        const lab = assignment({ isLabReport: true, technicalRubric });
+        const llm = { sendStructuredConversation: jest.fn(async () => ({ parsed: {} })) };
+        await new GeneralFeedbackEngine(llm as never, { retrieve: jest.fn(async () => []) })
+            .generate({ assignment: lab, verifiedText, lens: 'technical' })
+            .catch(() => undefined);
+        expect(llm.sendStructuredConversation).toHaveBeenCalledTimes(1);
+        const [messages] = llm.sendStructuredConversation.mock.calls[0] as unknown as [Array<{ content: string }>];
+        expect(messages[0]!.content).toContain('sample_calculations');
+        expect(messages[0]!.content).not.toContain('interpersonal_positioning');
+    });
+});
+
+describe('general analysis with a writing description', () => {
+    const description = buildStaffedSflContextProfile({
+        stages: [
+            { id: 'rationale', label: 'Design rationale', purpose: 'Explains why the design was chosen.', required: true, order: 1 },
+            { id: 'closing', label: 'Closing', purpose: 'Rounds the proposal off.', required: false, order: 2 }
+        ]
+    });
+
+    function described(overrides: Partial<WritingAssignment> = {}): WritingAssignment {
+        const base = assignment(overrides);
+        return { ...base, rubric: { ...base.rubric!, sflContext: description } };
+    }
+
+    it('gives the writer and the check the description, ranked with the rubric', async () => {
+        const llm = modelFor(FITS);
+        await new GeneralFeedbackEngine(llm as never, { retrieve: jest.fn(async () => []) })
+            .generate({ assignment: described(), verifiedText, sourceMaterials: [handout('Use two readings.')] });
+        [promptsOf(llm, 'general_feedback')[0].content, promptsOf(llm, 'general_whole_text')[0].content].forEach((prompt) => {
+            expect(prompt).toContain('<writing_description>');
+            expect(prompt).toContain('"kindOfWriting":"A short design proposal"');
+            expect(prompt).toContain('"howTheStudentShouldSound":"Personal, but still careful with claims."');
+            expect(prompt).toContain('the approved rubric and writing description');
+        });
+        expect(promptsOf(llm, 'general_whole_text')[0].content).toContain('exactly the sections in writing_description');
+    });
+
+    it('runs the check from the description alone when there is no assignment material', async () => {
+        const llm = modelFor(FITS);
+        const result = await new GeneralFeedbackEngine(llm as never, { retrieve: jest.fn(async () => []) })
+            .generate({ assignment: described({ instructions: undefined }), verifiedText });
+        expect(llm.sendStructuredConversation).toHaveBeenCalledTimes(2);
+        expect(result.gateDecision).toBe('standard');
+    });
+
+    it('keeps the described section ids and counts only required sections toward the gate', async () => {
+        const check = {
+            ...FITS,
+            fit: 'partial',
+            sections: [
+                { label: 'Design rationale', status: 'present', evidence: 'Bridges fail because of fatigue.' },
+                { label: 'closing', status: 'missing', evidence: null }
+            ]
+        };
+        const result = await new GeneralFeedbackEngine(modelFor(check) as never, { retrieve: jest.fn(async () => []) })
+            .generate({ assignment: described(), verifiedText, sourceMaterials: [handout('Use two readings.')] });
+        expect(result.runTrace?.textDiagnosis?.stages.map((stage) => stage.stageId)).toEqual(['rationale', 'closing']);
+        // Only the optional closing is missing, so there is no whole-text problem.
+        expect(result.gateDecision).toBe('standard');
+    });
+
+    it('ignores a blank default description', async () => {
+        const base = assignment({ instructions: undefined });
+        const blank = { ...base, rubric: { ...base.rubric!, sflContext: buildDefaultSflContextProfile() } };
+        const llm = modelFor(FITS);
+        await new GeneralFeedbackEngine(llm as never, { retrieve: jest.fn(async () => []) }).generate({ assignment: blank, verifiedText });
+        expect(llm.sendStructuredConversation).toHaveBeenCalledTimes(1);
+        expect(promptsOf(llm, 'general_feedback')[0].content).not.toContain('<writing_description>');
+    });
+});

@@ -1,6 +1,6 @@
 # TLEF ENGE AI
 
-![Node.js](https://img.shields.io/badge/Node.js-24.1.0-339933?logo=node.js&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-22.23.4-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)
 ![Express](https://img.shields.io/badge/Express-5.1-000000?logo=express&logoColor=white)
 ![MongoDB](https://img.shields.io/badge/MongoDB-6.3-47A248?logo=mongodb&logoColor=white)
@@ -52,7 +52,7 @@ EngE-AI is an AI-powered learning assistant for UBC Engineering courses which em
 
 ### Prerequisites
 
-- **Node.js** (v24.1.0)
+- **Node.js** (v22.23.4)
 - **MongoDB** (see [setup instructions](https://github.com/ubc/tlef-mongodb-docker))
 - **Qdrant** (see [setup instructions](https://github.com/ubc/tlef-qdrant))
 - **SAML** (see [setup instructions](https://github.com/ubc/docker-simple-saml))

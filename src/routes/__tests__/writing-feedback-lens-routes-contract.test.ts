@@ -230,10 +230,10 @@ describe('POST rubric-draft/approve completeness gates', () => {
         }
     });
 
-    it('refuses approval while the assignment type is still pending', () => {
+    it('no longer refuses approval for a type still pending from before types were retired', () => {
         const body = approveRouteBody();
         expect(body).not.toBeNull();
-        expect(body).toMatch(/assignment\.assignmentTypePending === true[\s\S]*?status\(409\)[\s\S]*?CHOOSE_TYPE_BEFORE_APPROVAL_MESSAGE/);
+        expect(body).not.toContain('assignmentTypePending');
     });
 
     it('keeps the new gate inside the same try/catch that returns HTTP 400 with a safe error', () => {

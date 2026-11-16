@@ -21,6 +21,7 @@ export type AssignmentTypeChoice = 'writing' | 'lab_report';
 export const TYPE_ALREADY_CHOSEN_MESSAGE = 'The assignment type has already been chosen';
 export const NOT_LAB_REPORT_MESSAGE = 'Only a lab report has a technical rubric';
 export const CHOOSE_TYPE_BEFORE_APPROVAL_MESSAGE = 'Choose the assignment type before approving its rubric';
+export const ASSIGNMENT_TYPES_INACTIVE_MESSAGE = 'Assignment types are not used: every assignment is analyzed against its own rubric';
 const NOT_FOUND_MESSAGE = 'Writing assignment not found';
 
 /** Persistence the service needs; the Mongo façade satisfies it. */

@@ -177,8 +177,12 @@ export interface WritingGlossarySnapshot {
 }
 
 /** Staff-only V2 provenance produced by the linguistic engine and stored on the run. */
+/** Which analysis produced a run: rubric-grounded `general` (default) or the SFL-founded pipeline. */
+export type WritingFeedbackAnalysisMode = 'general' | 'sfl';
+
 export interface WritingFeedbackRunTrace {
     schemaVersion: string; // result schema version
+    analysisMode?: WritingFeedbackAnalysisMode; // absent on runs written before the general analysis
     foundationVersion?: string; // curated SFL foundation version
     analyzerPromptVersion?: string; // analyzer prompt contract version
     writerPromptVersion?: string; // writer prompt contract version
@@ -217,6 +221,8 @@ export interface WritingFeedbackRun {
     modelMetadata: { engine: string; promptVersion: string };
     /** V2 run-level provenance; absent on legacy V1 records. */
     schemaVersion?: string;
+    /** Analysis that produced the run; absent on runs written before the general analysis (SFL). */
+    analysisMode?: WritingFeedbackAnalysisMode;
     foundationVersion?: string;
     analyzerPromptVersion?: string;
     writerPromptVersion?: string;

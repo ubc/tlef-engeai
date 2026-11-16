@@ -214,6 +214,7 @@ export function buildDefaultWritingAssignment(
         title,
         profileVersion: DEFAULT_WRITING_PROFILE_VERSION,
         rubricSource: 'internal_profile',
+        analysisMode: 'general',
         ...(instructions ? { instructions } : {}),
         rubric: buildDefaultWritingRubric('platform', now),
         createdAt: now,
