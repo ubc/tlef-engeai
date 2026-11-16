@@ -124,10 +124,12 @@ import {
 import {
     MAX_SOURCE_MATERIALS,
     SOURCE_MATERIAL_ERRORS,
+    describeExtractionFailure,
     editedSourceText,
     extractPastedSource,
     extractSourceFile
 } from '../writing-feedback/sources/source-material-extraction';
+import { appLogger } from '../utils/logger';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -454,7 +456,13 @@ router.post(
                 extracted = await extractSourceFile({ buffer: file.buffer, fileName: file.originalname })
                     .catch((error: unknown) => {
                         const known = Object.values(SOURCE_MATERIAL_ERRORS) as string[];
-                        throw error instanceof Error && known.includes(error.message) ? error : new Error(SOURCE_FILE_UNREADABLE);
+                        if (error instanceof Error && known.includes(error.message)) throw error;
+                        // Staff only see the generic message, so the log is the one place the cause survives.
+                        const extension = file.originalname.split('.').pop()?.toLowerCase().slice(0, 10) ?? '';
+                        appLogger.error(
+                            `[writing-feedback] source file extraction failed (.${extension}, ${file.size} bytes): ${describeExtractionFailure(error)}`
+                        );
+                        throw new Error(SOURCE_FILE_UNREADABLE);
                     });
             } else {
                 extracted = extractPastedSource({ text: optionalField(req.body?.text), html: optionalField(req.body?.html) });

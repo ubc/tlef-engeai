@@ -16,6 +16,7 @@ import path from 'path';
 import {
     MAX_SOURCE_MATERIAL_CHARS,
     SOURCE_MATERIAL_ERRORS,
+    describeExtractionFailure,
     extractPastedSource,
     extractSourceFile,
     htmlToSourceText
@@ -120,5 +121,42 @@ describe('extractPastedSource', () => {
 
     it('refuses an empty paste', () => {
         expect(() => extractPastedSource({ text: '   ' })).toThrow(SOURCE_MATERIAL_ERRORS.empty);
+    });
+});
+
+describe('describeExtractionFailure', () => {
+    it('follows the toolkit wrapper to the filesystem error and keeps its code and syscall', () => {
+        const fsError = Object.assign(new Error("EROFS: read-only file system, open '/tmp/engeai-writing-x-rubric.pdf'"), {
+            code: 'EROFS',
+            syscall: 'open'
+        });
+        const wrapped = Object.assign(new Error('Parsing error for file /tmp/x.pdf: Failed to parse PDF file'), {
+            name: 'ParsingError',
+            code: 500,
+            details: fsError
+        });
+
+        const line = describeExtractionFailure(wrapped);
+
+        expect(line).toBe('Error(name=ParsingError, code=500) <- Error(code=EROFS, syscall=open)');
+        expect(line).not.toContain('/tmp');
+    });
+
+    it('withholds parser messages, which can quote the document, but keeps a TypeError message', () => {
+        const parserError = Object.assign(new Error('Unexpected token near "Criterion 1: Thesis"'), { name: 'InvalidPDFException' });
+        const codeError = new TypeError('s.transferToFixedLength is not a function');
+
+        expect(describeExtractionFailure({ details: parserError })).toBe('Object <- Error(name=InvalidPDFException)');
+        expect(describeExtractionFailure(Object.assign(new Error('outer'), { cause: codeError })))
+            .toBe('Error <- TypeError(message=s.transferToFixedLength is not a function)');
+    });
+
+    it('stops on a self-referencing chain and describes a thrown non-error', () => {
+        const loop: { details?: unknown } = {};
+        loop.details = loop;
+
+        expect(describeExtractionFailure(loop).split(' <- ')).toHaveLength(4);
+        expect(describeExtractionFailure('boom')).toBe('string');
+        expect(describeExtractionFailure(undefined)).toBe('unknown');
     });
 });

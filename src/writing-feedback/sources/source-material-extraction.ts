@@ -163,6 +163,46 @@ export function editedSourceText(text: string): ExtractedSourceText {
     return assertUsableSourceText({ text: normalized, hasTables: MARKDOWN_TABLE_SEPARATOR.test(normalized) });
 }
 
+/** Deepest wrapped error {@link describeExtractionFailure} follows. */
+const MAX_FAILURE_DEPTH = 4;
+
+/**
+ * describeExtractionFailure - a log line saying why a file could not be extracted, without its content.
+ *
+ * Parser errors arrive wrapped: the document toolkit puts the underlying error in `details`, and
+ * standard errors use `cause`. Each layer contributes its class, `name`, and the `code` and
+ * `syscall` that filesystem errors carry, which is enough to tell a temp-folder failure from a
+ * protected or damaged PDF. Messages are left out because parser messages can quote the
+ * document or the temp path, except a TypeError's, which describes code rather than data.
+ *
+ * @param error - Whatever the extraction threw
+ * @returns One line, outermost layer first, e.g. `ParsingError(code=500) <- Error(code=EROFS, syscall=open)`
+ */
+export function describeExtractionFailure(error: unknown): string {
+    const layers: string[] = [];
+    let current: unknown = error;
+    for (let depth = 0; depth < MAX_FAILURE_DEPTH && current !== undefined && current !== null; depth += 1) {
+        if (typeof current !== 'object') {
+            layers.push(typeof current);
+            break;
+        }
+        const layer = current as { name?: unknown; code?: unknown; syscall?: unknown; message?: unknown; details?: unknown; cause?: unknown };
+        const className = current.constructor?.name ?? 'Object';
+        const facts = [
+            typeof layer.name === 'string' && layer.name !== className ? `name=${layer.name}` : '',
+            typeof layer.code === 'string' || typeof layer.code === 'number' ? `code=${layer.code}` : '',
+            typeof layer.syscall === 'string' ? `syscall=${layer.syscall}` : '',
+            // Matched by name: a TypeError raised in another realm (a VM context) fails instanceof.
+            (className === 'TypeError' || layer.name === 'TypeError') && typeof layer.message === 'string'
+                ? `message=${layer.message.slice(0, 160)}`
+                : ''
+        ].filter(Boolean);
+        layers.push(facts.length ? `${className}(${facts.join(', ')})` : className);
+        current = layer.details ?? layer.cause;
+    }
+    return layers.join(' <- ') || 'unknown';
+}
+
 /**
  * extractSourceFile - an uploaded file as source text, keeping tables where the format has them.
  *
