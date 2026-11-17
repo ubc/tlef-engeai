@@ -90,7 +90,30 @@ describe('onboarding design guard', () => {
 
     it.each(STAFF_COMPONENTS)('%s avoids misleading novice-facing terms', file => {
         const markup = readFileSync(join(COMPONENT_DIR, file), 'utf8');
-        expect(markup).not.toMatch(/\bLMS\b|PowerPoint|Process Files|Clear All/i);
+        expect(markup).not.toMatch(
+            /\bLMS\b|PowerPoint|Process Files|Clear All|wizard|roster-management|roster-manager|course-management access|ranked contiguously|generation is queued|notifications never gate|model behaviou?r|feature access|course features|feature choices/i
+        );
+    });
+
+    it.each(onboardingComponents())('%s keeps every step inside the scrolling steps container', file => {
+        // An unbalanced </div> silently moves later steps outside
+        // .onboarding-content-steps, where they render below the visible area.
+        const markup = readFileSync(join(COMPONENT_DIR, file), 'utf8');
+        let depth = 0;
+        let stepsDepth: number | null = null;
+        const misplaced: string[] = [];
+        for (const [tag] of markup.matchAll(/<div\b[^>]*>|<\/div>/g)) {
+            if (tag.startsWith('</')) {
+                depth -= 1;
+                continue;
+            }
+            if (tag.includes('onboarding-content-steps')) stepsDepth = depth;
+            const stepId = /id="(content-step-\d+)"/.exec(tag)?.[1];
+            if (stepId && (stepsDepth === null || depth !== stepsDepth + 1)) misplaced.push(stepId);
+            depth += 1;
+        }
+        expect(misplaced).toEqual([]);
+        expect(depth).toBe(0);
     });
 
     it.each(onboardingComponents())('%s contains no emoji', file => {
@@ -117,16 +140,23 @@ describe('onboarding design guard', () => {
         expect(markup).not.toMatch(/Interpretation/i);
     });
 
-    it('keeps scenario generation local and renders edited text through DOM APIs', () => {
+    it('keeps scenario generation local and shows the sample in the editor layout', () => {
         const controller = readFileSync(
             join(REPO_ROOT, 'public', 'scripts', 'onboarding', 'scenario-generation-setup.ts'),
             'utf8'
         );
+        const markup = readFileSync(join(COMPONENT_DIR, 'scenario-generation-setup.html'), 'utf8');
         expect(controller).not.toContain('/api/');
         expect(controller).toContain("fetch('/components/scenarios/scenario-questions-generate.html')");
-        expect(controller).toContain('prompt.textContent = preview.prompt');
-        expect(controller).toContain('document.createTextNode(part.prompt)');
+        expect(controller).toContain('title.textContent = preview.title');
+        expect(controller).toContain('prompt.value = part.prompt');
+        expect(controller).toContain('answer.value = part.modelAnswer');
+        expect(controller).toContain('parseAnswerKeyFlashcardsDetailed(markdown)');
         expect(controller).toContain("submit.textContent = 'Update sample'");
+        expect(markup).toContain('sg-instructor-base-question-panel');
+        expect(markup).toContain('sgSetupEditorParts');
+        expect(markup).not.toContain('Inputs used');
+        expect(markup).not.toContain('>Generated sample<');
     });
 
     it('presents Canvas and manual assignment intake as simulations', () => {

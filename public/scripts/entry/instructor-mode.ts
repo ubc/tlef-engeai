@@ -60,15 +60,9 @@ import { syncPageTitleFromURL } from '../utils/page-title.js';
 import {
     buildOnboardingStagePath,
     FEATURE_ONBOARDING_STAGES,
-    isSkippableOnboardingStage,
     resolveNextOnboardingStage,
     type InstructorOnboardingStage
 } from '../utils/onboarding-stage-order.js';
-import {
-    hasSeenSkipPrompt,
-    markSkipPromptSeen,
-    offerSkipTutorial
-} from '../onboarding/onboarding-skip.js';
 
 /**
  * checkAuthentication
@@ -1068,27 +1062,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     /**
-     * Renders one onboarding stage and, once per session, offers the tutorial exit.
-     *
-     * The offer is unprompted on the first stage that only teaches, which is the stage
-     * immediately after Course Content — whichever one the resolver picks. It waits for the
-     * component to mount so the modal is not covered by the content swap, and is remembered
-     * for the session so a reload does not ask again; the footer button keeps the exit
-     * available on every later stage.
+     * Renders one onboarding stage. Leaving the tutorial is offered only through the
+     * footer's Skip tutorial button on skippable stages, never unprompted.
      */
     const renderOnboardingStage = (stage: InstructorOnboardingStage) => {
-        const mounted = mountOnboardingStage(stage);
-
-        if (!isSkippableOnboardingStage(stage) || hasSeenSkipPrompt()) {
-            return;
-        }
-
-        markSkipPromptSeen();
-        void mounted.then(async () => {
-            if (await offerSkipTutorial() === 'skipped') {
-                window.dispatchEvent(new CustomEvent('instructorOnboardingSkipped'));
-            }
-        });
+        void mountOnboardingStage(stage);
     };
 
     const updateUI = () => {

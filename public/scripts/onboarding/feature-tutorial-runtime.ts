@@ -236,9 +236,8 @@ export async function runFeatureTutorial(
             }));
         };
 
-        // Skip tutorial: the same confirmation as the unprompted offer, available from
-        // every stage that only teaches. A refused or failed skip leaves the instructor
-        // exactly where they were.
+        // Skip tutorial: available from every stage that only teaches. A refused or failed
+        // skip leaves the instructor exactly where they were.
         document.getElementById('skipTutorialBtn')?.addEventListener('click', () => {
             void (async () => {
                 if (await offerSkipTutorial() === 'skipped') {
