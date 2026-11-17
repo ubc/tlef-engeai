@@ -1,63 +1,17 @@
 /**
  * onboarding-skip.ts
  *
- * Client for Skip tutorial: the confirmation modal, the own-record write, and the
- * session-scoped memory of having already been offered the exit.
+ * Client for Skip tutorial: the confirmation modal and the own-record write.
  *
- * Staff who already know EngE-AI had no way out of the seven-stage tutorial. The offer
- * appears once unprompted, on entry to the first skippable stage, and after that as a
- * footer button on every skippable stage — so declining only needs to be remembered for
- * the browser session.
+ * Staff who already know EngE-AI had no way out of the seven-stage tutorial. The exit is
+ * the footer's Skip tutorial button on every skippable stage; it is never offered
+ * unprompted.
  *
  * @author: @rdschrs
  * @date: 2026-09-18
  */
 
 import { SKIP_TUTORIAL_CONFIRM_ACTION, showErrorModal, showSkipTutorialModal } from '../ui/modal-overlay.js';
-
-/** Session key recording that the unprompted offer has already been shown. */
-export const SKIP_PROMPT_SESSION_KEY = 'engeai.onboarding.skipPromptSeen';
-
-/** Storage surface this module needs; injectable so it is testable without a DOM. */
-type PromptStore = Pick<Storage, 'getItem' | 'setItem'>;
-
-/** Session storage when available; a private window or blocked site data yields null. */
-function defaultStore(): PromptStore | null {
-    try {
-        return typeof sessionStorage === 'undefined' ? null : sessionStorage;
-    } catch {
-        return null;
-    }
-}
-
-/**
- * True when the unprompted offer has already been shown this session.
- *
- * A storage that throws reads as unseen: offering the exit once more is a smaller failure
- * than never offering it at all.
- *
- * @param storage - store to read; defaults to session storage
- */
-export function hasSeenSkipPrompt(storage: PromptStore | null = defaultStore()): boolean {
-    try {
-        return storage?.getItem(SKIP_PROMPT_SESSION_KEY) === 'true';
-    } catch {
-        return false;
-    }
-}
-
-/**
- * Records that the unprompted offer has been shown. Never throws.
- *
- * @param storage - store to write; defaults to session storage
- */
-export function markSkipPromptSeen(storage: PromptStore | null = defaultStore()): void {
-    try {
-        storage?.setItem(SKIP_PROMPT_SESSION_KEY, 'true');
-    } catch {
-        // A blocked store costs one extra prompt; it must never break the tutorial.
-    }
-}
 
 /**
  * Marks every remaining instructor tutorial taught on the signed-in user's own record.

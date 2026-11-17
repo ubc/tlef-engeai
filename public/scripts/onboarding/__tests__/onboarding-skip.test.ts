@@ -1,7 +1,7 @@
 /**
  * onboarding-skip.test.ts
  *
- * Pins the skip client's request shape, error surfacing, and session-scoped prompt memory.
+ * Pins the skip client's request shape and error surfacing.
  *
  * Jest runs without a DOM here, so the modal itself is proven in the browser pass; what is
  * covered is everything that decides whether an irreversible write happens and what the
@@ -16,26 +16,8 @@ jest.mock('../../ui/modal-overlay.js', () => ({
     showErrorModal: jest.fn()
 }));
 
-import {
-    SKIP_PROMPT_SESSION_KEY,
-    hasSeenSkipPrompt,
-    markSkipPromptSeen,
-    offerSkipTutorial,
-    skipRemainingOnboarding
-} from '../onboarding-skip';
+import { offerSkipTutorial, skipRemainingOnboarding } from '../onboarding-skip';
 import { showErrorModal, showSkipTutorialModal } from '../../ui/modal-overlay.js';
-
-/** Minimal in-memory Storage stand-in. */
-function memoryStorage(initial: Record<string, string> = {}) {
-    const store: Record<string, string> = { ...initial };
-    return {
-        getItem: (key: string) => (key in store ? store[key] : null),
-        setItem: (key: string, value: string) => {
-            store[key] = value;
-        },
-        read: () => store
-    };
-}
 
 function mockFetch(response: unknown): jest.Mock {
     const fetchMock = jest.fn().mockResolvedValue(response);
@@ -45,37 +27,6 @@ function mockFetch(response: unknown): jest.Mock {
 
 afterEach(() => {
     delete (global as any).fetch;
-});
-
-describe('skip prompt memory', () => {
-    it('is unseen by default and seen once marked', () => {
-        const storage = memoryStorage();
-        expect(hasSeenSkipPrompt(storage)).toBe(false);
-
-        markSkipPromptSeen(storage);
-
-        expect(hasSeenSkipPrompt(storage)).toBe(true);
-        expect(storage.read()[SKIP_PROMPT_SESSION_KEY]).toBe('true');
-    });
-
-    it('survives a storage that throws', () => {
-        const throwing = {
-            getItem: () => {
-                throw new Error('blocked');
-            },
-            setItem: () => {
-                throw new Error('blocked');
-            }
-        };
-
-        expect(hasSeenSkipPrompt(throwing)).toBe(false);
-        expect(() => markSkipPromptSeen(throwing)).not.toThrow();
-    });
-
-    it('treats a missing store as unseen rather than throwing', () => {
-        expect(hasSeenSkipPrompt(null)).toBe(false);
-        expect(() => markSkipPromptSeen(null)).not.toThrow();
-    });
 });
 
 describe('skipRemainingOnboarding', () => {
