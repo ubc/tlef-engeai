@@ -222,7 +222,7 @@
     </form>
 </dialog>
 
-<!-- Publish week?/Publish topic? — opened by a draft week's Publish button (commandfor set in documents.ts) or after an upload -->
+<!-- Publish week? or Publish topic? (by the course's frame type) — opened by a draft week's Publish button (commandfor set in documents.ts) or after an upload. preparePublishDialog fills the heading and text when it opens -->
 <dialog
     id="publish-dialog"
     class="app-dialog"
@@ -234,7 +234,7 @@
             class="app-dialog__title"
             tabindex="-1"
             autofocus
-        >Publish week?</h2>
+        ></h2>
 
         <button
             type="button"
@@ -251,7 +251,7 @@
     </div>
 
     <div class="app-dialog__body">
-        <p class="publish-dialog__intro" id="publish-dialog-intro">Students will see this week or topic in the course when it is published.</p>
+        <p class="publish-dialog__intro" id="publish-dialog-intro"></p>
         <p class="publish-dialog__name" id="publish-dialog-name"></p>
         <ul class="publish-dialog__sections" id="publish-dialog-sections"></ul>
         <button
@@ -298,7 +298,7 @@
     </div>
 </dialog>
 
-<!-- Edit schedule — opened by a scheduled week's Edit Schedule button -->
+<!-- Edit schedule — opened by a scheduled week's Edit Schedule button. prepareScheduledPublishDialog fills the intro (week or topic) when it opens -->
 <dialog
     id="scheduled-publish-dialog"
     class="app-dialog"
@@ -327,7 +327,7 @@
     </div>
 
     <div class="app-dialog__body">
-        <p class="publish-dialog__intro" id="scheduled-publish-dialog-intro">This week is scheduled to publish automatically. You can reschedule or cancel the scheduled publish.</p>
+        <p class="publish-dialog__intro" id="scheduled-publish-dialog-intro"></p>
         <p class="publish-dialog__name" id="scheduled-publish-dialog-name"></p>
         <p class="publish-dialog__intro" id="scheduled-publish-dialog-when"></p>
         <button
@@ -433,7 +433,7 @@
     </form>
 </dialog>
 
-<!-- Move to draft? — opened by a published week's status button; documents.ts unpublishes on close when confirmed -->
+<!-- Move to draft? — opened by a published week's Move To Draft button; prepareMoveToDraftDialog fills the intro (week or topic) when it opens, and documents.ts unpublishes on close when confirmed -->
 <dialog
     id="move-to-draft-dialog"
     class="app-dialog"
@@ -463,7 +463,7 @@
         </div>
 
         <div class="app-dialog__body">
-            <p class="publish-dialog__intro" id="move-to-draft-dialog-intro">Students will no longer see this week until you publish it again.</p>
+            <p class="publish-dialog__intro" id="move-to-draft-dialog-intro"></p>
             <p class="publish-dialog__name" id="move-to-draft-dialog-name"></p>
             <ul class="publish-dialog__sections" id="move-to-draft-dialog-sections"></ul>
         </div>
