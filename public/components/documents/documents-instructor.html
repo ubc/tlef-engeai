@@ -222,7 +222,7 @@
     </form>
 </dialog>
 
-<!-- Publish topic/week? — opened by a draft week's status button (commandfor set in documents.ts) or after an upload -->
+<!-- Publish week?/Publish topic? — opened by a draft week's Publish button (commandfor set in documents.ts) or after an upload -->
 <dialog
     id="publish-dialog"
     class="app-dialog"
@@ -234,7 +234,7 @@
             class="app-dialog__title"
             tabindex="-1"
             autofocus
-        >Publish topic/week?</h2>
+        >Publish week?</h2>
 
         <button
             type="button"
@@ -251,7 +251,7 @@
     </div>
 
     <div class="app-dialog__body">
-        <p class="publish-dialog__intro">Students will see this week or topic in the course when it is published.</p>
+        <p class="publish-dialog__intro" id="publish-dialog-intro">Students will see this week or topic in the course when it is published.</p>
         <p class="publish-dialog__name" id="publish-dialog-name"></p>
         <ul class="publish-dialog__sections" id="publish-dialog-sections"></ul>
         <button
@@ -298,7 +298,7 @@
     </div>
 </dialog>
 
-<!-- Scheduled publish — opened by a scheduled week's status button -->
+<!-- Edit schedule — opened by a scheduled week's Edit Schedule button -->
 <dialog
     id="scheduled-publish-dialog"
     class="app-dialog"
@@ -310,7 +310,7 @@
             class="app-dialog__title"
             tabindex="-1"
             autofocus
-        >Scheduled publish</h2>
+        >Edit schedule</h2>
 
         <button
             type="button"
@@ -327,7 +327,7 @@
     </div>
 
     <div class="app-dialog__body">
-        <p class="publish-dialog__intro">This topic/week is scheduled to publish automatically. You can reschedule or cancel the scheduled publish.</p>
+        <p class="publish-dialog__intro" id="scheduled-publish-dialog-intro">This week is scheduled to publish automatically. You can reschedule or cancel the scheduled publish.</p>
         <p class="publish-dialog__name" id="scheduled-publish-dialog-name"></p>
         <p class="publish-dialog__intro" id="scheduled-publish-dialog-when"></p>
         <button
@@ -384,7 +384,7 @@
     </div>
 </dialog>
 
-<!-- Cancel schedule? — opened from Scheduled publish; documents.ts cancels on close when confirmed -->
+<!-- Cancel schedule? — opened from Edit schedule; documents.ts cancels on close when confirmed -->
 <dialog
     id="cancel-schedule-dialog"
     class="app-dialog"
@@ -463,7 +463,7 @@
         </div>
 
         <div class="app-dialog__body">
-            <p class="publish-dialog__intro">Students will no longer see this week or topic until you publish it again.</p>
+            <p class="publish-dialog__intro" id="move-to-draft-dialog-intro">Students will no longer see this week until you publish it again.</p>
             <p class="publish-dialog__name" id="move-to-draft-dialog-name"></p>
             <ul class="publish-dialog__sections" id="move-to-draft-dialog-sections"></ul>
         </div>

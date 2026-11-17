@@ -30,7 +30,7 @@ import { uploadRAGContent } from '../services/rag-service.js';
 import { DocumentUploadModule } from '../services/document-upload-module.js';
 import type { InstructorStruggleTopic, UploadResult } from '../types.js';
 import { openUploadModal, openStruggleTopicsReviewModal, openLearningObjectivesEditModal, openDivisionReorderModal, showSimpleErrorModal, showUploadLoadingModal, showInputModal, showSuccessModal, showErrorModal, showTitleUpdateLoadingModal, showDeletionSuccessModal, closeModal, showCustomModal } from '../ui/modal-overlay.js';
-import { installInvokerCommandFallback, onDialogOpenCommand, showDialogAndWait } from '../ui/dialog.js';
+import { installInvokerCommandFallback, onDialogOpenCommand, showDialogAndWait, showMessageDialog } from '../ui/dialog.js';
 import { buildCatalogSectionForItem } from './catalog-section.js';
 import { showToast, showSuccessToast } from '../ui/toast-notification.js';
 import { renderFeatherIcons } from '../api/api.js';
@@ -139,16 +139,9 @@ const MOVE_TO_DRAFT_DIALOG_ID = 'move-to-draft-dialog';
  * @param message - The message; shown as text, never HTML
  */
 async function showDocumentsMessageDialog(title: string, message: string): Promise<void> {
-    const dialog = document.getElementById(MESSAGE_DIALOG_ID);
-    if (!(dialog instanceof HTMLDialogElement)) {
+    if (!(await showMessageDialog(MESSAGE_DIALOG_ID, title, message))) {
         await showSimpleErrorModal(message, title);
-        return;
     }
-    const heading = document.getElementById(`${MESSAGE_DIALOG_ID}-heading`);
-    const messageEl = document.getElementById(`${MESSAGE_DIALOG_ID}-message`);
-    if (heading) heading.textContent = title;
-    if (messageEl) messageEl.textContent = message;
-    await showDialogAndWait(dialog);
 }
 
 // In-memory store for the course data
@@ -457,12 +450,13 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     function syncTopicOrWeekPublishHeader(wrapper: HTMLElement, tw: TopicOrWeekInstance): void {
         const pubBtn = wrapper.querySelector('.publish-status-btn') as HTMLButtonElement | null;
         const metaEdited = wrapper.querySelector('.topic-or-week-meta-edited') as HTMLElement | null;
-        const metaSched = wrapper.querySelector('.topic-or-week-meta-schedule') as HTMLElement | null;
-        if (!pubBtn || !metaEdited || !metaSched) return;
+        const metaStatus = wrapper.querySelector('.topic-or-week-meta-status') as HTMLElement | null;
+        if (!pubBtn || !metaStatus || !metaEdited) return;
 
         const published = !!tw.published;
         const sched = getScheduledDate(tw);
         const isScheduled = !published && sched !== null;
+        const statusLabel = published ? 'Published' : isScheduled ? 'Scheduled' : 'Draft';
 
         // The button opens the dialog for the week's current state
         pubBtn.setAttribute(
@@ -471,53 +465,39 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         );
         pubBtn.setAttribute('command', 'show-modal');
 
-        pubBtn.classList.remove('status-published', 'status-draft', 'status-scheduled');
-        if (published) {
-            pubBtn.classList.add('status-published');
-            pubBtn.setAttribute('aria-label', 'Published');
-            pubBtn.setAttribute('title', 'Published — click to change');
-        } else if (isScheduled) {
-            pubBtn.classList.add('status-scheduled');
-            const label = formatScheduleLine(sched!);
-            pubBtn.setAttribute('aria-label', `Scheduled — ${label}`);
-            pubBtn.setAttribute('title', `Scheduled — click to reschedule or cancel (${label})`);
-        } else {
-            pubBtn.classList.add('status-draft');
-            pubBtn.setAttribute('aria-label', 'Draft');
-            pubBtn.setAttribute('title', 'Draft — click to publish or schedule');
-        }
+        // The button names the action available from the current state, not the state itself
+        const action = published
+            ? { className: 'action-move-to-draft', icon: 'edit-2', label: 'Move To Draft' }
+            : isScheduled
+              ? { className: 'action-edit-schedule', icon: 'calendar', label: 'Edit Schedule' }
+              : { className: 'action-publish', icon: 'file-text', label: 'Publish' };
+        pubBtn.classList.remove('action-publish', 'action-move-to-draft', 'action-edit-schedule');
+        pubBtn.classList.add(action.className);
 
-        const textEl = pubBtn.querySelector('.status-text');
-        const featherName = published ? 'check' : isScheduled ? 'calendar' : 'file-text';
-        let icon = pubBtn.querySelector('i[data-feather]') as HTMLElement | null;
-        if (!icon) {
-            const beforeText = textEl ?? null;
-            const stale = beforeText?.previousElementSibling;
-            if (stale?.tagName?.toLowerCase() === 'svg') {
-                stale.remove();
-            }
-            icon = document.createElement('i');
-            if (beforeText) {
-                pubBtn.insertBefore(icon, beforeText);
-            } else {
-                pubBtn.appendChild(icon);
-            }
-        }
-        icon.setAttribute('data-feather', featherName);
-        if (textEl) {
-            textEl.textContent = published ? 'Published' : isScheduled ? 'Scheduled' : 'Draft';
-        }
+        // Rebuilt each time so the <svg> from the previous feather render doesn't linger
+        const actionIcon = document.createElement('i');
+        actionIcon.setAttribute('data-feather', action.icon);
+        actionIcon.setAttribute('aria-hidden', 'true');
+        const actionText = document.createElement('span');
+        actionText.className = 'status-text';
+        actionText.textContent = action.label;
+        const actionTarget = document.createElement('span');
+        actionTarget.className = 'visually-hidden';
+        actionTarget.textContent = ` (${tw.title})`;
+        pubBtn.replaceChildren(actionIcon, actionText, actionTarget);
 
+        metaStatus.classList.remove('is-published', 'is-draft', 'is-scheduled');
+        metaStatus.classList.add(published ? 'is-published' : isScheduled ? 'is-scheduled' : 'is-draft');
+        // The pill shows only the value; screen readers also hear what it is
+        const statusName = document.createElement('span');
+        statusName.className = 'visually-hidden';
+        statusName.textContent = 'Status: ';
+        const statusValue = isScheduled && sched ? `Scheduled for ${formatScheduleLine(sched)}` : statusLabel;
+        metaStatus.replaceChildren(statusName, statusValue);
         const uAt = parseTopicDate(tw.updatedAt);
         metaEdited.textContent = uAt ? `Last edited: ${formatTopicMetaEdited(uAt)}` : '';
-
-        if (isScheduled && sched) {
-            metaSched.textContent = `Scheduled for: ${formatScheduleLine(sched)}`;
-            metaSched.style.display = 'block';
-        } else {
-            metaSched.textContent = '';
-            metaSched.style.display = 'none';
-        }
+        // Hidden when empty so the pill doesn't sit after a blank gap
+        metaEdited.hidden = !uAt;
     }
 
     function showScheduleComingSoonModal(): void {
@@ -594,7 +574,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     }
 
     /**
-     * Fills "Publish topic/week?" for `target`.
+     * Fills "Publish week?" (or "Publish topic?") for `target`.
      *
      * @param openSchedulePanel - Start with "Schedule for later" expanded (e.g. "Publish later" after an upload)
      */
@@ -602,6 +582,10 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const controls = getScheduleControls(PUBLISH_DIALOG_ID);
         if (!controls) return false;
         publishTarget = target;
+        const division = getDivisionLabel().toLowerCase();
+        const heading = document.getElementById(`${PUBLISH_DIALOG_ID}-heading`);
+        if (heading) heading.textContent = `Publish ${division}?`;
+        setDialogIntro(PUBLISH_DIALOG_ID, `Students will see this ${division} in the course when it is published.`);
         fillPublishSummary(PUBLISH_DIALOG_ID, target.tw);
         resetScheduleControls(controls, target.tw);
         setSchedulePanelOpen(controls, openSchedulePanel || getScheduledDate(target.tw) !== null);
@@ -609,16 +593,20 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         return true;
     }
 
-    /** Fills "Scheduled publish" for `target`; `false` when it is no longer scheduled. */
+    /** Fills "Edit schedule" for `target`; `false` when it is no longer scheduled. */
     function prepareScheduledPublishDialog(target: PublishTarget): boolean {
         const sched = getScheduledDate(target.tw);
         const controls = getScheduleControls(SCHEDULED_PUBLISH_DIALOG_ID);
         if (!sched || !controls) return false;
         scheduledTarget = target;
-        const name = document.getElementById(`${SCHEDULED_PUBLISH_DIALOG_ID}-name`);
+        setDialogIntro(
+            SCHEDULED_PUBLISH_DIALOG_ID,
+            `This ${getDivisionLabel().toLowerCase()} is scheduled to publish automatically. You can reschedule or cancel the scheduled publish.`
+        );
+        const name =document.getElementById(`${SCHEDULED_PUBLISH_DIALOG_ID}-name`);
         const when = document.getElementById(`${SCHEDULED_PUBLISH_DIALOG_ID}-when`);
         if (name) name.textContent = target.tw.title;
-        if (when) when.textContent = `Scheduled for: ${formatScheduleLine(sched)}`;
+        if (when) when.textContent = `Scheduled for ${formatScheduleLine(sched)}`;
         resetScheduleControls(controls, target.tw);
         setScheduledPanelOpen(controls, false);
         return true;
@@ -635,12 +623,22 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
 
     function prepareMoveToDraftDialog(target: PublishTarget): boolean {
         moveToDraftTarget = target;
+        setDialogIntro(
+            MOVE_TO_DRAFT_DIALOG_ID,
+            `Students will no longer see this ${getDivisionLabel().toLowerCase()} until you publish it again.`
+        );
         fillPublishSummary(MOVE_TO_DRAFT_DIALOG_ID, target.tw);
         return true;
     }
 
+    /** Sets a publish dialog's intro, which names the course's division ("week" or "topic"), not both. */
+    function setDialogIntro(dialogId: string, text: string): void {
+        const intro = document.getElementById(`${dialogId}-intro`);
+        if (intro) intro.textContent = text;
+    }
+
     /**
-     * Opens "Publish topic/week?" from code (after an upload) and resolves once it closes.
+     * Opens "Publish week?"/"Publish topic?" from code (after an upload) and resolves once it closes.
      *
      * @param options.openSchedulePanel - Start with "Schedule for later" expanded
      */
@@ -690,7 +688,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         onDialogOpenCommand(scheduledDialog, openFor(prepareScheduledPublishDialog), signal);
         onDialogOpenCommand(moveToDraftDialog, openFor(prepareMoveToDraftDialog), signal);
 
-        // 2. "Publish topic/week?": publish now, or schedule when the panel is open
+        // 2. "Publish week?"/"Publish topic?": publish now, or schedule when the panel is open
         publishControls.trigger.addEventListener(
             'click',
             () => {
@@ -746,7 +744,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             { signal }
         );
 
-        // 3. "Scheduled publish": reschedule (Apply new time); Cancel schedule opens its own dialog
+        // 3. "Edit schedule": reschedule (Apply new time); Cancel schedule opens its own dialog
         scheduledControls.trigger.addEventListener(
             'click',
             () => {
@@ -784,7 +782,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             { signal }
         );
 
-        // 4. "Cancel schedule?": confirmed → remove the schedule, then close "Scheduled publish" too
+        // 4. "Cancel schedule?": confirmed → remove the schedule, then close "Edit schedule" too
         cancelScheduleDialog.addEventListener(
             'command',
             () => {
@@ -1065,12 +1063,12 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
 
         const meta = document.createElement('div');
         meta.className = 'topic-or-week-meta';
-        const metaEdited = document.createElement('div');
+        const metaStatus = document.createElement('p');
+        metaStatus.className = 'topic-or-week-meta-line topic-or-week-meta-status';
+        const metaEdited = document.createElement('p');
         metaEdited.className = 'topic-or-week-meta-line topic-or-week-meta-edited';
-        const metaSched = document.createElement('div');
-        metaSched.className = 'topic-or-week-meta-line topic-or-week-meta-schedule';
         meta.appendChild(metaEdited);
-        meta.appendChild(metaSched);
+        meta.appendChild(metaStatus);
 
         left.appendChild(title);
         left.appendChild(status);
@@ -1104,16 +1102,8 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
 
         const publishBtn = document.createElement('button');
         publishBtn.type = 'button';
-        publishBtn.className = 'content-status publish-status-btn status-draft';
-        const statusIcon = document.createElement('i');
-        statusIcon.setAttribute('data-feather', 'file-text');
-        statusIcon.setAttribute('aria-hidden', 'true');
-        const statusText = document.createElement('span');
-        statusText.className = 'status-text';
-        statusText.textContent = 'Draft';
-        publishBtn.appendChild(statusIcon);
-        publishBtn.appendChild(statusText);
-        // Opens the publish dialog for this week's state: commandfor is set in syncTopicOrWeekPublishHeader
+        publishBtn.className = 'content-status publish-status-btn';
+        // Label, icon and target dialog are set in syncTopicOrWeekPublishHeader
 
         // Disclosure: the <summary> holds only the arrow and is named by the week heading;
         // the week's sections live inside <details> so the browser owns open/closed state
