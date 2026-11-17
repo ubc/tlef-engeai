@@ -128,48 +128,41 @@
                         <p>Choose inputs, then generate a draft</p>
                     </div>
 
-                    <div class="demo-explanation">
-                        <p>Use the real Practice Scenarios form below.</p>
-                    </div>
-
                     <p class="sg-setup-action-prompt" id="sgSetupActionPrompt" role="status" aria-live="polite">
-                        <strong><strong>Try it:</strong> edit a field, then Generate to continue.</strong>
+                        <strong><strong>Try it:</strong> Review the base question, then click Generate to continue.</strong>
                     </p>
 
                     <div id="sgSetupGenerateMount" class="sg-setup-mount" aria-live="polite">
                         <p class="sg-setup-mount-loading">Loading the scenario generator…</p>
                     </div>
 
+                    <!-- Uses the production editor's classes so the sample looks like the draft staff will review. -->
                     <div class="sg-setup-draft" id="sgSetupGeneratedDraft" tabindex="-1" aria-labelledby="sgSetupDraftTitle" hidden>
-                        <div class="sg-setup-draft-header">
-                            <span class="sg-setup-status-pill">Draft</span>
-                            <h3 id="sgSetupDraftTitle">Scenario preview</h3>
+                        <div class="sg-setup-editor-banner" role="note">
+                            <i data-feather="info" aria-hidden="true"></i>
+                            <p><strong>This is the draft editor you will see after generating.</strong> Try Edit and Preview, and step through the answer cards.</p>
                         </div>
-                        <section class="sg-setup-preview-inputs" aria-labelledby="sgSetupInputsTitle">
-                            <h4 id="sgSetupInputsTitle">Inputs used</h4>
-                            <dl class="sg-setup-preview-summary">
-                                <div><dt>Base question</dt><dd id="sgSetupPreviewPrompt"></dd></div>
-                                <div><dt>Learning objectives</dt><dd id="sgSetupPreviewObjectives"></dd></div>
-                                <div><dt>Difficulty</dt><dd id="sgSetupPreviewDifficulty"></dd></div>
-                                <div><dt>Subquestion types</dt><dd id="sgSetupPreviewTypes"></dd></div>
-                            </dl>
-                        </section>
 
-                        <section class="sg-setup-preview-output" aria-labelledby="sgSetupOutputTitle">
-                            <p class="sg-setup-preview-eyebrow">Generated output</p>
-                            <h4 id="sgSetupOutputTitle"></h4>
-                            <p id="sgSetupOutputContext"></p>
+                        <div class="sg-setup-editor-preview">
+                            <h2 id="sgSetupDraftTitle" class="sg-instructor-page-title sg-instructor-editor-title"></h2>
 
-                            <h5>Design baselines</h5>
-                            <dl class="sg-setup-output-baselines" id="sgSetupOutputBaselines"></dl>
+                            <div class="sg-instructor-editor-section sg-instructor-base-question-panel" data-sg-setup-toggle-root>
+                                <div class="sg-instructor-section-header-row">
+                                    <span class="sg-instructor-editor-section-label">Scenario</span>
+                                    <div class="sg-instructor-view-toggle" role="group" aria-label="Scenario view mode">
+                                        <button type="button" class="sg-instructor-view-toggle-btn" data-mode="edit" aria-pressed="false">Edit</button>
+                                        <button type="button" class="sg-instructor-view-toggle-btn sg-instructor-view-toggle-btn--active" data-mode="preview" aria-pressed="true">Preview</button>
+                                    </div>
+                                </div>
+                                <div class="sg-instructor-base-question-body">
+                                    <label class="sg-instructor-sr-only" for="sgSetupScenarioSource">Scenario</label>
+                                    <textarea id="sgSetupScenarioSource" class="sg-instructor-editor-textarea sg-instructor-editor-textarea--large" rows="12" data-sg-setup-source hidden></textarea>
+                                    <div class="sg-instructor-markdown-preview message-content" data-sg-setup-rendered></div>
+                                </div>
+                            </div>
 
-                            <h5>Operational alert</h5>
-                            <p id="sgSetupOutputCrisis"></p>
-
-                            <h5>Subquestions and answer keys</h5>
-                            <ol class="sg-setup-output-subquestions" id="sgSetupOutputSubquestions"></ol>
-                        </section>
-                        <p class="sg-setup-draft-note">This draft is yours alone until you publish it.</p>
+                            <div id="sgSetupEditorParts" class="sg-instructor-editor-parts"></div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -264,7 +257,7 @@
         <div id="help-step-2">
             <p><strong>Generating a scenario</strong></p>
             <p>The form takes a base question or situation, the learning objectives it should target, which sub-question types to include, and a difficulty level.</p>
-            <p>Edit any field, then select <strong>Generate</strong>. The preview shows both your inputs and a complete sample output, but nothing is saved and no AI request is sent.</p>
+            <p>Edit any field, then select <strong>Generate</strong>. A sample draft opens in the same editor you use to review real drafts. Nothing is saved and no AI request is sent.</p>
             <p>The question-mark control beside the type pills opens this Help panel. Use the plus control to add another real subquestion type.</p>
             <p><strong>Tip:</strong> a specific prompt with concrete numbers produces a far more useful draft than a broad topic name.</p>
         </div>

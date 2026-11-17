@@ -33,44 +33,25 @@ export interface ScenarioTutorialSelection {
     difficulty: ScenarioTutorialDifficulty;
 }
 
-/** One selected subquestion type displayed in the tutorial input summary. */
-export interface ScenarioTutorialPreviewType {
-    type: ScenarioTutorialSubquestionType;
-    label: string;
-}
-
-/** One design value displayed in the generated troubleshooting scenario. */
-export interface ScenarioTutorialDesignBaseline {
-    label: string;
-    value: string;
-}
-
-/** One deterministic generated subquestion and answer key in the tutorial preview. */
+/** One generated part, shaped like a production `ScenarioSubQuestion`. */
 export interface ScenarioTutorialPreviewPart {
     type: ScenarioTutorialSubquestionType;
     label: string;
+    /** Markdown prompt shown in the part card. */
     prompt: string;
+    /** Markdown answer key; each `# Title` line starts one answer card. */
     modelAnswer: string;
 }
 
-/** Production-shaped generated scenario displayed after the tutorial's Generate action. */
-export interface ScenarioTutorialGeneratedOutput {
-    title: string;
-    context: string;
-    designBaselines: ScenarioTutorialDesignBaseline[];
-    crisis: string;
-    subquestions: ScenarioTutorialPreviewPart[];
-}
-
-/** DOM-free model separating the instructor's inputs from the generated output. */
+/**
+ * DOM-free draft rendered after the tutorial's Generate action, in the same
+ * title / scenario body / parts shape the production editor displays.
+ */
 export interface ScenarioTutorialPreview {
-    inputs: {
-        prompt: string;
-        selectedObjectiveLabels: string[];
-        difficulty: ScenarioTutorialDifficulty;
-        subquestionTypes: ScenarioTutorialPreviewType[];
-    };
-    output: ScenarioTutorialGeneratedOutput;
+    title: string;
+    /** Markdown scenario narrative, as the generator writes `questionBody`. */
+    questionBody: string;
+    subquestions: ScenarioTutorialPreviewPart[];
 }
 
 /** Everything the tutorial seeds into the real generate partial. */
@@ -89,75 +70,90 @@ const TUTORIAL_LABELS: Record<ScenarioTutorialSubquestionType, string> = {
     corrective: 'Corrective'
 };
 
-const TUTORIAL_OUTPUT_PARTS: Record<ScenarioTutorialSubquestionType, Omit<ScenarioTutorialPreviewPart, 'type' | 'label'>> = {
+// Written in the generator's output format: narrative markdown with no section
+// headings or bullet lists (the editor's renderer shows `- ` lines literally),
+// `$`/`$$` LaTeX, and answer keys split into `# Title` cards.
+const TUTORIAL_OUTPUT_PARTS: Record<ScenarioTutorialSubquestionType, Pick<ScenarioTutorialPreviewPart, 'prompt' | 'modelAnswer'>> = {
     calculation: {
         prompt:
             'Calculate the clean-design and current heat-transfer rates in kW, then determine the percentage loss in thermal duty. ' +
-            'If the effective LMTD changed by no more than 10%, explain what the relation Q = UAΔTlm implies about U.',
-        modelAnswer:
-            'The clean-design duty is 45.0 × 4.184 × (38 - 20) = 3,389 kW. The current duty is ' +
-            '45.0 × 4.184 × (30 - 20) = 1,883 kW, a 44.4% loss. With area fixed and LMTD changing by at most 10%, ' +
-            'the overall heat-transfer coefficient must have fallen substantially. The lower water outlet temperature is therefore consistent ' +
-            'with a real loss of heat transfer, not only a faulty temperature reading.'
+            'If the effective LMTD changed by no more than 10%, explain what $Q = UA\\,\\Delta T_{lm}$ implies about $U$.',
+        modelAnswer: [
+            '# Clean-design duty',
+            '$$Q_{clean} = \\dot m\\, c_p\\, \\Delta T_c = 45.0 \\times 4.184 \\times 18 = 3{,}389\\ \\text{kW}$$',
+            '',
+            '# Current duty',
+            '$$Q_{now} = 45.0 \\times 4.184 \\times 10 = 1{,}883\\ \\text{kW}$$',
+            '',
+            '# Percentage loss',
+            '$$\\frac{3{,}389 - 1{,}883}{3{,}389} \\times 100 = 44.4\\%$$',
+            '',
+            '# What it implies about U',
+            'With $A$ fixed and the LMTD within 10%, $U$ must have fallen substantially. The lower outlet temperature ' +
+            'reflects a real loss of heat transfer, not only a faulty reading.'
+        ].join('\n')
     },
     troubleshoot: {
         prompt:
             'Identify three distinct, physically plausible root causes for the lower cooling-water outlet temperature at unchanged flow. ' +
             'For each cause, name field evidence that would help confirm or reject it.',
-        modelAnswer:
-            'Plausible causes include tube-side scale or biological fouling, shell-side hydrocarbon fouling, and non-condensable gas or flow ' +
-            'maldistribution reducing the active surface. Compare exchanger pressure drop and water quality with the clean baseline; inspect ' +
-            'tube and shell deposits during an outage; and check vent composition, temperature profiles, and flow distribution for inactive area.'
+        modelAnswer: [
+            '# Tube-side fouling',
+            'Scale or biological growth from canal water. Compare tube-side pressure drop with the clean baseline and review water-quality records.',
+            '',
+            '# Shell-side fouling',
+            'Hydrocarbon deposits on the outside of the tubes. Compare shell-side pressure drop trends and inspect during the next outage.',
+            '',
+            '# Non-condensables or maldistribution',
+            'Trapped gas or uneven flow blanks off active area. Check vent-gas composition and the temperature profile across passes.'
+        ].join('\n')
     },
     action: {
         prompt:
             'Choose the safest immediate diagnostic action before opening the bypass or purging the cooling-water lines. Explain what evidence ' +
             'the action should produce.',
-        modelAnswer:
-            'Verify all four terminal temperatures with independent calibrated instruments, then repeat the cooling-water energy balance. ' +
-            'This separates an RTD fault from a genuine duty loss without disturbing the exchanger. If the independent readings confirm the ' +
-            '1.88 MW duty, move to differential-pressure, vent-gas, and fouling checks before changing the process configuration.'
+        modelAnswer: [
+            '# Verify the instruments',
+            'Check all four terminal temperatures with independent calibrated instruments.',
+            '',
+            '# Repeat the energy balance',
+            'If the independent readings still show about 1.88 MW, the duty loss is real rather than an RTD fault.',
+            '',
+            '# Then investigate the exchanger',
+            'Move to differential-pressure, vent-gas, and fouling checks before changing the process configuration.'
+        ].join('\n')
     },
     corrective: {
         prompt:
             'Propose one practical, field-executable corrective action for each root cause, including the condition that would justify using it.',
-        modelAnswer:
-            'For confirmed tube-side fouling, isolate and mechanically or chemically clean the tubes, then correct water-treatment controls. ' +
-            'For confirmed shell-side deposits, schedule a controlled shutdown and clean the shell-side surface. For non-condensables or ' +
-            'maldistribution, restore the venting path or correct the affected distributor, valve, or pass partition after field verification.'
+        modelAnswer: [
+            '# Tube-side fouling',
+            'If confirmed, isolate and clean the tubes mechanically or chemically, then correct the water-treatment programme.',
+            '',
+            '# Shell-side fouling',
+            'If confirmed, schedule a controlled shutdown and clean the shell-side surface.',
+            '',
+            '# Non-condensables or maldistribution',
+            'After field checks, restore the venting path or repair the affected distributor, valve, or pass partition.'
+        ].join('\n')
     }
 };
 
-const TUTORIAL_OUTPUT_BASE: Omit<ScenarioTutorialGeneratedOutput, 'subquestions'> = {
-    title: 'Naphtha Stabilizer Overhead Condenser Failure',
-    context:
-        'You are the junior process engineer responsible for the light-ends separation unit at an oil refinery. ' +
-        'E-2104 is a 1-shell, 2-tube-pass shell-and-tube exchanger that condenses and subcools hot stabilizer overhead vapour ' +
+const TUTORIAL_OUTPUT_TITLE = 'Naphtha Stabilizer Overhead Condenser Failure';
+
+const TUTORIAL_OUTPUT_BODY = [
+    'You are the junior process engineer responsible for the light-ends separation unit at an oil refinery. ' +
+        '**E-2104** is a 1-shell, 2-tube-pass shell-and-tube exchanger that condenses and subcools hot stabilizer overhead vapour ' +
         'using once-through cooling water from an industrial supply canal.',
-    designBaselines: [
-        {
-            label: 'Cooling-water inlet',
-            value: '20 °C at a constant mass flow rate of 45.0 kg/s'
-        },
-        {
-            label: 'Clean cooling-water outlet',
-            value: '38 °C (ΔTc = 18 °C), with Cp = 4.184 kJ/(kg·°C)'
-        },
-        {
-            label: 'Hydrocarbon stream',
-            value: 'Saturated vapour enters at 105 °C; target subcooled liquid leaves at 45 °C'
-        },
-        {
-            label: 'Outside tube area',
-            value: '125 m²'
-        }
-    ],
-    crisis:
-        'After six months of continuous operation, receiver pressure is rising and the unit is flaring because the overhead vapour is not ' +
-        'fully condensing. Cooling-water flow remains 45.0 kg/s and its inlet remains 20 °C, but its outlet has fallen to 30 °C ' +
-        '(ΔTc = 10 °C). The supervisor suspects a faulty RTD and proposes opening the bypass and purging the water lines. ' +
-        'Use an energy-balance audit to decide whether the temperature drop indicates a genuine internal heat-transfer failure.'
-};
+    '',
+    'On the clean-design data sheet, cooling water enters at 20 °C at a constant 45.0 kg/s and leaves at 38 °C ' +
+        '($\\Delta T_c = 18$ °C), with $c_p = 4.184$ kJ/(kg·°C). Saturated hydrocarbon vapour enters at 105 °C, the target ' +
+        'subcooled liquid leaves at 45 °C, and the outside tube area is $A = 125$ m².',
+    '',
+    'After six months of continuous operation, receiver pressure is rising and the unit is flaring because the overhead vapour ' +
+        'is not fully condensing. Cooling-water flow and inlet temperature are unchanged, but the outlet has fallen to **30 °C** ' +
+        '($\\Delta T_c = 10$ °C). Your supervisor suspects a faulty RTD and proposes opening the bypass and purging the water lines.'
+].join('\n');
 
 /**
  * Builds the deterministic preview used by onboarding without touching the DOM,
@@ -171,26 +167,14 @@ export function buildScenarioTutorialPreview(selection: ScenarioTutorialSelectio
         throw new Error('Choose at least one subquestion type before generating a sample.');
     }
 
-    const subquestionTypes = selection.subquestionTypes.map(type => ({
-        type,
-        label: TUTORIAL_LABELS[type]
-    }));
-
     return {
-        inputs: {
-            prompt: selection.prompt,
-            selectedObjectiveLabels: [...selection.selectedObjectiveLabels],
-            difficulty: selection.difficulty,
-            subquestionTypes
-        },
-        output: {
-            ...TUTORIAL_OUTPUT_BASE,
-            subquestions: subquestionTypes.map(({ type, label }) => ({
-                type,
-                label,
-                ...TUTORIAL_OUTPUT_PARTS[type]
-            }))
-        }
+        title: TUTORIAL_OUTPUT_TITLE,
+        questionBody: TUTORIAL_OUTPUT_BODY,
+        subquestions: selection.subquestionTypes.map(type => ({
+            type,
+            label: TUTORIAL_LABELS[type],
+            ...TUTORIAL_OUTPUT_PARTS[type]
+        }))
     };
 }
 

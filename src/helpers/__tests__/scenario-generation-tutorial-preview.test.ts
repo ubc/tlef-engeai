@@ -1,7 +1,8 @@
 /**
  * scenario-generation-tutorial-preview.test.ts
  *
- * Pins the onboarding scenario preview as a deterministic, DOM-free simulator.
+ * Pins the onboarding scenario preview as a deterministic, DOM-free simulator
+ * whose sample matches the production generator's output format.
  *
  * @author: @rdschrs
  * @date: 2026-08-20
@@ -12,6 +13,7 @@ import {
     SCENARIO_GENERATION_DEMO,
     type ScenarioTutorialSelection
 } from '../../../public/scripts/onboarding/fixtures/scenario-generation-fixture';
+import { parseAnswerKeyFlashcardsDetailed } from '../../../public/scripts/feature/scenario-answer-flashcard';
 
 function defaultSelection(): ScenarioTutorialSelection {
     return {
@@ -25,38 +27,36 @@ function defaultSelection(): ScenarioTutorialSelection {
 }
 
 describe('buildScenarioTutorialPreview', () => {
-    it('separates the seeded inputs from a complete generated output', () => {
+    it('builds an editor-shaped draft from the seeded tutorial values', () => {
         const preview = buildScenarioTutorialPreview(defaultSelection());
 
-        expect(preview.inputs.prompt).toBe(SCENARIO_GENERATION_DEMO.prompt);
-        expect(preview.inputs.selectedObjectiveLabels).toEqual([
-            'Energy balances on process equipment',
-            'Fouling and heat transfer resistance'
-        ]);
-        expect(preview.inputs.difficulty).toBe('medium');
-        expect(preview.inputs.subquestionTypes.map(part => part.type)).toEqual([
+        expect(preview.title).toBe('Naphtha Stabilizer Overhead Condenser Failure');
+        expect(preview.questionBody).toContain('**E-2104**');
+        expect(preview.questionBody).toContain('$A = 125$ m²');
+        expect(preview.subquestions.map(part => part.type)).toEqual([
             'calculation',
             'troubleshoot',
             'corrective'
         ]);
-        expect(preview.output).toMatchObject({
-            title: 'Naphtha Stabilizer Overhead Condenser Failure',
-            context: expect.stringContaining('E-2104'),
-            crisis: expect.stringContaining('30 °C')
-        });
-        expect(preview.output.designBaselines).toEqual(expect.arrayContaining([
-            expect.objectContaining({ label: 'Outside tube area', value: '125 m²' })
-        ]));
-        expect(preview.output.subquestions.map(part => part.type)).toEqual([
-            'calculation',
-            'troubleshoot',
-            'corrective'
-        ]);
-        expect(preview.output.subquestions[0].modelAnswer).toContain('3,389 kW');
-        expect(preview.output.subquestions[0].modelAnswer).toContain('44.4% loss');
+        expect(preview.subquestions[0].modelAnswer).toContain('3{,}389');
+        expect(preview.subquestions[0].modelAnswer).toContain('44.4\\%');
     });
 
-    it('reflects edited text, objectives, types, and difficulty', () => {
+    it('follows the generator format: no section headings, answer keys as # cards', () => {
+        const preview = buildScenarioTutorialPreview({
+            ...defaultSelection(),
+            subquestionTypes: ['calculation', 'troubleshoot', 'action', 'corrective']
+        });
+
+        expect(preview.questionBody).not.toMatch(/^(#|- )/m);
+        preview.subquestions.forEach(part => {
+            const { steps, error } = parseAnswerKeyFlashcardsDetailed(part.modelAnswer);
+            expect(error).toBeNull();
+            expect(steps.length).toBeGreaterThan(1);
+        });
+    });
+
+    it('follows the selected subquestion types and order', () => {
         const preview = buildScenarioTutorialPreview({
             prompt: 'A pump is cavitating after a tank level change.',
             selectedObjectiveLabels: ['Diagnose pump cavitation'],
@@ -64,16 +64,7 @@ describe('buildScenarioTutorialPreview', () => {
             difficulty: 'hard'
         });
 
-        expect(preview.inputs).toMatchObject({
-            prompt: 'A pump is cavitating after a tank level change.',
-            selectedObjectiveLabels: ['Diagnose pump cavitation'],
-            difficulty: 'hard'
-        });
-        expect(preview.inputs.subquestionTypes).toEqual([
-            expect.objectContaining({ type: 'action', label: 'Action' }),
-            expect.objectContaining({ type: 'calculation', label: 'Calculation' })
-        ]);
-        expect(preview.output.subquestions).toEqual([
+        expect(preview.subquestions).toEqual([
             expect.objectContaining({
                 type: 'action',
                 label: 'Action',
@@ -82,7 +73,7 @@ describe('buildScenarioTutorialPreview', () => {
             expect.objectContaining({
                 type: 'calculation',
                 label: 'Calculation',
-                modelAnswer: expect.stringContaining('1,883 kW')
+                modelAnswer: expect.stringContaining('1{,}883')
             })
         ]);
     });

@@ -4,15 +4,22 @@
  * Scenario Generation onboarding tutorial.
  *
  * The tutorial mounts the production generation partial and keeps every edit in
- * local browser state. Generate builds a deterministic sample; it never calls a
- * scenario endpoint, saves course data, or invokes a model.
+ * local browser state. Generate builds a deterministic sample and shows it with
+ * the production editor's classes; it never calls a scenario endpoint, saves
+ * course data, or invokes a model.
  *
  * @author: @rdschrs
  * @date: 2026-08-20
  */
 
 import { activeCourse } from "../types.js";
-import { SUB_QUESTION_TYPE_LABELS } from "../feature/scenario-answer-flashcard.js";
+import {
+    flashcardToneIndex,
+    parseAnswerKeyFlashcardsDetailed,
+    SUB_QUESTION_TYPE_LABELS
+} from "../feature/scenario-answer-flashcard.js";
+import { RenderChat } from "../feature/render-chat.js";
+import { renderLatexInHtmlContent } from "../feature/chat.js";
 import {
     runFeatureTutorial,
     type FeatureTutorialContext,
@@ -201,71 +208,259 @@ function setDifficultyUi(state: ScenarioTutorialUiState, difficulty: ScenarioTut
     }
 }
 
+const renderChat = new RenderChat();
+
+/** Answer-card position per part, reset each time a new sample is generated. */
+const flashcardIndexByPart = new Map<string, number>();
+
+/** Renders markdown and LaTeX the same way the production editor previews do. */
+function renderMarkdownInto(element: HTMLElement, markdown: string, idPrefix: string): void {
+    element.innerHTML = renderChat.render(markdown, idPrefix);
+    renderLatexInHtmlContent(element);
+}
+
+function partLetter(index: number): string {
+    return String.fromCharCode(65 + index);
+}
+
+function createViewToggle(label: string): HTMLElement {
+    const group = document.createElement('div');
+    group.className = 'sg-instructor-view-toggle';
+    group.setAttribute('role', 'group');
+    group.setAttribute('aria-label', label);
+
+    (['edit', 'preview'] as const).forEach(mode => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'sg-instructor-view-toggle-btn';
+        button.dataset.mode = mode;
+        button.textContent = mode === 'edit' ? 'Edit' : 'Preview';
+        group.append(button);
+    });
+    return group;
+}
+
+/**
+ * Shows either the editable source or its rendered preview inside one toggle root,
+ * re-rendering from the textarea so tutorial edits appear in the preview.
+ */
+function setViewMode(root: HTMLElement, mode: 'edit' | 'preview'): void {
+    const source = root.querySelector<HTMLTextAreaElement>('[data-sg-setup-source]');
+    const rendered = root.querySelector<HTMLElement>('[data-sg-setup-rendered]');
+    if (!source || !rendered) return;
+
+    root.querySelectorAll<HTMLButtonElement>('.sg-instructor-view-toggle-btn').forEach(button => {
+        const active = button.dataset.mode === mode;
+        button.classList.toggle('sg-instructor-view-toggle-btn--active', active);
+        button.setAttribute('aria-pressed', String(active));
+    });
+
+    source.hidden = mode !== 'edit';
+    rendered.hidden = mode !== 'preview';
+    if (mode === 'preview') {
+        renderMarkdownInto(rendered, source.value, `sg-setup-${root.dataset.partKey ?? 'scenario'}`);
+    }
+}
+
+/** Renders one answer card, matching the production editor's flashcard panel. */
+function renderFlashcardPanel(partKey: string, markdown: string, container: HTMLElement): void {
+    container.replaceChildren();
+    const { steps, error } = parseAnswerKeyFlashcardsDetailed(markdown);
+
+    if (!steps.length) {
+        const empty = document.createElement('p');
+        empty.className = 'sg-instructor-flashcard-empty';
+        empty.textContent = error
+            ? `Cannot show answer cards: ${error.reason}.`
+            : 'No cards yet. Start each step with a "# Title" line.';
+        if (error) empty.classList.add('sg-instructor-flashcard-error');
+        container.append(empty);
+        return;
+    }
+
+    const index = Math.min(flashcardIndexByPart.get(partKey) ?? 0, steps.length - 1);
+    flashcardIndexByPart.set(partKey, index);
+    const step = steps[index];
+
+    const card = document.createElement('div');
+    card.className = `sg-instructor-flashcard sg-instructor-flashcard--tone-${flashcardToneIndex(index)}`;
+
+    const header = document.createElement('div');
+    header.className = 'sg-instructor-flashcard-header';
+    if (steps.length > 1) {
+        const stepLabel = document.createElement('span');
+        stepLabel.className = 'sg-instructor-flashcard-step-label';
+        stepLabel.textContent = `Step ${index + 1} of ${steps.length}`;
+        header.append(stepLabel);
+    }
+    const title = document.createElement('span');
+    title.className = 'sg-instructor-flashcard-title';
+    title.textContent = step.title;
+    header.append(title);
+
+    const body = document.createElement('div');
+    body.className = 'sg-instructor-flashcard-body sg-instructor-markdown-preview message-content';
+    renderMarkdownInto(body, step.bodyMarkdown, `sg-setup-fc-${partKey}-${index}`);
+    card.append(header, body);
+
+    if (steps.length > 1) {
+        const nav = document.createElement('div');
+        nav.className = 'sg-instructor-flashcard-nav';
+        ([['prev', 'Previous step', 'chevron-left'], ['next', 'Next step', 'chevron-right']] as const).forEach(([action, label, icon]) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'sg-instructor-flashcard-nav-btn';
+            button.dataset.flashcardAction = action;
+            button.dataset.partKey = partKey;
+            button.setAttribute('aria-label', label);
+            button.disabled = action === 'prev' ? index === 0 : index === steps.length - 1;
+            const glyph = document.createElement('i');
+            glyph.dataset.feather = icon;
+            button.append(glyph);
+            nav.append(button);
+        });
+        card.append(nav);
+    }
+
+    container.append(card);
+    if (typeof (window as any).feather !== 'undefined') {
+        (window as any).feather.replace();
+    }
+}
+
+function createPartCard(part: ScenarioTutorialPreview['subquestions'][number], index: number): HTMLElement {
+    const letter = partLetter(index);
+    const partKey = partLetter(index).toLowerCase();
+
+    const card = document.createElement('div');
+    card.className = 'sg-instructor-part-card';
+    card.dataset.sgSetupToggleRoot = '';
+    card.dataset.partKey = partKey;
+
+    // Part header: title, type badge, and prompt view toggle.
+    const header = document.createElement('div');
+    header.className = 'sg-instructor-part-header';
+    const titleGroup = document.createElement('div');
+    titleGroup.className = 'sg-part-title-group';
+    const title = document.createElement('h3');
+    title.className = 'sg-part-title';
+    title.textContent = `Part ${letter}`;
+    const badge = document.createElement('span');
+    badge.className = `sg-part-type-badge sg-part-type-${part.type}`;
+    badge.textContent = part.label;
+    titleGroup.append(title, badge);
+    header.append(titleGroup, createViewToggle(`Part ${letter} prompt view mode`));
+
+    // Prompt source and rendered preview.
+    const promptBody = document.createElement('div');
+    promptBody.className = 'sg-instructor-part-prompt-body';
+    const promptId = `sgSetupPartPrompt-${partKey}`;
+    const promptLabel = document.createElement('label');
+    promptLabel.className = 'sg-instructor-sr-only';
+    promptLabel.htmlFor = promptId;
+    promptLabel.textContent = `Part ${letter} prompt`;
+    const prompt = document.createElement('textarea');
+    prompt.id = promptId;
+    prompt.className = 'sg-instructor-editor-textarea sg-instructor-part-prompt';
+    prompt.rows = 3;
+    prompt.value = part.prompt;
+    prompt.dataset.sgSetupSource = '';
+    const promptPreview = document.createElement('div');
+    promptPreview.className = 'sg-instructor-part-prompt-preview sg-instructor-markdown-preview message-content';
+    promptPreview.dataset.sgSetupRendered = '';
+    promptBody.append(promptLabel, prompt, promptPreview);
+
+    // Answer key source with the answer cards rendered beside it.
+    const answerHeader = document.createElement('div');
+    answerHeader.className = 'sg-instructor-answer-key-header';
+    const answerLabel = document.createElement('span');
+    answerLabel.className = 'sg-instructor-editor-section-label';
+    answerLabel.textContent = 'Answer key';
+    answerHeader.append(answerLabel);
+
+    const answerBody = document.createElement('div');
+    answerBody.className = 'sg-instructor-part-answer-body';
+    const answer = document.createElement('textarea');
+    answer.className = 'sg-instructor-editor-textarea sg-instructor-part-answer sg-instructor-part-answer-edit';
+    answer.rows = 6;
+    answer.value = part.modelAnswer;
+    answer.dataset.partKey = partKey;
+    answer.setAttribute('aria-label', `Part ${letter} answer key`);
+    const flashcards = document.createElement('div');
+    flashcards.className = 'sg-instructor-flashcard-panel';
+    flashcards.dataset.partKey = partKey;
+    flashcards.setAttribute('aria-live', 'polite');
+    answerBody.append(answer, flashcards);
+
+    card.append(header, promptBody, answerHeader, answerBody);
+    return card;
+}
+
+/** Fills the editor-style draft with the generated sample. */
 function renderPreview(preview: ScenarioTutorialPreview): void {
-    const prompt = document.getElementById('sgSetupPreviewPrompt');
-    const objectives = document.getElementById('sgSetupPreviewObjectives');
-    const difficulty = document.getElementById('sgSetupPreviewDifficulty');
-    const types = document.getElementById('sgSetupPreviewTypes');
-    const outputTitle = document.getElementById('sgSetupOutputTitle');
-    const outputContext = document.getElementById('sgSetupOutputContext');
-    const outputBaselines = document.getElementById('sgSetupOutputBaselines');
-    const outputCrisis = document.getElementById('sgSetupOutputCrisis');
-    const outputSubquestions = document.getElementById('sgSetupOutputSubquestions');
-    if (!prompt || !objectives || !difficulty || !types || !outputTitle || !outputContext ||
-        !outputBaselines || !outputCrisis || !outputSubquestions) return;
+    const title = document.getElementById('sgSetupDraftTitle');
+    const scenario = document.querySelector<HTMLElement>('.sg-setup-editor-preview .sg-instructor-base-question-panel');
+    const scenarioSource = document.getElementById('sgSetupScenarioSource') as HTMLTextAreaElement | null;
+    const parts = document.getElementById('sgSetupEditorParts');
+    if (!title || !scenario || !scenarioSource || !parts) return;
 
-    // Show the instructor inputs separately so they are never mistaken for generated prose.
-    prompt.textContent = preview.inputs.prompt;
-    objectives.textContent = preview.inputs.selectedObjectiveLabels.length > 0
-        ? preview.inputs.selectedObjectiveLabels.join(', ')
-        : 'None selected';
-    difficulty.textContent = preview.inputs.difficulty.charAt(0).toUpperCase() + preview.inputs.difficulty.slice(1);
-    types.textContent = preview.inputs.subquestionTypes.map(type => type.label).join(', ');
+    title.textContent = preview.title;
+    scenarioSource.value = preview.questionBody;
+    setViewMode(scenario, 'preview');
 
-    // Render a complete deterministic output in the same title/body/parts shape staff review.
-    outputTitle.textContent = preview.output.title;
-    outputContext.textContent = preview.output.context;
-    outputCrisis.textContent = preview.output.crisis;
-    outputBaselines.replaceChildren();
-    outputSubquestions.replaceChildren();
-
-    preview.output.designBaselines.forEach(baseline => {
-        const row = document.createElement('div');
-        const label = document.createElement('dt');
-        const value = document.createElement('dd');
-        label.textContent = baseline.label;
-        value.textContent = baseline.value;
-        row.append(label, value);
-        outputBaselines.append(row);
+    flashcardIndexByPart.clear();
+    parts.replaceChildren(...preview.subquestions.map(createPartCard));
+    parts.querySelectorAll<HTMLElement>('.sg-instructor-part-card').forEach(card => {
+        setViewMode(card, 'preview');
+        const partKey = card.dataset.partKey ?? '';
+        const answer = card.querySelector<HTMLTextAreaElement>('.sg-instructor-part-answer');
+        const panel = card.querySelector<HTMLElement>('.sg-instructor-flashcard-panel');
+        if (answer && panel) renderFlashcardPanel(partKey, answer.value, panel);
     });
+}
 
-    preview.output.subquestions.forEach((part, index) => {
-        const item = document.createElement('li');
-        item.className = 'sg-setup-output-part';
+/** Wires the draft's toggles, answer-card arrows, and live answer-key edits once. */
+function wireDraftInteractions(draft: HTMLElement, signal: AbortSignal): void {
+    draft.addEventListener('click', event => {
+        const target = event.target as HTMLElement;
 
-        const heading = document.createElement('div');
-        heading.className = 'sg-setup-output-part-heading';
-        const partLabel = document.createElement('strong');
-        partLabel.textContent = `Part ${String.fromCharCode(65 + index)}`;
-        const type = document.createElement('span');
-        type.className = `sg-part-type-badge sg-part-type-${part.type}`;
-        type.textContent = part.label;
-        heading.append(partLabel, type);
+        const toggle = target.closest<HTMLButtonElement>('.sg-instructor-view-toggle-btn');
+        const toggleRoot = toggle?.closest<HTMLElement>('[data-sg-setup-toggle-root]');
+        if (toggle && toggleRoot) {
+            setViewMode(toggleRoot, toggle.dataset.mode === 'edit' ? 'edit' : 'preview');
+            return;
+        }
 
-        const question = document.createElement('p');
-        question.textContent = part.prompt;
+        const nav = target.closest<HTMLButtonElement>('[data-flashcard-action]');
+        const partKey = nav?.dataset.partKey;
+        if (!nav || !partKey) return;
+        const card = draft.querySelector<HTMLElement>(`.sg-instructor-part-card[data-part-key="${partKey}"]`);
+        const answer = card?.querySelector<HTMLTextAreaElement>('.sg-instructor-part-answer');
+        const panel = card?.querySelector<HTMLElement>('.sg-instructor-flashcard-panel');
+        if (!answer || !panel) return;
 
-        const answer = document.createElement('details');
-        answer.className = 'sg-setup-output-answer';
-        const answerLabel = document.createElement('summary');
-        answerLabel.textContent = 'Review answer key';
-        const answerBody = document.createElement('p');
-        answerBody.textContent = part.modelAnswer;
-        answer.append(answerLabel, answerBody);
+        const offset = nav.dataset.flashcardAction === 'prev' ? -1 : 1;
+        flashcardIndexByPart.set(partKey, Math.max(0, (flashcardIndexByPart.get(partKey) ?? 0) + offset));
+        renderFlashcardPanel(partKey, answer.value, panel);
+        // Keep keyboard focus on the arrow just used, or on the other one at either end.
+        const nextFocus =
+            panel.querySelector<HTMLButtonElement>(`[data-flashcard-action="${nav.dataset.flashcardAction}"]:not(:disabled)`)
+            ?? panel.querySelector<HTMLButtonElement>('[data-flashcard-action]:not(:disabled)');
+        nextFocus?.focus();
+    }, { signal });
 
-        item.append(heading, question, answer);
-        outputSubquestions.append(item);
-    });
+    let answerTimer: ReturnType<typeof setTimeout> | undefined;
+    draft.addEventListener('input', event => {
+        const answer = (event.target as HTMLElement).closest<HTMLTextAreaElement>('.sg-instructor-part-answer');
+        const partKey = answer?.dataset.partKey;
+        if (!answer || !partKey) return;
+        clearTimeout(answerTimer);
+        answerTimer = setTimeout(() => {
+            const panel = draft.querySelector<HTMLElement>(`.sg-instructor-flashcard-panel[data-part-key="${partKey}"]`);
+            if (panel) renderFlashcardPanel(partKey, answer.value, panel);
+        }, 300);
+    }, { signal });
+    signal.addEventListener('abort', () => clearTimeout(answerTimer));
 }
 
 function createSelection(
@@ -344,6 +539,7 @@ async function initializeGenerateDemo(context: FeatureTutorialContext): Promise<
             error.scrollIntoView({ block: 'nearest' });
         };
 
+        wireDraftInteractions(draft, signal);
         seedLearningObjectives(objectives, SCENARIO_GENERATION_DEMO.learningObjectives, signal, clearValidation);
         renderTypePills(types, state, signal, clearValidation);
         setDifficultyUi(state, state.difficulty);
