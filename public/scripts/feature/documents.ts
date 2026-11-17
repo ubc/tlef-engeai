@@ -1356,59 +1356,23 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 return; // Avoid header toggle
             }
 
-            // Objectives accordion toggles
-            const objectivesHeader = target.closest('.objectives-header') as HTMLElement | null;
-            if (objectivesHeader && !objectivesHeader.closest('.struggle-topics')) {
-                const editBtn = target.closest('.catalog-edit-btn') as HTMLButtonElement | null;
-                if (editBtn) {
-                    event.stopPropagation();
-                    const topicOrWeekId =
-                        editBtn.dataset.week ||
-                        objectivesHeader.getAttribute('data-topic-or-week-instance') ||
-                        '0';
-                    const contentId =
-                        editBtn.dataset.content || objectivesHeader.getAttribute('data-content') || '0';
-                    if (!topicOrWeekId || !contentId) return;
-                    void openLearningObjectivesEditForSection(topicOrWeekId, contentId);
-                    return;
-                }
-
-                const topicOrWeekId = objectivesHeader.getAttribute('data-topic-or-week-instance') || '0';
-                const contentId = objectivesHeader.getAttribute('data-content') || '0';
+            // Learning Objectives / Struggle Topics Edit buttons; each section's <summary> handles expand/collapse
+            const catalogEditBtn = target.closest('.objectives-header .catalog-edit-btn') as HTMLButtonElement | null;
+            if (catalogEditBtn) {
+                event.stopPropagation();
+                // Memory Agent off: Struggle Topics are shaded and read-only (expand still allowed)
+                if (catalogEditBtn.closest('.struggle-topics--inactive')) return;
+                const catalogHeader = catalogEditBtn.closest('.objectives-header') as HTMLElement;
+                const topicOrWeekId =
+                    catalogEditBtn.dataset.week || catalogHeader.getAttribute('data-topic-or-week-instance') || '0';
+                const contentId =
+                    catalogEditBtn.dataset.content || catalogHeader.getAttribute('data-content') || '0';
                 if (!topicOrWeekId || !contentId) return;
-                toggleObjectives(topicOrWeekId, contentId);
-                return;
-            }
-
-            const struggleHeader = target.closest('.struggle-topics .objectives-header') as HTMLElement | null;
-            if (struggleHeader) {
-                // Memory Agent off: section is shaded; mutate actions are disabled (expand still allowed).
-                if (struggleHeader.closest('.struggle-topics--inactive')) {
-                    const editBtn = target.closest('.catalog-edit-btn') as HTMLButtonElement | null;
-                    if (editBtn) {
-                        event.stopPropagation();
-                        return;
-                    }
-                }
-
-                const editBtn = target.closest('.catalog-edit-btn') as HTMLButtonElement | null;
-                if (editBtn) {
-                    event.stopPropagation();
-                    const topicOrWeekId =
-                        editBtn.dataset.week ||
-                        struggleHeader.getAttribute('data-topic-or-week-instance') ||
-                        '0';
-                    const contentId =
-                        editBtn.dataset.content || struggleHeader.getAttribute('data-content') || '0';
-                    if (!topicOrWeekId || !contentId) return;
+                if (catalogEditBtn.dataset.catalogKind === 'struggle-topics') {
                     void openStruggleTopicsEditForSection(topicOrWeekId, contentId);
-                    return;
+                } else {
+                    void openLearningObjectivesEditForSection(topicOrWeekId, contentId);
                 }
-
-                const topicOrWeekId = struggleHeader.getAttribute('data-topic-or-week-instance') || '0';
-                const contentId = struggleHeader.getAttribute('data-content') || '0';
-                if (!topicOrWeekId || !contentId) return;
-                toggleStruggleTopics(topicOrWeekId, contentId);
                 return;
             }
 
@@ -1580,7 +1544,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
                 return;
             }
 
-            const panel = target.closest('.objectives-content.expanded') as HTMLElement | null;
+            const panel = target.closest('.catalog-disclosure[open] > .objectives-content') as HTMLElement | null;
             if (!panel) return;
 
             const contentItem = panel.closest('.content-item') as HTMLElement | null;
@@ -2076,25 +2040,6 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     }
 
     /**
-     * Toggle the expansion state of the objectives for a content item
-     * 
-     * @param topicOrWeekId the id of the topic/week instance
-     * @param contentId the id of the content item
-     * @returns null
-     */
-    function setCatalogExpandIconState(icon: HTMLElement, expanded: boolean): void {
-        icon.classList.toggle('catalog-expand-icon--expanded', expanded);
-    }
-
-    function toggleObjectives(topicOrWeekId: string, contentId: string) {
-        const content = document.getElementById(`objectives-${topicOrWeekId}-${contentId}`);
-        const icon = document.getElementById(`obj-icon-${topicOrWeekId}-${contentId}`);
-        if (!content || !icon) return;
-        content.classList.toggle('expanded');
-        setCatalogExpandIconState(icon, content.classList.contains('expanded'));
-    }
-
-    /**
      * Load learning objectives from database for all content items
      * 
      * @returns Promise<void>
@@ -2278,35 +2223,21 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         const itemContainer = document.getElementById(`content-item-${topicOrWeekId}-${contentId}`);
         if (!instance_topicOrWeek || !content || !itemContainer) return;
         
-        // Preserve accordion state before rebuilding
-        const objectivesContent = document.getElementById(`objectives-${topicOrWeekId}-${contentId}`);
-        const wasExpanded = objectivesContent?.classList.contains('expanded') || false;
-        const struggleContent = document.getElementById(`struggle-${topicOrWeekId}-${contentId}`);
-        const struggleWasExpanded = struggleContent?.classList.contains('expanded') || false;
-        
+        // Preserve which catalog disclosures were open before rebuilding
+        const openCatalogIds = ['objectives', 'struggle']
+            .map((prefix) => `${prefix}-${topicOrWeekId}-${contentId}`)
+            .filter((id) => document.getElementById(id)?.closest<HTMLDetailsElement>('.catalog-disclosure')?.open);
+
         // Rebuild via DOM and replace
         const built = buildContentItemDOM(topicOrWeekId, content);
         const parent = itemContainer.parentElement;
         if (!parent) return;
         parent.replaceChild(built, itemContainer);
-        
-        // Restore accordion state after rebuilding
-        if (wasExpanded) {
-            const newObjectivesContent = document.getElementById(`objectives-${topicOrWeekId}-${contentId}`);
-            const newIcon = document.getElementById(`obj-icon-${topicOrWeekId}-${contentId}`);
-            if (newObjectivesContent && newIcon) {
-                newObjectivesContent.classList.add('expanded');
-                setCatalogExpandIconState(newIcon, true);
-            }
-        }
-        if (struggleWasExpanded) {
-            const newStruggleContent = document.getElementById(`struggle-${topicOrWeekId}-${contentId}`);
-            const newStruggleIcon = document.getElementById(`struggle-icon-${topicOrWeekId}-${contentId}`);
-            if (newStruggleContent && newStruggleIcon) {
-                newStruggleContent.classList.add('expanded');
-                setCatalogExpandIconState(newStruggleIcon, true);
-            }
-        }
+
+        openCatalogIds.forEach((id) => {
+            const disclosure = document.getElementById(id)?.closest<HTMLDetailsElement>('.catalog-disclosure');
+            if (disclosure) disclosure.open = true;
+        });
 
         // Render Feather icons for the newly replaced content (including rename icon)
         renderFeatherIcons();
@@ -2424,14 +2355,18 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
         uploadTargetName.textContent = getSectionNameSuffix(topicOrWeekId, content.title);
         uploadArea.appendChild(uploadText);
         uploadArea.appendChild(uploadTargetName);
+        const uploadHeading = document.createElement('h4');
+        uploadHeading.className = 'document-upload-heading';
+        uploadHeading.textContent = 'Documents';
         uploadWrap.appendChild(uploadArea);
 
-        const materialsEl = createAdditionalMaterialsElement(content);
+        const materialsEl = createAdditionalMaterialsElement(topicOrWeekId, content);
 
         item.appendChild(header);
         item.appendChild(objectivesContainer);
         // Always show Struggle Topics; shade + hint when Memory Agent is off.
         item.appendChild(struggleContainer);
+        item.appendChild(uploadHeading);
         item.appendChild(uploadWrap);
         // Append uploaded files list directly under the upload box
         if (materialsEl) item.appendChild(materialsEl);
@@ -2936,7 +2871,7 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
 
     /**
      * Rewrites the " (section) (week)" hidden text on a section's Delete Section and Upload buttons and its
-     * Learning Objectives / Struggle Topics Edit buttons after the section or its week/topic is renamed.
+     * Learning Objectives / Struggle Topics Edit buttons and disclosures, and its documents' Delete buttons, after the section or its week/topic is renamed.
      *
      * @param sectionItem - The section's `.content-item` element
      * @param topicOrWeekId - The ID of the section's topic/week instance
@@ -2951,6 +2886,17 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             .forEach((hiddenName) => {
                 hiddenName.textContent = targetName;
             });
+        sectionItem.querySelectorAll<HTMLElement>('.additional-material').forEach((material) => {
+            const hiddenName = material.querySelector('.delete-btn > .visually-hidden');
+            const materialName = material.querySelector('.am-title')?.textContent ?? '';
+            if (hiddenName) hiddenName.textContent = ` ${materialName}${targetName}`;
+        });
+        sectionItem.querySelectorAll<HTMLElement>('.objectives-header').forEach((catalogHeader) => {
+            const kindTitle = catalogHeader.querySelector('.objectives-title')?.textContent ?? '';
+            catalogHeader
+                .querySelector('.catalog-disclosure > summary')
+                ?.setAttribute('aria-label', `${kindTitle}${targetName}`);
+        });
     }
     
     /**
@@ -3115,24 +3061,25 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
     // ----- Additional Materials (front-end only) -----
 
     /**
-     * Build the additional materials container via DOM APIs
+     * Build the additional materials list via DOM APIs
      * 
+     * @param topicOrWeekId the id of the section's topic/week instance (names its Delete buttons)
      * @param content the content item to build the DOM for
      * @returns the created element
      */
-    function createAdditionalMaterialsElement(content: TopicOrWeekItem): HTMLElement | null {
+    function createAdditionalMaterialsElement(topicOrWeekId: string, content: TopicOrWeekItem): HTMLElement | null {
         const items = content.additionalMaterials || [];
         if (items.length === 0) return null;
 
-        const wrap = document.createElement('div');
+        const wrap = document.createElement('ul');
         wrap.className = 'additional-materials';
 
         items.forEach((m: AdditionalMaterial) => {
-            const row = document.createElement('div');
+            const row = document.createElement('li');
             row.className = 'additional-material';
             row.setAttribute('data-material-id', m.id);
 
-            const title = document.createElement('div');
+            const title = document.createElement('h5');
             title.className = 'am-title';
             title.textContent = m.name;
 
@@ -3160,7 +3107,12 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             del.dataset.action = 'delete-material';
             del.dataset.materialId = m.id;
             setDeleteDialogInvoker(del, 'material');
+            // Accessible name: "Delete Lecture 1 (Slides) (Week 1)"; only "Delete" is visible
             del.textContent = 'Delete';
+            const delTargetName = document.createElement('span');
+            delTargetName.className = 'visually-hidden';
+            delTargetName.textContent = ` ${m.name}${getSectionNameSuffix(topicOrWeekId, content.title)}`;
+            del.appendChild(delTargetName);
             actions.appendChild(del);
 
             row.appendChild(title);
@@ -3313,20 +3265,6 @@ export async function initializeDocumentsPage( currentClass : activeCourse) {
             },
             returnFocus: () => findCatalogEditButton('struggle-topics', topicOrWeekId, contentId),
         });
-    }
-
-    /**
-     * Toggle the struggle-topics accordion expand/collapse for a content item.
-     *
-     * @param topicOrWeekId - Topic/week instance id
-     * @param contentId - Content item id
-     */
-    function toggleStruggleTopics(topicOrWeekId: string, contentId: string) {
-        const content = document.getElementById(`struggle-${topicOrWeekId}-${contentId}`);
-        const icon = document.getElementById(`struggle-icon-${topicOrWeekId}-${contentId}`);
-        if (!content || !icon) return;
-        content.classList.toggle('expanded');
-        setCatalogExpandIconState(icon, content.classList.contains('expanded'));
     }
 
     /**
