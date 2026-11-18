@@ -17,11 +17,12 @@ import {
     showInfoModal,
     showSimpleErrorModal
 } from '../ui/modal-overlay.js';
-import { showDialogAndWait } from '../ui/dialog.js';
+import { showDialogAndWait, showMessageDialog } from '../ui/dialog.js';
 
 /** Native dialogs on the Documents page; absent on Document Setup. */
 const PICKER_DIALOG_ID = 'material-copy-picker-dialog';
 const REPLACE_DIALOG_ID = 'material-copy-replace-dialog';
+const MESSAGE_DIALOG_ID = 'documents-message-dialog';
 
 function findDialog(id: string): HTMLDialogElement | null {
     const el = document.getElementById(id);
@@ -174,7 +175,10 @@ export async function runCourseMaterialCopy(target: activeCourse): Promise<CopyC
     try {
         sources = await fetchMaterialCopySources(target.id);
     } catch (error) {
-        await showSimpleErrorModal((error as Error).message, 'Could Not Load Courses');
+        const message = (error as Error).message;
+        if (!(await showMessageDialog(MESSAGE_DIALOG_ID, 'Could Not Load Courses', message))) {
+            await showSimpleErrorModal(message, 'Could Not Load Courses');
+        }
         return null;
     }
     if (sources.length === 0) {

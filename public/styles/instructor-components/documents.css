@@ -251,20 +251,49 @@ ul.topic-or-week-item {
     font-size: 14px;
 }
 
+/* "Last edited" with the status pill beside it; the pill wraps below on narrow headers */
 .topic-or-week-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
     font-size: 12px;
     color: var(--text-secondary);
     margin-top: 4px;
     line-height: 1.4;
 }
 
+/* Separate <p>s so screen readers pause between them; spacing comes from the row's gap */
 .topic-or-week-meta-line {
-    display: block;
+    margin: 0;
 }
 
-.topic-or-week-meta-schedule {
-    margin-top: 2px;
-    color: #5b4aa8;
+.topic-or-week-meta-line[hidden] {
+    display: none;
+}
+
+/* Status pill: same colours as the status button; text is ≥4.5:1 on its tint over either header colour */
+.topic-or-week-meta-status {
+    display: inline-block;
+    width: fit-content;
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-weight: 500;
+}
+
+.topic-or-week-meta-status.is-published {
+    background: rgba(76, 175, 80, 0.15);
+    color: #3d5a26;
+}
+
+.topic-or-week-meta-status.is-draft {
+    background: rgba(255, 152, 0, 0.15);
+    color: #9a3d00;
+}
+
+.topic-or-week-meta-status.is-scheduled {
+    background: rgba(14, 165, 233, 0.15);
+    color: #075985;
 }
 
 .expand-icon {
@@ -452,7 +481,7 @@ button.content-status {
     vertical-align: middle;
 }
 
-/* Publish header: 1px transparent border so box height matches bordered neighbors (draft/published override) */
+/* Publish header: 1px transparent border so box height matches bordered neighbors (each action overrides) */
 .publish-status-btn.content-status {
     border: 1px solid transparent;
     background: transparent;
@@ -460,35 +489,36 @@ button.content-status {
     border-radius: 4px;
 }
 
-.publish-status-btn.status-draft {
+.publish-status-btn.action-move-to-draft {
     background: rgba(255, 152, 0, 0.1);
     color: #9a3d00;
     border: 1px solid #e67e22;
 }
 
-/* Draft topic/week with a pending scheduled publish — single control (opens reschedule/cancel modal) */
-.publish-status-btn.status-scheduled {
+/* Draft topic/week with a pending scheduled publish: opens the reschedule/cancel dialog */
+.publish-status-btn.action-edit-schedule {
     background: rgba(14, 165, 233, 0.12);
-    color: var(--scheduled-color);
-    border: 1px solid var(--scheduled-color);
+    /* Explicit: --scheduled-color is ~2:1 on the header; this is ≥5:1 on both header backgrounds */
+    color: #075985;
+    border: 1px solid #075985;
 }
 
-.publish-status-btn.status-scheduled:hover {
+.publish-status-btn.action-edit-schedule:hover {
     background: rgba(14, 165, 233, 0.22);
-    border-color: #0284c7;
-    color: #0284c7;
+    border-color: #0c4a6e;
+    color: #0c4a6e;
     transform: translateY(-1px);
     box-shadow: 0 2px 4px rgba(14, 165, 233, 0.35);
 }
 
-.publish-status-btn.status-published {
+.publish-status-btn.action-publish {
     background: rgba(76, 175, 80, 0.1);
     /* Explicit: --pinned-color resolves to a lighter green that fails 4.5:1 on the header */
     color: #3d5a26;
     border: 1px solid var(--pinned-color, #3d5a26);
 }
 
-.publish-status-btn.status-draft:hover {
+.publish-status-btn.action-move-to-draft:hover {
     background: rgba(255, 152, 0, 0.2);
     border-color: #d35400;
     color: #8a3700;
@@ -496,7 +526,7 @@ button.content-status {
     box-shadow: 0 2px 4px rgba(255, 152, 0, 0.3);
 }
 
-.publish-status-btn.status-published:hover {
+.publish-status-btn.action-publish:hover {
     background: rgba(76, 175, 80, 0.2);
     border-color: #2d5016;
     color: #2d5016;

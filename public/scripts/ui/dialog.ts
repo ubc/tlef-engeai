@@ -76,6 +76,26 @@ export function showDialogAndWait(dialog: HTMLDialogElement): Promise<string> {
 }
 
 /**
+ * showMessageDialog — fills a message dialog's heading (`{id}-heading`) and message
+ * (`{id}-message`) as text, opens it, and resolves once it closes.
+ *
+ * @param id - The message `<dialog>`'s id, e.g. `documents-message-dialog`
+ * @param title - Dialog heading
+ * @param message - The message; shown as text, never HTML
+ * @returns `false` when this page has no such dialog, so the caller can show the message another way
+ */
+export async function showMessageDialog(id: string, title: string, message: string): Promise<boolean> {
+    const dialog = document.getElementById(id);
+    if (!(dialog instanceof HTMLDialogElement)) return false;
+    const heading = document.getElementById(`${id}-heading`);
+    const messageEl = document.getElementById(`${id}-message`);
+    if (heading) heading.textContent = title;
+    if (messageEl) messageEl.textContent = message;
+    await showDialogAndWait(dialog);
+    return true;
+}
+
+/**
  * installInvokerCommandFallback — makes `commandfor` buttons open and close dialogs in browsers
  * that predate invoker commands. It dispatches the same `command` event, so
  * `onDialogOpenCommand` works unchanged. Does nothing where the browser supports them.
