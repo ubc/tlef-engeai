@@ -123,3 +123,9 @@ For API reference, see [documents/ENDPOINT_ARCHITECTURE.md](documents/ENDPOINT_A
 Pushing to the main branch in this repo will trigger a deploy automatically to the staging server.
 
 The staging deploy step must run **`npm run start:prod`** (or `npm run build` then `npm start`). Without a frontend build, login and app pages will 404 on `/dist/public/scripts/...` assets.
+
+---
+
+## License
+
+Released under the [MIT License](LICENSE).

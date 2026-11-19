@@ -35,7 +35,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "type": "commonjs",
   "dependencies": {
     "@qdrant/js-client-rest": "^1.19.0",
