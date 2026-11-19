@@ -40,6 +40,7 @@ import { showSuccessToast, showErrorToast } from '../ui/toast-notification.js';
 import { showConfirmModal, showContentLoadingModal, closeModal } from '../ui/modal-overlay.js';
 import { RenderChat } from './render-chat.js';
 import { renderLatexInHtmlContent } from './chat.js';
+import { normalizeMathDelimiters } from './math-delimiters.js';
 import {
     flashcardToneIndex,
     parseAnswerKeyFlashcardsDetailed,
@@ -620,7 +621,7 @@ function renderResponseCardHtml(row: ScenarioInstructorStudentResponseRow): stri
 function paintResponseFeedbackBodies(list: HTMLElement, items: ScenarioInstructorStudentResponseRow[]): void {
     items.forEach((row) => {
         const el = list.querySelector<HTMLElement>(`#sg-instructor-feedback-${row.id}`);
-        if (el) renderMarkdownInto(el, row.feedback, `sg-instructor-response-${row.id}`);
+        if (el) renderMarkdownInto(el, normalizeMathDelimiters(row.feedback), `sg-instructor-response-${row.id}`);
     });
 }
 

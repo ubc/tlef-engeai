@@ -92,6 +92,17 @@ For each part:
 - Direct academic judgment — not Socratic hint-only tutoring.
 `;
 
+/** The student page renders math with KaTeX and only recognizes dollar delimiters. */
+const MODULE_MATH_FORMATTING = `
+*Module Purpose*
+Format any math in the feedback so the student page can render it.
+
+*Module Content*
+- Inline math: \`$...$\` on one line, e.g. $\\lambda = hc/|\\Delta E|$.
+- Display math: \`$$...$$\` with line breaks inside the delimiters.
+**CRITICAL:** Never use \`\\(...\\)\` or \`\\[...\\]\` — they display as raw LaTeX to the student.
+`;
+
 function wrapModule(id: string, body: string): string {
     return `<module id="${id}">\n${body.trim()}\n</module>`;
 }
@@ -100,6 +111,7 @@ function buildFeedbackSystemPrompt(mode: 'scenario-practice-feedback' | 'scenari
     const modules = [
         wrapModule('system prompt guidance', MODULE_GUIDANCE),
         wrapModule(mode === 'scenario-practice-feedback' ? 'practice feedback' : 'exam grading', body),
+        wrapModule('math formatting', MODULE_MATH_FORMATTING),
     ];
     return `<system_prompt mode="${mode}">\n${modules.join('\n')}\n</system_prompt>`;
 }

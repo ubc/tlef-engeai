@@ -3,6 +3,7 @@
  */
 
 import {
+    buildScenarioExamFeedbackSystemPrompt,
     buildScenarioPracticeDescriptiveFeedbackSystemPrompt,
     buildScenarioPracticeFeedbackUserTurn,
     buildScenarioPracticeSocraticFeedbackSystemPrompt,
@@ -24,6 +25,17 @@ describe('scenario-feedback-prompt practice tiers', () => {
         const prompt = buildScenarioPracticeDescriptiveFeedbackSystemPrompt();
         expect(prompt).toContain('direct');
         expect(prompt).toContain('evaluation');
+    });
+
+    it('every feedback system prompt asks for dollar-delimited math', () => {
+        for (const prompt of [
+            buildScenarioPracticeSocraticFeedbackSystemPrompt(),
+            buildScenarioPracticeDescriptiveFeedbackSystemPrompt(),
+            buildScenarioExamFeedbackSystemPrompt(),
+        ]) {
+            expect(prompt).toContain('<module id="math formatting">');
+            expect(prompt).toContain('Never use `\\(...\\)`');
+        }
     });
 
     it('user turns differ by tier', () => {

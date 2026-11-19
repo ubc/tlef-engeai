@@ -39,6 +39,7 @@ import { showErrorToast, showSuccessToast } from '../ui/toast-notification.js';
 import { flashcardToneIndex, parseAnswerKeyToFlashcards, SUB_QUESTION_TYPE_LABELS } from './scenario-answer-flashcard.js';
 import { RenderChat } from './render-chat.js';
 import { renderLatexInHtmlContent } from './chat.js';
+import { normalizeMathDelimiters } from './math-delimiters.js';
 import {
     getStudentScenariosParamsFromURL,
     navigateToStudentScenarios,
@@ -289,7 +290,10 @@ function showPracticeFeedbackLoading(partId: string): void {
 
 function renderFeedbackMarkdown(body: HTMLElement, feedback: string, partId: string): void {
     body.classList.add('message-content');
-    body.innerHTML = renderChat.render(feedback, `sg-student-feedback-${partId}-${Date.now()}`);
+    body.innerHTML = renderChat.render(
+        normalizeMathDelimiters(feedback),
+        `sg-student-feedback-${partId}-${Date.now()}`
+    );
     renderLatexInHtmlContent(body);
 }
 
