@@ -1408,6 +1408,9 @@ export type ScenarioUsageQuestionState = 'published' | 'unpublished' | 'removed'
 /** Must match src/types/shared.ts. */
 export type ScenarioUsageProgress = 'not_attempted' | 'partial' | 'complete';
 
+/** Must match src/types/shared.ts. Low-effort markers on one answer — a prompt to look, not a verdict. */
+export type ScenarioEffortFlag = 'too_short' | 'repeats_question' | 'duplicate' | 'copies_model_answer';
+
 /** Must match src/types/shared.ts. One submitted answer, as the student saw it. */
 export interface ScenarioUsageAttempt {
     id: string;
@@ -1416,6 +1419,7 @@ export interface ScenarioUsageAttempt {
     feedback: string;
     grade?: number;
     submittedAt: string;
+    flags: ScenarioEffortFlag[];
 }
 
 /** Must match src/types/shared.ts. Attempts are newest first. */

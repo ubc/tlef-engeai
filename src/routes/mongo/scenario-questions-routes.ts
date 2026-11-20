@@ -33,6 +33,8 @@ import {
     ScenarioQuestionEditConflictError,
     toInstructorProjection,
 } from '../../db/mongo/scenario-questions-mongo';
+import { getPracticeDayKey } from '../../scenario-generation/scenario-practice-limits';
+import { buildScenarioUsageCsv } from '../../scenario-generation/scenario-usage-csv';
 import {
     checkScenarioAnswerRequestSchema,
     scenarioGenerateRequestSchema,
@@ -122,6 +124,33 @@ export function mountScenarioQuestionRoutes(router: Router): void {
             await instance.ensureScenarioQuestionsCollection(courseId);
             const data = await instance.getScenarioUsageCounts((course as activeCourse).courseName);
             res.json({ success: true, data });
+        })
+    );
+
+    /**
+     * GET /:courseId/scenario-usage/export.csv
+     * Staff-only: one row of usage totals per student, as a CSV download.
+     */
+    router.get(
+        '/:courseId/scenario-usage/export.csv',
+        requireInstructorForCourseAPI(['params']),
+        scenarioFeatureGate,
+        asyncHandlerWithAuth(async (req: Request, res: Response) => {
+            const { courseId } = normalizeRouteParams(req.params);
+            const instance = await EngEAI_MongoDB.getInstance();
+            const course = await instance.getActiveCourse(courseId);
+            if (!course) {
+                return res.status(404).json({ success: false, error: 'Course not found' });
+            }
+            await instance.ensureScenarioQuestionsCollection(courseId);
+            const report = await instance.getScenarioUsageReport(course as activeCourse);
+
+            const safeCourse = (course as activeCourse).courseName.replace(/[^A-Za-z0-9_-]+/g, '-');
+            const today = getPracticeDayKey(new Date());
+            res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+            res.setHeader('Content-Disposition', `attachment; filename="${safeCourse}-scenario-usage-${today}.csv"`);
+            res.setHeader('Cache-Control', 'no-store');
+            res.send(buildScenarioUsageCsv(report));
         })
     );
 

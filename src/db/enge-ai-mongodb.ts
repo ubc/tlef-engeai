@@ -1281,6 +1281,10 @@ export class EngEAI_MongoDB {
     public getStudentScenarioUsageHistory = async (course: activeCourse, userId: string) =>
         ScenarioUsageMongo.getStudentScenarioUsageHistory(this.ctx(), course, userId);
 
+    /** Staff-only: per-student usage totals for the CSV export (real students only, zero rows included). */
+    public getScenarioUsageReport = async (course: activeCourse) =>
+        ScenarioUsageMongo.getScenarioUsageReport(this.ctx(), course);
+
     public appendScenarioStudentResponse = async (
         courseName: string,
         questionId: string,

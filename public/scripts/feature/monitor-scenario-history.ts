@@ -10,6 +10,7 @@
  */
 
 import type {
+    ScenarioEffortFlag,
     ScenarioMode,
     ScenarioStudentUsageHistory,
     ScenarioUsageAttempt,
@@ -37,6 +38,23 @@ const PROGRESS_LABELS: Record<ScenarioUsageQuestion['progress'], string> = {
 };
 
 const REMOVED_GROUP_TITLE = 'Removed or unpublished questions';
+
+/** Same rules the usage CSV counts as "Flagged answers" — prompts to look, not verdicts. */
+const FLAG_LABELS: Record<ScenarioEffortFlag, { label: string; title: string }> = {
+    too_short: { label: 'Very short', title: 'Fewer than 3 words, or a non-answer such as "idk"' },
+    repeats_question: { label: 'Repeats the question', title: 'Mostly the wording of the question itself' },
+    duplicate: { label: 'Same as previous answer', title: 'Identical to their previous answer to this part' },
+    copies_model_answer: { label: 'Close to model answer', title: 'Mostly the wording of the model answer' },
+};
+
+function flagPills(flags: ScenarioEffortFlag[]): string {
+    return flags
+        .map(
+            (flag) =>
+                `<span class="monitor-scenario-flag" title="${escapeHtml(FLAG_LABELS[flag].title)}">${escapeHtml(FLAG_LABELS[flag].label)}</span>`
+        )
+        .join('');
+}
 
 function escapeHtml(text: string): string {
     return text
@@ -105,9 +123,17 @@ function renderQuestionHtml(question: ScenarioUsageQuestion): string {
             : question.questionState === 'unpublished'
               ? '<span class="monitor-scenario-state">Unpublished</span>'
               : '';
+    const flaggedCount = question.parts.reduce(
+        (sum, part) => sum + part.attempts.filter((a) => a.flags.length > 0).length,
+        0
+    );
+    const flaggedNote = flaggedCount
+        ? `<span class="monitor-scenario-flag">${flaggedCount} flagged answer${flaggedCount === 1 ? '' : 's'}</span>`
+        : '';
     const meta = `
         <span class="monitor-scenario-progress monitor-scenario-progress--${question.progress}">${PROGRESS_LABELS[question.progress]}</span>
         ${stateNote}
+        ${flaggedNote}
         ${question.modesUsed.map(modeBadge).join('')}
         ${question.lastSubmittedAt ? `<time class="monitor-scenario-time" datetime="${escapeHtml(question.lastSubmittedAt)}">${escapeHtml(formatDate(question.lastSubmittedAt))}</time>` : ''}`;
     const title = `<span class="monitor-scenario-question-title">${escapeHtml(question.title)}</span>`;
@@ -163,6 +189,7 @@ function renderAttemptHtml(attempt: ScenarioUsageAttempt): string {
         <div class="monitor-scenario-attempt-header">
             ${modeBadge(attempt.mode)}
             ${grade}
+            ${flagPills(attempt.flags ?? [])}
             <time class="monitor-scenario-time" datetime="${escapeHtml(attempt.submittedAt)}">${escapeHtml(formatDate(attempt.submittedAt))}</time>
         </div>
         <div class="monitor-scenario-label">Answer</div>

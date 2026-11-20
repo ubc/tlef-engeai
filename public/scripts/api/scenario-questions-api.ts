@@ -374,6 +374,23 @@ export async function fetchStudentScenarioUsageHistory(
     return data.data as ScenarioStudentUsageHistory;
 }
 
+/**
+ * Staff-only: the per-student usage CSV, with the filename the server suggests.
+ * @throws When the request fails (message from the server when it sends JSON)
+ */
+export async function downloadScenarioUsageCsv(courseId: string): Promise<{ blob: Blob; filename: string }> {
+    const response = await fetch(`/api/courses/${encodeURIComponent(courseId)}/scenario-usage/export.csv`, {
+        credentials: 'same-origin',
+    });
+    if (!response.ok) {
+        await parseJsonOrThrow(response);
+        throw new Error(`Download failed with status ${response.status}`);
+    }
+    const disposition = response.headers.get('Content-Disposition') ?? '';
+    const filename = disposition.match(/filename="([^"]+)"/)?.[1] ?? 'scenario-usage.csv';
+    return { blob: await response.blob(), filename };
+}
+
 /** Format a duration as MM:SS from total seconds. */
 export function formatExpectedTime(totalSeconds: number): string {
     const sec = Math.max(0, Math.round(totalSeconds));

@@ -71,8 +71,9 @@
 
 .sg-mode-badge--practice {
     background: rgba(77, 122, 47, 0.12);
-    color: var(--color-chbe-green, #4d7a2f);
-    border-color: var(--color-chbe-green, #4d7a2f);
+    /* Darker than --color-chbe-green (#4d7a2f is 4.34:1 on white, 3.82:1 on grey rows); 4.97:1+ */
+    color: #3f6526;
+    border-color: #3f6526;
 }
 
 .sg-mode-badge--exam {

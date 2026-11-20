@@ -1395,6 +1395,12 @@ export type ScenarioUsageQuestionState = 'published' | 'unpublished' | 'removed'
 /** How much of a question the student has answered (any mode). */
 export type ScenarioUsageProgress = 'not_attempted' | 'partial' | 'complete';
 
+/**
+ * Deterministic low-effort markers on one answer (see `scenario-effort-flags.ts`). A prompt for
+ * an instructor to look, not a verdict.
+ */
+export type ScenarioEffortFlag = 'too_short' | 'repeats_question' | 'duplicate' | 'copies_model_answer';
+
 /** One submitted answer, as the student saw it. */
 export interface ScenarioUsageAttempt {
     id: string;
@@ -1403,6 +1409,7 @@ export interface ScenarioUsageAttempt {
     feedback: string; // feedback shown to the student
     grade?: number; // exam only — AI-assessed 1–10
     submittedAt: string; // ISO 8601
+    flags: ScenarioEffortFlag[]; // empty when none apply
 }
 
 /** One part of a question with this student's attempts, newest first. */

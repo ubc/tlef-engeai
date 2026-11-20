@@ -628,11 +628,21 @@
     margin-bottom: 4px;
 }
 
-/* Scenarios panel — one student's Practice Scenarios history */
+/* Scenarios panel — one student's Practice Scenarios history.
+   Muted text is darker than --text-secondary (#6c757d), which is only 4.08:1 on the grey
+   question rows; #5c636a is 5.30:1 there (WCAG AA needs 4.5:1). */
+.monitor-user-panel--scenarios {
+    --monitor-scenario-muted: #5c636a;
+}
+
+.monitor-user-panel--scenarios .monitor-panel-empty {
+    color: var(--monitor-scenario-muted);
+}
+
 .monitor-scenario-summary {
     margin: 0 0 12px;
     font-size: 13px;
-    color: var(--text-secondary);
+    color: var(--monitor-scenario-muted);
 }
 
 .monitor-scenario-group {
@@ -686,7 +696,7 @@ summary.monitor-scenario-question-row:focus-visible {
 }
 
 .monitor-scenario-question--empty .monitor-scenario-question-title {
-    color: var(--text-secondary);
+    color: var(--monitor-scenario-muted);
 }
 
 .monitor-scenario-question-title {
@@ -726,7 +736,7 @@ summary.monitor-scenario-question-row:focus-visible {
 
 .monitor-scenario-progress--not_attempted {
     background: transparent;
-    color: var(--text-secondary);
+    color: var(--monitor-scenario-muted);
     border: 1px solid var(--border-color);
 }
 
@@ -740,9 +750,22 @@ summary.monitor-scenario-question-row:focus-visible {
     color: #4a148c;
 }
 
+/* Effort flags — amber, 6.20:1 */
+.monitor-scenario-flag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.5;
+    background: #fff3e0;
+    color: #8a4b00;
+    border: 1px dashed #c77700;
+}
+
 .monitor-scenario-time {
     font-size: 12px;
-    color: var(--text-secondary);
+    color: var(--monitor-scenario-muted);
 }
 
 .monitor-scenario-parts {
@@ -783,7 +806,7 @@ summary.monitor-scenario-question-row:focus-visible {
 .monitor-scenario-label {
     font-size: 12px;
     font-weight: 600;
-    color: var(--text-secondary);
+    color: var(--monitor-scenario-muted);
 }
 
 .monitor-scenario-answer {

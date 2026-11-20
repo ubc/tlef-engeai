@@ -72,6 +72,8 @@ Route handlers remain thin. AI workflow logic belongs in `scenario-service.ts`; 
 | [`src/scenario-generation/prompts/scenario-generation-prompt.ts`](../src/scenario-generation/prompts/scenario-generation-prompt.ts) | System prompt for scenario authoring |
 | [`src/scenario-generation/prompts/scenario-feedback-prompt.ts`](../src/scenario-generation/prompts/scenario-feedback-prompt.ts) | System and user prompts for practice feedback and exam evaluation |
 | [`src/db/mongo/scenario-usage-mongo.ts`](../src/db/mongo/scenario-usage-mongo.ts) | Read-only per-student usage counts and history for the instructor Monitor |
+| [`src/scenario-generation/scenario-effort-flags.ts`](../src/scenario-generation/scenario-effort-flags.ts) | Deterministic low-effort answer flags for usage reporting |
+| [`src/scenario-generation/scenario-usage-csv.ts`](../src/scenario-generation/scenario-usage-csv.ts) | Usage CSV formatting (formula-safe cells, Vancouver times) |
 | [`public/scripts/feature/monitor-scenario-history.ts`](../public/scripts/feature/monitor-scenario-history.ts) | Monitor scenarios panel rendering |
 | [`src/scenario-generation/latex-json-repair.ts`](../src/scenario-generation/latex-json-repair.ts) | Best-effort repair of LaTeX mangled by JSON escaping in exam feedback |
 | [`src/scenario-generation/scenario-practice-limits.ts`](../src/scenario-generation/scenario-practice-limits.ts) | Daily attempt limits, cooldown, feedback tier resolution |
@@ -306,6 +308,30 @@ The instructor specifies an ordered list at generation time; the LLM produces on
 The Monitor page's **User Activity** list shows an **"N scenarios"** button on each student row (purple, next to Conversations): N is how many questions the student answered at least once, in either mode, including questions later removed. It appears only for students (not staff or test students) and only when Practice Scenarios is on for the course. Unlike struggle topics, it is available during the term, since instructors use it for participation marks.
 
 Opening the panel loads that student's history (`GET …/scenario-usage/students/:userId`, cached until the page reloads): published questions grouped by chapter with a progress pill (Completed / Partly answered / Not attempted), then a "Removed or unpublished questions" group. Expanding a question shows each part's latest answer and the feedback the student saw, with earlier attempts collapsed. Exam grades are labelled as AI grades.
+
+**Usage CSV.** The main Scenario Questions page has a **Download student usage (CSV)** button (`GET …/scenario-usage/export.csv`). One row per real student, including students with no activity:
+
+| Column | Meaning |
+| ------ | ------- |
+| Student name | Roster name (the only identifier stored) |
+| Questions attempted (of N published) | Questions with ≥1 answer on any part, either mode; removed questions count |
+| Questions completed | Every part answered at least once |
+| Practice answers submitted | One per practice check-answer on one part |
+| Exams submitted | One per exam submission of a whole question |
+| Days active | Distinct America/Vancouver calendar days with any submission |
+| Last activity | Most recent submission, `YYYY-MM-DD HH:mm` America/Vancouver |
+| Flagged answers | Answers that trip at least one effort flag |
+
+**Effort flags** (`src/scenario-generation/scenario-effort-flags.ts`) are fixed rules, not an LLM, so results are reproducible and each one is explainable. They mark answers worth a look, not low marks:
+
+| Flag | Rule |
+| ---- | ---- |
+| `too_short` | Fewer than 3 words after normalization, or a stock non-answer ("idk", "n/a", "not sure") |
+| `repeats_question` | ≥ 60% of the answer's word triples appear in the part's prompt (answers of 8+ words only) |
+| `duplicate` | Same normalized text as the student's previous answer to that part |
+| `copies_model_answer` | ≥ 60% of the answer's word triples appear in the model answer (answers of 8+ words only) |
+
+The Monitor panel shows each flagged answer's reasons, so an instructor can check why the CSV counted it.
 
 Code: `src/db/mongo/scenario-usage-mongo.ts`, routes at the top of `scenario-questions-routes.ts`, `public/scripts/feature/monitor-scenario-history.ts`, and the panel wiring in `monitor.ts`.
 

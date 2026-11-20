@@ -25,9 +25,13 @@ import type {
     ScenarioUsageQuestion,
     ScenarioUsageQuestionState,
 } from '../../types/shared';
+import { effortFlagsForAnswer } from '../../scenario-generation/scenario-effort-flags';
+import { getPracticeDayKey } from '../../scenario-generation/scenario-practice-limits';
+import { isInCourseInstructors, isInCourseTAs } from '../../utils/course-staff';
 import { getCollectionNames } from './collection-registry-mongo';
 import { batchFindUsersByUserIds } from './course-user-mongo';
 import type { MongoDalContext } from './mongo-context';
+import { withoutTestStudents } from './student-view-filter';
 
 /** Chapter label for questions whose topic/week no longer exists on the course. */
 export const UNCATEGORIZED_TOPIC_TITLE = 'Uncategorized';
@@ -43,6 +47,7 @@ export interface StudentScopedQuestionDoc {
         subQuestionId: string;
         subQuestionType?: ScenarioSubQuestionType;
         prompt?: string;
+        modelAnswer?: string; // used server-side for effort flags only; never returned
         studentResponses?: Array<{
             id: string;
             studentUserId: string;
@@ -139,6 +144,7 @@ export async function getStudentScenarioUsageHistory(
                                 subQuestionId: '$$sub.subQuestionId',
                                 subQuestionType: '$$sub.subQuestionType',
                                 prompt: '$$sub.prompt',
+                                modelAnswer: '$$sub.modelAnswer',
                                 studentResponses: {
                                     $filter: {
                                         input: { $ifNull: ['$$sub.studentResponses', []] },
@@ -218,23 +224,34 @@ function questionStateOf(status: ScenarioQuestionStatus): ScenarioUsageQuestionS
 }
 
 function toUsageQuestion(doc: StudentScopedQuestionDoc, chapterTitle: Map<string, string>): ScenarioUsageQuestion {
-    const parts: ScenarioUsagePart[] = (doc.subQuestions ?? []).map((sub) => ({
-        subQuestionId: sub.subQuestionId,
-        subQuestionType: sub.subQuestionType ?? 'calculation',
-        prompt: sub.prompt ?? '',
-        attempts: (sub.studentResponses ?? [])
-            .map(
-                (r): ScenarioUsageAttempt => ({
-                    id: r.id,
-                    mode: r.mode,
-                    studentAnswer: r.studentAnswer,
-                    feedback: r.feedback,
-                    ...(r.mode === 'exam' && typeof r.grade === 'number' ? { grade: r.grade } : {}),
-                    submittedAt: new Date(r.submittedAt).toISOString(),
-                })
-            )
-            .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt)),
-    }));
+    const parts: ScenarioUsagePart[] = (doc.subQuestions ?? []).map((sub) => {
+        // Oldest first, so each answer's flags can compare it with the one before
+        const chronological = [...(sub.studentResponses ?? [])].sort(
+            (a, b) => new Date(a.submittedAt).getTime() - new Date(b.submittedAt).getTime()
+        );
+        const attempts = chronological.map(
+            (r, i): ScenarioUsageAttempt => ({
+                id: r.id,
+                mode: r.mode,
+                studentAnswer: r.studentAnswer,
+                feedback: r.feedback,
+                ...(r.mode === 'exam' && typeof r.grade === 'number' ? { grade: r.grade } : {}),
+                submittedAt: new Date(r.submittedAt).toISOString(),
+                flags: effortFlagsForAnswer({
+                    answer: r.studentAnswer,
+                    prompt: sub.prompt ?? '',
+                    modelAnswer: sub.modelAnswer ?? '',
+                    previousAnswer: i > 0 ? chronological[i - 1].studentAnswer : undefined,
+                }),
+            })
+        );
+        return {
+            subQuestionId: sub.subQuestionId,
+            subQuestionType: sub.subQuestionType ?? 'calculation',
+            prompt: sub.prompt ?? '',
+            attempts: attempts.reverse(),
+        };
+    });
 
     const answeredParts = parts.filter((p) => p.attempts.length > 0).length;
     const progress: ScenarioUsageProgress =
@@ -259,5 +276,198 @@ function toUsageQuestion(doc: StudentScopedQuestionDoc, chapterTitle: Map<string
         lastSubmittedAt,
         // Not-attempted questions only need their title in the panel
         parts: progress === 'not_attempted' ? [] : parts,
+    };
+}
+
+// =====================================================
+// Course-wide usage report (CSV export)
+// =====================================================
+
+/** One student's totals in the usage export. */
+export interface ScenarioUsageReportRow {
+    userId: string;
+    studentName: string;
+    questionsAttempted: number;
+    questionsCompleted: number;
+    practiceAnswers: number;
+    examsSubmitted: number;
+    daysActive: number;
+    lastActivityAt: Date | null;
+    flaggedAnswers: number;
+}
+
+/** The export: totals per student plus how many questions are currently published. */
+export interface ScenarioUsageReport {
+    publishedQuestionCount: number;
+    rows: ScenarioUsageReportRow[];
+}
+
+/** A question with every student's responses (feedback text not loaded). */
+export interface ReportQuestionDoc {
+    id: string;
+    status: ScenarioQuestionStatus;
+    subQuestions?: Array<{
+        subQuestionId: string;
+        prompt?: string;
+        modelAnswer?: string;
+        studentResponses?: Array<{
+            studentUserId: string;
+            mode: ScenarioMode;
+            studentAnswer: string;
+            submittedAt: Date | string;
+        }>;
+    }>;
+}
+
+/**
+ * getScenarioUsageReport — per-student totals for the usage CSV.
+ *
+ * Rows cover every real student on the roster (test students, instructors and TAs excluded),
+ * including students with no activity. Removed (archived) and unpublished questions count
+ * toward totals because the work was done.
+ *
+ * @param ctx - Mongo context
+ * @param course - Course to report on
+ * @returns Report rows sorted by student name
+ */
+export async function getScenarioUsageReport(
+    ctx: MongoDalContext,
+    course: activeCourse
+): Promise<ScenarioUsageReport> {
+    // Step 1: real students only
+    const collections = await getCollectionNames(ctx, course.courseName);
+    const userDocs = await ctx.db
+        .collection(collections.users)
+        .find(withoutTestStudents({ affiliation: 'student' }), { projection: { userId: 1, name: 1 } })
+        .toArray();
+    const students = userDocs
+        .map((u) => ({ userId: String(u.userId), name: String(u.name ?? '') }))
+        .filter((u) => !isInCourseTAs(course, u.userId) && !isInCourseInstructors(course, u.userId));
+
+    // Step 2: every question with responses; skip text the report never uses
+    const questionDocs = await ctx.db
+        .collection(collections.scenarioQuestions)
+        .find(
+            {},
+            {
+                projection: {
+                    _id: 0,
+                    questionBody: 0,
+                    solutionBody: 0,
+                    sourcePrompt: 0,
+                    'subQuestions.studentResponses.feedback': 0,
+                },
+            }
+        )
+        .toArray();
+
+    return buildScenarioUsageReport(students, questionDocs as unknown as ReportQuestionDoc[]);
+}
+
+/**
+ * buildScenarioUsageReport — fold every response into per-student totals.
+ *
+ * - Questions attempted / completed: ≥1 answer on any part / an answer on every part (any mode)
+ * - Practice answers: one per practice submission of one part
+ * - Exams submitted: one per exam submission of a whole question (its parts share a timestamp)
+ * - Days active: distinct calendar days (America/Vancouver) with any submission
+ * - Flagged answers: answers tripping at least one effort flag
+ *
+ * @param students - Roster students to report on
+ * @param questions - Questions with all students' responses
+ * @returns Report rows sorted by name, then userId
+ */
+export function buildScenarioUsageReport(
+    students: Array<{ userId: string; name: string }>,
+    questions: ReportQuestionDoc[]
+): ScenarioUsageReport {
+    interface Totals {
+        attemptedQuestions: Set<string>;
+        completedQuestions: number;
+        practiceAnswers: number;
+        examSubmissions: Set<string>;
+        days: Set<string>;
+        lastActivityAt: Date | null;
+        flaggedAnswers: number;
+    }
+    const totals = new Map<string, Totals>(
+        students.map((s) => [
+            s.userId,
+            {
+                attemptedQuestions: new Set(),
+                completedQuestions: 0,
+                practiceAnswers: 0,
+                examSubmissions: new Set(),
+                days: new Set(),
+                lastActivityAt: null,
+                flaggedAnswers: 0,
+            },
+        ])
+    );
+
+    for (const question of questions) {
+        const parts = question.subQuestions ?? [];
+        const partsAnsweredByStudent = new Map<string, number>();
+
+        for (const part of parts) {
+            // Group this part's responses by student, oldest first, for duplicate detection
+            const byStudent = new Map<string, NonNullable<typeof part.studentResponses>>();
+            for (const r of part.studentResponses ?? []) {
+                const id = String(r.studentUserId);
+                if (!totals.has(id)) continue; // not a reported student (staff, test student, dropped)
+                const list = byStudent.get(id) ?? [];
+                list.push(r);
+                byStudent.set(id, list);
+            }
+
+            for (const [userId, responses] of byStudent) {
+                const t = totals.get(userId)!;
+                responses.sort((a, b) => new Date(a.submittedAt).getTime() - new Date(b.submittedAt).getTime());
+                partsAnsweredByStudent.set(userId, (partsAnsweredByStudent.get(userId) ?? 0) + 1);
+                t.attemptedQuestions.add(question.id);
+
+                responses.forEach((r, i) => {
+                    const at = new Date(r.submittedAt);
+                    if (r.mode === 'exam') t.examSubmissions.add(`${question.id}@${at.getTime()}`);
+                    else t.practiceAnswers += 1;
+                    t.days.add(getPracticeDayKey(at));
+                    if (!t.lastActivityAt || at > t.lastActivityAt) t.lastActivityAt = at;
+
+                    const flags = effortFlagsForAnswer({
+                        answer: r.studentAnswer,
+                        prompt: part.prompt ?? '',
+                        modelAnswer: part.modelAnswer ?? '',
+                        previousAnswer: i > 0 ? responses[i - 1].studentAnswer : undefined,
+                    });
+                    if (flags.length > 0) t.flaggedAnswers += 1;
+                });
+            }
+        }
+
+        for (const [userId, answeredParts] of partsAnsweredByStudent) {
+            if (parts.length > 0 && answeredParts === parts.length) totals.get(userId)!.completedQuestions += 1;
+        }
+    }
+
+    const rows = students
+        .map((s): ScenarioUsageReportRow => {
+            const t = totals.get(s.userId)!;
+            return {
+                userId: s.userId,
+                studentName: s.name,
+                questionsAttempted: t.attemptedQuestions.size,
+                questionsCompleted: t.completedQuestions,
+                practiceAnswers: t.practiceAnswers,
+                examsSubmitted: t.examSubmissions.size,
+                daysActive: t.days.size,
+                lastActivityAt: t.lastActivityAt,
+                flaggedAnswers: t.flaggedAnswers,
+            };
+        })
+        .sort((a, b) => a.studentName.localeCompare(b.studentName) || a.userId.localeCompare(b.userId));
+
+    return {
+        publishedQuestionCount: questions.filter((q) => q.status === 'published').length,
+        rows,
     };
 }

@@ -28,6 +28,7 @@ import {
     updateScenarioQuestion,
     patchScenarioQuestionStatus,
     deleteScenarioQuestion,
+    downloadScenarioUsageCsv,
     generateScenarioQuestions,
     fetchScenarioLearningObjectives,
     validatePublish,
@@ -260,6 +261,36 @@ function renderMarkdownInto(element: HTMLElement, markdown: string, idPrefix: st
     renderFeatherIcons();
 }
 
+/**
+ * Download the per-student usage CSV. The button shows progress and stays disabled until done.
+ */
+async function downloadUsageCsv(button: HTMLButtonElement): Promise<void> {
+    if (!currentCourse || button.disabled) return;
+    const label = button.querySelector('.sg-instructor-usage-download-label');
+    const idleText = label?.textContent ?? '';
+    button.disabled = true;
+    button.setAttribute('aria-busy', 'true');
+    // The label text is the button's accessible name (visually hidden on narrow screens)
+    if (label) label.textContent = 'Preparing download…';
+    try {
+        const { blob, filename } = await downloadScenarioUsageCsv(currentCourse.id);
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+    } catch (error) {
+        showErrorToast(errorMessage(error, 'Could not download student usage.'));
+    } finally {
+        button.disabled = false;
+        button.removeAttribute('aria-busy');
+        if (label) label.textContent = idleText;
+    }
+}
+
 function errorMessage(error: unknown, fallback: string): string {
     return error instanceof Error && error.message ? error.message : fallback;
 }
@@ -412,6 +443,10 @@ function attachStaticListeners(): void {
         showGridView();
         void renderBrowseHome();
         syncScenarioUrl(mode === 'questions' ? { browse: 'questions' } : {});
+    }, { signal });
+
+    document.getElementById('sg-instructor-usage-download-btn')?.addEventListener('click', (e: Event) => {
+        void downloadUsageCsv(e.currentTarget as HTMLButtonElement);
     }, { signal });
 
     document.getElementById('sg-instructor-topic-detail-generate-btn')?.addEventListener('click', () => {
