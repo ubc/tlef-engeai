@@ -1130,10 +1130,20 @@ summary.monitor-scenario-question-row:focus-visible {
         color: white;
     }
 
+    /* Icon-only on narrow screens; the text stays available to screen readers (same
+       declarations as .visually-hidden) because it is the button's accessible name. */
     .monitor-header.mobile-header-bar .monitor-download-conversations-btn .btn-text,
     .monitor-header.mobile-header-bar .monitor-download-report-btn .btn-text,
     .monitor-header.mobile-header-bar .monitor-course-mongo-backup-btn .btn-text {
-        display: none;
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
     }
 
     .nav-tiles {

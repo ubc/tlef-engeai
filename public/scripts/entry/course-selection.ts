@@ -264,9 +264,8 @@ function createCourseCard(course: activeCourse & { instructorDisplay?: string })
                 </div>
             </div>
             <div class="workspace-action">
-                <button class="launch-btn" data-course-id="${course.id}" aria-label="Enter course" title="Enter course">
-                    <i data-feather="log-in"></i>
-                    <span class="btn-text">ENTER CLASS</span>
+                <button class="launch-btn" data-course-id="${course.id}" data-course-name="${escapeHtml(course.courseName).replace(/"/g, '&quot;')}" title="Enter course">
+                    ${launchButtonContent('enter', course.courseName)}
                 </button>
             </div>
         </div>
@@ -334,14 +333,33 @@ function attachCourseCardListeners(): void {
  * @returns Promise<void>
  * POST /api/course/enter. Redirects to instructor or student view based on user role.
  */
+/**
+ * Contents of an ENTER CLASS button. The accessible name is "Enter Class (APSC 183)": the label
+ * is written in title case (CSS shows it uppercase) and the course name is visually hidden, so
+ * each button has a distinct name that still starts with the visible words.
+ *
+ * @param state - Idle, or while the course is being entered
+ * @param courseName - Course shown in the row
+ * @returns Inner HTML for the button (decorative icon + label)
+ */
+function launchButtonContent(state: 'enter' | 'entering', courseName: string): string {
+    const icon = state === 'enter' ? 'log-in' : 'loader';
+    const label = state === 'enter' ? 'Enter Class' : 'Entering...';
+    return `<i data-feather="${icon}" aria-hidden="true"></i><span class="btn-text">${label}</span><span class="visually-hidden launch-btn-course"> (${escapeHtml(courseName)})</span>`;
+}
+
 async function enterCourse(courseId: string): Promise<void> {
+    // Read before the button's contents are swapped, so every state keeps the course name
+    const courseName =
+        document.querySelector<HTMLButtonElement>(`button.launch-btn[data-course-id="${courseId}"]`)?.dataset
+            .courseName ?? '';
     try {
-        
+
         // Find and disable only the clicked button
         const clickedButton = document.querySelector(`button.launch-btn[data-course-id="${courseId}"]`);
         if (clickedButton) {
             (clickedButton as HTMLButtonElement).disabled = true;
-            clickedButton.innerHTML = '<i data-feather="loader"></i><span class="btn-text">ENTERING...</span>';
+            clickedButton.innerHTML = launchButtonContent('entering', courseName);
             if (typeof (window as any).feather !== 'undefined') {
                 (window as any).feather.replace();
             }
@@ -364,7 +382,7 @@ async function enterCourse(courseId: string): Promise<void> {
             const clickedButton = document.querySelector(`button.launch-btn[data-course-id="${courseId}"]`);
             if (clickedButton) {
                 (clickedButton as HTMLButtonElement).disabled = false;
-                clickedButton.innerHTML = '<i data-feather="log-in"></i><span class="btn-text">ENTER CLASS</span>';
+                clickedButton.innerHTML = launchButtonContent('enter', courseName);
                 if (typeof (window as any).feather !== 'undefined') {
                     (window as any).feather.replace();
                 }
@@ -384,7 +402,7 @@ async function enterCourse(courseId: string): Promise<void> {
         const clickedButton = document.querySelector(`button.launch-btn[data-course-id="${courseId}"]`);
         if (clickedButton) {
             (clickedButton as HTMLButtonElement).disabled = false;
-            clickedButton.innerHTML = '<i data-feather="log-in"></i><span class="btn-text">ENTER CLASS</span>';
+            clickedButton.innerHTML = launchButtonContent('enter', courseName);
             if (typeof (window as any).feather !== 'undefined') {
                 (window as any).feather.replace();
             }

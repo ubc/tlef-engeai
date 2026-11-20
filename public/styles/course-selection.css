@@ -790,6 +790,12 @@ body:has(.admin-course-selection-wrapper) .top-branding {
     gap: 0.5rem;
 }
 
+/* Hidden course name in the button's accessible name — "Enter Class (APSC 183)" — keeps its
+   own capitalization instead of inheriting the button's uppercase */
+.launch-btn .launch-btn-course {
+    text-transform: none;
+}
+
 .launch-btn i,
 .launch-btn .feather {
     width: 18px;
@@ -1079,8 +1085,17 @@ body:has(.admin-course-selection-wrapper) .top-branding {
         min-height: 36px;
     }
     
+    /* Icon-only on narrow screens; text kept for screen readers (it is the control's name) */
     .logout-btn .btn-text {
-        display: none;
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
     }
     
     .top-branding-right {
@@ -1099,8 +1114,17 @@ body:has(.admin-course-selection-wrapper) .top-branding {
         padding: 0 0.6rem;
     }
 
+    /* Icon-only on narrow screens; text kept for screen readers (it is the control's name) */
     .admin-header-link .btn-text {
-        display: none;
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
     }
     
     .welcome-text {
@@ -1129,10 +1153,19 @@ body:has(.admin-course-selection-wrapper) .top-branding {
         gap: 0.5rem;
     }
     
-    /* Mobile: icon-only for add/create course buttons */
+    /* Mobile: icon-only for add/create course buttons. The text stays available to screen
+       readers (same declarations as .visually-hidden) because it is the button's name. */
     .add-new-course-btn .btn-text,
     .create-new-course-btn .btn-text {
-        display: none;
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
     }
     
     .add-new-course-btn,
@@ -1142,9 +1175,17 @@ body:has(.admin-course-selection-wrapper) .top-branding {
         min-height: 36px;
     }
     
-    /* Mobile: icon-only for enter button */
+    /* Mobile: icon-only for enter button; text kept for screen readers as above */
     .launch-btn .btn-text {
-        display: none;
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
     }
     
     .launch-btn {

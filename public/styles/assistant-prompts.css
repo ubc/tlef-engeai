@@ -406,8 +406,18 @@
         color: white;
     }
 
+    /* Icon-only on narrow screens; the text stays available to screen readers (same
+       declarations as .visually-hidden) because it is the button's accessible name. */
     .assistant-add-prompt-btn .btn-text {
-        display: none;
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
     }
 
     /* Prompt card actions: icon-only, horizontal, tidy on mobile */

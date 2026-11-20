@@ -249,7 +249,7 @@ function renderPeriodSection(period: AdminPeriodSection, openPeriodId: string | 
                 </div>
                 <div class="period-header-actions">
                     <button type="button" class="create-new-course-btn period-create-course-btn" data-period-id="${period.id}">
-                        <i data-feather="file-plus"></i>
+                        <i data-feather="file-plus" aria-hidden="true"></i>
                         <span class="btn-text">Create New Course</span>
                     </button>
                     <span class="period-menu-mount" data-period-id="${period.id}"></span>
@@ -275,9 +275,9 @@ function renderCourseRow(course: AdminCourseRow, periodId: string): string {
                 <div class="workspace-members"><span class="member-count">${escapeHtml(instructors)}</span></div>
             </div>
             <div class="workspace-action admin-course-actions">
-                <button class="launch-btn" data-course-id="${course.id}" aria-label="Enter course">
-                    <i data-feather="log-in"></i>
-                    <span class="btn-text">ENTER CLASS</span>
+                <button class="launch-btn" data-course-id="${course.id}">
+                    <i data-feather="log-in" aria-hidden="true"></i>
+                    <span class="btn-text">Enter Class</span><span class="visually-hidden launch-btn-course"> (${escapeHtml(course.courseName)})</span>
                 </button>
                 <span class="course-menu-mount" data-course-id="${course.id}" data-period-id="${periodId}"></span>
             </div>
