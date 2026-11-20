@@ -53,6 +53,7 @@ import {
 import {
     batchScenarioSchema,
     assemblePracticeDescriptiveFeedback,
+    parsePlainTextPracticeFeedback,
     sanitizeExamGradingResponse,
     sanitizeGeneratedScenario,
     sanitizeScenarioFeedback,
@@ -60,7 +61,6 @@ import {
     sanitizeScenarioPracticeFeedback,
     resolveScenarioPersistTitle,
     scenarioExamGradingResponseSchema,
-    scenarioPracticeFeedbackResponseSchema,
     singleScenarioSchema,
     type GeneratedScenario,
 } from './scenario-schemas';
@@ -817,22 +817,20 @@ export class ScenarioService {
 
         const llmOptions = await this.resolveLlmCallOptions(courseId);
 
-        // send the messages to the LLM
-        const response = await this.llmModule.sendStructuredConversation(
-            messages,
-            scenarioPracticeFeedbackResponseSchema,
-            { structuredOutputName: 'scenario_practice_feedback', ...llmOptions }
-        );
-        if (!response?.parsed) {
-            throw new Error('Empty structured response from LLM');
+        // Plain text, not structured JSON: the reply is a single string, and JSON escaping
+        // mangles LaTeX backslashes (`\frac` → form feed + "rac").
+        const response = await this.llmModule.sendConversation(messages, llmOptions);
+        const parsed = parsePlainTextPracticeFeedback(response?.content ?? '');
+        if (!parsed.feedback) {
+            throw new Error('Empty practice feedback response from LLM');
         }
 
         if (tier === 'descriptive') {
-            const { feedback: evaluation } = sanitizeScenarioPracticeDescriptiveFeedback(response.parsed);
+            const { feedback: evaluation } = sanitizeScenarioPracticeDescriptiveFeedback(parsed);
             return { feedback: assemblePracticeDescriptiveFeedback(evaluation, subQuestion.modelAnswer) };
         }
 
-        return sanitizeScenarioPracticeFeedback(response.parsed, subQuestion.modelAnswer);
+        return sanitizeScenarioPracticeFeedback(parsed, subQuestion.modelAnswer);
     }
 
     /**

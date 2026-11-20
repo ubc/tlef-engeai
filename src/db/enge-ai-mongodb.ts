@@ -1245,8 +1245,12 @@ export class EngEAI_MongoDB {
     public listPublishedScenarioQuestionsForStudent = async (courseName: string, topicOrWeekId?: string) =>
         ScenarioQuestionsMongo.listPublishedScenarioQuestionsForStudent(this.ctx(), courseName, topicOrWeekId);
 
-    public getScenarioQuestionById = async (courseName: string, questionId: string) =>
-        ScenarioQuestionsMongo.getScenarioQuestionById(this.ctx(), courseName, questionId);
+    /** Archived questions read as `null` unless `options.includeArchived` is set. */
+    public getScenarioQuestionById = async (
+        courseName: string,
+        questionId: string,
+        options?: { includeArchived?: boolean }
+    ) => ScenarioQuestionsMongo.getScenarioQuestionById(this.ctx(), courseName, questionId, options);
 
     public getPublishedScenarioQuestionForStudent = async (courseName: string, questionId: string) =>
         ScenarioQuestionsMongo.getPublishedScenarioQuestionForStudent(this.ctx(), courseName, questionId);
@@ -1264,6 +1268,7 @@ export class EngEAI_MongoDB {
     public patchScenarioQuestionStatus = async (courseName: string, questionId: string, status: ScenarioQuestionStatus) =>
         ScenarioQuestionsMongo.patchScenarioQuestionStatus(this.ctx(), courseName, questionId, status);
 
+    /** Deletes an unanswered question or archives an answered one; `null` when not found. */
     public deleteScenarioQuestion = async (courseName: string, questionId: string) =>
         ScenarioQuestionsMongo.deleteScenarioQuestion(this.ctx(), courseName, questionId);
 

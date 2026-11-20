@@ -27,7 +27,12 @@ import {
     submitScenarioExam,
     submitScenarioStudentResponse,
 } from '../../scenario-generation/scenario-service';
-import { hasCompletedSubQuestion, toInstructorProjection } from '../../db/mongo/scenario-questions-mongo';
+import {
+    hasCompletedSubQuestion,
+    ScenarioPartHasResponsesError,
+    ScenarioQuestionEditConflictError,
+    toInstructorProjection,
+} from '../../db/mongo/scenario-questions-mongo';
 import {
     checkScenarioAnswerRequestSchema,
     scenarioGenerateRequestSchema,
@@ -279,21 +284,32 @@ export function mountScenarioQuestionRoutes(router: Router): void {
                 }
             }
             const globalUser = await instance.findGlobalUserByPUID((req as any).user.puid);
-            const updated = await instance.updateScenarioQuestion(
-                (course as activeCourse).courseName,
-                questionId,
-                {
-                    title,
-                    topicOrWeekId,
-                    questionBody,
-                    solutionBody,
-                    subQuestions,
-                    difficulty,
-                    expectedTimeMinutes,
-                    learningObjectives,
-                },
-                globalUser?.userId
-            );
+            let updated;
+            try {
+                updated = await instance.updateScenarioQuestion(
+                    (course as activeCourse).courseName,
+                    questionId,
+                    {
+                        title,
+                        topicOrWeekId,
+                        questionBody,
+                        solutionBody,
+                        subQuestions,
+                        difficulty,
+                        expectedTimeMinutes,
+                        learningObjectives,
+                    },
+                    globalUser?.userId
+                );
+            } catch (error) {
+                if (
+                    error instanceof ScenarioPartHasResponsesError ||
+                    error instanceof ScenarioQuestionEditConflictError
+                ) {
+                    return res.status(409).json({ success: false, error: error.message });
+                }
+                throw error;
+            }
             if (!updated) {
                 return res.status(404).json({ success: false, error: 'Question not found' });
             }
@@ -346,14 +362,15 @@ export function mountScenarioQuestionRoutes(router: Router): void {
             if (!course) {
                 return res.status(404).json({ success: false, error: 'Course not found' });
             }
-            const deleted = await instance.deleteScenarioQuestion(
+            // Answered questions are archived, not removed, so student answers survive.
+            const outcome = await instance.deleteScenarioQuestion(
                 (course as activeCourse).courseName,
                 questionId
             );
-            if (!deleted) {
+            if (!outcome) {
                 return res.status(404).json({ success: false, error: 'Question not found' });
             }
-            res.json({ success: true });
+            res.json({ success: true, data: { outcome } });
         })
     );
 

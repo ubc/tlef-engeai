@@ -11,6 +11,7 @@
  */
 
 import { z } from 'zod';
+import { repairJsonMangledLatex } from './latex-json-repair';
 import {
     SCENARIO_BATCH_MAX_COUNT,
     type ScenarioSubQuestionType,
@@ -183,8 +184,43 @@ const FALLBACK_PRACTICE_FEEDBACK =
     'Thanks for sharing your work. Re-read the scenario details, check your units and assumptions, and see whether your reasoning fully addresses what the question is asking.';
 
 /**
+ * parsePlainTextPracticeFeedback — reads a plain-text practice feedback reply.
+ *
+ * Practice feedback is requested as plain text rather than JSON so LaTeX backslashes reach the
+ * student intact. This strips wrappers a model sometimes adds anyway (a code fence, surrounding
+ * quotes, or a `{"feedback": "..."}` object) and returns the shape the sanitizers expect.
+ *
+ * @param content - Raw text content of the LLM reply
+ * @returns `{ feedback }`, with an empty string when the reply had no usable text
+ */
+export function parsePlainTextPracticeFeedback(content: string): ScenarioPracticeFeedbackLLMResponse {
+    let text = (content ?? '').trim();
+
+    // Step 1: unwrap a fenced block such as ```text ... ```
+    const fenced = text.match(/^```[a-zA-Z]*\n([\s\S]*?)\n?```$/);
+    if (fenced) text = fenced[1].trim();
+
+    // Step 2: unwrap a JSON object the model produced out of habit
+    if (text.startsWith('{')) {
+        try {
+            const parsed = JSON.parse(text) as { feedback?: unknown };
+            // JSON decoding can mangle LaTeX the same way structured output does
+            if (typeof parsed?.feedback === 'string') text = repairJsonMangledLatex(parsed.feedback.trim());
+        } catch {
+            // Not JSON after all — keep the text as written
+        }
+    }
+
+    // Step 3: drop quotes wrapping the whole reply
+    const quoted = text.match(/^"([\s\S]*)"$/);
+    if (quoted) text = quoted[1].trim();
+
+    return { feedback: text };
+}
+
+/**
  * sanitizeScenarioPracticeFeedback - Sanitizes the practice feedback
- * 
+ *
  * @param raw - The raw practice feedback from the LLM
  * @param modelAnswer - The model answer for the scenario
  * @returns The sanitized practice feedback
@@ -242,7 +278,8 @@ export function sanitizeScenarioFeedback(
 ): { grade: number; feedback: string } {
     // Clamp grade to valid 1–10 integer; default to mid-range when LLM returns garbage
     const grade = Number.isInteger(raw.grade) && raw.grade >= 1 && raw.grade <= 10 ? raw.grade : 5;
-    const feedback = raw.feedback?.trim() || FALLBACK_FEEDBACK;
+    // Exam feedback arrives inside JSON, where single-escaped LaTeX backslashes get mangled
+    const feedback = repairJsonMangledLatex(raw.feedback?.trim() || '') || FALLBACK_FEEDBACK;
 
     // Reject feedback that quotes the model answer back to the student
     const modelAnswerNormalized = modelAnswer.trim().toLowerCase();

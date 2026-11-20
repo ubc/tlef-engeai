@@ -1284,8 +1284,14 @@ export interface InactivityTrackerConfig {
 // Must match src/types/shared.ts. Standalone practice bank replacing the retired
 // `scenario-generation` chat mode. Chapter grouping uses TopicOrWeekInstance.id (D1).
 
-/** Must match src/types/shared.ts. Drafts are invisible to students (404, not 403). */
-export type ScenarioQuestionStatus = 'draft' | 'published' | 'rejected';
+/**
+ * Must match src/types/shared.ts. Drafts are invisible to students (404, not 403).
+ * `archived` is set only by delete when students have answered; the bank API never returns it.
+ */
+export type ScenarioQuestionStatus = 'draft' | 'published' | 'rejected' | 'archived';
+
+/** Must match src/types/shared.ts. Result of deleting a question. */
+export type ScenarioQuestionDeleteOutcome = 'deleted' | 'archived';
 
 /** Must match src/types/shared.ts. Practice vs exam discriminator. */
 export type ScenarioMode = 'practice' | 'exam';
@@ -1410,6 +1416,7 @@ export interface ScenarioQuestion {
     createdAt: string | Date;
     updatedAt: string | Date;
     publishedAt?: string | Date | null;
+    archivedAt?: string | Date;
     createdByUserId: string;
     lastEditedByUserId?: string;
 }

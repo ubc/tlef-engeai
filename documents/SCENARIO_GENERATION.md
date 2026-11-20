@@ -71,6 +71,7 @@ Route handlers remain thin. AI workflow logic belongs in `scenario-service.ts`; 
 | [`src/scenario-generation/scenario-schemas.ts`](../src/scenario-generation/scenario-schemas.ts) | Zod schemas, request validation, LLM output sanitizers |
 | [`src/scenario-generation/prompts/scenario-generation-prompt.ts`](../src/scenario-generation/prompts/scenario-generation-prompt.ts) | System prompt for scenario authoring |
 | [`src/scenario-generation/prompts/scenario-feedback-prompt.ts`](../src/scenario-generation/prompts/scenario-feedback-prompt.ts) | System and user prompts for practice feedback and exam evaluation |
+| [`src/scenario-generation/latex-json-repair.ts`](../src/scenario-generation/latex-json-repair.ts) | Best-effort repair of LaTeX mangled by JSON escaping in exam feedback |
 | [`src/scenario-generation/scenario-practice-limits.ts`](../src/scenario-generation/scenario-practice-limits.ts) | Daily attempt limits, cooldown, feedback tier resolution |
 | [`src/scenario-generation/scenario-practice-canned-responses.ts`](../src/scenario-generation/scenario-practice-canned-responses.ts) | Standard messages when rate limits block LLM evaluation |
 | [`src/routes/mongo/scenario-questions-routes.ts`](../src/routes/mongo/scenario-questions-routes.ts) | REST routes (mounted from `route-mongo.ts`) |
@@ -114,7 +115,7 @@ Each document represents one scenario question:
 ```text
 ScenarioQuestion
 ├── id, courseId, courseName, topicOrWeekId
-├── status: draft | published | rejected
+├── status: draft | published | rejected | archived
 ├── title, sourcePrompt
 ├── questionBody          ← student-facing narrative (Markdown)
 ├── solutionBody          ← full worked solution
@@ -134,6 +135,13 @@ ScenarioQuestion
 ```
 
 Student responses are embedded on each sub-question rather than stored in a separate collection. This simplifies check-answer handling and solution gating. Document size is monitored against MongoDB’s 16 MiB limit (`SCENARIO_DOCUMENT_GROWTH_GUARD_BYTES`).
+
+### Keeping student answers
+
+Because answers live inside the question document, instructor actions must never drop them:
+
+- **Delete** removes a question outright only when nobody has answered it. Otherwise the question is **archived** (`status: archived`, `archivedAt`): hidden from the question bank and from students, but its answers are kept for usage reporting. Archived questions can't be edited or republished.
+- **Edit** keeps each part's answers. Removing a part that has answers is rejected (409); editing its wording is allowed. Edits re-read and retry if a student submits mid-save, so the new answer isn't overwritten.
 
 ### Student-facing projection
 
@@ -214,7 +222,7 @@ Structured LLM output (before server-assigned identifiers):
 
 Model answers use ATX `# Title` headings; the client parses these into flashcard steps (`scenario-answer-flashcard.ts`).
 
-Answer-evaluation prompts reside in `scenario-feedback-prompt.ts` (practice and exam paths; student input is XML-escaped).
+Answer-evaluation prompts reside in `scenario-feedback-prompt.ts` (practice and exam paths; student input is XML-escaped). Practice prompts add an `output format` module asking for plain text only.
 
 ---
 
@@ -249,6 +257,8 @@ Answer-evaluation prompts reside in `scenario-feedback-prompt.ts` (practice and 
 | Practice (attempts 1–2) | Socratic formative feedback | `feedback` |
 | Practice (attempts 3–6) | Direct evaluation; server appends model answer | `feedback` |
 | Exam | Integer score (1–10) and academic feedback per part | `grade`, `feedback` |
+
+**Math in feedback.** Practice feedback is requested as **plain text** (`sendConversation`), not structured JSON: JSON requires every LaTeX backslash to be doubled, and models that slip produce `\frac` → form feed + `rac`, dropped backslashes (`lambda`), or stray control characters. `parsePlainTextPracticeFeedback` strips any code fence, quotes, or `{"feedback": …}` wrapper the model adds anyway. Exam grading still needs JSON for per-part grades, so `sanitizeScenarioFeedback` runs `repairJsonMangledLatex` (`latex-json-repair.ts`) on the feedback inside `$…$` / `$$…$$` before it is stored. The repair is best-effort. Separately, the browser converts `\(…\)` / `\[…\]` to dollar delimiters at display time (`math-delimiters.ts`).
 
 Sanitizers in `scenario-schemas.ts`:
 

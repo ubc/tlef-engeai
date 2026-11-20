@@ -103,15 +103,27 @@ Format any math in the feedback so the student page can render it.
 **CRITICAL:** Never use \`\\(...\\)\` or \`\\[...\\]\` — they display as raw LaTeX to the student.
 `;
 
+/** Practice feedback is requested as plain text (not JSON) so LaTeX backslashes survive. */
+const MODULE_PRACTICE_OUTPUT_FORMAT = `
+*Module Purpose*
+Define the shape of the reply.
+
+*Module Content*
+Reply with the feedback text only, written directly to the student.
+**IMPORTANT:** No preamble, labels, headings, surrounding quotation marks, code fences, or JSON.
+`;
+
 function wrapModule(id: string, body: string): string {
     return `<module id="${id}">\n${body.trim()}\n</module>`;
 }
 
 function buildFeedbackSystemPrompt(mode: 'scenario-practice-feedback' | 'scenario-exam-feedback', body: string): string {
+    const isPractice = mode === 'scenario-practice-feedback';
     const modules = [
         wrapModule('system prompt guidance', MODULE_GUIDANCE),
-        wrapModule(mode === 'scenario-practice-feedback' ? 'practice feedback' : 'exam grading', body),
+        wrapModule(isPractice ? 'practice feedback' : 'exam grading', body),
         wrapModule('math formatting', MODULE_MATH_FORMATTING),
+        ...(isPractice ? [wrapModule('output format', MODULE_PRACTICE_OUTPUT_FORMAT)] : []),
     ];
     return `<system_prompt mode="${mode}">\n${modules.join('\n')}\n</system_prompt>`;
 }

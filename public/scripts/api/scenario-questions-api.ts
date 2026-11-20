@@ -17,6 +17,7 @@ import type {
     ScenarioQuestionForStudent,
     ScenarioQuestionForInstructor,
     ScenarioQuestionStatus,
+    ScenarioQuestionDeleteOutcome,
     ScenarioPartFeedbackResponse,
     ScenarioGenerateRequest,
     ScenarioGenerateResponse,
@@ -179,17 +180,22 @@ export async function patchScenarioQuestionStatus(
 }
 
 /**
- * Delete a scenario question.
+ * Delete a scenario question. The server archives it instead when students have answered it,
+ * keeping their answers; either way it leaves the question bank.
  * @param courseId - The ID of the course.
  * @param questionId - The ID of the question.
- * @returns The void.
+ * @returns `'deleted'` or `'archived'`
  */
-export async function deleteScenarioQuestion(courseId: string, questionId: string): Promise<void> {
+export async function deleteScenarioQuestion(
+    courseId: string,
+    questionId: string
+): Promise<ScenarioQuestionDeleteOutcome> {
     const response = await fetch(`${apiBase(courseId)}/${questionId}`, {
         method: 'DELETE',
         credentials: 'same-origin',
     });
-    await parseJsonOrThrow(response);
+    const data = await parseJsonOrThrow(response);
+    return data?.data?.outcome === 'archived' ? 'archived' : 'deleted';
 }
 
 export async function generateScenarioQuestions(

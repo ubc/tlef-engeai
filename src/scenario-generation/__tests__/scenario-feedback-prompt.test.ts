@@ -38,6 +38,13 @@ describe('scenario-feedback-prompt practice tiers', () => {
         }
     });
 
+    it('asks for plain-text output on practice prompts only', () => {
+        expect(buildScenarioPracticeSocraticFeedbackSystemPrompt()).toContain('<module id="output format">');
+        expect(buildScenarioPracticeDescriptiveFeedbackSystemPrompt()).toContain('<module id="output format">');
+        // Exam grading still returns JSON (per-part grades), so it keeps its structured contract
+        expect(buildScenarioExamFeedbackSystemPrompt()).not.toContain('<module id="output format">');
+    });
+
     it('user turns differ by tier', () => {
         const socratic = buildScenarioPracticeFeedbackUserTurn('n', 'p', 'model', 'student', 'socratic');
         const descriptive = buildScenarioPracticeFeedbackUserTurn('n', 'p', 'model', 'student', 'descriptive');

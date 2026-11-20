@@ -8,6 +8,9 @@
  * SQ-001: lazy collection provision. SQ-002: difficulty/time/LO/type backfill.
  * SQ-003: subQuestionId + studentResponses + structured learningObjectives backfill.
  *
+ * Student answers are never discarded: deleting an answered question archives it, and edits
+ * that would drop an answered sub-question are rejected.
+ *
  * @author: @gatahcha
  * @date: 2026-07-03
  * @version: 2.0.0
@@ -23,6 +26,7 @@ import {
     ScenarioLearningObjectiveSnapshot,
     ScenarioMode,
     ScenarioQuestion,
+    ScenarioQuestionDeleteOutcome,
     ScenarioQuestionForInstructor,
     ScenarioQuestionForStudent,
     ScenarioQuestionStatus,
@@ -41,6 +45,33 @@ import { appLogger } from '../../utils/logger';
 
 /** Soft ceiling before Mongo's 16 MiB document limit — reject writes with a clear error. */
 export const SCENARIO_DOCUMENT_GROWTH_GUARD_BYTES = 14 * 1024 * 1024;
+
+/** Query fragment that hides archived questions (deleted after students answered them). */
+const NOT_ARCHIVED_FILTER = { status: { $ne: 'archived' } } as const;
+
+/** Attempts at a compare-and-set edit before giving up because student answers keep arriving. */
+const UPDATE_CONFLICT_MAX_ATTEMPTS = 3;
+
+/**
+ * Thrown when an edit would remove a sub-question that already has student answers.
+ * Routes map it to 409 so the instructor sees the message.
+ */
+export class ScenarioPartHasResponsesError extends Error {
+    constructor(public readonly subQuestionIds: string[]) {
+        super(
+            'Students have already answered this part, so it can’t be removed. You can still edit its wording.'
+        );
+        this.name = 'ScenarioPartHasResponsesError';
+    }
+}
+
+/** Thrown when the question kept changing during an edit (e.g. students submitting). Routes map it to 409. */
+export class ScenarioQuestionEditConflictError extends Error {
+    constructor() {
+        super('This question changed while saving. Please try again.');
+        this.name = 'ScenarioQuestionEditConflictError';
+    }
+}
 
 /** Default page size for instructor student-response history in the editor. */
 export const SCENARIO_INSTRUCTOR_RESPONSES_DEFAULT_LIMIT = 10;
@@ -357,13 +388,18 @@ export function validatePublishScenarioQuestion(
     return null;
 }
 
+/**
+ * listScenarioQuestions — instructor bank listing, sorted by chapter then sortOrder.
+ * Archived questions are never returned, even when `status: 'archived'` is requested.
+ */
 export async function listScenarioQuestions(
     ctx: MongoDalContext,
     courseName: string,
     filters?: { status?: ScenarioQuestionStatus; topicOrWeekId?: string }
 ): Promise<ScenarioQuestion[]> {
+    if (filters?.status === 'archived') return [];
     const collection = await getScenarioQuestionsCollection(ctx, courseName);
-    const query: Record<string, unknown> = {};
+    const query: Record<string, unknown> = { ...NOT_ARCHIVED_FILTER };
     if (filters?.status) query.status = filters.status;
     if (filters?.topicOrWeekId) query.topicOrWeekId = filters.topicOrWeekId;
     const docs = await collection.find(query).sort({ topicOrWeekId: 1, sortOrder: 1 }).toArray();
@@ -477,13 +513,21 @@ export async function findPublishedScenariosByObjectiveTexts(
     return pickRandomSubset(candidates, limit);
 }
 
+/**
+ * getScenarioQuestionById — full document including embedded student responses.
+ * Archived questions read as missing (`null`) unless `includeArchived` is set, so every
+ * instructor and student route treats them as deleted.
+ */
 export async function getScenarioQuestionById(
     ctx: MongoDalContext,
     courseName: string,
-    questionId: string
+    questionId: string,
+    options?: { includeArchived?: boolean }
 ): Promise<ScenarioQuestion | null> {
     const collection = await getScenarioQuestionsCollection(ctx, courseName);
-    const doc = await collection.findOne({ id: questionId });
+    const doc = await collection.findOne(
+        options?.includeArchived ? { id: questionId } : { id: questionId, ...NOT_ARCHIVED_FILTER }
+    );
     if (!doc) return null;
     return hydrateQuestion(doc as unknown as ScenarioQuestion);
 }
@@ -575,9 +619,41 @@ export async function updateScenarioQuestion(
     editedByUserId?: string
 ): Promise<ScenarioQuestion | null> {
     const collection = await getScenarioQuestionsCollection(ctx, courseName);
-    const existing = await getScenarioQuestionById(ctx, courseName, questionId);
-    if (!existing) return null;
 
+    // Sub-question edits rewrite the whole subQuestions array, so the write is a compare-and-set
+    // on updatedAt (bumped by every response append). A student answer that lands between our
+    // read and write makes the write miss; we re-read and rebuild so the answer is carried over.
+    for (let attempt = 0; attempt < UPDATE_CONFLICT_MAX_ATTEMPTS; attempt++) {
+        const existing = await getScenarioQuestionById(ctx, courseName, questionId);
+        if (!existing) return null;
+
+        const update = buildScenarioQuestionUpdate(existing, patch, questionId, ctx.idGenerator, editedByUserId);
+        const result = await collection.findOneAndUpdate(
+            { id: questionId, ...NOT_ARCHIVED_FILTER, updatedAt: existing.updatedAt ?? null },
+            { $set: update },
+            { returnDocument: 'after' }
+        );
+        if (result) return hydrateQuestion(result as unknown as ScenarioQuestion);
+    }
+
+    // Either the question was archived/deleted meanwhile, or it kept changing under us.
+    const stillThere = await getScenarioQuestionById(ctx, courseName, questionId);
+    if (!stillThere) return null;
+    throw new ScenarioQuestionEditConflictError();
+}
+
+/**
+ * buildScenarioQuestionUpdate — `$set` document for an instructor edit, carrying each kept
+ * sub-question's `studentResponses` from `existing`.
+ * @throws ScenarioPartHasResponsesError when the patch drops a sub-question that has answers
+ */
+export function buildScenarioQuestionUpdate(
+    existing: ScenarioQuestion,
+    patch: Parameters<typeof updateScenarioQuestion>[3],
+    questionId: string,
+    idGenerator: MongoDalContext['idGenerator'],
+    editedByUserId?: string
+): Record<string, unknown> {
     const update: Record<string, unknown> = { updatedAt: new Date() };
     if (patch.title !== undefined) update.title = patch.title;
     if (patch.topicOrWeekId !== undefined) update.topicOrWeekId = patch.topicOrWeekId;
@@ -591,11 +667,13 @@ export async function updateScenarioQuestion(
     if (patch.subQuestions !== undefined) {
         // Preserve existing studentResponses when instructor edits prompts
         const byId = new Map(existing.subQuestions.map((s) => [s.subQuestionId, s]));
+        const carried = new Set<ScenarioSubQuestion>();
         update.subQuestions = normalizeScenarioSubQuestions(
             patch.subQuestions.map((sub, index) => {
                 const prior =
                     (sub.subQuestionId && byId.get(sub.subQuestionId)) ||
                     existing.subQuestions[index];
+                if (prior) carried.add(prior);
                 return {
                     ...sub,
                     subQuestionId: sub.subQuestionId || prior?.subQuestionId,
@@ -603,17 +681,19 @@ export async function updateScenarioQuestion(
                 };
             }),
             questionId,
-            ctx.idGenerator
+            idGenerator
         );
+
+        // Answers live on the part, so dropping an answered part would delete them.
+        const droppedWithAnswers = existing.subQuestions.filter(
+            (s) => !carried.has(s) && (s.studentResponses ?? []).length > 0
+        );
+        if (droppedWithAnswers.length > 0) {
+            throw new ScenarioPartHasResponsesError(droppedWithAnswers.map((s) => s.subQuestionId));
+        }
     }
     if (editedByUserId) update.lastEditedByUserId = editedByUserId;
-
-    const result = await collection.findOneAndUpdate(
-        { id: questionId },
-        { $set: update },
-        { returnDocument: 'after' }
-    );
-    return result ? hydrateQuestion(result as unknown as ScenarioQuestion) : null;
+    return update;
 }
 
 export async function patchScenarioQuestionStatus(
@@ -622,6 +702,11 @@ export async function patchScenarioQuestionStatus(
     questionId: string,
     status: ScenarioQuestionStatus
 ): Promise<{ question?: ScenarioQuestion; error?: string }> {
+    // Archiving happens only through delete, which decides based on student answers.
+    if (status === 'archived') {
+        return { error: 'Invalid status' };
+    }
+
     const existing = await getScenarioQuestionById(ctx, courseName, questionId);
     if (!existing) {
         return { error: 'Question not found' };
@@ -641,7 +726,7 @@ export async function patchScenarioQuestionStatus(
     }
 
     const result = await collection.findOneAndUpdate(
-        { id: questionId },
+        { id: questionId, ...NOT_ARCHIVED_FILTER },
         { $set: update },
         { returnDocument: 'after' }
     );
@@ -651,14 +736,37 @@ export async function patchScenarioQuestionStatus(
     return { question: hydrateQuestion(result as unknown as ScenarioQuestion) };
 }
 
+/**
+ * deleteScenarioQuestion — removes a question students never answered; archives one they did.
+ *
+ * Student answers are embedded on the question, so removing an answered question would erase
+ * them. Archived questions keep their answers but disappear from the bank and from students.
+ * Both writes are conditional on the answer state, so an answer arriving mid-delete is never lost.
+ *
+ * @returns `'deleted'`, `'archived'`, or `null` when the question does not exist (or is already archived)
+ */
 export async function deleteScenarioQuestion(
     ctx: MongoDalContext,
     courseName: string,
     questionId: string
-): Promise<boolean> {
+): Promise<ScenarioQuestionDeleteOutcome | null> {
     const collection = await getScenarioQuestionsCollection(ctx, courseName);
-    const result = await collection.deleteOne({ id: questionId });
-    return result.deletedCount > 0;
+
+    // Step 1: hard-delete only if no sub-question has an answer
+    const deleted = await collection.deleteOne({
+        id: questionId,
+        ...NOT_ARCHIVED_FILTER,
+        'subQuestions.studentResponses.0': { $exists: false },
+    });
+    if (deleted.deletedCount > 0) return 'deleted';
+
+    // Step 2: otherwise archive it, keeping the answers
+    const now = new Date();
+    const archived = await collection.updateOne(
+        { id: questionId, ...NOT_ARCHIVED_FILTER },
+        { $set: { status: 'archived', archivedAt: now, updatedAt: now } }
+    );
+    return archived.matchedCount > 0 ? 'archived' : null;
 }
 
 // =====================================================

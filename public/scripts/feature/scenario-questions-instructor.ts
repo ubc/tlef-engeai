@@ -1295,25 +1295,34 @@ async function confirmAndDeleteQuestion(questionId: string, fromEditor: boolean)
     if (!currentCourse) return;
 
     let title = 'this question';
+    let answerCount = 0;
     try {
         const question = await fetchScenarioQuestion(currentCourse.id, questionId);
         title = question?.title?.trim() || title;
+        answerCount = (question?.subQuestions ?? []).reduce(
+            (sum, sq) => sum + (sq.studentResponseCount ?? 0),
+            0
+        );
     } catch {
         // Proceed with generic label if lookup fails.
     }
 
-    const result = await showConfirmModal(
-        'Delete question?',
-        `"${title}" will be permanently removed from this topic.`,
-        'Delete question',
-        'Cancel',
-        'danger'
-    );
+    // Answered questions are archived server-side so student answers stay in usage records.
+    const message =
+        answerCount > 0
+            ? `"${title}" will be removed from this topic and hidden from students. ` +
+              `Students have submitted ${answerCount} answer${answerCount === 1 ? '' : 's'} to it; ` +
+              'those answers will be kept for usage records.'
+            : `"${title}" will be permanently removed from this topic.`;
+
+    const result = await showConfirmModal('Delete question?', message, 'Delete question', 'Cancel', 'danger');
     if (result.action !== 'delete-question') return;
 
     try {
-        await deleteScenarioQuestion(currentCourse.id, questionId);
-        showSuccessToast('Question deleted.');
+        const outcome = await deleteScenarioQuestion(currentCourse.id, questionId);
+        showSuccessToast(
+            outcome === 'archived' ? 'Question removed. Student answers were kept.' : 'Question deleted.'
+        );
 
         if (fromEditor) {
             editorQuestionId = null;

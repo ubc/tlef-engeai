@@ -1224,8 +1224,16 @@ export interface CourseAnalyticsAccessFlags {
 // `{courseName}_scenario_questions` (collection name on `activeCourse.collections.scenarioQuestions`,
 // lazy-provisioned by SQ-001). Not embedded on the `activeCourse` document.
 
-/** Lifecycle of a scenario question. Drafts are invisible to students (404, not 403). */
-export type ScenarioQuestionStatus = 'draft' | 'published' | 'rejected';
+/**
+ * Lifecycle of a scenario question. Drafts are invisible to students (404, not 403).
+ * `archived` is set only by delete when students have answered the question: it is hidden from
+ * students and from the instructor bank, but its `studentResponses` are kept for usage reporting.
+ * It cannot be set or cleared through the status API.
+ */
+export type ScenarioQuestionStatus = 'draft' | 'published' | 'rejected' | 'archived';
+
+/** Result of `DELETE …/scenario-questions/:id`: removed outright, or archived to keep student answers. */
+export type ScenarioQuestionDeleteOutcome = 'deleted' | 'archived';
 
 /** Practice vs exam discriminator on embedded student responses and grading requests. */
 export type ScenarioMode = 'practice' | 'exam';
@@ -1333,6 +1341,7 @@ export interface ScenarioQuestion {
     createdAt: Date;
     updatedAt: Date;
     publishedAt?: Date | null;
+    archivedAt?: Date; // set when delete archived the question instead of removing it
     createdByUserId: string;
     lastEditedByUserId?: string;
 }
