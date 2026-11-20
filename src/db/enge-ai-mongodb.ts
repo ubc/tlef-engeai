@@ -91,6 +91,7 @@ import type {
     WritingSubmissionStatus
 } from '../writing-feedback/contracts';
 import * as ScenarioQuestionsMongo from './mongo/scenario-questions-mongo';
+import * as ScenarioUsageMongo from './mongo/scenario-usage-mongo';
 import * as ScenarioProgressMongo from './mongo/scenario-progress-mongo';
 import * as PathwaysMongo from './mongo/pathways-mongo';
 
@@ -1271,6 +1272,14 @@ export class EngEAI_MongoDB {
     /** Deletes an unanswered question or archives an answered one; `null` when not found. */
     public deleteScenarioQuestion = async (courseName: string, questionId: string) =>
         ScenarioQuestionsMongo.deleteScenarioQuestion(this.ctx(), courseName, questionId);
+
+    /** Staff-only: questions each student has answered at least once (removed questions included). */
+    public getScenarioUsageCounts = async (courseName: string) =>
+        ScenarioUsageMongo.getScenarioUsageCounts(this.ctx(), courseName);
+
+    /** Staff-only: one student's scenario history; `null` when not on the roster or a test student. */
+    public getStudentScenarioUsageHistory = async (course: activeCourse, userId: string) =>
+        ScenarioUsageMongo.getStudentScenarioUsageHistory(this.ctx(), course, userId);
 
     public appendScenarioStudentResponse = async (
         courseName: string,

@@ -104,6 +104,52 @@ const scenarioFeatureGate = requireCourseFeatureAPI('scenarioGeneration', ['para
  */
 export function mountScenarioQuestionRoutes(router: Router): void {
     /**
+     * GET /:courseId/scenario-usage
+     * Staff-only: questions each student has answered, for the Monitor "N scenarios" buttons.
+     * Not gated on the academic period — instructors use it during term for participation marks.
+     */
+    router.get(
+        '/:courseId/scenario-usage',
+        requireInstructorForCourseAPI(['params']),
+        scenarioFeatureGate,
+        asyncHandlerWithAuth(async (req: Request, res: Response) => {
+            const { courseId } = normalizeRouteParams(req.params);
+            const instance = await EngEAI_MongoDB.getInstance();
+            const course = await instance.getActiveCourse(courseId);
+            if (!course) {
+                return res.status(404).json({ success: false, error: 'Course not found' });
+            }
+            await instance.ensureScenarioQuestionsCollection(courseId);
+            const data = await instance.getScenarioUsageCounts((course as activeCourse).courseName);
+            res.json({ success: true, data });
+        })
+    );
+
+    /**
+     * GET /:courseId/scenario-usage/students/:userId
+     * Staff-only: one student's answers across the question bank, including removed questions.
+     */
+    router.get(
+        '/:courseId/scenario-usage/students/:userId',
+        requireInstructorForCourseAPI(['params']),
+        scenarioFeatureGate,
+        asyncHandlerWithAuth(async (req: Request, res: Response) => {
+            const { courseId, userId } = normalizeRouteParams(req.params);
+            const instance = await EngEAI_MongoDB.getInstance();
+            const course = await instance.getActiveCourse(courseId);
+            if (!course) {
+                return res.status(404).json({ success: false, error: 'Course not found' });
+            }
+            await instance.ensureScenarioQuestionsCollection(courseId);
+            const data = await instance.getStudentScenarioUsageHistory(course as activeCourse, userId);
+            if (!data) {
+                return res.status(404).json({ success: false, error: 'Student not found' });
+            }
+            res.json({ success: true, data });
+        })
+    );
+
+    /**
      * GET /:courseId/scenario-questions/learning-objectives?topicOrWeekId=
      * Topic-scoped LO catalog for instructor generate/editor selectors.
      */

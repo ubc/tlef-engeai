@@ -1381,6 +1381,62 @@ export interface ScenarioInstructorStudentResponsesPage {
     offset: number; // slice start into newest-first list
 }
 
+// ----- Scenario usage (instructor Monitor) — staff-only; keyed by roster userId, never PUID -----
+
+/** `GET …/scenario-usage` — per-student counts behind the Monitor "N scenarios" buttons. */
+export interface ScenarioUsageCounts {
+    /** roster userId → questions with ≥1 submitted answer (practice or exam, removed questions included) */
+    questionsAttemptedByUserId: Record<string, number>;
+}
+
+/** Where a question in a student's history stands now. `removed` = archived after students answered. */
+export type ScenarioUsageQuestionState = 'published' | 'unpublished' | 'removed';
+
+/** How much of a question the student has answered (any mode). */
+export type ScenarioUsageProgress = 'not_attempted' | 'partial' | 'complete';
+
+/** One submitted answer, as the student saw it. */
+export interface ScenarioUsageAttempt {
+    id: string;
+    mode: ScenarioMode;
+    studentAnswer: string;
+    feedback: string; // feedback shown to the student
+    grade?: number; // exam only — AI-assessed 1–10
+    submittedAt: string; // ISO 8601
+}
+
+/** One part of a question with this student's attempts, newest first. */
+export interface ScenarioUsagePart {
+    subQuestionId: string;
+    subQuestionType: ScenarioSubQuestionType;
+    prompt: string;
+    attempts: ScenarioUsageAttempt[];
+}
+
+/** One question in a student's scenario history. */
+export interface ScenarioUsageQuestion {
+    questionId: string;
+    title: string;
+    topicOrWeekId: string;
+    topicTitle: string; // chapter title, or "Uncategorized" when the chapter no longer exists
+    questionState: ScenarioUsageQuestionState;
+    progress: ScenarioUsageProgress;
+    modesUsed: ScenarioMode[];
+    lastSubmittedAt: string | null; // ISO 8601
+    parts: ScenarioUsagePart[]; // empty when not attempted
+}
+
+/** `GET …/scenario-usage/students/:userId` — one student's history for the Monitor panel. */
+export interface ScenarioStudentUsageHistory {
+    userId: string;
+    studentName: string;
+    publishedQuestionCount: number;
+    questionsAttempted: number;
+    questionsCompleted: number;
+    /** Published questions in chapter order, then unpublished/removed ones the student answered (newest first). */
+    questions: ScenarioUsageQuestion[];
+}
+
 /** One saved draft answer for a sub-question (in-progress only — never submitted). */
 export interface ScenarioProgressAnswer {
     subQuestionId: string; // must match a sub-question on the published question

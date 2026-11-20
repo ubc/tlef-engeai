@@ -521,7 +521,8 @@
 }
 
 .monitor-btn-conversations,
-.monitor-btn-struggle {
+.monitor-btn-struggle,
+.monitor-btn-scenarios {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -558,13 +559,19 @@
     background: #c62828;
 }
 
+.monitor-btn-scenarios {
+    background: #6a1b9a;
+}
+
 .monitor-btn-conversations:hover,
-.monitor-btn-struggle:hover {
+.monitor-btn-struggle:hover,
+.monitor-btn-scenarios:hover {
     opacity: 0.92;
 }
 
 .monitor-btn-conversations.monitor-btn--active,
-.monitor-btn-struggle.monitor-btn--active {
+.monitor-btn-struggle.monitor-btn--active,
+.monitor-btn-scenarios.monitor-btn--active {
     box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.15);
 }
 
@@ -619,6 +626,188 @@
 
 .monitor-struggle-label-list li {
     margin-bottom: 4px;
+}
+
+/* Scenarios panel — one student's Practice Scenarios history */
+.monitor-scenario-summary {
+    margin: 0 0 12px;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.monitor-scenario-group {
+    margin-bottom: 14px;
+}
+
+.monitor-scenario-group:last-child {
+    margin-bottom: 0;
+}
+
+.monitor-scenario-group-title {
+    margin: 0 0 6px;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.monitor-scenario-question-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.monitor-scenario-question {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--hover-bg);
+}
+
+.monitor-scenario-question-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    padding: 10px 14px;
+    font-size: 13px;
+}
+
+summary.monitor-scenario-question-row {
+    cursor: pointer;
+}
+
+summary.monitor-scenario-question-row:focus-visible {
+    outline: 2px solid #6a1b9a;
+    outline-offset: 2px;
+    border-radius: 8px;
+}
+
+.monitor-scenario-question--empty .monitor-scenario-question-title {
+    color: var(--text-secondary);
+}
+
+.monitor-scenario-question-title {
+    font-weight: 600;
+    color: var(--text-primary);
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.monitor-scenario-meta {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.monitor-scenario-progress,
+.monitor-scenario-state,
+.monitor-scenario-grade {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.5;
+}
+
+.monitor-scenario-progress--complete {
+    background: #e8f5e9;
+    color: #1b5e20;
+}
+
+.monitor-scenario-progress--partial {
+    background: #fff3e0;
+    color: #8a4b00;
+}
+
+.monitor-scenario-progress--not_attempted {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+}
+
+.monitor-scenario-state {
+    background: #eceff1;
+    color: #37474f;
+}
+
+.monitor-scenario-grade {
+    background: #f3e5f5;
+    color: #4a148c;
+}
+
+.monitor-scenario-time {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.monitor-scenario-parts {
+    border-top: 1px solid var(--border-color);
+    padding: 10px 14px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.monitor-scenario-part-title {
+    margin: 0 0 6px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.monitor-scenario-attempt {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.monitor-scenario-attempt + .monitor-scenario-attempt {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--border-color);
+}
+
+.monitor-scenario-attempt-header {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 2px;
+}
+
+.monitor-scenario-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.monitor-scenario-answer {
+    font-size: 13px;
+    color: var(--text-primary);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.monitor-scenario-feedback {
+    font-size: 13px;
+    overflow-wrap: anywhere;
+}
+
+.monitor-scenario-earlier {
+    margin-top: 10px;
+}
+
+.monitor-scenario-earlier > summary {
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    color: #6a1b9a;
+    margin-bottom: 8px;
 }
 
 .chat-history-list {

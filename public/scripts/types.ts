@@ -1395,6 +1395,60 @@ export interface ScenarioInstructorStudentResponsesPage {
     offset: number;
 }
 
+// ----- Scenario usage (instructor Monitor) — must match src/types/shared.ts -----
+
+/** Must match src/types/shared.ts. Per-student counts behind the Monitor "N scenarios" buttons. */
+export interface ScenarioUsageCounts {
+    questionsAttemptedByUserId: Record<string, number>;
+}
+
+/** Must match src/types/shared.ts. `removed` = archived after students answered. */
+export type ScenarioUsageQuestionState = 'published' | 'unpublished' | 'removed';
+
+/** Must match src/types/shared.ts. */
+export type ScenarioUsageProgress = 'not_attempted' | 'partial' | 'complete';
+
+/** Must match src/types/shared.ts. One submitted answer, as the student saw it. */
+export interface ScenarioUsageAttempt {
+    id: string;
+    mode: ScenarioMode;
+    studentAnswer: string;
+    feedback: string;
+    grade?: number;
+    submittedAt: string;
+}
+
+/** Must match src/types/shared.ts. Attempts are newest first. */
+export interface ScenarioUsagePart {
+    subQuestionId: string;
+    subQuestionType: ScenarioSubQuestionType;
+    prompt: string;
+    attempts: ScenarioUsageAttempt[];
+}
+
+/** Must match src/types/shared.ts. `parts` is empty when not attempted. */
+export interface ScenarioUsageQuestion {
+    questionId: string;
+    title: string;
+    topicOrWeekId: string;
+    topicTitle: string;
+    questionState: ScenarioUsageQuestionState;
+    progress: ScenarioUsageProgress;
+    modesUsed: ScenarioMode[];
+    lastSubmittedAt: string | null;
+    parts: ScenarioUsagePart[];
+}
+
+/** Must match src/types/shared.ts. One student's history for the Monitor panel. */
+export interface ScenarioStudentUsageHistory {
+    userId: string;
+    studentName: string;
+    publishedQuestionCount: number;
+    questionsAttempted: number;
+    questionsCompleted: number;
+    questions: ScenarioUsageQuestion[];
+}
+
 /** Must match src/types/shared.ts. Full document — instructor views only. */
 export interface ScenarioQuestion {
     id: string;

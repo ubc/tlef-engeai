@@ -30,6 +30,8 @@ import type {
     ScenarioInstructorStudentResponsesPage,
     ScenarioSaveProgressRequest,
     ScenarioProgressResponse,
+    ScenarioStudentUsageHistory,
+    ScenarioUsageCounts,
 } from '../types.js';
 import { defaultExpectedTimeMinutes } from '../types.js';
 
@@ -336,6 +338,40 @@ export function validatePublish(question: Pick<ScenarioQuestion, 'questionBody' 
         }
     }
     return null;
+}
+
+/**
+ * Staff-only: questions each student has answered, keyed by roster userId.
+ * @returns The counts, or `null` when unavailable (Practice Scenarios off, no access, or an error)
+ *          — callers hide scenario usage UI in that case.
+ */
+export async function fetchScenarioUsageCounts(courseId: string): Promise<Record<string, number> | null> {
+    try {
+        const response = await fetch(`/api/courses/${encodeURIComponent(courseId)}/scenario-usage`, {
+            credentials: 'same-origin',
+        });
+        if (!response.ok) return null;
+        const data = await response.json();
+        return (data?.data as ScenarioUsageCounts | undefined)?.questionsAttemptedByUserId ?? null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Staff-only: one student's answers across the question bank (removed questions included).
+ * @throws When the request fails or the student is not on the roster
+ */
+export async function fetchStudentScenarioUsageHistory(
+    courseId: string,
+    userId: string
+): Promise<ScenarioStudentUsageHistory> {
+    const response = await fetch(
+        `/api/courses/${encodeURIComponent(courseId)}/scenario-usage/students/${encodeURIComponent(userId)}`,
+        { credentials: 'same-origin' }
+    );
+    const data = await parseJsonOrThrow(response);
+    return data.data as ScenarioStudentUsageHistory;
 }
 
 /** Format a duration as MM:SS from total seconds. */

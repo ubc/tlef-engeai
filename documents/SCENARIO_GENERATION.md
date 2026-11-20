@@ -71,6 +71,8 @@ Route handlers remain thin. AI workflow logic belongs in `scenario-service.ts`; 
 | [`src/scenario-generation/scenario-schemas.ts`](../src/scenario-generation/scenario-schemas.ts) | Zod schemas, request validation, LLM output sanitizers |
 | [`src/scenario-generation/prompts/scenario-generation-prompt.ts`](../src/scenario-generation/prompts/scenario-generation-prompt.ts) | System prompt for scenario authoring |
 | [`src/scenario-generation/prompts/scenario-feedback-prompt.ts`](../src/scenario-generation/prompts/scenario-feedback-prompt.ts) | System and user prompts for practice feedback and exam evaluation |
+| [`src/db/mongo/scenario-usage-mongo.ts`](../src/db/mongo/scenario-usage-mongo.ts) | Read-only per-student usage counts and history for the instructor Monitor |
+| [`public/scripts/feature/monitor-scenario-history.ts`](../public/scripts/feature/monitor-scenario-history.ts) | Monitor scenarios panel rendering |
 | [`src/scenario-generation/latex-json-repair.ts`](../src/scenario-generation/latex-json-repair.ts) | Best-effort repair of LaTeX mangled by JSON escaping in exam feedback |
 | [`src/scenario-generation/scenario-practice-limits.ts`](../src/scenario-generation/scenario-practice-limits.ts) | Daily attempt limits, cooldown, feedback tier resolution |
 | [`src/scenario-generation/scenario-practice-canned-responses.ts`](../src/scenario-generation/scenario-practice-canned-responses.ts) | Standard messages when rate limits block LLM evaluation |
@@ -298,6 +300,14 @@ Implementation: `scenario-practice-limits.ts`, `scenario-practice-canned-respons
 The instructor specifies an ordered list at generation time; the LLM produces one part per type in that order.
 
 ---
+
+## Instructor usage monitoring
+
+The Monitor page's **User Activity** list shows an **"N scenarios"** button on each student row (purple, next to Conversations): N is how many questions the student answered at least once, in either mode, including questions later removed. It appears only for students (not staff or test students) and only when Practice Scenarios is on for the course. Unlike struggle topics, it is available during the term, since instructors use it for participation marks.
+
+Opening the panel loads that student's history (`GET …/scenario-usage/students/:userId`, cached until the page reloads): published questions grouped by chapter with a progress pill (Completed / Partly answered / Not attempted), then a "Removed or unpublished questions" group. Expanding a question shows each part's latest answer and the feedback the student saw, with earlier attempts collapsed. Exam grades are labelled as AI grades.
+
+Code: `src/db/mongo/scenario-usage-mongo.ts`, routes at the top of `scenario-questions-routes.ts`, `public/scripts/feature/monitor-scenario-history.ts`, and the panel wiring in `monitor.ts`.
 
 ## Authorization (API)
 

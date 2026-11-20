@@ -6,11 +6,14 @@ import { openConversationExportFormatModal } from "./conversations-export-modal.
 import { fetchCourseReportPdf } from "./report-pdf-download.js";
 import { summonCourseSummary } from "./course-summary.js";
 import { chartsController, mapCourseSummaryStackedBarToChartSpec } from "../ui/charts.js";
+import { fetchScenarioUsageCounts, fetchStudentScenarioUsageHistory } from "../api/scenario-questions-api.js";
+import { paintScenarioHistoryFeedback, renderScenarioHistoryHtml } from "./monitor-scenario-history.js";
 import type {
     CourseAnalyticsAccessFlags,
     CourseSummaryStruggleTopics,
     MemoryAgentChapterStruggle,
     MonitorRosterRole,
+    ScenarioStudentUsageHistory,
     StruggleStatsLegendItem,
     activeCourse
 } from "../types.js";
@@ -18,13 +21,16 @@ import type {
 /**
  * Monitor Dashboard Types
  */
-type MonitorActivePanel = 'none' | 'conversations' | 'struggle';
+type MonitorActivePanel = 'none' | 'conversations' | 'struggle' | 'scenarios';
+type MonitorPanelKind = Exclude<MonitorActivePanel, 'none'>;
 
 interface UserData {
     id: string;
     name: string;
     role: MonitorRosterRole;
     conversationCount: number;
+    /** Scenario questions this student has answered at least once (0 until counts load). */
+    scenarioCount: number;
     struggleTopicCount: number;
     struggleTopics: string[];
     struggleTopicsByChapter: MemoryAgentChapterStruggle[];
@@ -66,6 +72,11 @@ class MonitorDashboard {
     private canManageRoster: boolean = false;
     private isAdminEarlyAccess: boolean = false;
     private openRosterMenuUserId: string | null = null;
+    /** Per-student scenario counts; `null` hides the scenarios button (feature off or no access). */
+    private scenarioCounts: Record<string, number> | null = null;
+    /** Histories loaded when a scenarios panel is first opened, kept for re-renders. */
+    private scenarioHistoryByUserId = new Map<string, ScenarioStudentUsageHistory>();
+    private scenarioHistoryErrorUserIds = new Set<string>();
 
     constructor() {
         this.getCourseId();
@@ -190,10 +201,28 @@ class MonitorDashboard {
             this.struggleTopics = null;
         }
 
+        await this.loadScenarioCounts();
         this.render();
         if (this.canAccessPostPeriodAnalytics) {
             await this.renderStruggleChart();
         }
+    }
+
+    /**
+     * Load per-student scenario counts. Unlike struggle topics, these are available during term:
+     * instructors use them for participation marks. A failed or denied request hides the button.
+     */
+    private async loadScenarioCounts(): Promise<void> {
+        this.scenarioHistoryByUserId.clear();
+        this.scenarioHistoryErrorUserIds.clear();
+        this.scenarioCounts = this.courseId ? await fetchScenarioUsageCounts(this.courseId) : null;
+        const counts = this.scenarioCounts ?? {};
+        this.users = this.users.map((user) => ({ ...user, scenarioCount: counts[user.id] ?? 0 }));
+    }
+
+    /** Scenario usage applies to student rows only, and only when counts loaded. */
+    private showsScenarios(user: UserData): boolean {
+        return this.scenarioCounts !== null && user.role === 'student';
     }
 
     private mapStruggleUserRow(user: {
@@ -211,6 +240,7 @@ class MonitorDashboard {
             name: user.userName,
             role: user.role || 'student',
             conversationCount: user.conversationCount ?? (user.chats || []).length,
+            scenarioCount: 0,
             struggleTopicCount: user.struggleTopicCount ?? 0,
             struggleTopics: user.struggleTopics ?? [],
             struggleTopicsByChapter: user.struggleTopicsByChapter ?? [],
@@ -236,6 +266,7 @@ class MonitorDashboard {
             name: user.userName,
             role: user.role || 'student',
             conversationCount: user.conversationCount ?? (user.chats || []).length,
+            scenarioCount: 0,
             struggleTopicCount: 0,
             struggleTopics: [],
             struggleTopicsByChapter: [],
@@ -392,7 +423,7 @@ class MonitorDashboard {
 
     }
 
-    private toggleUserPanel(userId: string, panel: 'conversations' | 'struggle'): void {
+    private toggleUserPanel(userId: string, panel: MonitorPanelKind): void {
         if (panel === 'struggle' && !this.canAccessPostPeriodAnalytics) {
             return;
         }
@@ -406,6 +437,48 @@ class MonitorDashboard {
         });
         this.syncUserPanelExpansion(true);
         renderFeatherIcons();
+
+        const opened = this.users.find((u) => u.id === userId)?.activePanel === panel;
+        if (panel === 'scenarios' && opened && !this.scenarioHistoryByUserId.has(userId)) {
+            void this.loadScenarioHistory(userId);
+        }
+    }
+
+    /**
+     * Fetch one student's scenario history the first time their panel opens, then fill the panel.
+     */
+    private async loadScenarioHistory(userId: string): Promise<void> {
+        if (!this.courseId) return;
+        this.scenarioHistoryErrorUserIds.delete(userId);
+        try {
+            const history = await fetchStudentScenarioUsageHistory(this.courseId, userId);
+            this.scenarioHistoryByUserId.set(userId, history);
+        } catch (error) {
+            console.error('[MONITOR] ❌ Error loading scenario history:', error);
+            this.scenarioHistoryErrorUserIds.add(userId);
+        }
+        this.paintScenarioPanel(userId);
+    }
+
+    /** Panel body for a student's scenarios: history, an error, or a loading line. */
+    private scenarioPanelContentHtml(userId: string): string {
+        const history = this.scenarioHistoryByUserId.get(userId);
+        if (history) return renderScenarioHistoryHtml(history);
+        if (this.scenarioHistoryErrorUserIds.has(userId)) {
+            return '<p class="monitor-panel-empty">Could not load scenario history. Close and reopen to try again.</p>';
+        }
+        return '<p class="monitor-panel-empty" role="status">Loading scenario history…</p>';
+    }
+
+    /** Re-render one student's scenarios panel in place (keeps the expand animation intact). */
+    private paintScenarioPanel(userId: string): void {
+        const panel = document.querySelector<HTMLElement>(
+            `.student-item[data-student-id="${CSS.escape(userId)}"] .monitor-user-panel--scenarios`
+        );
+        if (!panel) return;
+        panel.innerHTML = this.scenarioPanelContentHtml(userId);
+        const history = this.scenarioHistoryByUserId.get(userId);
+        if (history) paintScenarioHistoryFeedback(panel, history);
     }
 
     /**
@@ -415,20 +488,20 @@ class MonitorDashboard {
         const userList = document.getElementById('student-list');
         if (!userList) return;
 
+        const panels: Array<{ kind: MonitorPanelKind; button: string; wrap: string }> = [
+            { kind: 'conversations', button: '.monitor-btn-conversations', wrap: '.monitor-user-panel-wrap--conversations' },
+            { kind: 'struggle', button: '.monitor-btn-struggle', wrap: '.monitor-user-panel-wrap--struggle' },
+            { kind: 'scenarios', button: '.monitor-btn-scenarios', wrap: '.monitor-user-panel-wrap--scenarios' },
+        ];
+
         const applyState = (item: HTMLElement, user: UserData): void => {
-            const convBtn = item.querySelector('.monitor-btn-conversations');
-            const struggleBtn = item.querySelector('.monitor-btn-struggle');
-            const convWrap = item.querySelector('.monitor-user-panel-wrap--conversations');
-            const struggleWrap = item.querySelector('.monitor-user-panel-wrap--struggle');
-
-            convBtn?.classList.toggle('monitor-btn--active', user.activePanel === 'conversations');
-            struggleBtn?.classList.toggle('monitor-btn--active', user.activePanel === 'struggle');
-
-            convBtn?.setAttribute('aria-expanded', user.activePanel === 'conversations' ? 'true' : 'false');
-            struggleBtn?.setAttribute('aria-expanded', user.activePanel === 'struggle' ? 'true' : 'false');
-
-            convWrap?.classList.toggle('is-expanded', user.activePanel === 'conversations');
-            struggleWrap?.classList.toggle('is-expanded', user.activePanel === 'struggle');
+            for (const { kind, button, wrap } of panels) {
+                const isOpen = user.activePanel === kind;
+                const btn = item.querySelector(button);
+                btn?.classList.toggle('monitor-btn--active', isOpen);
+                btn?.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+                item.querySelector(wrap)?.classList.toggle('is-expanded', isOpen);
+            }
         };
 
         this.users.forEach((user) => {
@@ -442,8 +515,7 @@ class MonitorDashboard {
                 return;
             }
 
-            item.querySelector('.monitor-user-panel-wrap--conversations')?.classList.remove('is-expanded');
-            item.querySelector('.monitor-user-panel-wrap--struggle')?.classList.remove('is-expanded');
+            panels.forEach(({ wrap }) => item.querySelector(wrap)?.classList.remove('is-expanded'));
             void item.offsetHeight;
 
             requestAnimationFrame(() => {
@@ -651,6 +723,25 @@ class MonitorDashboard {
                         </button>`
                     : '';
 
+                const scenariosExpanded = user.activePanel === 'scenarios';
+                const scenariosButton = this.showsScenarios(user)
+                    ? `
+                        <button type="button" class="monitor-btn-scenarios${scenariosExpanded ? ' monitor-btn--active' : ''}" data-action="scenarios" data-user-id="${user.id}" aria-expanded="${scenariosExpanded ? 'true' : 'false'}">
+                            <span class="monitor-btn-label">${user.scenarioCount} scenario${user.scenarioCount !== 1 ? 's' : ''}</span>
+                            <i data-feather="chevron-down" class="monitor-btn-chevron" aria-hidden="true"></i>
+                        </button>`
+                    : '';
+                const scenariosPanel = this.showsScenarios(user)
+                    ? `
+                <div class="monitor-user-panel-wrap monitor-user-panel-wrap--scenarios${scenariosExpanded ? ' is-expanded' : ''}">
+                    <div class="monitor-user-panel-inner">
+                        <div class="monitor-user-panel monitor-user-panel--scenarios">
+                            ${this.scenarioPanelContentHtml(user.id)}
+                        </div>
+                    </div>
+                </div>`
+                    : '';
+
                 return `
             <div class="student-item" data-student-id="${user.id}">
                 <div class="student-header">
@@ -665,6 +756,7 @@ class MonitorDashboard {
                             <i data-feather="chevron-down" class="monitor-btn-chevron" aria-hidden="true"></i>
                         </button>
                         ${struggleButton}
+                        ${scenariosButton}
                     </div>
                 </div>
                 <div class="monitor-user-panel-wrap monitor-user-panel-wrap--conversations${
@@ -708,15 +800,19 @@ class MonitorDashboard {
                 </div>`
                         : ''
                 }
+                ${scenariosPanel}
             </div>
         `;
             })
             .join('');
 
+        // Feedback Markdown/math for any already-loaded scenario histories
+        this.scenarioHistoryByUserId.forEach((_history, userId) => this.paintScenarioPanel(userId));
+
         userList.querySelectorAll<HTMLButtonElement>('[data-action]').forEach((btn) => {
             btn.addEventListener('click', () => {
                 const userId = btn.dataset.userId;
-                const action = btn.dataset.action as 'conversations' | 'struggle' | undefined;
+                const action = btn.dataset.action as MonitorPanelKind | undefined;
                 if (userId && action) {
                     this.toggleUserPanel(userId, action);
                 }
