@@ -1578,6 +1578,12 @@ export interface ScenarioGenerateRequest {
 export const SCENARIO_BATCH_MAX_COUNT = 10;
 
 /** Must match src/types/shared.ts. */
+/** Must match src/types/shared.ts. Practice AI feedback requests per part per day (America/Vancouver). */
+export const SCENARIO_PRACTICE_DAILY_MAX_ATTEMPTS = 3;
+
+/** Must match src/types/shared.ts. Seconds between practice feedback requests on one part. */
+export const SCENARIO_PRACTICE_COOLDOWN_SECONDS = 10;
+
 export const SCENARIO_DIFFICULTY_BASE_MINUTES: Record<ScenarioDifficulty, number> = {
     easy: 15,
     medium: 20,

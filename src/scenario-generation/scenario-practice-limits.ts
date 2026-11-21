@@ -10,11 +10,18 @@
  * @description: Daily attempt cap, cooldown, and feedback tier resolution for practice mode.
  */
 
-import type { ScenarioStudentResponse, ScenarioSubQuestion } from '../types/shared';
+import {
+    SCENARIO_PRACTICE_COOLDOWN_SECONDS,
+    SCENARIO_PRACTICE_DAILY_MAX_ATTEMPTS,
+    type ScenarioStudentResponse,
+    type ScenarioSubQuestion,
+} from '../types/shared';
 
 export const PRACTICE_SOCRATIC_MAX_ATTEMPT = 2;
-export const PRACTICE_DAILY_MAX_ATTEMPTS = 1;
-export const PRACTICE_COOLDOWN_MS = 30_000;
+/** Shared with the student page so its counter and the server agree. */
+export const PRACTICE_DAILY_MAX_ATTEMPTS = SCENARIO_PRACTICE_DAILY_MAX_ATTEMPTS;
+/** Short pause to stop accidental double requests; shared with the student page. */
+export const PRACTICE_COOLDOWN_MS = SCENARIO_PRACTICE_COOLDOWN_SECONDS * 1000;
 export const PRACTICE_DAY_TIMEZONE = 'America/Vancouver';
 
 export type PracticeFeedbackTier = 'socratic' | 'descriptive' | 'blocked';

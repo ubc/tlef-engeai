@@ -339,12 +339,25 @@ export class ScenarioService {
             // ====================================================================
             // STEP 2b: Practice feedback via LLM (or mock) — no numeric grade
             // ====================================================================
+            // Requests left after this one — tells the prompt whether "revise and retry" is possible.
+            // Undefined for instructor preview and non-practice modes (no daily limit applies).
+            const requestsLeftAfterThis =
+                mode === 'practice' && !input.allowUnpublished
+                    ? Math.max(
+                          0,
+                          PRACTICE_DAILY_MAX_ATTEMPTS -
+                              countPracticeAttemptsToday(subQuestion, input.studentUserId, now) -
+                              1
+                      )
+                    : undefined;
+
             const reviewed = await this.feedbackPracticePart(
                 input.courseId,
                 question.questionBody,
                 subQuestion,
                 input.studentAnswer,
-                feedbackTier
+                feedbackTier,
+                requestsLeftAfterThis
             );
 
             const todayPriorCount =
@@ -780,7 +793,8 @@ export class ScenarioService {
         questionBody: string,
         subQuestion: ScenarioSubQuestion,
         studentAnswer: string,
-        tier: PracticeFeedbackPromptTier = 'socratic'
+        tier: PracticeFeedbackPromptTier = 'socratic',
+        requestsLeftAfterThis?: number
     ): Promise<{ feedback: string }> {
 
         // if in mock-response mode, return the mock feedback
@@ -804,7 +818,8 @@ export class ScenarioService {
             subQuestion.prompt,
             subQuestion.modelAnswer,
             studentAnswer,
-            tier
+            tier,
+            requestsLeftAfterThis
         );
 
         // build the messages

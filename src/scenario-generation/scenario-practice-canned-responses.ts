@@ -7,6 +7,8 @@
  * @description: Fixed copy for practice cooldown and daily attempt cap.
  */
 
+import { PRACTICE_DAILY_MAX_ATTEMPTS } from './scenario-practice-limits';
+
 /** Message when requests arrive too soon after the last persisted attempt (server gate). */
 export function getPracticeCooldownMessage(_retryAfterSeconds: number): string {
     return 'You may want to reconsider your answer before asking for feedback again.';
@@ -14,5 +16,5 @@ export function getPracticeCooldownMessage(_retryAfterSeconds: number): string {
 
 /** Message when the daily attempt cap is reached (server gate). */
 export function getPracticeDailyLimitMessage(_resetsAt: Date): string {
-    return 'You have been requesting feedback on this part quite frequently today. Consider continuing in a full conversation with EngE-AI.';
+    return `You've used all ${PRACTICE_DAILY_MAX_ATTEMPTS} AI feedback requests for this part today. You can ask again after midnight (Pacific time), or keep working through it in a conversation with EngE-AI.`;
 }

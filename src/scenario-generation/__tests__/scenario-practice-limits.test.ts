@@ -39,13 +39,17 @@ describe('scenario-practice-limits', () => {
             expect(resolvePracticeFeedbackTier(2)).toBe('socratic');
         });
 
-        it('uses descriptive for attempts 3–6', () => {
-            expect(resolvePracticeFeedbackTier(3)).toBe('descriptive');
-            expect(resolvePracticeFeedbackTier(6)).toBe('descriptive');
+        it('allows 3 requests per part per day, 10 seconds apart', () => {
+            expect(PRACTICE_DAILY_MAX_ATTEMPTS).toBe(3);
+            expect(PRACTICE_COOLDOWN_MS).toBe(10_000);
         });
 
-        it('blocks attempt 7+', () => {
-            expect(resolvePracticeFeedbackTier(7)).toBe('blocked');
+        it('uses descriptive for the 3rd (last) attempt', () => {
+            expect(resolvePracticeFeedbackTier(3)).toBe('descriptive');
+        });
+
+        it('blocks attempt 4+', () => {
+            expect(resolvePracticeFeedbackTier(4)).toBe('blocked');
         });
     });
 
@@ -74,7 +78,7 @@ describe('scenario-practice-limits', () => {
             expect(gate.tier).toBe('descriptive');
         });
 
-        it('blocks 7th attempt same day with daily_limit', () => {
+        it('blocks the 4th attempt same day with daily_limit', () => {
             const gate = checkPracticeSubmissionGate({
                 todayPriorCount: PRACTICE_DAILY_MAX_ATTEMPTS,
                 lastSubmittedAtToday: new Date(now.getTime() - 60_000),
@@ -89,7 +93,7 @@ describe('scenario-practice-limits', () => {
         it('blocks within cooldown window', () => {
             const gate = checkPracticeSubmissionGate({
                 todayPriorCount: 1,
-                lastSubmittedAtToday: new Date(now.getTime() - 10_000),
+                lastSubmittedAtToday: new Date(now.getTime() - 5_000),
                 now,
                 timezone: TZ,
             });
@@ -102,7 +106,7 @@ describe('scenario-practice-limits', () => {
         it('allows after cooldown elapsed', () => {
             const gate = checkPracticeSubmissionGate({
                 todayPriorCount: 1,
-                lastSubmittedAtToday: new Date(now.getTime() - 35_000),
+                lastSubmittedAtToday: new Date(now.getTime() - 11_000),
                 now,
                 timezone: TZ,
             });

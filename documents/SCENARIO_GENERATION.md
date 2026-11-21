@@ -259,7 +259,7 @@ Answer-evaluation prompts reside in `scenario-feedback-prompt.ts` (practice and 
 | Mode | LLM output | Persisted fields |
 | ---- | ---------- | ---------------- |
 | Practice (attempts 1–2) | Socratic formative feedback | `feedback` |
-| Practice (attempts 3–6) | Direct evaluation; server appends model answer | `feedback` |
+| Practice (attempt 3, the last of the day) | Direct evaluation; server appends model answer | `feedback` |
 | Exam | Integer score (1–10) and academic feedback per part | `grade`, `feedback` |
 
 **Math in feedback.** Practice feedback is requested as **plain text** (`sendConversation`), not structured JSON: JSON requires every LaTeX backslash to be doubled, and models that slip produce `\frac` → form feed + `rac`, dropped backslashes (`lambda`), or stray control characters. `parsePlainTextPracticeFeedback` strips any code fence, quotes, or `{"feedback": …}` wrapper the model adds anyway. Exam grading still needs JSON for per-part grades, so `sanitizeScenarioFeedback` runs `repairJsonMangledLatex` (`latex-json-repair.ts`) on the feedback inside `$…$` / `$$…$$` before it is stored. The repair is best-effort. Separately, the browser converts `\(…\)` / `\[…\]` to dollar delimiters at display time (`math-delimiters.ts`).
@@ -280,13 +280,17 @@ Applied per sub-question, per calendar day (timezone `America/Vancouver`), for s
 
 | Rule | Value |
 | ---- | ----- |
-| Maximum attempts per day | **6** |
+| Maximum attempts per day | **3** (`SCENARIO_PRACTICE_DAILY_MAX_ATTEMPTS`, shared by server and student page) |
 | Attempts 1–2 | Socratic tier (formative hints; model answer withheld) |
-| Attempts 3–6 | Descriptive tier (evaluation with server-attached model answer) |
-| Attempt 7+ (same day) | Blocked; standard rate-limit message; no LLM call or persistence |
-| Cooldown between attempts | **30 seconds** |
+| Attempt 3 | Descriptive tier (evaluation with server-attached model answer) |
+| Attempt 4+ (same day) | Blocked; standard rate-limit message; no LLM call or persistence |
+| Cooldown between attempts | **10 seconds** (`SCENARIO_PRACTICE_COOLDOWN_SECONDS`, shared) |
 
 Implementation: `scenario-practice-limits.ts`, `scenario-practice-canned-responses.ts`.
+
+**What the student sees.** Under each part's buttons, a status line shows "N of 3 AI feedback requests left for this part today" (and "Your next request will be your last today" at 1). During the cooldown the **Get AI Feedback** button is briefly disabled with a note. At the limit the button is disabled and the line explains when requests reset (midnight Pacific) and links to a conversation with EngE-AI. Limit responses never replace the feedback the student last received.
+
+**Retry wording.** The service passes the requests left after the current one into the practice user turn. At 0 the model is told not to suggest resubmitting, and may suggest a conversation or coming back tomorrow; the Socratic rules' "encourage revise-and-retry" defers to that note.
 
 ---
 

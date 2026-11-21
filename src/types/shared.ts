@@ -1548,6 +1548,16 @@ export interface ScenarioGenerateRequest {
 export const SCENARIO_BATCH_MAX_COUNT = 10;
 
 /** Default expected minutes by difficulty (+ 5 per part applied at create/generate). */
+/**
+ * Practice AI feedback requests a student gets per part per day (America/Vancouver).
+ * Attempts 1–2 are Socratic hints; attempt 3 is a direct evaluation with the model answer.
+ * Must match public/scripts/types.ts.
+ */
+export const SCENARIO_PRACTICE_DAILY_MAX_ATTEMPTS = 3;
+
+/** Seconds a student waits between practice feedback requests on one part. Must match public/scripts/types.ts. */
+export const SCENARIO_PRACTICE_COOLDOWN_SECONDS = 10;
+
 export const SCENARIO_DIFFICULTY_BASE_MINUTES: Record<ScenarioDifficulty, number> = {
     easy: 15,
     medium: 20,

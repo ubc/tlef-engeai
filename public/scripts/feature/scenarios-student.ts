@@ -22,6 +22,8 @@ import {
     ScenarioLearningObjectiveSnapshot,
     ScenarioPartFeedbackResponse,
     ScenarioProgressAnswer,
+    SCENARIO_PRACTICE_COOLDOWN_SECONDS,
+    SCENARIO_PRACTICE_DAILY_MAX_ATTEMPTS,
 } from '../types.js';
 import {
     fetchPublishedScenarioQuestions,
@@ -73,8 +75,9 @@ interface StudentQuestionView {
 }
 
 const EXAM_SECONDS_FALLBACK = 25 * 60;
-const PRACTICE_DAILY_MAX_ATTEMPTS = 6;
-const PRACTICE_COOLDOWN_MS = 30_000;
+/** Same limit the server enforces, so the counter shown to students is accurate. */
+const PRACTICE_DAILY_MAX_ATTEMPTS: number = SCENARIO_PRACTICE_DAILY_MAX_ATTEMPTS;
+const PRACTICE_COOLDOWN_MS = SCENARIO_PRACTICE_COOLDOWN_SECONDS * 1000;
 const PRACTICE_DAY_TIMEZONE = 'America/Vancouver';
 
 let currentCourse: activeCourse | null = null;
@@ -237,6 +240,13 @@ function schedulePracticeButtonRefresh(partId: string, delayMs: number): void {
     const timerId = setTimeout(() => {
         cooldownTimerIdsByPart.delete(partId);
         cooldownUntilByPart.delete(partId);
+        const limitUntil = dailyLimitUntilByPart.get(partId);
+        if (limitUntil && limitUntil <= Date.now()) {
+            // A new practice day has started: requests are available again
+            dailyLimitUntilByPart.delete(partId);
+            todayAttemptCountByPart.delete(partId);
+        }
+        updatePracticeLimitUi(partId);
     }, delayMs);
     cooldownTimerIdsByPart.set(partId, timerId);
 }
@@ -297,19 +307,42 @@ function renderFeedbackMarkdown(body: HTMLElement, feedback: string, partId: str
     renderLatexInHtmlContent(body);
 }
 
-function showPracticeGateFeedback(partId: string, gate: 'cooldown' | 'daily_limit'): void {
-    const panel = document.querySelector<HTMLElement>(`.sg-student-ai-feedback[data-sub-question-id="${partId}"]`);
-    const body = panel?.querySelector<HTMLElement>('.sg-student-ai-feedback-body');
-    if (!panel || !body) return;
+/**
+ * Keep a part's "Get AI Feedback" button and the status line beneath it in step with today's
+ * limit, so students always see how many requests are left and why the button is unavailable.
+ * The last feedback they received stays on screen.
+ */
+function updatePracticeLimitUi(partId: string): void {
+    const button = document.querySelector<HTMLButtonElement>(`.sg-student-ai-btn[data-sub-question-id="${partId}"]`);
+    const note = document.querySelector<HTMLElement>(`.sg-student-attempts-note[data-sub-question-id="${partId}"]`);
+    if (!button || !note) return;
 
-    if (gate === 'cooldown') {
-        body.innerHTML =
-            '<p class="sg-student-practice-gate-note">Take a moment with your answer—you may want to revise it before asking for feedback again.</p>';
-    } else {
-        body.innerHTML = `<p class="sg-student-practice-gate-note">You have been asking for feedback on this part quite often. Would you like to work through it in a <button type="button" class="sg-student-chat-cta" data-sub-question-id="${escapeHtml(partId)}">conversation</button> instead?</p>`;
+    const used = todayAttemptCountByPart.get(partId) ?? 0;
+    const left = Math.max(0, PRACTICE_DAILY_MAX_ATTEMPTS - used);
+    const max = PRACTICE_DAILY_MAX_ATTEMPTS;
+
+    if (left === 0) {
+        button.disabled = true;
+        note.innerHTML = `You've used all ${max} AI feedback requests for this part today. You can ask again after midnight (Pacific time), or keep working through it in a <button type="button" class="sg-student-chat-cta" data-sub-question-id="${escapeHtml(partId)}">conversation</button>.`;
+        return;
     }
-    revealStudentPanel(panel);
-    renderFeatherIcons();
+
+    const countText = `${left} of ${max} AI feedback request${max === 1 ? '' : 's'} left for this part today.`;
+    if (isPracticeCooldownActive(partId)) {
+        button.disabled = true;
+        note.textContent = `${countText} You can ask again in a few seconds — a good moment to revise your answer.`;
+        return;
+    }
+
+    button.disabled = false;
+    note.textContent = left === 1 ? `${countText} Your next request will be your last today.` : countText;
+}
+
+/** Refresh every rendered practice part (after rendering or loading today's history). */
+function updateAllPracticeLimitUi(): void {
+    document.querySelectorAll<HTMLElement>('.sg-student-attempts-note[data-sub-question-id]').forEach((note) => {
+        if (note.dataset.subQuestionId) updatePracticeLimitUi(note.dataset.subQuestionId);
+    });
 }
 
 function showPartFeedback(partId: string, feedback: string): void {
@@ -331,19 +364,19 @@ function showExamPartFeedback(partId: string, feedback: string): void {
 }
 
 function applyPracticeFeedbackResponse(partId: string, result: ScenarioPartFeedbackResponse): void {
-    if (result.blockReason === 'cooldown') {
-        showPracticeGateFeedback(partId, 'cooldown');
-    } else if (result.blockReason === 'daily_limit') {
-        showPracticeGateFeedback(partId, 'daily_limit');
-    } else {
+    // Limit responses update the status line instead of replacing the student's last feedback
+    if (!result.blockReason) {
         showPartFeedback(partId, result.feedback);
     }
 
     if (result.attemptNumber != null && result.feedbackSource === 'llm') {
         todayAttemptCountByPart.set(partId, result.attemptNumber);
         lastFeedbackAtByPart.set(partId, Date.now());
-    } else if (result.blockReason === 'daily_limit' && result.attemptNumber != null) {
-        todayAttemptCountByPart.set(partId, result.attemptNumber);
+        // Mirror the server's cooldown so the button pauses instead of failing on click
+        cooldownUntilByPart.set(partId, Date.now() + PRACTICE_COOLDOWN_MS);
+        schedulePracticeButtonRefresh(partId, PRACTICE_COOLDOWN_MS + 50);
+    } else if (result.blockReason === 'daily_limit') {
+        todayAttemptCountByPart.set(partId, PRACTICE_DAILY_MAX_ATTEMPTS);
     }
 
     if (result.blockReason === 'cooldown' && result.retryAfterSeconds) {
@@ -356,16 +389,15 @@ function applyPracticeFeedbackResponse(partId: string, result: ScenarioPartFeedb
         const delay = Math.max(0, new Date(result.resetsAt).getTime() - Date.now());
         schedulePracticeButtonRefresh(partId, delay + 50);
     }
+
+    updatePracticeLimitUi(partId);
 }
 
 async function requestPracticeFeedback(part: StudentPartView, answer: string): Promise<void> {
     const partId = part.id;
-    if (isPracticeDailyLimitReached(partId)) {
-        showPracticeGateFeedback(partId, 'daily_limit');
-        return;
-    }
-    if (isPracticeCooldownActive(partId)) {
-        showPracticeGateFeedback(partId, 'cooldown');
+    // The button is normally disabled in these states; this guards keyboard/race edge cases
+    if (isPracticeDailyLimitReached(partId) || isPracticeCooldownActive(partId)) {
+        updatePracticeLimitUi(partId);
         return;
     }
 
@@ -950,6 +982,7 @@ async function startWorkspace(listItem: StudentQuestionView, mode: ScenarioMode,
     renderParts(question, mode);
     if (mode === 'practice') {
         await loadPracticeResponseHistory(question.id);
+        updateAllPracticeLimitUi();
     }
     await loadAndApplyWorkspaceProgress(question.id, mode);
     setupTimerForMode(mode, question.expectedTimeMinutes);
@@ -980,6 +1013,7 @@ function renderParts(question: StudentQuestionView, mode: ScenarioMode, options?
                 <button type="button" class="sg-student-ai-btn" data-sub-question-id="${escapeHtml(part.id)}">Get AI Feedback</button>
                 <button type="button" class="sg-student-answer-btn" data-sub-question-id="${escapeHtml(part.id)}">See the Answer</button>
             </div>
+            <p class="sg-student-attempts-note" role="status" data-sub-question-id="${escapeHtml(part.id)}"></p>
             ${renderPartOutcomesShell(part.id, 'AI Feedback')}`
                     : mode === 'exam'
                       ? `

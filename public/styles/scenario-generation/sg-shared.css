@@ -81,3 +81,16 @@
     color: var(--color-eng-red, #8b0000);
     border-color: var(--color-eng-red, #8b0000);
 }
+
+/* Headings inside AI feedback (e.g. the "# Photon Energy" steps of an attached model answer)
+   would otherwise use chat-sized headings (1.7em with a rule underneath). Keep them as small
+   bold labels in every place feedback is shown: student panel, editor responses, Monitor. */
+.sg-student-ai-feedback-body :is(.response-header-1, .response-header-2, .response-header-3),
+.sg-instructor-response-feedback :is(.response-header-1, .response-header-2, .response-header-3),
+.monitor-scenario-feedback :is(.response-header-1, .response-header-2, .response-header-3) {
+    font-size: 1em;
+    font-weight: 700;
+    margin: 0.75em 0 0.25em;
+    padding-bottom: 0;
+    border-bottom: none;
+}

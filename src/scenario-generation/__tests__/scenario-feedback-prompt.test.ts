@@ -45,6 +45,19 @@ describe('scenario-feedback-prompt practice tiers', () => {
         expect(buildScenarioExamFeedbackSystemPrompt()).not.toContain('<module id="output format">');
     });
 
+    it("tells the model not to invite a retry on the student's last request", () => {
+        const last = buildScenarioPracticeFeedbackUserTurn('n', 'p', 'm', 's', 'socratic', 0);
+        const notLast = buildScenarioPracticeFeedbackUserTurn('n', 'p', 'm', 's', 'socratic', 1);
+        const preview = buildScenarioPracticeFeedbackUserTurn('n', 'p', 'm', 's', 'socratic');
+        expect(last).toContain("last feedback request for this part today");
+        expect(notLast).not.toContain('last feedback request');
+        expect(preview).not.toContain('last feedback request');
+        // The Socratic rules defer to that note
+        expect(buildScenarioPracticeSocraticFeedbackSystemPrompt()).toContain(
+            "unless the user turn says this is the student's last feedback request"
+        );
+    });
+
     it('user turns differ by tier', () => {
         const socratic = buildScenarioPracticeFeedbackUserTurn('n', 'p', 'model', 'student', 'socratic');
         const descriptive = buildScenarioPracticeFeedbackUserTurn('n', 'p', 'model', 'student', 'descriptive');

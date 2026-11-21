@@ -514,11 +514,17 @@
     line-height: 1.5;
 }
 
-.sg-student-practice-gate-note {
-    margin: 0;
-    font-size: 0.92rem;
-    line-height: 1.55;
-    color: var(--text-secondary, #555);
+/* Feedback requests left today, shown under each practice part's buttons.
+   #5c636a is 5.9:1+ on white/off-white (the theme's #6c757d is borderline). */
+.sg-student-attempts-note {
+    margin: 0.5rem 0 0;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: #5c636a;
+}
+
+.sg-student-attempts-note:empty {
+    display: none;
 }
 
 .sg-student-chat-cta {

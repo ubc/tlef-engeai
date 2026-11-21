@@ -134,7 +134,6 @@ function renderQuestionHtml(question: ScenarioUsageQuestion): string {
         <span class="monitor-scenario-progress monitor-scenario-progress--${question.progress}">${PROGRESS_LABELS[question.progress]}</span>
         ${stateNote}
         ${flaggedNote}
-        ${question.modesUsed.map(modeBadge).join('')}
         ${question.lastSubmittedAt ? `<time class="monitor-scenario-time" datetime="${escapeHtml(question.lastSubmittedAt)}">${escapeHtml(formatDate(question.lastSubmittedAt))}</time>` : ''}`;
     const title = `<span class="monitor-scenario-question-title">${escapeHtml(question.title)}</span>`;
 
